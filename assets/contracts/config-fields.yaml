@@ -30,6 +30,9 @@ listeners: listeners
 sites: sites
 secrets: secrets
 variables: variables
+secretReference:
+  envPrefix: "env:"
+  filePrefix: "file:"
 substitution:
   open: ${
   close: '}'

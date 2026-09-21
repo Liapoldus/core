@@ -49,7 +49,8 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 			Value:  path,
 			Digest: hex.EncodeToString(compiled.hasher.Sum(nil)),
 		},
-		Sites: map[string]models.Site{},
+		Sites:   map[string]models.Site{},
+		Secrets: map[string]models.Secret{},
 	}
 	base := filepath.Dir(path)
 	for _, document := range compiled.documents {
@@ -66,6 +67,9 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				collectSites(node, loaded.Runtime, base, graph.Sites)
 			}
 		}
+	}
+	for name, value := range compiled.secrets {
+		graph.Secrets[name] = models.Secret{Value: value}
 	}
 	return graph, nil
 }

@@ -15,6 +15,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type contractSecretReference struct {
+	EnvPrefix  string `yaml:"envPrefix"`
+	FilePrefix string `yaml:"filePrefix"`
+}
+
 type validationError uint8
 
 func (value validationError) Error() string { return string(rune(value)) }
@@ -33,6 +38,7 @@ type contractFile struct {
 	Sites        string   `yaml:"sites"`
 	Secrets      string   `yaml:"secrets"`
 	Variables    string   `yaml:"variables"`
+	SecretReference contractSecretReference `yaml:"secretReference"`
 	Substitution struct {
 		Open  string `yaml:"open"`
 		Close string `yaml:"close"`
@@ -72,10 +78,11 @@ type runtimeWords struct {
 }
 
 type graph struct {
-	variables map[string]string
-	documents []*yaml.Node
-	root      *yaml.Node
-	hasher    hash.Hash
+	variables    map[string]string
+	secrets      map[string]string
+	documents    []*yaml.Node
+	root         *yaml.Node
+	hasher       hash.Hash
 }
 
 func supervise(path string) (*graph, contractFile, error) {
@@ -83,7 +90,7 @@ func supervise(path string) (*graph, contractFile, error) {
 	if err != nil {
 		return nil, contractFile{}, err
 	}
-	compiled := graph{variables: map[string]string{}, hasher: newHasher()}
+	compiled := graph{variables: map[string]string{}, secrets: map[string]string{}, hasher: newHasher()}
 	if err := collectFile(path, loaded, map[string]struct{}{}, &compiled); err != nil {
 		return nil, contractFile{}, err
 	}
@@ -91,6 +98,9 @@ func supervise(path string) (*graph, contractFile, error) {
 		if err := validateVariables(document, compiled.variables, loaded); err != nil {
 			return nil, contractFile{}, err
 		}
+	}
+	if err := resolveSecrets(compiled.documents, filepath.Dir(path), loaded.Secrets, loaded.SecretReference, compiled.secrets); err != nil {
+		return nil, contractFile{}, err
 	}
 	return &compiled, loaded, nil
 }
@@ -261,6 +271,67 @@ func matchGlobParts(value []string, pattern []string) bool {
 
 func hasGlobMeta(value string) bool {
 	return strings.ContainsAny(value, "*?[")
+}
+
+type secretResolver struct {
+	env  map[string]string
+	file map[string]string
+}
+
+func newSecretResolver() *secretResolver {
+	return &secretResolver{env: map[string]string{}, file: map[string]string{}}
+}
+
+func (resolver *secretResolver) resolve(reference, baseDir string, words contractSecretReference) (string, error) {
+	if strings.HasPrefix(reference, words.EnvPrefix) {
+		name := strings.TrimPrefix(reference, words.EnvPrefix)
+		if value, found := resolver.env[name]; found {
+			return value, nil
+		}
+		value := os.Getenv(name)
+		resolver.env[name] = value
+		return value, nil
+	}
+	if strings.HasPrefix(reference, words.FilePrefix) {
+		path := strings.TrimPrefix(reference, words.FilePrefix)
+		if value, found := resolver.file[path]; found {
+			return value, nil
+		}
+		target := path
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(baseDir, target)
+		}
+		contents, err := os.ReadFile(target)
+		if err != nil {
+			return "", ErrInvalidDocument
+		}
+		value := strings.TrimRight(string(contents), "\n")
+		resolver.file[path] = value
+		return value, nil
+	}
+	return reference, nil
+}
+
+func resolveSecrets(documents []*yaml.Node, baseDir string, key string, words contractSecretReference, secrets map[string]string) error {
+	resolver := newSecretResolver()
+	for _, document := range documents {
+		node := mappingNode(document, key)
+		if node == nil || node.Kind != yaml.MappingNode {
+			continue
+		}
+		for index := 0; index < len(node.Content); index += 2 {
+			value := node.Content[index+1]
+			if value.Kind != yaml.ScalarNode {
+				continue
+			}
+			resolved, err := resolver.resolve(value.Value, baseDir, words)
+			if err != nil {
+				return err
+			}
+			secrets[node.Content[index].Value] = resolved
+		}
+	}
+	return nil
 }
 
 func validateSchema(root *yaml.Node) error {
