@@ -1,3 +1,6 @@
 package models
 
-type UpstreamTarget struct{}
+type UpstreamTarget struct {
+	Address string
+	Weight  int
+}

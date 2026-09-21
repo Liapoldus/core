@@ -4,9 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"gopkg.in/yaml.v3"
@@ -32,11 +35,15 @@ func CompileGateway(path string) (models.CompiledGraph, error) {
 func validateReferences(graph models.CompiledGraph) error {
 	for _, listener := range graph.Listeners {
 		for _, route := range listener.Routes {
-			if route.Site == "" {
-				continue
+			if route.Site != "" {
+				if _, exists := graph.Sites[route.Site]; !exists {
+					return ErrUndefinedSite
+				}
 			}
-			if _, exists := graph.Sites[route.Site]; !exists {
-				return ErrUndefinedSite
+			if route.Proxy != nil {
+				if _, exists := graph.Upstreams[route.Proxy.Upstream]; !exists {
+					return ErrUndefinedUpstream
+				}
 			}
 		}
 	}
@@ -51,6 +58,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		},
 		Sites:   map[string]models.Site{},
 		Secrets: map[string]models.Secret{},
+		Upstreams: map[string]models.Upstream{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -70,6 +78,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				graph.Listeners = append(graph.Listeners, listeners...)
 			case loaded.Sites:
 				collectSites(node, loaded.Runtime, base, registryRoot, layout, graph.Sites)
+			case loaded.Upstreams:
+				if err := collectUpstreams(node, loaded.Runtime, graph.Upstreams); err != nil {
+					return models.CompiledGraph{}, err
+				}
 			}
 		}
 	}
@@ -144,10 +156,154 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 		}
 		if then := mappingNode(routeNode, words.Route.Then); then != nil {
 			route.Site, _ = fieldValue(then, words.Route.Site)
+			route.Proxy = compileProxyTarget(mappingNode(then, words.Route.Proxy), words)
 		}
 		routes = append(routes, route)
 	}
 	return routes, nil
+}
+
+func compileProxyTarget(node *yaml.Node, words runtimeWords) *models.ProxyTarget {
+	if node == nil {
+		return nil
+	}
+	switch node.Kind {
+	case yaml.ScalarNode:
+		if node.Value == "" {
+			return nil
+		}
+		return &models.ProxyTarget{Upstream: node.Value, Host: models.ProxyHostPreserve, HostValue: ""}
+	case yaml.MappingNode:
+		target := models.ProxyTarget{Host: models.ProxyHostPreserve}
+		target.Upstream, _ = fieldValue(node, words.Proxy.Upstream)
+		if host, ok := fieldValue(node, words.Proxy.Host); ok {
+			switch host {
+			case words.Proxy.HostUpstream:
+				target.Host = models.ProxyHostUpstream
+			case words.Proxy.HostPreserve:
+				target.Host = models.ProxyHostPreserve
+			default:
+				target.Host = models.ProxyHostValue
+				target.HostValue = host
+			}
+		}
+		return &target
+	}
+	return nil
+}
+
+func collectUpstreams(node *yaml.Node, words runtimeWords, upstreams map[string]models.Upstream) error {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index < len(node.Content); index += 2 {
+		name, body := node.Content[index], node.Content[index+1]
+		if body.Kind != yaml.MappingNode {
+			continue
+		}
+		upstream, err := compileUpstream(body, words)
+		if err != nil {
+			return err
+		}
+		upstreams[name.Value] = upstream
+	}
+	return nil
+}
+
+func compileUpstream(node *yaml.Node, words runtimeWords) (models.Upstream, error) {
+	upstream := models.Upstream{Balance: models.BalanceRoundRobin}
+	switch balance, _ := fieldValue(node, words.UpstreamConfig.Balance); balance {
+	case words.UpstreamConfig.BalanceLeastConnections:
+		upstream.Balance = models.BalanceLeastConnections
+	case words.UpstreamConfig.BalanceHash:
+		upstream.Balance = models.BalanceHash
+	}
+	if hashNode := mappingNode(node, words.UpstreamConfig.Hash); hashNode != nil {
+		if source, ok := fieldValue(hashNode, words.UpstreamConfig.HashSource); ok {
+			switch source {
+			case words.UpstreamConfig.HashSourceHeader:
+				upstream.Hash.Source = models.HashSourceHeader
+			case words.UpstreamConfig.HashSourceCookie:
+				upstream.Hash.Source = models.HashSourceCookie
+			case words.UpstreamConfig.HashSourceQuery:
+				upstream.Hash.Source = models.HashSourceQuery
+			default:
+				upstream.Hash.Source = models.HashSourceIP
+			}
+		}
+		upstream.Hash.Name, _ = fieldValue(hashNode, words.UpstreamConfig.HashName)
+	}
+	if retryNode := mappingNode(node, words.UpstreamConfig.Retry); retryNode != nil {
+		if attempts, ok := fieldValue(retryNode, words.UpstreamConfig.RetryAttempts); ok {
+			if parsed, err := strconv.Atoi(attempts); err == nil {
+				upstream.Retry.Attempts = parsed
+			}
+		}
+		if on := mappingNode(retryNode, words.UpstreamConfig.RetryOn); on != nil && on.Kind == yaml.SequenceNode {
+			for _, item := range on.Content {
+				if item.Kind != yaml.ScalarNode {
+					continue
+				}
+				upstream.Retry.Conditions = append(upstream.Retry.Conditions, retryCondition(item.Value, words))
+			}
+		}
+	}
+	targets := mappingNode(node, words.UpstreamConfig.Targets)
+	if targets == nil || targets.Kind != yaml.SequenceNode {
+		return upstream, nil
+	}
+	for _, item := range targets.Content {
+		if item.Kind != yaml.MappingNode {
+			continue
+		}
+		address, ok := fieldValue(item, words.UpstreamConfig.TargetAddress)
+		if !ok || address == "" {
+			return models.Upstream{}, ErrInvalidTarget
+		}
+		if err := validateTargetAddress(address); err != nil {
+			return models.Upstream{}, err
+		}
+		weight := 1
+		if raw, known := fieldValue(item, words.UpstreamConfig.TargetWeight); known {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+				weight = parsed
+			}
+		}
+		upstream.Targets = append(upstream.Targets, models.UpstreamTarget{Address: address, Weight: weight})
+	}
+	return upstream, nil
+}
+
+func retryCondition(word string, words runtimeWords) models.RetryCondition {
+	switch word {
+	case words.UpstreamConfig.RetryTimeout:
+		return models.RetryTimeout
+	case words.UpstreamConfig.RetryStatus502:
+		return models.RetryStatus502
+	case words.UpstreamConfig.RetryStatus503:
+		return models.RetryStatus503
+	case words.UpstreamConfig.RetryStatus504:
+		return models.RetryStatus504
+	default:
+		return models.RetryConnectFailure
+	}
+}
+
+func validateTargetAddress(address string) error {
+	if strings.HasPrefix(address, "://") {
+		return ErrInvalidTarget
+	}
+	if !strings.Contains(address, "://") {
+		return nil
+	}
+	parsed, err := url.Parse(address)
+	if err != nil || parsed.Host == "" {
+		return ErrInvalidTarget
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ErrInvalidTarget
+	}
+	return nil
 }
 
 func compilePathMatcher(node *yaml.Node, words runtimeWords) (models.PathMatcher, error) {

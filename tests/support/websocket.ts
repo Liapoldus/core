@@ -76,8 +76,12 @@ export async function startEchoWebSocketServer(): Promise<EchoWebSocketServer> {
     response.writeHead(426, { connection: "close" });
     response.end();
   });
+  const upgraded = new Set<Socket>();
 
   server.on("upgrade", (request, socket: Socket, head: Buffer) => {
+    upgraded.add(socket);
+    socket.on("close", () => upgraded.delete(socket));
+    socket.on("error", () => upgraded.delete(socket));
     const key = request.headers["sec-websocket-key"];
     if (typeof key !== "string") {
       socket.destroy();
@@ -126,16 +130,23 @@ export async function startEchoWebSocketServer(): Promise<EchoWebSocketServer> {
 
   return {
     url: `http://${base}`,
-    stop: () =>
-      new Promise<void>((resolve, reject) => {
+    stop: () => {
+      for (const socket of upgraded) {
+        socket.destroy();
+      }
+      upgraded.clear();
+      return new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
-      }),
+      });
+    },
   };
 }
 
 export async function websocketEcho(address: string, path: string, message: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const socket = connect(address);
+    const host = address.lastIndexOf(":") >= 0 ? address.slice(0, address.lastIndexOf(":")) : address;
+    const port = Number(address.slice(address.lastIndexOf(":") + 1));
+    const socket = connect(port, host);
     const key = createHash("sha1").update(`${Date.now()}${Math.random()}`).digest("base64");
 
     let buffer = Buffer.alloc(0);

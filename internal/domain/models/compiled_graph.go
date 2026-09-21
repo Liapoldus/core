@@ -5,4 +5,5 @@ type CompiledGraph struct {
 	Listeners []Listener
 	Sites     map[string]Site
 	Secrets   map[string]Secret
+	Upstreams map[string]Upstream
 }

@@ -13,20 +13,34 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 )
 
-func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, drainTimeout time.Duration) error {
+func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
 	for _, listener := range listeners {
 		if !listener.IsHTTP {
 			continue
 		}
-		return serveHTTP(parent, listener, sites, drainTimeout)
+		return serveHTTP(parent, listener, sites, upstreams, drainTimeout)
 	}
 	return errors.New("no http listener")
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, drainTimeout time.Duration) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+	proxies := buildProxies(listener.Routes, upstreams)
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		site, found := matchedDirectorySite(request.URL.Path, listener.Routes, sites)
-		if !found || site.Source != models.SourceDirectory && site.Source != models.SourceRelease {
+		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
+		if !found {
+			http.NotFound(writer, request)
+			return
+		}
+		if route.Proxy != nil {
+			if proxied := proxies[index]; proxied != nil {
+				proxied.ServeHTTP(writer, request)
+				return
+			}
+			http.NotFound(writer, request)
+			return
+		}
+		site, exists := sites[route.Site]
+		if !exists || site.Source != models.SourceDirectory && site.Source != models.SourceRelease {
 			http.NotFound(writer, request)
 			return
 		}
@@ -74,15 +88,14 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 	}
 }
 
-func matchedDirectorySite(requestPath string, routes []models.Route, sites map[string]models.Site) (models.Site, bool) {
-	for _, route := range routes {
+func matchedRoute(requestPath string, routes []models.Route) (int, models.Route, bool) {
+	for index, route := range routes {
 		if !route.When.Matches(requestPath) {
 			continue
 		}
-		site, exists := sites[route.Site]
-		return site, exists
+		return index, route, true
 	}
-	return models.Site{}, false
+	return -1, models.Route{}, false
 }
 
 func isWithin(root, candidate string) bool {

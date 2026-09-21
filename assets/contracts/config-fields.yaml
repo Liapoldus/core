@@ -30,6 +30,7 @@ listeners: listeners
 sites: sites
 secrets: secrets
 variables: variables
+upstreams: upstreams
 secretReference:
   envPrefix: "env:"
   filePrefix: "file:"
@@ -46,6 +47,7 @@ runtime:
   http: http
   directory: directory
   release: release
+  upstreams: upstreams
   listener:
     type: type
     address: address
@@ -66,3 +68,32 @@ runtime:
     exact: exact
     regex: regex
     site: site
+    proxy: proxy
+  proxy:
+    upstream: upstream
+    host: host
+    hostPreserve: preserve
+    hostUpstream: upstream
+  upstreamConfig:
+    targets: targets
+    targetAddress: address
+    targetWeight: weight
+    balance: balance
+    balanceRoundRobin: round-robin
+    balanceLeastConnections: least-connections
+    balanceHash: hash
+    hash: hash
+    hashSource: source
+    hashSourceIp: source-ip
+    hashSourceHeader: header
+    hashSourceCookie: cookie
+    hashSourceQuery: query
+    hashName: name
+    retry: retry
+    retryAttempts: attempts
+    retryOn: on
+    retryConnectFailure: connect-failure
+    retryTimeout: timeout
+    retryStatus502: status-502
+    retryStatus503: status-503
+    retryStatus504: status-504

@@ -28,6 +28,8 @@ const (
 	ErrUnknownField validationError = iota + 1
 	ErrInvalidDocument
 	ErrUndefinedSite
+	ErrUndefinedUpstream
+	ErrInvalidTarget
 )
 
 type contractFile struct {
@@ -38,6 +40,7 @@ type contractFile struct {
 	Sites        string   `yaml:"sites"`
 	Secrets      string   `yaml:"secrets"`
 	Variables    string   `yaml:"variables"`
+	Upstreams    string   `yaml:"upstreams"`
 Registry struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
@@ -80,7 +83,38 @@ type runtimeWords struct {
 		Exact  string
 		Regex  string
 		Site   string
+		Proxy  string
 	}
+	Proxy struct {
+		Upstream     string `yaml:"upstream"`
+		Host         string `yaml:"host"`
+		HostPreserve string `yaml:"hostPreserve"`
+		HostUpstream string `yaml:"hostUpstream"`
+	} `yaml:"proxy"`
+	UpstreamConfig struct {
+		Targets                 string `yaml:"targets"`
+		TargetAddress           string `yaml:"targetAddress"`
+		TargetWeight            string `yaml:"targetWeight"`
+		Balance                 string `yaml:"balance"`
+		BalanceRoundRobin       string `yaml:"balanceRoundRobin"`
+		BalanceLeastConnections string `yaml:"balanceLeastConnections"`
+		BalanceHash             string `yaml:"balanceHash"`
+		Hash                    string `yaml:"hash"`
+		HashSource              string `yaml:"hashSource"`
+		HashSourceIP            string `yaml:"hashSourceIp"`
+		HashSourceHeader        string `yaml:"hashSourceHeader"`
+		HashSourceCookie        string `yaml:"hashSourceCookie"`
+		HashSourceQuery         string `yaml:"hashSourceQuery"`
+		HashName                string `yaml:"hashName"`
+		Retry                   string `yaml:"retry"`
+		RetryAttempts           string `yaml:"retryAttempts"`
+		RetryOn                 string `yaml:"retryOn"`
+		RetryConnectFailure     string `yaml:"retryConnectFailure"`
+		RetryTimeout            string `yaml:"retryTimeout"`
+		RetryStatus502          string `yaml:"retryStatus502"`
+		RetryStatus503          string `yaml:"retryStatus503"`
+		RetryStatus504          string `yaml:"retryStatus504"`
+	} `yaml:"upstreamConfig"`
 }
 
 type graph struct {

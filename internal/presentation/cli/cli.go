@@ -242,7 +242,7 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := network.Serve(ctx, graph.Listeners, graph.Sites, drain); err != nil {
+	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, drain); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
