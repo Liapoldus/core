@@ -165,9 +165,26 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 			route.Rewrite = rewrite
 			route.Headers = compileHeaderActions(mappingNode(then, words.Route.Headers), words)
 		}
+		if terminals := countTerminalActions(route); terminals > 1 {
+			return nil, ErrMultipleTerminalActions
+		}
 		routes = append(routes, route)
 	}
 	return routes, nil
+}
+
+func countTerminalActions(route models.Route) int {
+	terminals := 0
+	if route.Site != "" {
+		terminals++
+	}
+	if route.Proxy != nil {
+		terminals++
+	}
+	if route.Redirect != nil {
+		terminals++
+	}
+	return terminals
 }
 
 func compileProxyTarget(node *yaml.Node, words runtimeWords) *models.ProxyTarget {

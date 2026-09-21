@@ -30,6 +30,7 @@ const (
 	ErrUndefinedSite
 	ErrUndefinedUpstream
 	ErrInvalidTarget
+	ErrMultipleTerminalActions
 )
 
 type contractFile struct {

@@ -132,6 +132,16 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   it exactly once before the terminal to the request path only (query is
   preserved untouched, and the rewritten path is what a `redirect` without
   its own `path` would use); `replacement` expands `$N` capture groups.
+- Route terminal exclusivity decision (derived from `server-blocks.md`
+  `одно route action — ровно один terminal target`): a compile-time check in
+  `CompileGateway` rejects any route whose `then` carries more than one
+  terminal action as `config_invalid` (exit 3). The check covers the terminal
+  actions this increment compiles — `site`, `proxy`, `redirect`. The schema
+  also names `plugin` and `deny` as terminals, but those actions are not
+  compiled yet (Agent A scope); known gaps recorded here: a config using
+  `deny`/`plugin` beside a supported terminal is not yet rejected, and a route
+  built solely on `deny`/`plugin` currently serves 404 (no terminal matched),
+  which must be revisited when those actions land.
 
 ## 0. Foundation
 
