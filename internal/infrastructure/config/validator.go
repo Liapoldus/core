@@ -1,4 +1,4 @@
-package validation
+package config
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/infrastructure/contracts"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
@@ -57,7 +56,7 @@ func Validate(path, contractPath, schemaPath string) error {
 
 func loadContract(path string) (contract, error) {
 	var loaded contract
-	contents, err := contracts.Read(path)
+	contents, err := ReadContract(path)
 	if err != nil {
 		return contract{}, err
 	}

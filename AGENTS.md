@@ -20,8 +20,12 @@ module and owns only process supervision, grants, and traffic dispatch.
 
 ## Implementation rules
 
-- Use Go 1.24 or newer. Keep the dependency direction documented by Gateway:
-  `domain` -> `application` -> adapters; `cmd/gateway` is the composition root.
+- Use Go 1.24 or newer. `internal/domain` may contain only models, port
+  interfaces, typed errors and validating constructors. `internal/application`
+  is one flat package of use cases. Group adapters in
+  `infrastructure/config`, `network`, `security`, `storage`, `plugins` and
+  `observability`; keep presentation limited to `api` and `cli`.
+  `cmd/gateway` is the composition root.
 - Use filesystem-first persistence only: atomic files/directories, release
   pointers, JSONL audit and operation data. Do not introduce a database unless
   explicitly approved.

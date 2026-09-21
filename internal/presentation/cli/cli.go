@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/internal/infrastructure/validation"
+	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
 
 const (
@@ -93,9 +93,9 @@ func run(options options) int {
 		}
 		contractPath := filepath.Join("assets", "contracts", "config-fields.yaml")
 		schemaPath := filepath.Join("assets", "contracts", "gateway.schema.json")
-		if err := validation.Validate(path, contractPath, schemaPath); err != nil {
+		if err := config.Validate(path, contractPath, schemaPath); err != nil {
 			code := "config_invalid"
-			if validation.IsUnknownField(err) {
+			if config.IsUnknownField(err) {
 				code = "unknown_field"
 			}
 			writeFailure(options.output, exitValidation, code, "Конфигурация не прошла проверку.")
