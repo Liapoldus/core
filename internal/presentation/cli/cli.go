@@ -139,6 +139,19 @@ func run(options options) int {
 		}
 		fmt.Println(strings.TrimRight(string(document), "\n"))
 		return words.Exits.OK
+	case words.Subcommands.Format:
+		path, err := configForValidation(options)
+		if err != nil {
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
+		}
+		if err := config.FormatFile(path); err != nil {
+			return configValidationFailure(options.output, err)
+		}
+		writeSuccess(options.output, map[string]any{
+			words.JSON.OK: true, words.JSON.Command: words.Display.Format, words.JSON.Path: path,
+		})
+		return words.Exits.OK
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments

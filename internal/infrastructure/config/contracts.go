@@ -76,6 +76,7 @@ type CLIWords struct {
 		Path     string `yaml:"path"`
 		Validate string `yaml:"validate"`
 		Print    string `yaml:"print"`
+		Format   string `yaml:"format"`
 	} `yaml:"display"`
 	Text struct {
 		OK string `yaml:"ok"`

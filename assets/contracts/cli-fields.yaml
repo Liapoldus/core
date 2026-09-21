@@ -53,6 +53,7 @@ display:
   path: config path
   validate: config validate
   print: config print
+  format: config format
 text:
   ok: ok
 diagnostics:
