@@ -1,12 +1,14 @@
 package validation
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/Liapoldus/core/internal/infrastructure/contracts"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,13 +38,13 @@ type graph struct {
 	documents []*yaml.Node
 }
 
-func Validate(path, contractPath string) error {
+func Validate(path, contractPath, schemaPath string) error {
 	loaded, err := loadContract(contractPath)
 	if err != nil {
 		return err
 	}
 	compiled := graph{variables: map[string]string{}}
-	if err := collectFile(path, loaded, map[string]struct{}{}, &compiled); err != nil {
+	if err := collectFile(path, loaded, schemaPath, map[string]struct{}{}, &compiled); err != nil {
 		return err
 	}
 	for _, document := range compiled.documents {
@@ -65,7 +67,7 @@ func loadContract(path string) (contract, error) {
 	return loaded, nil
 }
 
-func collectFile(path string, loaded contract, visited map[string]struct{}, compiled *graph) error {
+func collectFile(path string, loaded contract, schemaPath string, visited map[string]struct{}, compiled *graph) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -97,7 +99,7 @@ func collectFile(path string, loaded contract, visited map[string]struct{}, comp
 		}
 		switch key.Value {
 		case loaded.Includes:
-			if err := collectIncludes(abs, value, loaded, visited, compiled); err != nil {
+			if err := collectIncludes(abs, value, loaded, schemaPath, visited, compiled); err != nil {
 				return err
 			}
 		case loaded.Listeners:
@@ -110,10 +112,10 @@ func collectFile(path string, loaded contract, visited map[string]struct{}, comp
 			}
 		}
 	}
-	return nil
+	return validateSchema(root, schemaPath)
 }
 
-func collectIncludes(parent string, node *yaml.Node, loaded contract, visited map[string]struct{}, compiled *graph) error {
+func collectIncludes(parent string, node *yaml.Node, loaded contract, schemaPath string, visited map[string]struct{}, compiled *graph) error {
 	if node.Kind != yaml.SequenceNode {
 		return ErrInvalidDocument
 	}
@@ -121,11 +123,32 @@ func collectIncludes(parent string, node *yaml.Node, loaded contract, visited ma
 		if item.Kind != yaml.ScalarNode {
 			return ErrInvalidDocument
 		}
-		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, visited, compiled); err != nil {
+		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, schemaPath, visited, compiled); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func validateSchema(root *yaml.Node, schemaPath string) error {
+	var raw any
+	if err := root.Decode(&raw); err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	var instance any
+	if err := json.Unmarshal(encoded, &instance); err != nil {
+		return err
+	}
+	compiler := jsonschema.NewCompiler()
+	schema, err := compiler.Compile(schemaPath)
+	if err != nil {
+		return err
+	}
+	return schema.Validate(instance)
 }
 
 func collectVariables(node *yaml.Node, variables map[string]string) error {

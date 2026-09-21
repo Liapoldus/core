@@ -93,7 +93,8 @@ func run(options options) int {
 			return exitConfigNotFound
 		}
 		contractPath := filepath.Join("assets", "contracts", "config-fields.yaml")
-		if err := validation.Validate(path, contractPath); err != nil {
+		schemaPath := filepath.Join("assets", "contracts", "gateway.schema.json")
+		if err := validation.Validate(path, contractPath, schemaPath); err != nil {
 			code := "config_invalid"
 			if validation.IsUnknownField(err) {
 				code = "unknown_field"
