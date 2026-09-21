@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Liapoldus/core/internal/infrastructure/contracts"
 	"gopkg.in/yaml.v3"
@@ -19,10 +20,20 @@ const (
 )
 
 type contract struct {
-	Root      []string
-	Listener  []string
-	Includes  string
-	Listeners string
+	Root         []string
+	Listener     []string
+	Includes     string
+	Listeners    string
+	Variables    string
+	Substitution struct {
+		Open  string
+		Close string
+	}
+}
+
+type graph struct {
+	variables map[string]string
+	documents []*yaml.Node
 }
 
 func Validate(path, contractPath string) error {
@@ -30,7 +41,16 @@ func Validate(path, contractPath string) error {
 	if err != nil {
 		return err
 	}
-	return validateFile(path, loaded, map[string]struct{}{})
+	compiled := graph{variables: map[string]string{}}
+	if err := collectFile(path, loaded, map[string]struct{}{}, &compiled); err != nil {
+		return err
+	}
+	for _, document := range compiled.documents {
+		if err := validateVariables(document, compiled.variables, loaded); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func loadContract(path string) (contract, error) {
@@ -45,7 +65,7 @@ func loadContract(path string) (contract, error) {
 	return loaded, nil
 }
 
-func validateFile(path string, loaded contract, visited map[string]struct{}) error {
+func collectFile(path string, loaded contract, visited map[string]struct{}, compiled *graph) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -69,6 +89,7 @@ func validateFile(path string, loaded contract, visited map[string]struct{}) err
 	}
 
 	root := document.Content[0]
+	compiled.documents = append(compiled.documents, root)
 	for index := 0; index < len(root.Content); index += 2 {
 		key, value := root.Content[index], root.Content[index+1]
 		if !contains(loaded.Root, key.Value) {
@@ -76,11 +97,15 @@ func validateFile(path string, loaded contract, visited map[string]struct{}) err
 		}
 		switch key.Value {
 		case loaded.Includes:
-			if err := validateIncludes(abs, value, loaded, visited); err != nil {
+			if err := collectIncludes(abs, value, loaded, visited, compiled); err != nil {
 				return err
 			}
 		case loaded.Listeners:
 			if err := validateListeners(value, loaded); err != nil {
+				return err
+			}
+		case loaded.Variables:
+			if err := collectVariables(value, compiled.variables); err != nil {
 				return err
 			}
 		}
@@ -88,7 +113,7 @@ func validateFile(path string, loaded contract, visited map[string]struct{}) err
 	return nil
 }
 
-func validateIncludes(parent string, node *yaml.Node, loaded contract, visited map[string]struct{}) error {
+func collectIncludes(parent string, node *yaml.Node, loaded contract, visited map[string]struct{}, compiled *graph) error {
 	if node.Kind != yaml.SequenceNode {
 		return ErrInvalidDocument
 	}
@@ -96,11 +121,58 @@ func validateIncludes(parent string, node *yaml.Node, loaded contract, visited m
 		if item.Kind != yaml.ScalarNode {
 			return ErrInvalidDocument
 		}
-		if err := validateFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, visited); err != nil {
+		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, visited, compiled); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func collectVariables(node *yaml.Node, variables map[string]string) error {
+	if node.Kind != yaml.MappingNode {
+		return ErrInvalidDocument
+	}
+	for index := 0; index < len(node.Content); index += 2 {
+		name, value := node.Content[index], node.Content[index+1]
+		if value.Kind != yaml.ScalarNode {
+			return ErrInvalidDocument
+		}
+		if _, exists := variables[name.Value]; exists {
+			return ErrInvalidDocument
+		}
+		variables[name.Value] = value.Value
+	}
+	return nil
+}
+
+func validateVariables(node *yaml.Node, variables map[string]string, loaded contract) error {
+	if node.Kind == yaml.ScalarNode {
+		return validateScalar(node.Value, variables, loaded)
+	}
+	for _, child := range node.Content {
+		if err := validateVariables(child, variables, loaded); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateScalar(value string, variables map[string]string, loaded contract) error {
+	for remainder := value; ; {
+		start := strings.Index(remainder, loaded.Substitution.Open)
+		if start < 0 {
+			return nil
+		}
+		remainder = remainder[start+len(loaded.Substitution.Open):]
+		end := strings.Index(remainder, loaded.Substitution.Close)
+		if end < 0 {
+			return ErrInvalidDocument
+		}
+		if _, exists := variables[remainder[:end]]; !exists {
+			return ErrInvalidDocument
+		}
+		remainder = remainder[end+len(loaded.Substitution.Close):]
+	}
 }
 
 func validateListeners(node *yaml.Node, loaded contract) error {

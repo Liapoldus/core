@@ -27,3 +27,7 @@ listener:
   - limits
 includes: includes
 listeners: listeners
+variables: variables
+substitution:
+  open: ${
+  close: '}'
