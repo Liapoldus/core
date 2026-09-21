@@ -40,7 +40,7 @@ func (store *MemorySnapshotStore) Activate(prepared models.PreparedSnapshot) (mo
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	for index, candidate := range store.prepared {
-		if candidate.Snapshot() != prepared.Snapshot() {
+		if !reflect.DeepEqual(candidate.Snapshot(), prepared.Snapshot()) {
 			continue
 		}
 		store.prepared = append(store.prepared[:index], store.prepared[index+1:]...)

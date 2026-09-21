@@ -16,41 +16,46 @@ import (
 
 var registryLocks sync.Map
 
-type FilesystemStore struct{ root string }
+type FilesystemStore struct {
+	root   string
+	layout models.RegistryLayout
+}
 
-func NewFilesystemStore(root string) FilesystemStore { return FilesystemStore{root: root} }
+func NewFilesystemStore(root string, layout models.RegistryLayout) FilesystemStore {
+	return FilesystemStore{root: root, layout: layout}
+}
 
 func (store FilesystemStore) Publish(site, source string) (models.Release, error) {
 	unlock := store.lock(site)
 	defer unlock()
-	manifest, err := os.Lstat(filepath.Join(source, "site.yaml"))
+	manifest, err := os.Lstat(filepath.Join(source, store.layout.Manifest))
 	if err != nil || !manifest.Mode().IsRegular() {
-		return models.Release{}, errors.New("site manifest missing")
+		return models.Release{}, errors.New(store.layout.ManifestMissing)
 	}
-	id, err := sourceDigest(source)
+	id, err := sourceDigest(source, store.layout.UnsafeSource)
 	if err != nil {
 		return models.Release{}, err
 	}
-	siteRoot := filepath.Join(store.root, "sites", site)
-	releases := filepath.Join(siteRoot, "releases")
+	siteRoot := filepath.Join(store.root, store.layout.Sites, site)
+	releases := filepath.Join(siteRoot, store.layout.Releases)
 	if err = os.MkdirAll(releases, 0750); err != nil {
 		return models.Release{}, err
 	}
 	target := filepath.Join(releases, id)
 	if _, statErr := os.Lstat(target); os.IsNotExist(statErr) {
-		stage, stageErr := os.MkdirTemp(releases, ".stage-")
+		stage, stageErr := os.MkdirTemp(releases, store.layout.StagePrefix)
 		if stageErr != nil {
 			return models.Release{}, stageErr
 		}
 		defer os.RemoveAll(stage)
-		if err = copyTree(source, stage); err != nil {
+		if err = copyTree(source, stage, store.layout.UnsafeSource); err != nil {
 			return models.Release{}, err
 		}
 		if err = os.Rename(stage, target); err != nil {
 			return models.Release{}, err
 		}
 	}
-	if err = store.switchPointers(siteRoot, filepath.Join("releases", id)); err != nil {
+	if err = store.switchPointers(siteRoot, filepath.Join(store.layout.Releases, id)); err != nil {
 		return models.Release{}, err
 	}
 	return models.Release{ID: id}, nil
@@ -59,40 +64,40 @@ func (store FilesystemStore) Publish(site, source string) (models.Release, error
 func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 	unlock := store.lock(site)
 	defer unlock()
-	siteRoot := filepath.Join(store.root, "sites", site)
-	current, err := os.Readlink(filepath.Join(siteRoot, "current"))
+	siteRoot := filepath.Join(store.root, store.layout.Sites, site)
+	current, err := os.Readlink(filepath.Join(siteRoot, store.layout.Current))
 	if err != nil {
 		return models.Release{}, err
 	}
-	previous, err := os.Readlink(filepath.Join(siteRoot, "previous"))
+	previous, err := os.Readlink(filepath.Join(siteRoot, store.layout.Previous))
 	if err != nil {
 		return models.Release{}, err
 	}
-	if err = store.replacePointer(siteRoot, "previous", current); err != nil {
+	if err = store.replacePointer(siteRoot, store.layout.Previous, current); err != nil {
 		return models.Release{}, err
 	}
-	if err = store.replacePointer(siteRoot, "current", previous); err != nil {
+	if err = store.replacePointer(siteRoot, store.layout.Current, previous); err != nil {
 		return models.Release{}, err
 	}
 	return models.Release{ID: filepath.Base(previous)}, nil
 }
 
 func (store FilesystemStore) lock(site string) func() {
-	value, _ := registryLocks.LoadOrStore(filepath.Join(store.root, site), &sync.Mutex{})
+	value, _ := registryLocks.LoadOrStore(filepath.Join(store.root, store.layout.Sites, site), &sync.Mutex{})
 	lock := value.(*sync.Mutex)
 	lock.Lock()
 	return lock.Unlock
 }
 
 func (store FilesystemStore) switchPointers(siteRoot, current string) error {
-	old, err := os.Readlink(filepath.Join(siteRoot, "current"))
-	oldPrevious, previousErr := os.Readlink(filepath.Join(siteRoot, "previous"))
+	old, err := os.Readlink(filepath.Join(siteRoot, store.layout.Current))
+	oldPrevious, previousErr := os.Readlink(filepath.Join(siteRoot, store.layout.Previous))
 	if err == nil {
-		if err = store.replacePointer(siteRoot, "previous", old); err != nil {
+		if err = store.replacePointer(siteRoot, store.layout.Previous, old); err != nil {
 			return err
 		}
 	}
-	if err = store.replacePointer(siteRoot, "current", current); err != nil {
+	if err = store.replacePointer(siteRoot, store.layout.Current, current); err != nil {
 		return err
 	}
 	if previousErr == nil && oldPrevious != current && oldPrevious != old {
@@ -110,7 +115,7 @@ func (store FilesystemStore) replacePointer(siteRoot, name, target string) error
 	return os.Rename(temporary, filepath.Join(siteRoot, name))
 }
 
-func sourceDigest(root string) (string, error) {
+func sourceDigest(root string, unsafeSource string) (string, error) {
 	hash := sha256.New()
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -120,7 +125,7 @@ func sourceDigest(root string) (string, error) {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() && !entry.IsDir() {
-			return errors.New("unsafe source entry")
+			return errors.New(unsafeSource)
 		}
 		relative, relativeErr := filepath.Rel(root, path)
 		if relativeErr != nil {
@@ -146,7 +151,7 @@ func sourceDigest(root string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), err
 }
 
-func copyTree(source, destination string) error {
+func copyTree(source, destination, unsafeSource string) error {
 	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -155,7 +160,7 @@ func copyTree(source, destination string) error {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() && !entry.IsDir() {
-			return errors.New("unsafe source entry")
+			return errors.New(unsafeSource)
 		}
 		relative, err := filepath.Rel(source, path)
 		if err != nil {

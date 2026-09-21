@@ -1,3 +1,6 @@
 package models
 
-type Route struct{}
+type Route struct {
+	PathPrefix string
+	Site       string
+}

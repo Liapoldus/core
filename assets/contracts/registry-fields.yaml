@@ -1,0 +1,8 @@
+sites: sites
+releases: releases
+current: current
+previous: previous
+stagePrefix: .stage-
+manifest: site.yaml
+manifestMissing: site manifest missing
+unsafeSource: unsafe source entry

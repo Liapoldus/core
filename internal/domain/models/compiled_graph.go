@@ -1,5 +1,7 @@
 package models
 
 type CompiledGraph struct {
-	Revision Revision
+	Revision  Revision
+	Listeners []Listener
+	Sites     map[string]Site
 }

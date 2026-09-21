@@ -17,10 +17,11 @@ components:
   infrastructureObservability: { in: internal/infrastructure/observability }
   presentationAPI: { in: internal/presentation/api }
   presentationCLI: { in: internal/presentation/cli }
+  assets: { in: assets }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
-commonComponents: [domainModels]
+commonComponents: [domainModels, assets]
 commonVendors: []
 deps:
   command:

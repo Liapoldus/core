@@ -1,0 +1,64 @@
+commands:
+  serve: serve
+  config: config
+subcommands:
+  path: path
+  validate: validate
+  print: print
+  format: format
+  explain: explain
+  diff: diff
+flags:
+  output: --output
+  config: --config
+  configDir: --config-dir
+  noManagement: --no-management
+serve:
+  gracefulTimeout: 10s
+outputs:
+  text: text
+  json: json
+environment:
+  gatewayConfig: LIAPOLDUS_GATEWAY_CONFIG
+  configDir: LIAPOLDUS_CONFIG_DIR
+paths:
+  defaultConfig: /etc/liapoldus/gateway.yaml
+  fileName: gateway.yaml
+codes:
+  configNotFound: config_not_found
+  configInvalid: config_invalid
+  unknownField: unknown_field
+exits:
+  ok: 0
+  internal: 1
+  arguments: 2
+  validation: 3
+sources:
+  flag: flag
+  environment: environment
+  flagDirectory: flag-directory
+  environmentDirectory: environment-directory
+  system: system
+json:
+  ok: ok
+  command: command
+  path: path
+  source: source
+  valid: valid
+  problem: problem
+  code: code
+  detail: detail
+display:
+  path: config path
+  validate: config validate
+text:
+  ok: ok
+diagnostics:
+  commandExpected: ожидается команда config
+  unknownConfigCommand: неизвестная config-команда
+  configNotFound: Файл конфигурации не найден.
+  configInvalid: Конфигурация не прошла проверку.
+  outputInvalid: --output must be text or json
+  configRequired: --config requires a path
+  configDirRequired: --config-dir requires a path
+  configLookupFailed: config not found

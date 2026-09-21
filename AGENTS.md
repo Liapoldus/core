@@ -35,8 +35,16 @@ module and owns only process supervision, grants, and traffic dispatch.
   Authorization values, service keys, or grant handles.
 - Do not introduce domain string literals in Go. YAML fields, commands, flags,
   environment names, paths, defaults, error codes, diagnostic text and JSON
-  keys belong to versioned external contract files. Go may contain only import
-  paths and `go:embed` asset directives needed to load those files.
+  keys belong to versioned external contract files under `assets/contracts/`
+  (mirroring the canonical interface from `liapoldus.github.io/public/spec/`).
+  They are loaded through the embedded `assets` package via `go:embed`. Go code
+  may contain only import paths, the `//go:embed` asset directives, and
+  identifiers bound to loaded contract values. Asset file names referenced by
+  `assets.Contract` are treated as those embed directives and are the single
+  allowed literal path strings. File-name and flag spellings that the contract
+  itself must not change (tool flags, CLI display strings, JSON keys, error
+  codes) are also hosted in the contract files; reach for them through the
+  `config` package loaders instead of reproducing them in adapters.
 - A failed compile/reload/publish must leave the active snapshot and release
   pointers unchanged.
 - Target macOS and Linux. Keep Docker, GitHub Actions, and short operator

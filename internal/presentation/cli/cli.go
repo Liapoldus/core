@@ -9,57 +9,59 @@ import (
 	"path/filepath"
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
+	"github.com/Liapoldus/core/internal/infrastructure/network"
 )
 
-const (
-	exitOK             = 0
-	exitConfigNotFound = 2
-	exitValidation     = 3
-)
+var words = func() config.CLIWords {
+	loaded, err := config.LoadCLI()
+	if err != nil {
+		panic(err)
+	}
+	return loaded
+}()
 
 type options struct {
-	output    string
-	config    string
-	configDir string
-	command   []string
-}
-
-type problem struct {
-	Code   string `json:"code"`
-	Detail string `json:"detail"`
+	output       string
+	config       string
+	configDir    string
+	noManagement bool
+	command      []string
 }
 
 func Execute(arguments []string) int {
 	options, err := parseOptions(arguments)
 	if err != nil {
-		writeFailure("text", exitConfigNotFound, "config_not_found", err.Error())
-		return exitConfigNotFound
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, err.Error())
+		return words.Exits.Arguments
 	}
 	return run(options)
 }
 
 func parseOptions(arguments []string) (options, error) {
-	result := options{output: "text"}
+	result := options{output: words.Outputs.Text}
 	for len(arguments) > 0 {
 		switch arguments[0] {
-		case "--output":
-			if len(arguments) < 2 || (arguments[1] != "text" && arguments[1] != "json") {
-				return options{}, errors.New("--output must be text or json")
+		case words.Flags.Output:
+			if len(arguments) < 2 || (arguments[1] != words.Outputs.Text && arguments[1] != words.Outputs.JSON) {
+				return options{}, errors.New(words.Diagnostics.OutputInvalid)
 			}
 			result.output = arguments[1]
 			arguments = arguments[2:]
-		case "--config":
+		case words.Flags.Config:
 			if len(arguments) < 2 {
-				return options{}, errors.New("--config requires a path")
+				return options{}, errors.New(words.Diagnostics.ConfigRequired)
 			}
 			result.config = arguments[1]
 			arguments = arguments[2:]
-		case "--config-dir":
+		case words.Flags.ConfigDir:
 			if len(arguments) < 2 {
-				return options{}, errors.New("--config-dir requires a path")
+				return options{}, errors.New(words.Diagnostics.ConfigDirRequired)
 			}
 			result.configDir = arguments[1]
 			arguments = arguments[2:]
+		case words.Flags.NoManagement:
+			result.noManagement = true
+			arguments = arguments[1:]
 		default:
 			result.command = arguments
 			return result, nil
@@ -69,46 +71,73 @@ func parseOptions(arguments []string) (options, error) {
 }
 
 func run(options options) int {
-	if len(options.command) < 2 || options.command[0] != "config" {
-		writeFailure(options.output, exitConfigNotFound, "config_not_found", "ожидается команда config")
-		return exitConfigNotFound
+	if len(options.command) == 0 {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
+		return words.Exits.Arguments
+	}
+	if options.command[0] == words.Commands.Serve {
+		return serve(options)
+	}
+	if len(options.command) < 2 || options.command[0] != words.Commands.Config {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
+		return words.Exits.Arguments
 	}
 
 	switch options.command[1] {
-	case "path":
+	case words.Subcommands.Path:
 		path, source, err := discoverConfig(options)
 		if err != nil {
-			writeFailure(options.output, exitConfigNotFound, "config_not_found", "Файл конфигурации не найден.")
-			return exitConfigNotFound
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
 		}
 		writeSuccess(options.output, map[string]any{
-			"ok": true, "command": "config path", "path": path, "source": source,
+			words.JSON.OK: true, words.JSON.Command: words.Display.Path, words.JSON.Path: path, words.JSON.Source: source,
 		})
-		return exitOK
-	case "validate":
+		return words.Exits.OK
+	case words.Subcommands.Validate:
 		path, err := configForValidation(options)
 		if err != nil {
-			writeFailure(options.output, exitConfigNotFound, "config_not_found", "Файл конфигурации не найден.")
-			return exitConfigNotFound
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
 		}
-		contractPath := filepath.Join("assets", "contracts", "config-fields.yaml")
-		schemaPath := filepath.Join("assets", "contracts", "gateway.schema.json")
-		if err := config.Validate(path, contractPath, schemaPath); err != nil {
-			code := "config_invalid"
+		code := words.Codes.ConfigInvalid
+		if err := config.Validate(path); err != nil {
 			if config.IsUnknownField(err) {
-				code = "unknown_field"
+				code = words.Codes.UnknownField
 			}
-			writeFailure(options.output, exitValidation, code, "Конфигурация не прошла проверку.")
-			return exitValidation
+			writeFailure(options.output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Validation
 		}
 		writeSuccess(options.output, map[string]any{
-			"ok": true, "command": "config validate", "valid": true,
+			words.JSON.OK: true, words.JSON.Command: words.Display.Validate, words.JSON.Valid: true,
 		})
-		return exitOK
+		return words.Exits.OK
 	default:
-		writeFailure(options.output, exitConfigNotFound, "config_not_found", "неизвестная config-команда")
-		return exitConfigNotFound
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
+		return words.Exits.Arguments
 	}
+}
+
+func serve(options options) int {
+	path, _, err := discoverConfig(options)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+		return words.Exits.Arguments
+	}
+	graph, err := config.CompileGateway(path)
+	if err != nil {
+		code := words.Codes.ConfigInvalid
+		if config.IsUnknownField(err) {
+			code = words.Codes.UnknownField
+		}
+		writeFailure(options.output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Validation
+	}
+	if err := network.Serve(graph.Listeners, graph.Sites); err != nil {
+		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Validation
+	}
+	return words.Exits.OK
 }
 
 func configForValidation(options options) (string, error) {
@@ -122,51 +151,50 @@ func configForValidation(options options) (string, error) {
 func discoverConfig(options options) (string, string, error) {
 	if options.config != "" {
 		path, err := absoluteExistingFile(options.config)
-		return path, "flag", err
+		return path, words.Sources.Flag, err
 	}
-	if path := os.Getenv("LIAPOLDUS_GATEWAY_CONFIG"); path != "" {
+	if path := os.Getenv(words.Environment.GatewayConfig); path != "" {
 		resolved, err := absoluteExistingFile(path)
-		return resolved, "environment", err
+		return resolved, words.Sources.Environment, err
 	}
 	if options.configDir != "" {
-		path, err := absoluteExistingFile(filepath.Join(options.configDir, "gateway.yaml"))
-		return path, "flag-directory", err
+		path, err := absoluteExistingFile(filepath.Join(options.configDir, words.Paths.FileName))
+		return path, words.Sources.FlagDirectory, err
 	}
-	if directory := os.Getenv("LIAPOLDUS_CONFIG_DIR"); directory != "" {
-		path, err := absoluteExistingFile(filepath.Join(directory, "gateway.yaml"))
-		return path, "environment-directory", err
+	if directory := os.Getenv(words.Environment.ConfigDir); directory != "" {
+		path, err := absoluteExistingFile(filepath.Join(directory, words.Paths.FileName))
+		return path, words.Sources.EnvironmentDirectory, err
 	}
-	path, err := absoluteExistingFile("/etc/liapoldus/gateway.yaml")
-	return path, "system", err
+	path, err := absoluteExistingFile(words.Paths.DefaultConfig)
+	return path, words.Sources.System, err
 }
 
 func absoluteExistingFile(path string) (string, error) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
-		return "", errors.New("config not found")
+		return "", errors.New(words.Diagnostics.ConfigLookupFailed)
 	}
 	return filepath.Abs(path)
 }
 
 func writeSuccess(output string, value map[string]any) {
-	if output == "json" {
+	if output == words.Outputs.JSON {
 		_ = json.NewEncoder(os.Stdout).Encode(value)
 		return
 	}
-	fmt.Println("ok")
+	fmt.Println(words.Text.OK)
 }
 
 func writeFailure(output string, exitCode int, code, detail string) {
-	if output == "json" {
+	if output == words.Outputs.JSON {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"ok":      false,
-			"problem": problem{Code: code, Detail: detail},
+			words.JSON.OK: false,
+			words.JSON.Problem: map[string]any{
+				words.JSON.Code:   code,
+				words.JSON.Detail: detail,
+			},
 		})
 		return
 	}
-	fprintln(os.Stderr, detail)
-}
-
-func fprintln(file *os.File, value string) {
-	_, _ = fmt.Fprintln(file, value)
+	fmt.Fprintln(os.Stderr, detail)
 }

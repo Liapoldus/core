@@ -27,7 +27,28 @@ listener:
   - limits
 includes: includes
 listeners: listeners
+sites: sites
 variables: variables
 substitution:
   open: ${
   close: '}'
+runtime:
+  http: http
+  directory: directory
+  listener:
+    type: type
+    address: address
+    routes: routes
+  site:
+    source: source
+    type: type
+    root: root
+    index: index
+    indexDefault: index.html
+    manifestFileName: site.yaml
+  route:
+    when: when
+    then: then
+    path: path
+    prefix: prefix
+    site: site

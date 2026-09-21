@@ -3,10 +3,12 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"hash"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/Liapoldus/core/assets"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
@@ -20,53 +22,86 @@ const (
 	ErrInvalidDocument
 )
 
-type contract struct {
-	Root         []string
-	Listener     []string
-	Includes     string
-	Listeners    string
-	Variables    string
+type contractFile struct {
+	Root         []string `yaml:"root"`
+	Listener     []string `yaml:"listener"`
+	Includes     string   `yaml:"includes"`
+	Listeners    string   `yaml:"listeners"`
+	Sites        string   `yaml:"sites"`
+	Variables    string   `yaml:"variables"`
 	Substitution struct {
-		Open  string
-		Close string
+		Open  string `yaml:"open"`
+		Close string `yaml:"close"`
+	} `yaml:"substitution"`
+	Runtime runtimeWords `yaml:"runtime"`
+}
+
+type runtimeWords struct {
+	HTTP      string
+	Directory string
+	Listener  struct {
+		Type    string
+		Address string
+		Routes  string
+	}
+	Site struct {
+		Source           string
+		Type             string
+		Root             string
+		Index            string
+		IndexDefault     string
+		ManifestFileName string
+	}
+	Route struct {
+		When   string
+		Then   string
+		Path   string
+		Prefix string
+		Site   string
 	}
 }
 
 type graph struct {
 	variables map[string]string
 	documents []*yaml.Node
+	hasher    hash.Hash
 }
 
-func Validate(path, contractPath, schemaPath string) error {
-	loaded, err := loadContract(contractPath)
+func supervise(path string) (*graph, contractFile, error) {
+	loaded, err := loadContractFile()
 	if err != nil {
-		return err
+		return nil, contractFile{}, err
 	}
-	compiled := graph{variables: map[string]string{}}
-	if err := collectFile(path, loaded, schemaPath, map[string]struct{}{}, &compiled); err != nil {
-		return err
+	compiled := graph{variables: map[string]string{}, hasher: newHasher()}
+	if err := collectFile(path, loaded, map[string]struct{}{}, &compiled); err != nil {
+		return nil, contractFile{}, err
 	}
 	for _, document := range compiled.documents {
 		if err := validateVariables(document, compiled.variables, loaded); err != nil {
-			return err
+			return nil, contractFile{}, err
 		}
 	}
-	return nil
+	return &compiled, loaded, nil
 }
 
-func loadContract(path string) (contract, error) {
-	var loaded contract
-	contents, err := ReadContract(path)
+func Validate(path string) error {
+	_, _, err := supervise(path)
+	return err
+}
+
+func loadContractFile() (contractFile, error) {
+	var loaded contractFile
+	contents, err := assets.Contract(assets.ConfigFields)
 	if err != nil {
-		return contract{}, err
+		return contractFile{}, err
 	}
 	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return contract{}, err
+		return contractFile{}, err
 	}
 	return loaded, nil
 }
 
-func collectFile(path string, loaded contract, schemaPath string, visited map[string]struct{}, compiled *graph) error {
+func collectFile(path string, loaded contractFile, visited map[string]struct{}, compiled *graph) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -81,6 +116,7 @@ func collectFile(path string, loaded contract, schemaPath string, visited map[st
 	if err != nil {
 		return err
 	}
+	_, _ = compiled.hasher.Write(contents)
 	var document yaml.Node
 	if err := yaml.Unmarshal(contents, &document); err != nil {
 		return err
@@ -98,7 +134,7 @@ func collectFile(path string, loaded contract, schemaPath string, visited map[st
 		}
 		switch key.Value {
 		case loaded.Includes:
-			if err := collectIncludes(abs, value, loaded, schemaPath, visited, compiled); err != nil {
+			if err := collectIncludes(abs, value, loaded, visited, compiled); err != nil {
 				return err
 			}
 		case loaded.Listeners:
@@ -111,10 +147,10 @@ func collectFile(path string, loaded contract, schemaPath string, visited map[st
 			}
 		}
 	}
-	return validateSchema(root, schemaPath)
+	return validateSchema(root)
 }
 
-func collectIncludes(parent string, node *yaml.Node, loaded contract, schemaPath string, visited map[string]struct{}, compiled *graph) error {
+func collectIncludes(parent string, node *yaml.Node, loaded contractFile, visited map[string]struct{}, compiled *graph) error {
 	if node.Kind != yaml.SequenceNode {
 		return ErrInvalidDocument
 	}
@@ -122,14 +158,14 @@ func collectIncludes(parent string, node *yaml.Node, loaded contract, schemaPath
 		if item.Kind != yaml.ScalarNode {
 			return ErrInvalidDocument
 		}
-		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, schemaPath, visited, compiled); err != nil {
+		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, visited, compiled); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateSchema(root *yaml.Node, schemaPath string) error {
+func validateSchema(root *yaml.Node) error {
 	var raw any
 	if err := root.Decode(&raw); err != nil {
 		return err
@@ -142,8 +178,25 @@ func validateSchema(root *yaml.Node, schemaPath string) error {
 	if err := json.Unmarshal(encoded, &instance); err != nil {
 		return err
 	}
+	contents, err := assets.Contract(assets.GatewaySchema)
+	if err != nil {
+		return err
+	}
+	var schemaDocument struct {
+		ID string `json:"$id"`
+	}
+	if err := json.Unmarshal(contents, &schemaDocument); err != nil {
+		return err
+	}
+	var schemaValue any
+	if err := json.Unmarshal(contents, &schemaValue); err != nil {
+		return err
+	}
 	compiler := jsonschema.NewCompiler()
-	schema, err := compiler.Compile(schemaPath)
+	if err := compiler.AddResource(schemaDocument.ID, schemaValue); err != nil {
+		return err
+	}
+	schema, err := compiler.Compile(schemaDocument.ID)
 	if err != nil {
 		return err
 	}
@@ -167,7 +220,7 @@ func collectVariables(node *yaml.Node, variables map[string]string) error {
 	return nil
 }
 
-func validateVariables(node *yaml.Node, variables map[string]string, loaded contract) error {
+func validateVariables(node *yaml.Node, variables map[string]string, loaded contractFile) error {
 	if node.Kind == yaml.ScalarNode {
 		return validateScalar(node.Value, variables, loaded)
 	}
@@ -179,7 +232,7 @@ func validateVariables(node *yaml.Node, variables map[string]string, loaded cont
 	return nil
 }
 
-func validateScalar(value string, variables map[string]string, loaded contract) error {
+func validateScalar(value string, variables map[string]string, loaded contractFile) error {
 	for remainder := value; ; {
 		start := strings.Index(remainder, loaded.Substitution.Open)
 		if start < 0 {
@@ -197,7 +250,7 @@ func validateScalar(value string, variables map[string]string, loaded contract) 
 	}
 }
 
-func validateListeners(node *yaml.Node, loaded contract) error {
+func validateListeners(node *yaml.Node, loaded contractFile) error {
 	if node.Kind != yaml.MappingNode {
 		return ErrInvalidDocument
 	}

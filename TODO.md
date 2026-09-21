@@ -3,6 +3,26 @@
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
 
+## Decisions and contract corrections
+
+- Schema bug: `pathMatcher` used `oneOf [$ref stringMatcher, object exact|prefix|regex]`;
+  `{prefix: /}` matched both branches. Fixed canonical
+  `liapoldus.github.io/public/spec/gateway.schema.json` and the mirrored copy
+  `assets/contracts/gateway.schema.json`: `pathMatcher` is now
+  `oneOf [string ^/, array<minItems 1 ^/>, object exact|prefix|regex ^/]`.
+  TODO.md + docs site were updated after a User decision (fix canonical + copy).
+- Refactor-first decision: existing Go was refactored to the "no domain string
+  literals" rule before new increments — CLI/registry/network vocabulary moved
+  into `assets/contracts/{cli-fields,registry-fields,config-fields}.yaml`
+  loaded through the embedded `assets` package.
+- Parallel increment decision: `serve`+directory static runtime and the CLI
+  `config print|format|explain|diff` (plus secret redaction and semantic
+  validation) are being delivered in parallel by two subagents.
+- Network arch-lint fix: YAML parsing moved from `network` to `config`
+  (`config.CompileGateway` → `models.CompiledGraph`); `network.Serve` consumes
+  compiled domain models only. The single internal invariant message "no http
+  listener" remains in `network` (unreachable given compile guarantees).
+
 ## 0. Foundation
 
 - [ ] Add the Go module, `cmd/gateway`, build targets, short README, Dockerfile
