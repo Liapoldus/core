@@ -1,0 +1,3 @@
+# Local dependency and test-runner output.
+tests/node_modules/
+tests/.vite/
