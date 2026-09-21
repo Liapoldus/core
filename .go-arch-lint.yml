@@ -1,17 +1,22 @@
 version: 3
-workdir: internal
+workdir: .
 allow:
   depOnAnyVendor: false
   deepScan: true
 components:
-  domain: { in: domain/** }
-  application: { in: application/** }
-  infrastructure: { in: infrastructure/** }
-  presentation: { in: presentation/** }
+  command: { in: cmd/** }
+  domain: { in: internal/domain/** }
+  application: { in: internal/application/** }
+  infrastructure: { in: internal/infrastructure/** }
+  presentation: { in: internal/presentation/** }
+  assets: { in: assets }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
 commonVendors: []
+commonComponents: [assets]
 deps:
+  command:
+    mayDependOn: [presentation, application, infrastructure]
   domain:
     mayDependOn: []
   application:

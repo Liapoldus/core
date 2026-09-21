@@ -1,16 +1,13 @@
-package yamlconfig
+package validation
 
 import (
-	_ "embed"
 	"errors"
 	"os"
 	"path/filepath"
 
+	"github.com/Liapoldus/core/assets"
 	"gopkg.in/yaml.v3"
 )
-
-//go:embed assets/fields.yaml
-var contractBytes []byte
 
 type validationError uint8
 
@@ -38,7 +35,7 @@ func Validate(path string) error {
 
 func loadContract() (contract, error) {
 	var loaded contract
-	if err := yaml.Unmarshal(contractBytes, &loaded); err != nil {
+	if err := yaml.Unmarshal(assets.ConfigFields(), &loaded); err != nil {
 		return contract{}, err
 	}
 	return loaded, nil

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/internal/presentation/yamlconfig"
+	"github.com/Liapoldus/core/internal/infrastructure/validation"
 )
 
 const (
@@ -92,9 +92,9 @@ func run(options options) int {
 			writeFailure(options.output, exitConfigNotFound, "config_not_found", "Файл конфигурации не найден.")
 			return exitConfigNotFound
 		}
-		if err := yamlconfig.Validate(path); err != nil {
+		if err := validation.Validate(path); err != nil {
 			code := "config_invalid"
-			if yamlconfig.IsUnknownField(err) {
+			if validation.IsUnknownField(err) {
 				code = "unknown_field"
 			}
 			writeFailure(options.output, exitValidation, code, "Конфигурация не прошла проверку.")
