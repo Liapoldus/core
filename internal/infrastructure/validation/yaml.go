@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/assets"
+	"github.com/Liapoldus/core/internal/infrastructure/contracts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,17 +25,21 @@ type contract struct {
 	Listeners string
 }
 
-func Validate(path string) error {
-	loaded, err := loadContract()
+func Validate(path, contractPath string) error {
+	loaded, err := loadContract(contractPath)
 	if err != nil {
 		return err
 	}
 	return validateFile(path, loaded, map[string]struct{}{})
 }
 
-func loadContract() (contract, error) {
+func loadContract(path string) (contract, error) {
 	var loaded contract
-	if err := yaml.Unmarshal(assets.ConfigFields(), &loaded); err != nil {
+	contents, err := contracts.Read(path)
+	if err != nil {
+		return contract{}, err
+	}
+	if err := yaml.Unmarshal(contents, &loaded); err != nil {
 		return contract{}, err
 	}
 	return loaded, nil

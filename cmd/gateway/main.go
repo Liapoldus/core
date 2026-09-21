@@ -92,7 +92,8 @@ func run(options options) int {
 			writeFailure(options.output, exitConfigNotFound, "config_not_found", "Файл конфигурации не найден.")
 			return exitConfigNotFound
 		}
-		if err := validation.Validate(path); err != nil {
+		contractPath := filepath.Join("assets", "contracts", "config-fields.yaml")
+		if err := validation.Validate(path, contractPath); err != nil {
 			code := "config_invalid"
 			if validation.IsUnknownField(err) {
 				code = "unknown_field"
