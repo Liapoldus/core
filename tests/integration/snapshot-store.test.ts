@@ -10,7 +10,7 @@ const execute = promisify(execFile);
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 async function runProbe(source: string): Promise<Record<string, unknown>> {
-  const directory = await mkdtemp(join(coreRoot, ".snapshot-probe-"));
+  const directory = await mkdtemp(join(coreRoot, "tests", ".snapshot-probe-"));
   const program = join(directory, "main.go");
   try {
     await writeFile(program, source);
