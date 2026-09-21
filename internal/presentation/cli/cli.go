@@ -182,6 +182,38 @@ func run(options options) int {
 			fmt.Println(fmt.Sprintf(words.Explain.Issue, issue.Kind, issue.Name))
 		}
 		return words.Exits.OK
+	case words.Subcommands.Diff:
+		first, err := configForValidation(options)
+		if err != nil {
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
+		}
+		second, err := diffSecond(options)
+		if err != nil {
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
+		}
+		report, err := config.Diff(first, second)
+		if err != nil {
+			return configValidationFailure(options.output, err)
+		}
+		if options.output == words.Outputs.JSON {
+			writeSuccess(options.output, map[string]any{
+				words.JSON.OK: true, words.JSON.Command: words.Display.Diff,
+				words.JSON.Diff: diffJSON(words, report),
+			})
+			return words.Exits.OK
+		}
+		for _, change := range report.Added {
+			fmt.Println(printDiffChange(words, words.Diff.Added, change))
+		}
+		for _, change := range report.Removed {
+			fmt.Println(printDiffChange(words, words.Diff.Removed, change))
+		}
+		for _, change := range report.Changed {
+			fmt.Println(printDiffChange(words, words.Diff.Changed, change))
+		}
+		return words.Exits.OK
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments
@@ -284,6 +316,40 @@ func explainJSON(words config.CLIWords, report config.ExplainReport) map[string]
 		words.JSON.Routes:    routes,
 		words.JSON.Sites:     sites,
 		words.JSON.Issues:    issues,
+	}
+}
+
+func diffSecond(options options) (string, error) {
+	if len(options.command) > 3 {
+		return absoluteExistingFile(options.command[3])
+	}
+	path, _, err := discoverConfig(options)
+	return path, err
+}
+
+func printDiffChange(words config.CLIWords, kind string, change config.DiffChange) string {
+	if change.Name == "" {
+		return fmt.Sprintf(words.Diff.Section, kind, change.Section)
+	}
+	return fmt.Sprintf(words.Diff.Entry, kind, change.Section, change.Name)
+}
+
+func diffJSON(words config.CLIWords, report config.DiffReport) map[string]any {
+	group := func(changes []config.DiffChange) []any {
+		items := make([]any, 0, len(changes))
+		for _, change := range changes {
+			entry := map[string]any{words.JSON.Section: change.Section}
+			if change.Name != "" {
+				entry[words.JSON.Name] = change.Name
+			}
+			items = append(items, entry)
+		}
+		return items
+	}
+	return map[string]any{
+		words.JSON.Added:   group(report.Added),
+		words.JSON.Removed: group(report.Removed),
+		words.JSON.Changed: group(report.Changed),
 	}
 }
 

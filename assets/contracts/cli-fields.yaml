@@ -61,17 +61,29 @@ json:
   issues: issues
   kind: kind
   listener: listener
+  diff: diff
+  added: added
+  removed: removed
+  changed: changed
+  section: section
 display:
   path: config path
   validate: config validate
   print: config print
   format: config format
   explain: config explain
+  diff: config diff
 explain:
   listener: "listener %s %s %s"
   route: "route %s %d -> site %s"
   site: "site %s index %s"
   issue: "issue %s %s"
+diff:
+  added: added
+  removed: removed
+  changed: changed
+  section: "%s section %s"
+  entry: "%s %s %s"
 text:
   ok: ok
 diagnostics:

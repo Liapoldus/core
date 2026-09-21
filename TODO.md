@@ -54,6 +54,17 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   and the compiled site index defaulted to empty. Added the missing yaml tags
   in `validator.go`; `config explain` site entries now surface the resolved
   `index.html` default.
+- `config diff` semantics decision: the two positionals are both optional —
+  each missing one falls back to the config discovery chain (and equals the
+  first when neither is given). The comparison is over the effective document
+  used by `config print`: includes merged (later wins), the `includes` key
+  dropped, `${var}` substitutions already resolved, and secrets compared only
+  as `env:`/`file:` references so values can never appear in output. The
+  `listeners` and `sites` sections diff per entry (`name` set); every other
+  section is compared as a whole (section-level change with no `name`). Text
+  output echoes the real section words (`listeners`/`sites`/...), so entry
+  lines read `changed listeners main`, section lines read `changed section
+  variables`. The command exits 0 whether or not differences are found.
 
 ## 0. Foundation
 

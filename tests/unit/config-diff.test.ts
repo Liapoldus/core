@@ -142,8 +142,8 @@ describe("gateway config diff", () => {
       join(directory, "b.yaml"),
     ]);
     expect(text.exitCode).toBe(0);
-    expect(text.stdout).toContain("changed listener main");
-    expect(text.stdout).toContain("removed site legacy");
+    expect(text.stdout).toContain("changed listeners main");
+    expect(text.stdout).toContain("removed sites legacy");
   });
 
   it("reports a whole-section change for the variables section", async () => {
@@ -184,7 +184,10 @@ describe("gateway config diff", () => {
     expect(jsonOutput(result).diff).toEqual({
       added: [],
       removed: [],
-      changed: [{ section: "variables" }],
+      changed: [
+        { section: "listeners", name: "main" },
+        { section: "variables" },
+      ],
     });
   });
 });

@@ -83,6 +83,11 @@ type CLIWords struct {
 		Issues    string `yaml:"issues"`
 		Kind      string `yaml:"kind"`
 		Listener  string `yaml:"listener"`
+		Diff      string `yaml:"diff"`
+		Added     string `yaml:"added"`
+		Removed   string `yaml:"removed"`
+		Changed   string `yaml:"changed"`
+		Section   string `yaml:"section"`
 	} `yaml:"json"`
 	Display struct {
 		Path     string `yaml:"path"`
@@ -90,6 +95,7 @@ type CLIWords struct {
 		Print    string `yaml:"print"`
 		Format   string `yaml:"format"`
 		Explain  string `yaml:"explain"`
+		Diff     string `yaml:"diff"`
 	} `yaml:"display"`
 	Explain struct {
 		Listener string `yaml:"listener"`
@@ -97,6 +103,13 @@ type CLIWords struct {
 		Site     string `yaml:"site"`
 		Issue    string `yaml:"issue"`
 	} `yaml:"explain"`
+	Diff struct {
+		Added   string `yaml:"added"`
+		Removed string `yaml:"removed"`
+		Changed string `yaml:"changed"`
+		Section string `yaml:"section"`
+		Entry   string `yaml:"entry"`
+	} `yaml:"diff"`
 	Text struct {
 		OK string `yaml:"ok"`
 	} `yaml:"text"`
