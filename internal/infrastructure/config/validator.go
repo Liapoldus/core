@@ -38,6 +38,10 @@ type contractFile struct {
 	Sites        string   `yaml:"sites"`
 	Secrets      string   `yaml:"secrets"`
 	Variables    string   `yaml:"variables"`
+Registry struct {
+		Section string `yaml:"section"`
+		Path    string `yaml:"path"`
+	} `yaml:"registry"`
 	SecretReference contractSecretReference `yaml:"secretReference"`
 	Substitution struct {
 		Open  string `yaml:"open"`
@@ -53,6 +57,7 @@ type contractFile struct {
 type runtimeWords struct {
 	HTTP      string
 	Directory string
+	Release   string
 	Listener  struct {
 		Type    string
 		Address string
@@ -65,6 +70,7 @@ type runtimeWords struct {
 		Index            string `yaml:"index"`
 		IndexDefault     string `yaml:"indexDefault"`
 		ManifestFileName string `yaml:"manifestFileName"`
+		Slug             string `yaml:"slug"`
 	}
 	Route struct {
 		When   string

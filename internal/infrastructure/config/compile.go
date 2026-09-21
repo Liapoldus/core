@@ -53,6 +53,11 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		Secrets: map[string]models.Secret{},
 	}
 	base := filepath.Dir(path)
+	layout, err := LoadRegistryLayout()
+	if err != nil {
+		return models.CompiledGraph{}, err
+	}
+	registryRoot := collectRegistryRoot(compiled.documents, loaded, base)
 	for _, document := range compiled.documents {
 		for index := 0; index < len(document.Content); index += 2 {
 			key, node := document.Content[index], document.Content[index+1]
@@ -64,7 +69,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				}
 				graph.Listeners = append(graph.Listeners, listeners...)
 			case loaded.Sites:
-				collectSites(node, loaded.Runtime, base, graph.Sites)
+				collectSites(node, loaded.Runtime, base, registryRoot, layout, graph.Sites)
 			}
 		}
 	}
@@ -72,6 +77,26 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.Secrets[name] = models.Secret{Value: value}
 	}
 	return graph, nil
+}
+
+func collectRegistryRoot(documents []*yaml.Node, loaded contractFile, base string) string {
+	pattern := ""
+	for _, document := range documents {
+		node := mappingNode(document, loaded.Registry.Section)
+		if node == nil || node.Kind != yaml.MappingNode {
+			continue
+		}
+		if value, ok := fieldValue(node, loaded.Registry.Path); ok && value != "" {
+			pattern = value
+		}
+	}
+	if pattern == "" {
+		return ""
+	}
+	if !filepath.IsAbs(pattern) {
+		return filepath.Join(base, pattern)
+	}
+	return pattern
 }
 
 func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, error) {
@@ -156,7 +181,7 @@ func compilePathMatcher(node *yaml.Node, words runtimeWords) (models.PathMatcher
 	return models.PathMatcher{}, nil
 }
 
-func collectSites(node *yaml.Node, words runtimeWords, base string, sites map[string]models.Site) {
+func collectSites(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout, sites map[string]models.Site) {
 	if node.Kind != yaml.MappingNode {
 		return
 	}
@@ -165,26 +190,36 @@ func collectSites(node *yaml.Node, words runtimeWords, base string, sites map[st
 		if body.Kind != yaml.MappingNode {
 			continue
 		}
-		sites[name.Value] = compileSite(body, words, base)
+		sites[name.Value] = compileSite(body, words, base, registryRoot, layout)
 	}
 }
 
-func compileSite(node *yaml.Node, words runtimeWords, base string) models.Site {
+func compileSite(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout) models.Site {
 	site := models.Site{Index: words.Site.IndexDefault}
 	source := mappingNode(node, words.Site.Source)
 	if source == nil {
 		return site
 	}
-	if kind, ok := fieldValue(source, words.Site.Type); ok && kind == words.Directory {
-		site.Source = models.SourceDirectory
-	}
-	if root, ok := fieldValue(source, words.Site.Root); ok && root != "" {
-		site.Root = root
-		if !filepath.IsAbs(root) {
-			site.Root = filepath.Join(base, root)
+	if kind, ok := fieldValue(source, words.Site.Type); ok {
+		switch kind {
+		case words.Directory:
+			site.Source = models.SourceDirectory
+		case words.Release:
+			site.Source = models.SourceRelease
+			if slug, ok := fieldValue(source, words.Site.Slug); ok && slug != "" && registryRoot != "" {
+				site.Root = filepath.Join(registryRoot, layout.Sites, slug, layout.Current)
+			}
 		}
 	}
-	if site.Source != models.SourceDirectory {
+	if site.Source == models.SourceDirectory {
+		if root, ok := fieldValue(source, words.Site.Root); ok && root != "" {
+			site.Root = root
+			if !filepath.IsAbs(root) {
+				site.Root = filepath.Join(base, root)
+			}
+		}
+	}
+	if site.Root == "" {
 		return site
 	}
 	if index, err := manifestIndex(filepath.Join(site.Root, words.Site.ManifestFileName), words.Site.Index); err == nil && index != "" {

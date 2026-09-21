@@ -76,6 +76,15 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   Symbolic links are still resolved (followed) by `http.ServeFile`; real
   symlink policy for `directory` sources remains part of the
   "traversal/symlink protection" item below.
+- Release-source serving decision: a site with `type: release` serves only
+  files from its target revision — the `current` symlink under
+  `<root>/sites/<slug>/current` (releases are never read by revision anywhere
+  else). Serving is lazy: before the first publish the `current` target does
+  not exist, and a release site therefore serves nothing (404). The same
+  traversal guard and `..` rejection as directory sources apply. The registry
+  path resolves relative to the configuration file directory, mirrors the
+  site-root rule of directory sources. Publish rewrites `previous`/`current`
+  atomically and a failed publish leaves both pointers unchanged.
 
 ## 0. Foundation
 

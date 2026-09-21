@@ -26,7 +26,7 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, drainTimeout time.Duration) error {
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		site, found := matchedDirectorySite(request.URL.Path, listener.Routes, sites)
-		if !found || site.Source != models.SourceDirectory {
+		if !found || site.Source != models.SourceDirectory && site.Source != models.SourceRelease {
 			http.NotFound(writer, request)
 			return
 		}
