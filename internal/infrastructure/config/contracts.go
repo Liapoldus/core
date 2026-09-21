@@ -62,18 +62,20 @@ type CLIWords struct {
 		System               string `yaml:"system"`
 	} `yaml:"sources"`
 	JSON struct {
-		OK      string `yaml:"ok"`
-		Command string `yaml:"command"`
-		Path    string `yaml:"path"`
-		Source  string `yaml:"source"`
-		Valid   string `yaml:"valid"`
-		Problem string `yaml:"problem"`
-		Code    string `yaml:"code"`
-		Detail  string `yaml:"detail"`
+		OK       string `yaml:"ok"`
+		Command  string `yaml:"command"`
+		Path     string `yaml:"path"`
+		Source   string `yaml:"source"`
+		Valid    string `yaml:"valid"`
+		Document string `yaml:"document"`
+		Problem  string `yaml:"problem"`
+		Code     string `yaml:"code"`
+		Detail   string `yaml:"detail"`
 	} `yaml:"json"`
 	Display struct {
 		Path     string `yaml:"path"`
 		Validate string `yaml:"validate"`
+		Print    string `yaml:"print"`
 	} `yaml:"display"`
 	Text struct {
 		OK string `yaml:"ok"`

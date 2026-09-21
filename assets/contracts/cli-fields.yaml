@@ -45,12 +45,14 @@ json:
   path: path
   source: source
   valid: valid
+  document: document
   problem: problem
   code: code
   detail: detail
 display:
   path: config path
   validate: config validate
+  print: config print
 text:
   ok: ok
 diagnostics:

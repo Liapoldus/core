@@ -28,6 +28,7 @@ listener:
 includes: includes
 listeners: listeners
 sites: sites
+secrets: secrets
 variables: variables
 substitution:
   open: ${

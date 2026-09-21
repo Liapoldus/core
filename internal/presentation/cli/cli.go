@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -116,6 +117,28 @@ func run(options options) int {
 			words.JSON.OK: true, words.JSON.Command: words.Display.Validate, words.JSON.Valid: true,
 		})
 		return words.Exits.OK
+	case words.Subcommands.Print:
+		path, err := configForValidation(options)
+		if err != nil {
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
+		}
+		if options.output == words.Outputs.JSON {
+			document, err := config.PrintJSON(path)
+			if err != nil {
+				return configValidationFailure(options.output, err)
+			}
+			writeSuccess(options.output, map[string]any{
+				words.JSON.OK: true, words.JSON.Command: words.Display.Print, words.JSON.Document: document,
+			})
+			return words.Exits.OK
+		}
+		document, err := config.PrintDocument(path)
+		if err != nil {
+			return configValidationFailure(options.output, err)
+		}
+		fmt.Println(strings.TrimRight(string(document), "\n"))
+		return words.Exits.OK
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments
@@ -186,6 +209,15 @@ func absoluteExistingFile(path string) (string, error) {
 		return "", errors.New(words.Diagnostics.ConfigLookupFailed)
 	}
 	return filepath.Abs(path)
+}
+
+func configValidationFailure(output string, err error) int {
+	code := words.Codes.ConfigInvalid
+	if config.IsUnknownField(err) {
+		code = words.Codes.UnknownField
+	}
+	writeFailure(output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
+	return words.Exits.Validation
 }
 
 func writeSuccess(output string, value map[string]any) {

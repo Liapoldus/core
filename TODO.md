@@ -22,6 +22,12 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   (`config.CompileGateway` → `models.CompiledGraph`); `network.Serve` consumes
   compiled domain models only. The single internal invariant message "no http
   listener" remains in `network` (unreachable given compile guarantees).
+- `config print` merge semantics decision: the effective document merges root
+  and includes with later documents winning per key (the whole value is
+  replaced, matching CompileGateway site override and YAML duplicate-key
+  behaviour), drops the `includes` key, resolves `${var}` substitutions on all
+  scalars except the `secrets` section, and renders secrets only as
+  `env:`/`file:` references so values can never leak.
 
 ## 0. Foundation
 

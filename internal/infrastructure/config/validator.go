@@ -28,6 +28,7 @@ type contractFile struct {
 	Includes     string   `yaml:"includes"`
 	Listeners    string   `yaml:"listeners"`
 	Sites        string   `yaml:"sites"`
+	Secrets      string   `yaml:"secrets"`
 	Variables    string   `yaml:"variables"`
 	Substitution struct {
 		Open  string `yaml:"open"`
