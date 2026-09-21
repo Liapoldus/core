@@ -27,6 +27,10 @@ module and owns only process supervision, grants, and traffic dispatch.
   explicitly approved.
 - Never log, return, trace, or audit raw secrets, private keys, cookies,
   Authorization values, service keys, or grant handles.
+- Do not introduce domain string literals in Go. YAML fields, commands, flags,
+  environment names, paths, defaults, error codes, diagnostic text and JSON
+  keys belong to versioned external contract files. Go may contain only import
+  paths and `go:embed` asset directives needed to load those files.
 - A failed compile/reload/publish must leave the active snapshot and release
   pointers unchanged.
 - Target macOS and Linux. Keep Docker, GitHub Actions, and short operator
