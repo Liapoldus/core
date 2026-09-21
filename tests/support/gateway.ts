@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,4 +49,23 @@ export async function runGateway(
 
 export function jsonOutput(result: GatewayResult): Record<string, unknown> {
   return JSON.parse(result.stdout) as Record<string, unknown>;
+}
+
+export async function startGateway(
+  args: readonly string[],
+): Promise<{ process: ChildProcess; stop(): Promise<void> }> {
+  const executable = await gatewayBinary();
+  const process = spawn(executable, args, { cwd: coreRoot, stdio: "ignore" });
+  return {
+    process,
+    stop: () => {
+      if (process.exitCode !== null) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        process.once("close", () => resolve());
+        process.kill("SIGTERM");
+      });
+    },
+  };
 }
