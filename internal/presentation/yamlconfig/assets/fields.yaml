@@ -1,0 +1,29 @@
+root:
+  - includes
+  - variables
+  - secrets
+  - registry
+  - sites
+  - listeners
+  - upstreams
+  - tlsProfiles
+  - tlsIssuers
+  - authPolicies
+  - dataProviders
+  - wafPolicies
+  - rateLimits
+  - captchaProviders
+  - plugins
+  - management
+  - logging
+  - metrics
+  - tracing
+listener:
+  - type
+  - address
+  - tls
+  - routes
+  - rules
+  - limits
+includes: includes
+listeners: listeners
