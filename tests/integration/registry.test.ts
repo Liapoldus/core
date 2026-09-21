@@ -31,13 +31,13 @@ describe("filesystem release registry", () => {
     const second = await source(root, "source-two", "two");
     const releaseOne = await probe(root, "publish", first);
     const releaseTwo = await probe(root, "publish", second);
-    expect(releaseOne.id).not.toBe(releaseTwo.id);
-    expect(await readlink(join(root, "sites", "blog", "current"))).toContain(String(releaseTwo.id));
-    expect(await readlink(join(root, "sites", "blog", "previous"))).toContain(String(releaseOne.id));
+    expect(releaseOne.ID).not.toBe(releaseTwo.ID);
+    expect(await readlink(join(root, "sites", "blog", "current"))).toContain(String(releaseTwo.ID));
+    expect(await readlink(join(root, "sites", "blog", "previous"))).toContain(String(releaseOne.ID));
     const rolledBack = await probe(root, "rollback");
-    expect(rolledBack.id).toBe(releaseOne.id);
-    expect(await readlink(join(root, "sites", "blog", "current"))).toContain(String(releaseOne.id));
-    expect(await readlink(join(root, "sites", "blog", "previous"))).toContain(String(releaseTwo.id));
+    expect(rolledBack.ID).toBe(releaseOne.ID);
+    expect(await readlink(join(root, "sites", "blog", "current"))).toContain(String(releaseOne.ID));
+    expect(await readlink(join(root, "sites", "blog", "previous"))).toContain(String(releaseTwo.ID));
   });
 
   it("rejects an invalid source without moving pointers or copying symlink escapes", async () => {
