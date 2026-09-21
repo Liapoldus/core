@@ -20,8 +20,9 @@ module and owns only process supervision, grants, and traffic dispatch.
 
 ## Implementation rules
 
-- Use Go 1.24 or newer. `internal/domain` may contain only models, port
-  interfaces, typed errors and validating constructors. `internal/application`
+- Use Go 1.24 or newer. `internal/domain` contains exactly `models/` and
+  `interfaces/`: models, port interfaces, typed errors and validating
+  constructors only. `internal/application`
   is one flat package of use cases. Group adapters in
   `infrastructure/config`, `network`, `security`, `storage`, `plugins` and
   `observability`; keep presentation limited to `api` and `cli`.

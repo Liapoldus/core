@@ -1,15 +1,18 @@
 package application
 
-import domain "github.com/Liapoldus/core/internal/domain/registry"
+import (
+	"github.com/Liapoldus/core/internal/domain/interfaces"
+	"github.com/Liapoldus/core/internal/domain/models"
+)
 
 type RegistryService struct {
-	Store domain.Store
+	Store interfaces.ReleaseStore
 }
 
-func (service RegistryService) Publish(site, source string) (domain.Release, error) {
+func (service RegistryService) Publish(site, source string) (models.Release, error) {
 	return service.Store.Publish(site, source)
 }
 
-func (service RegistryService) Rollback(site string) (domain.Release, error) {
+func (service RegistryService) Rollback(site string) (models.Release, error) {
 	return service.Store.Rollback(site)
 }

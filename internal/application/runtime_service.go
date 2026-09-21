@@ -1,11 +1,14 @@
 package application
 
-import domain "github.com/Liapoldus/core/internal/domain/runtime"
+import (
+	"github.com/Liapoldus/core/internal/domain/interfaces"
+	"github.com/Liapoldus/core/internal/domain/models"
+)
 
 type RuntimeService struct {
-	Store domain.SnapshotStore
+	Store interfaces.SnapshotStore
 }
 
-func (service RuntimeService) Apply(snapshot domain.Snapshot) error {
+func (service RuntimeService) Apply(snapshot models.Snapshot) error {
 	return service.Store.Replace(snapshot)
 }

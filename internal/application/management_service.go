@@ -1,11 +1,14 @@
 package application
 
-import domain "github.com/Liapoldus/core/internal/domain/management"
+import (
+	"github.com/Liapoldus/core/internal/domain/interfaces"
+	"github.com/Liapoldus/core/internal/domain/models"
+)
 
 type ManagementService struct {
-	Authorizer domain.Authorizer
+	Authorizer interfaces.Authorizer
 }
 
-func (service ManagementService) Authorize(actor domain.Actor, action string) error {
+func (service ManagementService) Authorize(actor models.Actor, action string) error {
 	return service.Authorizer.Authorize(actor, action)
 }
