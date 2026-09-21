@@ -157,6 +157,13 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 		if then := mappingNode(routeNode, words.Route.Then); then != nil {
 			route.Site, _ = fieldValue(then, words.Route.Site)
 			route.Proxy = compileProxyTarget(mappingNode(then, words.Route.Proxy), words)
+			route.Redirect = compileRedirect(mappingNode(then, words.Route.Redirect), words)
+			rewrite, err := compileRewrite(mappingNode(then, words.Route.Rewrite), words)
+			if err != nil {
+				return nil, err
+			}
+			route.Rewrite = rewrite
+			route.Headers = compileHeaderActions(mappingNode(then, words.Route.Headers), words)
 		}
 		routes = append(routes, route)
 	}
@@ -190,6 +197,89 @@ func compileProxyTarget(node *yaml.Node, words runtimeWords) *models.ProxyTarget
 		return &target
 	}
 	return nil
+}
+
+func compileRedirect(node *yaml.Node, words runtimeWords) *models.RouteRedirect {
+	if node == nil {
+		return nil
+	}
+	redirect := models.RouteRedirect{PreserveQuery: true, Status: 308}
+	redirect.Scheme, _ = fieldValue(node, words.Redirect.Scheme)
+	redirect.Host, _ = fieldValue(node, words.Redirect.Host)
+	redirect.Path, _ = fieldValue(node, words.Redirect.Path)
+	if preserve, ok := fieldValue(node, words.Redirect.PreserveQuery); ok {
+		if parsed, err := strconv.ParseBool(preserve); err == nil {
+			redirect.PreserveQuery = parsed
+		}
+	}
+	if status, ok := fieldValue(node, words.Redirect.Status); ok {
+		if parsed, err := strconv.Atoi(status); err == nil {
+			redirect.Status = parsed
+		}
+	}
+	if redirect.Status == 0 {
+		redirect.Status = 308
+	}
+	return &redirect
+}
+
+func compileRewrite(node *yaml.Node, words runtimeWords) (*models.Rewrite, error) {
+	if node == nil {
+		return nil, nil
+	}
+	raw, _ := fieldValue(node, words.Rewrite.Regex)
+	replacement, _ := fieldValue(node, words.Rewrite.Replacement)
+	if raw == "" {
+		return nil, nil
+	}
+	compiled, err := regexp.Compile(raw)
+	if err != nil {
+		return nil, err
+	}
+	return &models.Rewrite{Pattern: compiled, Replacement: replacement}, nil
+}
+
+func compileHeaderActions(node *yaml.Node, words runtimeWords) *models.HeaderActions {
+	if node == nil {
+		return nil
+	}
+	actions := models.HeaderActions{}
+	if request := mappingNode(node, words.Headers.Request); request != nil {
+		actions.Request = compileHeaderSet(request, words)
+	}
+	if response := mappingNode(node, words.Headers.Response); response != nil {
+		actions.Response = compileHeaderSet(response, words)
+	}
+	return &actions
+}
+
+func compileHeaderSet(node *yaml.Node, words runtimeWords) models.HeaderSet {
+	set := models.HeaderSet{}
+	if raw := mappingNode(node, words.Headers.Set); raw != nil && raw.Kind == yaml.MappingNode {
+		set.Set = stringPairs(raw)
+	}
+	if raw := mappingNode(node, words.Headers.SetIfAbsent); raw != nil && raw.Kind == yaml.MappingNode {
+		set.SetIfAbsent = stringPairs(raw)
+	}
+	if raw := mappingNode(node, words.Headers.Delete); raw != nil && raw.Kind == yaml.SequenceNode {
+		for _, item := range raw.Content {
+			if item.Kind == yaml.ScalarNode && item.Value != "" {
+				set.Delete = append(set.Delete, item.Value)
+			}
+		}
+	}
+	return set
+}
+
+func stringPairs(node *yaml.Node) map[string]string {
+	values := map[string]string{}
+	for index := 0; index < len(node.Content); index += 2 {
+		key, value := node.Content[index], node.Content[index+1]
+		if value.Kind == yaml.ScalarNode {
+			values[key.Value] = value.Value
+		}
+	}
+	return values
 }
 
 func collectUpstreams(node *yaml.Node, words runtimeWords, upstreams map[string]models.Upstream) error {

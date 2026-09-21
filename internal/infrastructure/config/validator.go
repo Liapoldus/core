@@ -76,14 +76,17 @@ type runtimeWords struct {
 		Slug             string `yaml:"slug"`
 	}
 	Route struct {
-		When   string
-		Then   string
-		Path   string
-		Prefix string
-		Exact  string
-		Regex  string
-		Site   string
-		Proxy  string
+		When     string
+		Then     string
+		Path     string
+		Prefix   string
+		Exact    string
+		Regex    string
+		Site     string
+		Proxy    string
+		Redirect string `yaml:"redirect"`
+		Rewrite  string `yaml:"rewrite"`
+		Headers  string `yaml:"headers"`
 	}
 	Proxy struct {
 		Upstream     string `yaml:"upstream"`
@@ -91,6 +94,24 @@ type runtimeWords struct {
 		HostPreserve string `yaml:"hostPreserve"`
 		HostUpstream string `yaml:"hostUpstream"`
 	} `yaml:"proxy"`
+	Redirect struct {
+		Scheme        string `yaml:"scheme"`
+		Host          string `yaml:"host"`
+		Path          string `yaml:"path"`
+		PreserveQuery string `yaml:"preserveQuery"`
+		Status        string `yaml:"status"`
+	} `yaml:"redirect"`
+	Rewrite struct {
+		Regex       string `yaml:"regex"`
+		Replacement string `yaml:"replacement"`
+	} `yaml:"rewrite"`
+	Headers struct {
+		Request     string `yaml:"request"`
+		Response    string `yaml:"response"`
+		Set         string `yaml:"set"`
+		SetIfAbsent string `yaml:"setIfAbsent"`
+		Delete      string `yaml:"delete"`
+	} `yaml:"headers"`
 	UpstreamConfig struct {
 		Targets                 string `yaml:"targets"`
 		TargetAddress           string `yaml:"targetAddress"`

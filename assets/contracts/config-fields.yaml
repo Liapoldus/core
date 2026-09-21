@@ -69,6 +69,24 @@ runtime:
     regex: regex
     site: site
     proxy: proxy
+    redirect: redirect
+    rewrite: rewrite
+    headers: headers
+  redirect:
+    scheme: scheme
+    host: host
+    path: path
+    preserveQuery: preserveQuery
+    status: status
+  rewrite:
+    regex: regex
+    replacement: replacement
+  headers:
+    request: request
+    response: response
+    set: set
+    setIfAbsent: setIfAbsent
+    delete: delete
   proxy:
     upstream: upstream
     host: host
