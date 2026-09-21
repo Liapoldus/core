@@ -8,6 +8,9 @@ const invalidIncludeConfig = fileURLToPath(
 const unresolvedVariableConfig = fileURLToPath(
   new URL("../fixtures/e2e/unresolved-variable/gateway.yaml", import.meta.url),
 );
+const schemaInvalidConfig = fileURLToPath(
+  new URL("../fixtures/e2e/schema-invalid/gateway.yaml", import.meta.url),
+);
 
 describe("Gateway YAML end-to-end", () => {
   it("validates included YAML files as one configuration graph", async () => {
@@ -32,6 +35,21 @@ describe("Gateway YAML end-to-end", () => {
       "config",
       "validate",
       unresolvedVariableConfig,
+    ]);
+
+    expect(result.exitCode).toBe(3);
+    expect(jsonOutput(result)).toMatchObject({
+      problem: { code: "config_invalid" },
+    });
+  });
+
+  it("applies the canonical JSON Schema to the merged YAML document", async () => {
+    const result = await runGateway([
+      "--output",
+      "json",
+      "config",
+      "validate",
+      schemaInvalidConfig,
     ]);
 
     expect(result.exitCode).toBe(3);

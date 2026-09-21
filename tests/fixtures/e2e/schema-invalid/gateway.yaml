@@ -1,0 +1,3 @@
+registry:
+  path: ./registry
+rateLimits: false
