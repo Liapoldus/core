@@ -11,6 +11,17 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   `assets/contracts/gateway.schema.json`: `pathMatcher` is now
   `oneOf [string ^/, array<minItems 1 ^/>, object exact|prefix|regex ^/]`.
   TODO.md + docs site were updated after a User decision (fix canonical + copy).
+- Schema bug: `proxyTarget.host` used
+  `oneOf [{const preserve}, {const upstream}, {type string}]`;
+  `preserve`/`upstream` matched both the `const` branch and `type: string`, so
+  `oneOf` (exactly one) rejected the documented `host: preserve` and
+  `host: upstream` configs as `config_invalid`. Fixed canonical
+  `liapoldus.github.io/public/spec/gateway.schema.json` and the mirrored copy
+  `assets/contracts/gateway.schema.json`: the string branch is now
+  `{ "type": "string", "not": { "enum": ["preserve", "upstream"] } }` with
+  `default: preserve`. TODO.md + docs site were updated after a User decision
+  (fix canonical + copy); regression test in `tests/integration/proxy.test.ts`
+  asserts `host: preserve` and `host: upstream` validate clean (exit 0).
 - Refactor-first decision: existing Go was refactored to the "no domain string
   literals" rule before new increments — CLI/registry/network vocabulary moved
   into `assets/contracts/{cli-fields,registry-fields,config-fields}.yaml`
