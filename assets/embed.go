@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	ConfigFields   = "config-fields.yaml"
-	CLIFields      = "cli-fields.yaml"
-	RegistryFields = "registry-fields.yaml"
-	GatewaySchema  = "gateway.schema.json"
+	ConfigFields     = "config-fields.yaml"
+	CLIFields        = "cli-fields.yaml"
+	RegistryFields   = "registry-fields.yaml"
+	SnapshotFields   = "snapshot-fields.yaml"
+	GatewaySchema    = "gateway.schema.json"
 )
 
 //go:embed contracts

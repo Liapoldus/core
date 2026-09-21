@@ -85,6 +85,21 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   path resolves relative to the configuration file directory, mirrors the
   site-root rule of directory sources. Publish rewrites `previous`/`current`
   atomically and a failed publish leaves both pointers unchanged.
+- Snapshot persistence decision: the runtime snapshot store gained a
+  filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
+  store's prepared/active/drained contract. Snapshots are serialized as JSON
+  via stdlib `encoding/json` on the domain models (storage imports only
+  domain + stdlib, so no yaml/config). File names are contract words in the
+  new `snapshot-fields.yaml` (`active`, `preparedPrefix`, `drained`) reached
+  through `config.LoadSnapshotLayout`. A prepare writes a `prepared-*` file;
+  activate matches a prepared file by value, then swaps the `active` file via
+  temp-file write + atomic rename and returns the previous active; drain
+  writes the `drained` file the same way. Any failed prepare/activate/drain
+  leaves the active pointer unchanged — a failed activate keeps the matched
+  prepared file so it remains retryable. Because `Secret.Value` is
+  `json:"-"`, secret values can never be persisted; the known limitation is
+  that `PathMatcher.Regex` does not round-trip through JSON (matcher needs a
+  serializable form before full graphs can be persisted).
 
 ## 0. Foundation
 
@@ -99,11 +114,11 @@ TypeScript test under `tests/` before the implementation that satisfies it.
 
 ## 1. Configuration and snapshots
 
-- [ ] YAML decoding; includes/globs/cycle detection; variables and `env:` /
+- [X] YAML decoding; includes/globs/cycle detection; variables and `env:` /
   `file:` secret references with redaction.
 - [ ] JSON Schema plus semantic validation: named-resource references, regex,
   route terminal-action rules and management listener security rules.
-- [ ] Immutable compiled graph, SHA-256 digest/revision, prepare/swap/drain and
+- [X] Immutable compiled graph, SHA-256 digest/revision, prepare/swap/drain and
   rollback-on-failure semantics.
 - [ ] CLI `serve`, `config validate|path|print|format|explain|diff`, typed
   diagnostics, exit codes and RFC 9457 problems.
