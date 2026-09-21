@@ -152,6 +152,36 @@ func run(options options) int {
 			words.JSON.OK: true, words.JSON.Command: words.Display.Format, words.JSON.Path: path,
 		})
 		return words.Exits.OK
+	case words.Subcommands.Explain:
+		path, err := configForValidation(options)
+		if err != nil {
+			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+			return words.Exits.Arguments
+		}
+		report, err := config.Explain(path)
+		if err != nil {
+			return configValidationFailure(options.output, err)
+		}
+		if options.output == words.Outputs.JSON {
+			writeSuccess(options.output, map[string]any{
+				words.JSON.OK: true, words.JSON.Command: words.Display.Explain,
+				words.JSON.Report: explainJSON(words, report),
+			})
+			return words.Exits.OK
+		}
+		for _, listener := range report.Listeners {
+			fmt.Println(fmt.Sprintf(words.Explain.Listener, listener.Name, listener.Type, listener.Address))
+		}
+		for _, route := range report.Routes {
+			fmt.Println(fmt.Sprintf(words.Explain.Route, route.Listener, route.Index, route.Site))
+		}
+		for _, site := range report.Sites {
+			fmt.Println(fmt.Sprintf(words.Explain.Site, site.Name, site.Index))
+		}
+		for _, issue := range report.Issues {
+			fmt.Println(fmt.Sprintf(words.Explain.Issue, issue.Kind, issue.Name))
+		}
+		return words.Exits.OK
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments
@@ -222,6 +252,39 @@ func absoluteExistingFile(path string) (string, error) {
 		return "", errors.New(words.Diagnostics.ConfigLookupFailed)
 	}
 	return filepath.Abs(path)
+}
+
+func explainJSON(words config.CLIWords, report config.ExplainReport) map[string]any {
+	listeners := make([]any, 0, len(report.Listeners))
+	for _, listener := range report.Listeners {
+		listeners = append(listeners, map[string]any{
+			words.JSON.Name: listener.Name, words.JSON.Type: listener.Type, words.JSON.Address: listener.Address,
+		})
+	}
+	routes := make([]any, 0, len(report.Routes))
+	for _, route := range report.Routes {
+		routes = append(routes, map[string]any{
+			words.JSON.Listener: route.Listener, words.JSON.Index: route.Index, words.JSON.Site: route.Site,
+		})
+	}
+	sites := make([]any, 0, len(report.Sites))
+	for _, site := range report.Sites {
+		sites = append(sites, map[string]any{
+			words.JSON.Name: site.Name, words.JSON.Index: site.Index,
+		})
+	}
+	issues := make([]any, 0, len(report.Issues))
+	for _, issue := range report.Issues {
+		issues = append(issues, map[string]any{
+			words.JSON.Kind: issue.Kind, words.JSON.Name: issue.Name,
+		})
+	}
+	return map[string]any{
+		words.JSON.Listeners: listeners,
+		words.JSON.Routes:    routes,
+		words.JSON.Sites:     sites,
+		words.JSON.Issues:    issues,
+	}
 }
 
 func configValidationFailure(output string, err error) int {

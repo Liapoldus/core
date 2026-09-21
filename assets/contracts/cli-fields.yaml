@@ -49,11 +49,29 @@ json:
   problem: problem
   code: code
   detail: detail
+  report: report
+  name: name
+  type: type
+  address: address
+  index: index
+  site: site
+  listeners: listeners
+  routes: routes
+  sites: sites
+  issues: issues
+  kind: kind
+  listener: listener
 display:
   path: config path
   validate: config validate
   print: config print
   format: config format
+  explain: config explain
+explain:
+  listener: "listener %s %s %s"
+  route: "route %s %d -> site %s"
+  site: "site %s index %s"
+  issue: "issue %s %s"
 text:
   ok: ok
 diagnostics:

@@ -19,7 +19,28 @@ func CompileGateway(path string) (models.CompiledGraph, error) {
 	if err != nil {
 		return models.CompiledGraph{}, err
 	}
-	return buildCompiled(path, loaded, compiled)
+	graph, err := buildCompiled(path, loaded, compiled)
+	if err != nil {
+		return models.CompiledGraph{}, err
+	}
+	if err := validateReferences(graph); err != nil {
+		return models.CompiledGraph{}, err
+	}
+	return graph, nil
+}
+
+func validateReferences(graph models.CompiledGraph) error {
+	for _, listener := range graph.Listeners {
+		for _, route := range listener.Routes {
+			if route.Site == "" {
+				continue
+			}
+			if _, exists := graph.Sites[route.Site]; !exists {
+				return ErrUndefinedSite
+			}
+		}
+	}
+	return nil
 }
 
 func buildCompiled(path string, loaded contractFile, compiled *graph) (models.CompiledGraph, error) {

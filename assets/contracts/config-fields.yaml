@@ -33,6 +33,9 @@ variables: variables
 substitution:
   open: ${
   close: '}'
+semantics:
+  unusedSite: unused
+  overriddenSite: overridden
 runtime:
   http: http
   directory: directory

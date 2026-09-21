@@ -20,6 +20,7 @@ func (value validationError) Error() string { return string(rune(value)) }
 const (
 	ErrUnknownField validationError = iota + 1
 	ErrInvalidDocument
+	ErrUndefinedSite
 )
 
 type contractFile struct {
@@ -34,6 +35,10 @@ type contractFile struct {
 		Open  string `yaml:"open"`
 		Close string `yaml:"close"`
 	} `yaml:"substitution"`
+	Semantics struct {
+		UnusedSite     string `yaml:"unusedSite"`
+		OverriddenSite string `yaml:"overriddenSite"`
+	} `yaml:"semantics"`
 	Runtime runtimeWords `yaml:"runtime"`
 }
 
@@ -46,12 +51,12 @@ type runtimeWords struct {
 		Routes  string
 	}
 	Site struct {
-		Source           string
-		Type             string
-		Root             string
-		Index            string
-		IndexDefault     string
-		ManifestFileName string
+		Source           string `yaml:"source"`
+		Type             string `yaml:"type"`
+		Root             string `yaml:"root"`
+		Index            string `yaml:"index"`
+		IndexDefault     string `yaml:"indexDefault"`
+		ManifestFileName string `yaml:"manifestFileName"`
 	}
 	Route struct {
 		When   string
@@ -67,6 +72,7 @@ type runtimeWords struct {
 type graph struct {
 	variables map[string]string
 	documents []*yaml.Node
+	root      *yaml.Node
 	hasher    hash.Hash
 }
 
@@ -129,6 +135,9 @@ func collectFile(path string, loaded contractFile, visited map[string]struct{}, 
 	}
 
 	root := document.Content[0]
+	if compiled.root == nil {
+		compiled.root = root
+	}
 	compiled.documents = append(compiled.documents, root)
 	for index := 0; index < len(root.Content); index += 2 {
 		key, value := root.Content[index], root.Content[index+1]

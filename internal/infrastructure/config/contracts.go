@@ -62,22 +62,41 @@ type CLIWords struct {
 		System               string `yaml:"system"`
 	} `yaml:"sources"`
 	JSON struct {
-		OK       string `yaml:"ok"`
-		Command  string `yaml:"command"`
-		Path     string `yaml:"path"`
-		Source   string `yaml:"source"`
-		Valid    string `yaml:"valid"`
-		Document string `yaml:"document"`
-		Problem  string `yaml:"problem"`
-		Code     string `yaml:"code"`
-		Detail   string `yaml:"detail"`
+		OK        string `yaml:"ok"`
+		Command   string `yaml:"command"`
+		Path      string `yaml:"path"`
+		Source    string `yaml:"source"`
+		Valid     string `yaml:"valid"`
+		Document  string `yaml:"document"`
+		Problem   string `yaml:"problem"`
+		Code      string `yaml:"code"`
+		Detail    string `yaml:"detail"`
+		Report    string `yaml:"report"`
+		Name      string `yaml:"name"`
+		Type      string `yaml:"type"`
+		Address   string `yaml:"address"`
+		Index     string `yaml:"index"`
+		Site      string `yaml:"site"`
+		Listeners string `yaml:"listeners"`
+		Routes    string `yaml:"routes"`
+		Sites     string `yaml:"sites"`
+		Issues    string `yaml:"issues"`
+		Kind      string `yaml:"kind"`
+		Listener  string `yaml:"listener"`
 	} `yaml:"json"`
 	Display struct {
 		Path     string `yaml:"path"`
 		Validate string `yaml:"validate"`
 		Print    string `yaml:"print"`
 		Format   string `yaml:"format"`
+		Explain  string `yaml:"explain"`
 	} `yaml:"display"`
+	Explain struct {
+		Listener string `yaml:"listener"`
+		Route    string `yaml:"route"`
+		Site     string `yaml:"site"`
+		Issue    string `yaml:"issue"`
+	} `yaml:"explain"`
 	Text struct {
 		OK string `yaml:"ok"`
 	} `yaml:"text"`

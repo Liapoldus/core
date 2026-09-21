@@ -37,6 +37,23 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   selects the site only — it never influences file resolution, which stays
   bounded by `site.Root` via the existing traversal guard. An absent
   `when.path` remains a catch-all route.
+- `config explain` semantics decision: the report is built from the compiled
+  graph (supervise + buildCompiled) plus the raw source documents. Route → site
+  references are validated in `CompileGateway` via `validateReferences` — a
+  route targeting an undefined site is a hard `config_invalid` failure (exit
+  3), for explain and serve alike. Non-fatal issues are reported only:
+  `unused` (a site never targeted by a route) and `overridden` (a site name
+  defined in more than one configuration document; counts are taken from the
+  physical source files, i.e. the root file plus each include, so a site that
+  only ever exists in one document is not a false positive). Listener types
+  and addresses are read from the raw documents; site entries report the
+  resolved index.
+- Runtime word binding bug fixed: `yaml.v3` lowercases untagged struct field
+  names, so `runtimeWords.Site.IndexDefault` and `ManifestFileName` never
+  bound to the camelCase contract keys `indexDefault` / `manifestFileName`
+  and the compiled site index defaulted to empty. Added the missing yaml tags
+  in `validator.go`; `config explain` site entries now surface the resolved
+  `index.html` default.
 
 ## 0. Foundation
 
