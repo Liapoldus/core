@@ -57,6 +57,16 @@ module and owns only process supervision, grants, and traffic dispatch.
 - Each increment must run its focused TS suite; milestone completion requires
   the full suite, race checks, and the applicable golden vectors.
 
+## Architecture gate
+
+- Run `make check` before declaring a milestone complete. It builds Gateway,
+  runs the TypeScript suite, and executes the architecture gate.
+- `make arch-lint` runs `fe3dback/go-arch-lint` in Docker. Do not replace it
+  with a host-installed binary: CI intentionally uses the same Docker image.
+- The linter enforces allowed import directions. The TypeScript architecture
+  suite additionally enforces the directory contract and one domain model or
+  interface declaration per file.
+
 ## Contract ownership after v1
 
 After all Gateway v1 vectors pass, contract ownership moves into `core`:
