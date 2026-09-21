@@ -75,7 +75,8 @@ describe("gateway config print", () => {
         "listeners:\n" +
         "  main:\n" +
         "    type: http\n" +
-        "    address: \":8080\"\n",
+        "    address: \":8080\"\n" +
+        "    routes: []\n",
       "utf8",
     );
     await writeFile(
@@ -107,7 +108,8 @@ describe("gateway config print", () => {
         "listeners:\n" +
         "  http:\n" +
         "    type: http\n" +
-        "    address: \"${host}:9000\"\n",
+        "    address: \"${host}:9000\"\n" +
+        "    routes: []\n",
     );
 
     const result = await runGateway(["--output", "json", "config", "print"], {
@@ -119,7 +121,7 @@ describe("gateway config print", () => {
       variables: { host: "127.0.0.1" },
       secrets: { superSecret: "env:SUPER_SECRET" },
       listeners: {
-        http: { type: "http", address: "127.0.0.1:9000" },
+        http: { type: "http", address: "127.0.0.1:9000", routes: [] },
       },
     });
   });
