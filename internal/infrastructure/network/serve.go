@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,10 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			http.NotFound(writer, request)
 			return
 		}
+		if request.URL.Path == "" || strings.Contains(request.URL.Path, "/..") {
+			http.NotFound(writer, request)
+			return
+		}
 		requested := path.Clean(request.URL.Path)
 		if requested == "/" {
 			requested = "/" + site.Index
@@ -37,6 +42,19 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		if !isWithin(site.Root, candidate) {
 			http.NotFound(writer, request)
 			return
+		}
+		info, err := os.Stat(candidate)
+		if err != nil {
+			http.NotFound(writer, request)
+			return
+		}
+		if info.IsDir() {
+			candidate = filepath.Join(candidate, site.Index)
+			indexInfo, err := os.Stat(candidate)
+			if err != nil || indexInfo.IsDir() {
+				http.NotFound(writer, request)
+				return
+			}
 		}
 		http.ServeFile(writer, request, candidate)
 	})
