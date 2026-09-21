@@ -1,6 +1,8 @@
 package application
 
 import (
+	"reflect"
+
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 )
@@ -10,5 +12,16 @@ type RuntimeService struct {
 }
 
 func (service RuntimeService) Apply(snapshot models.Snapshot) error {
-	return service.Store.Replace(snapshot)
+	prepared, err := service.Store.Prepare(snapshot)
+	if err != nil {
+		return err
+	}
+	previous, err := service.Store.Activate(prepared)
+	if err != nil {
+		return err
+	}
+	if reflect.ValueOf(previous.Graph.Revision).IsZero() {
+		return nil
+	}
+	return service.Store.Drain(previous)
 }

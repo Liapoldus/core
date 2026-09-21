@@ -3,10 +3,11 @@ import { mkdir, mkdtemp, readlink, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const execute = promisify(execFile);
-const coreRoot = new URL("../..", import.meta.url).pathname;
+const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 async function source(root: string, name: string, body: string): Promise<string> {
   const directory = join(root, name);

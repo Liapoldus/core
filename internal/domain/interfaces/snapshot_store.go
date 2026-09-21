@@ -4,5 +4,7 @@ import "github.com/Liapoldus/core/internal/domain/models"
 
 type SnapshotStore interface {
 	Active() models.Snapshot
-	Replace(models.Snapshot) error
+	Prepare(models.Snapshot) (models.PreparedSnapshot, error)
+	Activate(models.PreparedSnapshot) (models.Snapshot, error)
+	Drain(models.Snapshot) error
 }
