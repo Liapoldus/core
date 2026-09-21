@@ -2,11 +2,15 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
@@ -133,7 +137,14 @@ func serve(options options) int {
 		writeFailure(options.output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
-	if err := network.Serve(graph.Listeners, graph.Sites); err != nil {
+	drain, err := time.ParseDuration(words.Serve.GracefulTimeout)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Validation
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := network.Serve(ctx, graph.Listeners, graph.Sites, drain); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

@@ -1,26 +1,28 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 )
 
-func Serve(listeners []models.Listener, sites map[string]models.Site) error {
+func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, drainTimeout time.Duration) error {
 	for _, listener := range listeners {
 		if !listener.IsHTTP {
 			continue
 		}
-		return serveHTTP(listener, sites)
+		return serveHTTP(parent, listener, sites, drainTimeout)
 	}
 	return errors.New("no http listener")
 }
 
-func serveHTTP(listener models.Listener, sites map[string]models.Site) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, drainTimeout time.Duration) error {
 	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		site, found := matchedDirectorySite(request.URL.Path, listener.Routes, sites)
 		if !found || site.Source != models.SourceDirectory {
@@ -38,7 +40,20 @@ func serveHTTP(listener models.Listener, sites map[string]models.Site) error {
 		}
 		http.ServeFile(writer, request, candidate)
 	})
-	return http.ListenAndServe(listener.Address, handler)
+	server := &http.Server{Addr: listener.Address, Handler: handler}
+	serveError := make(chan error, 1)
+	go func() { serveError <- server.ListenAndServe() }()
+	select {
+	case err := <-serveError:
+		return err
+	case <-parent.Done():
+		ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			return err
+		}
+		return nil
+	}
 }
 
 func matchedDirectorySite(requestPath string, routes []models.Route, sites map[string]models.Site) (models.Site, bool) {
