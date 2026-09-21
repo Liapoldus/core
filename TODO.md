@@ -111,6 +111,27 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   `json:"-"`, secret values can never be persisted; the known limitation is
   that `PathMatcher.Regex` does not round-trip through JSON (matcher needs a
   serializable form before full graphs can be persisted).
+- Route action semantics decision (derived from `public/spec/http-runtime.json`
+  pipeline and `server-blocks.md`, no doc rule existed so recorded here):
+  per route, at most one terminal target (`site`, `proxy`, `redirect`) — this
+  is enforced as a hard `config_invalid` at compile time (separate increment).
+  Transform actions are ordered by the runtime pipeline: `request-headers` →
+  `rewrite` → terminal → `response-headers`. Within one side of a
+  `headers` action the operations apply in fixed order set → setIfAbsent →
+  delete, so a `delete` wins over any other entry on the same header name.
+  Gateway-owned forwarded headers (`Host`, `X-Forwarded-*`) are written by
+  the proxy director at the terminal stage, so `headers.request` can never
+  override them (consistent with the decision that the Gateway owns
+  forwarded headers). `headers.response` merges site-then-route, route wins.
+  A `redirect` terminal builds an absolute `Location`: scheme =
+  `redirect.scheme` else request scheme (http, the gateway has no TLS yet),
+  host = `redirect.host` else the request Host, path = `redirect.path` else
+  the rewritten request path, query appended only when `preserveQuery`
+  (default true) and a query is present; status defaults to 308 and accepts
+  301/302/307/308. A `rewrite` action compiles its `regex` (RE2) and applies
+  it exactly once before the terminal to the request path only (query is
+  preserved untouched, and the rewritten path is what a `redirect` without
+  its own `path` would use); `replacement` expands `$N` capture groups.
 
 ## 0. Foundation
 

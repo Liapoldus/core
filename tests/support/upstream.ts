@@ -31,7 +31,7 @@ export async function startUpstream(): Promise<UpstreamProbe> {
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
       requests.bodies.push(Buffer.concat(chunks).toString("utf8"));
-      response.writeHead(200, { "content-type": "text/plain" });
+      response.writeHead(200, { "content-type": "text/plain", "x-upstream": "liapoldus-echo" });
       response.end("upstream");
     });
   });
