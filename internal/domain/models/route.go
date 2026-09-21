@@ -1,6 +1,6 @@
 package models
 
 type Route struct {
-	PathPrefix string
-	Site       string
+	When PathMatcher
+	Site string
 }

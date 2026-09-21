@@ -33,6 +33,7 @@ async function writeTree(): Promise<string> {
     "exact/exact.txt": "exact",
     "pre/pre/leaf.txt": "prefix",
     "api/api/v1/res": "regex",
+    "api/api/v9/res": "regex",
     "raw/raw/leaf.txt": "raw-string",
     "arr/arr-a/leaf.txt": "array",
   };

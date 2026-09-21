@@ -58,7 +58,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 
 func matchedDirectorySite(requestPath string, routes []models.Route, sites map[string]models.Site) (models.Site, bool) {
 	for _, route := range routes {
-		if route.PathPrefix != "" && !strings.HasPrefix(requestPath, route.PathPrefix) {
+		if !route.When.Matches(requestPath) {
 			continue
 		}
 		site, exists := sites[route.Site]

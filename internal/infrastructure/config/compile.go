@@ -6,6 +6,7 @@ import (
 	"hash"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"gopkg.in/yaml.v3"
@@ -18,10 +19,10 @@ func CompileGateway(path string) (models.CompiledGraph, error) {
 	if err != nil {
 		return models.CompiledGraph{}, err
 	}
-	return buildCompiled(path, loaded, compiled), nil
+	return buildCompiled(path, loaded, compiled)
 }
 
-func buildCompiled(path string, loaded contractFile, compiled *graph) models.CompiledGraph {
+func buildCompiled(path string, loaded contractFile, compiled *graph) (models.CompiledGraph, error) {
 	graph := models.CompiledGraph{
 		Revision: models.Revision{
 			Value:  path,
@@ -35,18 +36,22 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) models.Com
 			key, node := document.Content[index], document.Content[index+1]
 			switch key.Value {
 			case loaded.Listeners:
-				graph.Listeners = append(graph.Listeners, collectListeners(node, loaded.Runtime)...)
+				listeners, err := collectListeners(node, loaded.Runtime)
+				if err != nil {
+					return models.CompiledGraph{}, err
+				}
+				graph.Listeners = append(graph.Listeners, listeners...)
 			case loaded.Sites:
 				collectSites(node, loaded.Runtime, base, graph.Sites)
 			}
 		}
 	}
-	return graph
+	return graph, nil
 }
 
-func collectListeners(node *yaml.Node, words runtimeWords) []models.Listener {
+func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, error) {
 	if node.Kind != yaml.MappingNode {
-		return nil
+		return nil, nil
 	}
 	var listeners []models.Listener
 	for index := 0; index < len(node.Content); index += 2 {
@@ -58,15 +63,19 @@ func collectListeners(node *yaml.Node, words runtimeWords) []models.Listener {
 		typ, _ := fieldValue(body, words.Listener.Type)
 		listener.IsHTTP = typ == words.HTTP
 		listener.Address, _ = fieldValue(body, words.Listener.Address)
-		listener.Routes = collectRoutes(mappingNode(body, words.Listener.Routes), words)
+		routes, err := collectRoutes(mappingNode(body, words.Listener.Routes), words)
+		if err != nil {
+			return nil, err
+		}
+		listener.Routes = routes
 		listeners = append(listeners, listener)
 	}
-	return listeners
+	return listeners, nil
 }
 
-func collectRoutes(node *yaml.Node, words runtimeWords) []models.Route {
+func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) {
 	if node == nil || node.Kind != yaml.SequenceNode {
-		return nil
+		return nil, nil
 	}
 	var routes []models.Route
 	for _, routeNode := range node.Content {
@@ -76,7 +85,11 @@ func collectRoutes(node *yaml.Node, words runtimeWords) []models.Route {
 		var route models.Route
 		if when := mappingNode(routeNode, words.Route.When); when != nil {
 			if pathNode := mappingNode(when, words.Route.Path); pathNode != nil {
-				route.PathPrefix, _ = fieldValue(pathNode, words.Route.Prefix)
+				matcher, err := compilePathMatcher(pathNode, words)
+				if err != nil {
+					return nil, err
+				}
+				route.When = matcher
 			}
 		}
 		if then := mappingNode(routeNode, words.Route.Then); then != nil {
@@ -84,7 +97,38 @@ func collectRoutes(node *yaml.Node, words runtimeWords) []models.Route {
 		}
 		routes = append(routes, route)
 	}
-	return routes
+	return routes, nil
+}
+
+func compilePathMatcher(node *yaml.Node, words runtimeWords) (models.PathMatcher, error) {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		return models.PathMatcher{Prefixes: []string{node.Value}}, nil
+	case yaml.SequenceNode:
+		var prefixes []string
+		for _, item := range node.Content {
+			if item.Kind == yaml.ScalarNode && item.Value != "" {
+				prefixes = append(prefixes, item.Value)
+			}
+		}
+		return models.PathMatcher{Prefixes: prefixes}, nil
+	case yaml.MappingNode:
+		if prefix, ok := fieldValue(node, words.Route.Prefix); ok {
+			return models.PathMatcher{Prefixes: []string{prefix}}, nil
+		}
+		if exact, ok := fieldValue(node, words.Route.Exact); ok {
+			return models.PathMatcher{Exact: exact}, nil
+		}
+		if raw, ok := fieldValue(node, words.Route.Regex); ok {
+			anchored := "^(?:" + raw + ")$"
+			compiled, err := regexp.Compile(anchored)
+			if err != nil {
+				return models.PathMatcher{}, err
+			}
+			return models.PathMatcher{Regex: compiled}, nil
+		}
+	}
+	return models.PathMatcher{}, nil
 }
 
 func collectSites(node *yaml.Node, words runtimeWords, base string, sites map[string]models.Site) {

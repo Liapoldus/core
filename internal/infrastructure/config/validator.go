@@ -58,6 +58,8 @@ type runtimeWords struct {
 		Then   string
 		Path   string
 		Prefix string
+		Exact  string
+		Regex  string
 		Site   string
 	}
 }

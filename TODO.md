@@ -28,6 +28,15 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   behaviour), drops the `includes` key, resolves `${var}` substitutions on all
   scalars except the `secrets` section, and renders secrets only as
   `env:`/`file:` references so values can never leak.
+- Path matcher semantics decision: `when.path` is compiled from the canonical
+  `pathMatcher` forms — bare string and array of strings are prefix matchers
+  (array = any-of), and the object form supports `prefix`, `exact`, and
+  `regex` (precedence in that order). Regex matchers are anchored at compile
+  time (`^(?:pattern)$`, whole-path RE2 match) and validated during
+  `CompileGateway`; an invalid regex fails configuration compilation. A regex
+  selects the site only — it never influences file resolution, which stays
+  bounded by `site.Root` via the existing traversal guard. An absent
+  `when.path` remains a catch-all route.
 
 ## 0. Foundation
 

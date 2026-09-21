@@ -52,4 +52,6 @@ runtime:
     then: then
     path: path
     prefix: prefix
+    exact: exact
+    regex: regex
     site: site
