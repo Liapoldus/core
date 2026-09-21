@@ -65,6 +65,17 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   output echoes the real section words (`listeners`/`sites`/...), so entry
   lines read `changed listeners main`, section lines read `changed section
   variables`. The command exits 0 whether or not differences are found.
+- Directory-static hardening decisions: directories are never served as
+  listings. A request path that maps to a directory is resolved to that
+  directory's index file; a missing index (or a missing/empty path) is a 404.
+  Request paths containing a `..` element are rejected with 404 at the
+  gateway (this overrides `http.ServeFile`'s own `400 invalid URL path`,
+  giving a uniform 404). An empty request-target is rejected by `net/http`
+  itself with 400 before the handler runs — the gateway's `404` for
+  `request.URL.Path == ""` is backstop-only and unreachable over `HTTP/1.1`.
+  Symbolic links are still resolved (followed) by `http.ServeFile`; real
+  symlink policy for `directory` sources remains part of the
+  "traversal/symlink protection" item below.
 
 ## 0. Foundation
 
