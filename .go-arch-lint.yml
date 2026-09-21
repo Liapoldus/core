@@ -1,28 +1,51 @@
 version: 3
 workdir: .
+exclude: [tests]
 allow:
   depOnAnyVendor: false
   deepScan: true
 components:
   command: { in: cmd/** }
-  domain: { in: internal/domain/** }
-  application: { in: internal/application/** }
-  infrastructure: { in: internal/infrastructure/** }
-  presentation: { in: internal/presentation/** }
-  assets: { in: assets }
+  domainModels: { in: internal/domain/models }
+  domainInterfaces: { in: internal/domain/interfaces }
+  application: { in: internal/application }
+  infrastructureConfig: { in: internal/infrastructure/config }
+  infrastructureNetwork: { in: internal/infrastructure/network }
+  infrastructureSecurity: { in: internal/infrastructure/security }
+  infrastructureStorage: { in: internal/infrastructure/storage }
+  infrastructurePlugins: { in: internal/infrastructure/plugins }
+  infrastructureObservability: { in: internal/infrastructure/observability }
+  presentationAPI: { in: internal/presentation/api }
+  presentationCLI: { in: internal/presentation/cli }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
+  jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
+commonComponents: [domainModels]
 commonVendors: []
-commonComponents: [assets]
 deps:
   command:
-    mayDependOn: [presentation, application, infrastructure]
-  domain:
-    mayDependOn: []
+    anyProjectDeps: true
+    anyVendorDeps: true
+  domainModels:
+    mayDependOn: [domainModels]
+  domainInterfaces:
+    mayDependOn: [domainModels]
   application:
-    mayDependOn: [domain]
-  infrastructure:
-    mayDependOn: [domain]
-  presentation:
-    mayDependOn: [application, domain, infrastructure]
-    canUse: [yaml]
+    mayDependOn: [domainModels, domainInterfaces]
+  infrastructureConfig:
+    mayDependOn: [domainModels, domainInterfaces]
+    canUse: [yaml, jsonschema]
+  infrastructureNetwork:
+    mayDependOn: [domainModels, domainInterfaces]
+  infrastructureSecurity:
+    mayDependOn: [domainModels, domainInterfaces]
+  infrastructureStorage:
+    mayDependOn: [domainModels, domainInterfaces]
+  infrastructurePlugins:
+    mayDependOn: [domainModels, domainInterfaces]
+  infrastructureObservability:
+    mayDependOn: [domainModels, domainInterfaces]
+  presentationAPI:
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
+  presentationCLI:
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]

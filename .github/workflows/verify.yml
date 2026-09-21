@@ -1,0 +1,29 @@
+name: Verify Gateway
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - name: Build Gateway
+        run: make build
+      - name: Run TypeScript test suite
+        run: npm --prefix tests ci && make test
+      - name: Enforce architecture
+        run: make arch-lint
