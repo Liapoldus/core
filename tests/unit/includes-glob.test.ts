@@ -82,7 +82,7 @@ describe("gateway config includes globs", () => {
     await writeFile(
       root,
       "includes:\n" +
-        "  - **/common.yaml\n" +
+        "  - \"**/common.yaml\"\n" +
         "listeners:\n" +
         "  main:\n" +
         "    type: http\n" +
@@ -106,7 +106,7 @@ describe("gateway config includes globs", () => {
     await writeFile(
       root,
       "includes:\n" +
-        "  - *.yaml\n" +
+        "  - \"*.yaml\"\n" +
         "listeners:\n" +
         "  main:\n" +
         "    type: http\n" +

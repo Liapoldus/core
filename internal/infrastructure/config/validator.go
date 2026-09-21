@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"hash"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -170,11 +172,95 @@ func collectIncludes(parent string, node *yaml.Node, loaded contractFile, visite
 		if item.Kind != yaml.ScalarNode {
 			return ErrInvalidDocument
 		}
-		if err := collectFile(filepath.Join(filepath.Dir(parent), item.Value), loaded, visited, compiled); err != nil {
+		pattern := filepath.Join(filepath.Dir(parent), item.Value)
+		files, err := expandInclude(pattern)
+		if err != nil {
 			return err
+		}
+		if len(files) == 0 {
+			return ErrInvalidDocument
+		}
+		for _, file := range files {
+			if err := collectFile(file, loaded, visited, compiled); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func expandInclude(pattern string) ([]string, error) {
+	index := strings.IndexAny(pattern, "*?[")
+	if index < 0 {
+		return []string{pattern}, nil
+	}
+	base := pattern[:index]
+	if segment := strings.LastIndex(base, string(filepath.Separator)); segment >= 0 {
+		base = base[:segment]
+	} else if base == "" {
+		base = "."
+	}
+	if base == "" {
+		base = string(filepath.Separator)
+	}
+	parts := strings.Split(filepath.ToSlash(pattern[index:]), "/")
+	var matches []string
+	err := filepath.WalkDir(base, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, relErr := filepath.Rel(base, current)
+		if relErr != nil {
+			return relErr
+		}
+		if matchGlobParts(strings.Split(filepath.ToSlash(relative), "/"), parts) {
+			matches = append(matches, current)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return matches, nil
+}
+
+func matchGlobParts(value []string, pattern []string) bool {
+	rows := make([][]bool, len(pattern)+1)
+	for row := range rows {
+		rows[row] = make([]bool, len(value)+1)
+	}
+	rows[0][0] = true
+	for row, item := range pattern {
+		if item == "**" {
+			for column, set := range rows[row] {
+				if !set {
+					continue
+				}
+				for next := column; next <= len(value); next++ {
+					rows[row+1][next] = true
+				}
+			}
+			continue
+		}
+		for column := 1; column <= len(value); column++ {
+			if !rows[row][column-1] {
+				continue
+			}
+			matched, matchErr := path.Match(item, value[column-1])
+			if matchErr != nil || !matched {
+				continue
+			}
+			rows[row+1][column] = true
+		}
+	}
+	return rows[len(pattern)][len(value)]
+}
+
+func hasGlobMeta(value string) bool {
+	return strings.ContainsAny(value, "*?[")
 }
 
 func validateSchema(root *yaml.Node) error {
