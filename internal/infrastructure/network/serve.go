@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -27,6 +28,12 @@ type HTTPCapabilityDispatcher interface {
 	HTTP(context.Context, string, plugins.HTTPRequest) (plugins.HTTPResponse, error)
 }
 
+type L4CapabilityDispatcher interface {
+	L4(context.Context, string, plugins.L4Request) (plugins.L4Response, error)
+}
+
+var connectionSequence uint64
+
 func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics ...*observability.Registry) error {
 	return ServeWithCapabilities(parent, listeners, sites, upstreams, profiles, drainTimeout, nil, metrics...)
 }
@@ -34,6 +41,10 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 // ServeWithCapabilities wires already-handshaken plugin clients into HTTP
 // routes. The map is an adapter boundary; it never exposes public sockets.
 func ServeWithCapabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, metrics ...*observability.Registry) error {
+	return ServeWithL4Capabilities(parent, listeners, sites, upstreams, profiles, drainTimeout, capabilities, nil, metrics...)
+}
+
+func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -41,9 +52,9 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 		go func(current models.Listener) {
 			switch current.Type {
 			case "tcp":
-				errs <- serveTCP(parent, current, upstreams, drainTimeout)
+				errs <- serveTCP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			case "udp":
-				errs <- serveUDP(parent, current, upstreams, drainTimeout)
+				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
 				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities)
 			}
@@ -70,7 +81,7 @@ func firstRegistry(registries []*observability.Registry) *observability.Registry
 // serveTCP owns the public socket and relays each accepted stream to the first
 // healthy configured target. L4 rules are deliberately evaluated before any
 // plugin boundary; plugins never receive the public socket.
-func serveTCP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+func serveTCP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration, capabilities map[string]L4CapabilityDispatcher) error {
 	ln, err := net.Listen("tcp", listener.Address)
 	if err != nil {
 		return err
@@ -85,12 +96,18 @@ func serveTCP(parent context.Context, listener models.Listener, upstreams map[st
 			}
 			return err
 		}
-		go relayTCP(parent, conn, listener.Rules, upstreams, drainTimeout)
+		go relayTCP(parent, conn, listener.Rules, upstreams, drainTimeout, capabilities)
 	}
 }
 
-func relayTCP(parent context.Context, client net.Conn, rules []models.Route, upstreams map[string]models.Upstream, drainTimeout time.Duration) {
+func relayTCP(parent context.Context, client net.Conn, rules []models.Route, upstreams map[string]models.Upstream, drainTimeout time.Duration, capabilities map[string]L4CapabilityDispatcher) {
 	defer client.Close()
+	plugin := l4Plugin(rules, capabilities)
+	if plugin.dispatcher != nil {
+		connectionID := fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1))
+		relayTCPPlugin(parent, client, plugin, connectionID)
+		return
+	}
 	target := l4Target(rules, upstreams)
 	if target == "" {
 		return
@@ -101,8 +118,9 @@ func relayTCP(parent context.Context, client net.Conn, rules []models.Route, ups
 		return
 	}
 	defer server.Close()
+	connectionID := fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1))
 	done := make(chan struct{}, 2)
-	go func() { _, _ = io.Copy(server, client); done <- struct{}{} }()
+	go func() { relayTCPDirection(parent, client, server, plugin, connectionID, "request"); done <- struct{}{} }()
 	go func() { _, _ = io.Copy(client, server); done <- struct{}{} }()
 	select {
 	case <-func() <-chan struct{} {
@@ -118,7 +136,26 @@ func relayTCP(parent context.Context, client net.Conn, rules []models.Route, ups
 	}
 }
 
-func serveUDP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+func relayTCPPlugin(ctx context.Context, client net.Conn, plugin l4RoutePlugin, connectionID string) {
+	buffer := make([]byte, 32*1024)
+	for {
+		n, err := client.Read(buffer)
+		if n > 0 {
+			result, dispatchErr := plugin.dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: "request", Connection: connectionID, Payload: append([]byte(nil), buffer[:n]...)})
+			if dispatchErr != nil || result.Drop {
+				return
+			}
+			if _, writeErr := client.Write(result.Payload); writeErr != nil {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+func serveUDP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration, capabilities map[string]L4CapabilityDispatcher) error {
 	addr, err := net.ResolveUDPAddr("udp", listener.Address)
 	if err != nil {
 		return err
@@ -138,16 +175,24 @@ func serveUDP(parent context.Context, listener models.Listener, upstreams map[st
 			}
 			return err
 		}
+		plugin := l4Plugin(listener.Rules, capabilities)
 		target := l4Target(listener.Rules, upstreams)
-		if target == "" {
+		if target == "" && plugin.dispatcher == nil {
 			continue
 		}
 		payload := append([]byte(nil), buffer[:n]...)
-		go relayUDP(parent, conn, source, target, payload, drainTimeout)
+		go relayUDP(parent, conn, source, target, payload, drainTimeout, plugin)
 	}
 }
 
-func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, target string, payload []byte, idle time.Duration) {
+func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, target string, payload []byte, idle time.Duration, plugin l4RoutePlugin) {
+	if plugin.dispatcher != nil && target == "" {
+		result, err := plugin.dispatcher.L4(parent, plugin.capability, plugins.L4Request{Transport: "udp", Direction: "request", Connection: fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1)), Payload: payload})
+		if err == nil && !result.Drop {
+			_, _ = public.WriteToUDP(result.Payload, source)
+		}
+		return
+	}
 	addr, err := net.ResolveUDPAddr("udp", target)
 	if err != nil {
 		return
@@ -157,6 +202,13 @@ func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, 
 		return
 	}
 	defer upstream.Close()
+	if plugin.dispatcher != nil {
+		result, err := plugin.dispatcher.L4(parent, plugin.capability, plugins.L4Request{Transport: "udp", Direction: "request", Connection: fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1)), Payload: payload})
+		if err != nil || result.Drop {
+			return
+		}
+		payload = result.Payload
+	}
 	if idle <= 0 {
 		idle = 30 * time.Second
 	}
@@ -171,6 +223,42 @@ func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, 
 	select {
 	case <-parent.Done():
 	default:
+	}
+}
+
+type l4RoutePlugin struct {
+	dispatcher L4CapabilityDispatcher
+	capability string
+}
+
+func l4Plugin(rules []models.Route, capabilities map[string]L4CapabilityDispatcher) l4RoutePlugin {
+	for _, rule := range rules {
+		if rule.Plugin != nil {
+			return l4RoutePlugin{dispatcher: capabilities[rule.Plugin.Instance], capability: rule.Plugin.Capability}
+		}
+	}
+	return l4RoutePlugin{}
+}
+func relayTCPDirection(ctx context.Context, source net.Conn, target net.Conn, plugin l4RoutePlugin, connectionID, direction string) {
+	buffer := make([]byte, 32*1024)
+	for {
+		n, err := source.Read(buffer)
+		if n > 0 {
+			payload := append([]byte(nil), buffer[:n]...)
+			if plugin.dispatcher != nil {
+				result, dispatchErr := plugin.dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: direction, Connection: connectionID, Payload: payload})
+				if dispatchErr != nil || result.Drop {
+					return
+				}
+				payload = result.Payload
+			}
+			if _, writeErr := target.Write(payload); writeErr != nil {
+				return
+			}
+		}
+		if err != nil {
+			return
+		}
 	}
 }
 
