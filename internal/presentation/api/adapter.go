@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -12,13 +13,21 @@ import (
 )
 
 type Server struct {
-	Token      string
-	Config     string
-	Revision   string
-	Digest     string
-	mu         sync.RWMutex
-	operations map[string]Operation
-	audit      []Audit
+	Token         string
+	Config        string
+	Revision      string
+	Digest        string
+	mu            sync.RWMutex
+	operations    map[string]Operation
+	audit         []Audit
+	AdminSurfaces []AdminSurface
+}
+type AdminSurface struct {
+	Plugin       string   `json:"plugin"`
+	Namespace    string   `json:"namespace"`
+	Version      string   `json:"version"`
+	Title        string   `json:"title"`
+	Capabilities []string `json:"capabilities"`
 }
 type Operation struct {
 	ID        string    `json:"id"`
@@ -36,6 +45,20 @@ type Audit struct {
 }
 
 func (server *Server) Handler() http.Handler { return http.HandlerFunc(server.handle) }
+
+func (server *Server) Listen(ctx context.Context, address string) error {
+	httpServer := &http.Server{Addr: address, Handler: server.Handler()}
+	result := make(chan error, 1)
+	go func() { result <- httpServer.ListenAndServe() }()
+	select {
+	case err := <-result:
+		return err
+	case <-ctx.Done():
+		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return httpServer.Shutdown(shutdownContext)
+	}
+}
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set("X-Request-ID", requestID)
@@ -63,6 +86,11 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"items": server.audit, "nextCursor": nil, "requestId": requestID})
+	case path == "/api/plugins/admin-surfaces" && request.Method == http.MethodGet:
+		server.mu.RLock()
+		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
+		server.mu.RUnlock()
+		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/operations/") && request.Method == http.MethodGet:
 		id := strings.TrimPrefix(path, "/api/operations/")
 		server.mu.RLock()
