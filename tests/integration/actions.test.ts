@@ -110,7 +110,7 @@ describe("WAF policy limit action", () => {
 
     const first = await request(address, "/api/first");
     const second = await request(address, "/api/second");
-    expect(first.status).toBe(200);
+    expect(first.status, first.text).toBe(200);
     expect(second.status).toBe(429);
     expect(second.headers.get("retry-after")).toBe("60");
     expect(upstream.hits().paths).toEqual(["/api/first"]);

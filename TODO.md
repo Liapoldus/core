@@ -214,13 +214,13 @@ references are
 - Route terminal exclusivity decision (derived from `server-blocks.md`
   `одно route action — ровно один terminal target`): a compile-time check in
   `CompileGateway` rejects any route whose `then` carries more than one
-  terminal action as `config_invalid` (exit 3). The check covers the terminal
-  actions this increment compiles — `site`, `proxy`, `redirect`. The schema
-  also names `plugin` and `deny` as terminals, but those actions are not
-  compiled yet (Agent A scope); known gaps recorded here: a config using
-  `deny`/`plugin` beside a supported terminal is not yet rejected, and a route
-  built solely on `deny`/`plugin` currently serves 404 (no terminal matched),
-  which must be revisited when those actions land.
+  terminal action as `config_invalid` (exit 3). The runtime now compiles the
+  `site`, `proxy`, `redirect`, `deny` and `plugin` route actions; plugin dispatch
+  still requires a supervisor-provided capability map. The route-level
+  `challenge` action is not compiled yet. WAF supports path exact/prefix rules
+  with allow/deny/limit actions; full matcher language, Geo/ASN providers and
+  challenge action remain acceptance gaps. The route exclusivity check must be
+  extended when route-level challenge is implemented.
 - Schema bug: `$defs.tlsProfile.certificates.items` had
   `additionalProperties: false` as a sibling of `oneOf`, rejecting every
   certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch
@@ -346,6 +346,12 @@ references are
   processes in `tests/fixtures/` only.
 
 ## 6. v1 acceptance and ownership transfer
+
+- WAF limit action is executable through named token buckets. The WAF section
+  root word is now loaded from `assets/contracts/config-fields.yaml`; unknown
+  WAF/rate-limit references fail config validation instead of failing open at
+  request time. The TS integration case covers first-request pass, exhaustion,
+  `Retry-After`, and confirms that the denied request never reaches upstream.
 
 - [ ] Execute all 50 current documentation golden vectors semantically against
   runtime on macOS/Linux.

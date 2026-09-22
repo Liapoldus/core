@@ -54,6 +54,25 @@ func validateReferences(graph models.CompiledGraph) error {
 					return ErrUndefinedAuthPolicy
 				}
 			}
+			if route.WAF != "" {
+				if _, exists := graph.WAFPolicies[route.WAF]; !exists {
+					return ErrUndefinedWAFPolicy
+				}
+			}
+			if route.RateLimit != "" {
+				if _, exists := graph.RateLimits[route.RateLimit]; !exists {
+					return ErrUndefinedRateLimit
+				}
+			}
+		}
+	}
+	for _, policy := range graph.WAFPolicies {
+		for _, rule := range policy.Rules {
+			if rule.Action.Limit != "" {
+				if _, exists := graph.RateLimits[rule.Action.Limit]; !exists {
+					return ErrUndefinedRateLimit
+				}
+			}
 		}
 	}
 	catalog, err := errorCatalog()
@@ -238,46 +257,48 @@ func collectAuthPolicies(node *yaml.Node, policies map[string]models.AuthPolicy)
 	}
 }
 
-func collectWAFPolicies(node *yaml.Node, _ runtimeWords, policies map[string]models.WAFPolicy) error {
+func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string]models.WAFPolicy) error {
 	if node == nil || node.Kind != yaml.MappingNode {
 		return nil
 	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		name, body := node.Content[i].Value, node.Content[i+1]
 		policy := models.WAFPolicy{}
-		rules := mappingNode(body, "rules")
+		rules := mappingNode(body, words.WAF.Rules)
 		if rules == nil || rules.Kind != yaml.SequenceNode {
 			continue
 		}
 		for _, rn := range rules.Content {
-			when := mappingNode(rn, "when")
-			then := mappingNode(rn, "then")
+			when := mappingNode(rn, words.WAF.When)
+			then := mappingNode(rn, words.WAF.Then)
 			if when == nil || then == nil {
 				continue
 			}
 			rule := models.WAFRule{When: models.PathMatcher{}}
-			if path := mappingNode(when, "path"); path != nil {
+			if path := mappingNode(when, words.WAF.Path); path != nil {
 				if path.Kind == yaml.ScalarNode {
 					rule.When.Exact = path.Value
-				} else if p := mappingNode(path, "prefix"); p != nil {
+				} else if p := mappingNode(path, words.WAF.Prefix); p != nil {
 					rule.When.Prefixes = []string{p.Value}
-				} else if p := mappingNode(path, "exact"); p != nil {
+				} else if p := mappingNode(path, words.WAF.Exact); p != nil {
 					rule.When.Exact = p.Value
 				}
 			}
-			if mappingNode(then, "allow") != nil {
+			if mappingNode(then, words.WAF.Allow) != nil {
 				rule.Action.Allow = true
-			} else if d := mappingNode(then, "deny"); d != nil {
+			} else if d := mappingNode(then, words.WAF.Deny); d != nil {
 				action := &models.Deny{Status: 403, Code: "forbidden"}
-				if s := mappingNode(d, "status"); s != nil {
+				if s := mappingNode(d, words.WAF.Status); s != nil {
 					if n, e := strconv.Atoi(s.Value); e == nil {
 						action.Status = n
 					}
 				}
-				if c := mappingNode(d, "code"); c != nil {
+				if c := mappingNode(d, words.WAF.Code); c != nil {
 					action.Code = c.Value
 				}
 				rule.Action.Deny = action
+			} else if limit, ok := fieldValue(then, words.WAF.Limit); ok {
+				rule.Action.Limit = limit
 			}
 			policy.Rules = append(policy.Rules, rule)
 		}

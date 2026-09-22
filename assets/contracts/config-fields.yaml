@@ -32,6 +32,7 @@ secrets: secrets
 variables: variables
 upstreams: upstreams
 rateLimits: rateLimits
+wafPolicies: wafPolicies
 secretReference:
   envPrefix: "env:"
   filePrefix: "file:"
@@ -177,6 +178,18 @@ runtime:
     requests: requests
     per: per
     burst: burst
+  waf:
+    rules: rules
+    when: when
+    then: then
+    path: path
+    prefix: prefix
+    exact: exact
+    allow: allow
+    deny: deny
+    status: status
+    code: code
+    limit: limit
   plugin:
     instance: instance
     capability: capability

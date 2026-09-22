@@ -30,6 +30,8 @@ const (
 	ErrUndefinedSite
 	ErrUndefinedUpstream
 	ErrUndefinedAuthPolicy
+	ErrUndefinedWAFPolicy
+	ErrUndefinedRateLimit
 	ErrInvalidTarget
 	ErrMultipleTerminalActions
 )
@@ -187,6 +189,19 @@ type runtimeWords struct {
 		Per      string `yaml:"per"`
 		Burst    string `yaml:"burst"`
 	} `yaml:"rateLimit"`
+	WAF struct {
+		Rules  string `yaml:"rules"`
+		When   string `yaml:"when"`
+		Then   string `yaml:"then"`
+		Path   string `yaml:"path"`
+		Prefix string `yaml:"prefix"`
+		Exact  string `yaml:"exact"`
+		Allow  string `yaml:"allow"`
+		Deny   string `yaml:"deny"`
+		Status string `yaml:"status"`
+		Code   string `yaml:"code"`
+		Limit  string `yaml:"limit"`
+	} `yaml:"waf"`
 	Plugin struct {
 		Instance   string `yaml:"instance"`
 		Capability string `yaml:"capability"`

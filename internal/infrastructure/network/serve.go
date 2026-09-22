@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -259,8 +260,8 @@ type l4RoutePlugin struct {
 }
 
 type rateBucket struct {
-	started time.Time
-	count   int
+	tokens  float64
+	updated time.Time
 }
 
 type rateLimiter struct {
@@ -282,22 +283,38 @@ func (limiter *rateLimiter) Allow(name string, request *http.Request) (int, bool
 	if err != nil || period <= 0 {
 		return 0, false
 	}
-	key := name + "|" + request.RemoteAddr
+	key := name + "|" + hostOf(request.RemoteAddr)
 	now := time.Now()
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
 	bucket := limiter.buckets[key]
-	if bucket.started.IsZero() || now.Sub(bucket.started) >= period {
-		bucket = rateBucket{started: now}
+	capacity := limit.Burst
+	if capacity <= 0 {
+		capacity = limit.Requests
 	}
-	if bucket.count >= limit.Requests {
-		remaining := int((period - now.Sub(bucket.started) + time.Second - 1) / time.Second)
+	if capacity <= 0 {
+		return 0, false
+	}
+	if bucket.updated.IsZero() {
+		bucket = rateBucket{tokens: float64(capacity), updated: now}
+	} else {
+		refillPerSecond := float64(limit.Requests) / period.Seconds()
+		bucket.tokens += now.Sub(bucket.updated).Seconds() * refillPerSecond
+		if bucket.tokens > float64(capacity) {
+			bucket.tokens = float64(capacity)
+		}
+		bucket.updated = now
+	}
+	if bucket.tokens < 1 {
+		refillPerSecond := float64(limit.Requests) / period.Seconds()
+		remaining := int(math.Ceil((1 - bucket.tokens) / refillPerSecond))
 		if remaining < 1 {
 			remaining = 1
 		}
+		limiter.buckets[key] = bucket
 		return remaining, true
 	}
-	bucket.count++
+	bucket.tokens--
 	limiter.buckets[key] = bucket
 	return 0, false
 }
@@ -364,13 +381,6 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.Cache != nil {
 			applyRouteCache(writer.Header(), route.Cache)
-		}
-		if route.RateLimit != "" {
-			if retry, limited := limiter.Allow(route.RateLimit, request); limited {
-				writer.Header().Set("Retry-After", strconv.Itoa(retry))
-				writer.WriteHeader(http.StatusTooManyRequests)
-				return
-			}
 		}
 		if route.CORS != nil {
 			origin := request.Header.Get("Origin")
@@ -447,12 +457,28 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.WAF != "" {
 			if policy, ok := policies[route.WAF]; ok {
-				if deny, blocked := policy.Evaluate(request.URL.Path); blocked {
-					writer.WriteHeader(deny.Status)
-					return
+				if action, matched := policy.Evaluate(request.URL.Path); matched {
+					if action.Deny != nil {
+						writer.WriteHeader(action.Deny.Status)
+						return
+					}
+					if action.Limit != "" {
+						if retry, limited := limiter.Allow(action.Limit, request); limited {
+							writer.Header().Set("Retry-After", strconv.Itoa(retry))
+							writer.WriteHeader(http.StatusTooManyRequests)
+							return
+						}
+					}
 				}
 			} else {
 				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+		}
+		if route.RateLimit != "" {
+			if retry, limited := limiter.Allow(route.RateLimit, request); limited {
+				writer.Header().Set("Retry-After", strconv.Itoa(retry))
+				writer.WriteHeader(http.StatusTooManyRequests)
 				return
 			}
 		}

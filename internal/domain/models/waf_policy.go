@@ -4,17 +4,12 @@ type WAFPolicy struct {
 	Rules []WAFRule
 }
 
-func (policy WAFPolicy) Evaluate(path string) (Deny, bool) {
+func (policy WAFPolicy) Evaluate(path string) (WAFAction, bool) {
 	for _, rule := range policy.Rules {
 		if !rule.When.Matches(path) {
 			continue
 		}
-		if rule.Action.Allow {
-			return Deny{}, false
-		}
-		if rule.Action.Deny != nil {
-			return *rule.Action.Deny, true
-		}
+		return rule.Action, true
 	}
-	return Deny{}, false
+	return WAFAction{}, false
 }
