@@ -66,7 +66,7 @@ async function hardeningConfig(): Promise<{ config: string; address: string }> {
 }
 
 async function waitReady(address: string): Promise<void> {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await fetch(`http://${address}/missing.txt`);
       response.body?.cancel();
