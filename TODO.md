@@ -320,7 +320,7 @@ references are
 
 ## 5. Plugin integration
 
-- [ ] Publish and pin `github.com/Liapoldus/pluginprotocol` v1.0.0 from the
+- [X] Publish and pin `github.com/Liapoldus/pluginprotocol` v1.0.0 from the
   sibling `pluginprotocol` repository.
 - [X] Gateway plugin supervisor: loopback launch, manifest/health/config.apply
   handshake, restart/backoff, logs, RSS/call limits and scoped grants.
