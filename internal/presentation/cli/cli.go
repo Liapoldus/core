@@ -289,7 +289,7 @@ func serve(options options) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	metrics := observability.NewRegistry()
-	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics}
+	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, ValidateConfig: config.ValidateYAML}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
 		if !ok {

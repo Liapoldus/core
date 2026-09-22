@@ -274,6 +274,25 @@ func Validate(path string) error {
 	return err
 }
 
+// ValidateYAML validates an in-memory management update through the same
+// schema and semantic compiler as a file-backed configuration.
+func ValidateYAML(document string) error {
+	temporary, err := os.CreateTemp("", "liapoldus-gateway-validate-*.yaml")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	defer os.Remove(name)
+	if _, err := temporary.WriteString(document); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return Validate(name)
+}
+
 func loadContractFile() (contractFile, error) {
 	var loaded contractFile
 	contents, err := assets.Contract(assets.ConfigFields)
