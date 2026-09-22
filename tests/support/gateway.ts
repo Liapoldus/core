@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { env } from "node:process";
 
 export interface GatewayResult {
   readonly exitCode: number;
@@ -53,9 +54,10 @@ export function jsonOutput(result: GatewayResult): Record<string, unknown> {
 
 export async function startGateway(
   args: readonly string[],
+  environment: NodeJS.ProcessEnv = {},
 ): Promise<{ process: ChildProcess; stop(): Promise<void> }> {
   const executable = await gatewayBinary();
-  const process = spawn(executable, args, { cwd: coreRoot, stdio: "ignore" });
+  const process = spawn(executable, args, { cwd: coreRoot, env: { ...env, ...environment }, stdio: "ignore" });
   return {
     process,
     stop: () => {
