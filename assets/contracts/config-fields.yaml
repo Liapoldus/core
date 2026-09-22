@@ -241,6 +241,8 @@ runtime:
     capabilities: capabilities
     settings: settings
     limits: limits
+    calls: calls
+    defaultCalls: 100
     timeout: timeout
     defaultTimeout: 5s
   proxy:

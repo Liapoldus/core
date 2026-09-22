@@ -24,7 +24,7 @@ type runningInstance struct {
 type Runtime struct {
 	supervisor *Supervisor
 	instances  map[string]runningInstance
-	cancel      context.CancelFunc
+	cancel     context.CancelFunc
 }
 
 func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance) (*Runtime, error) {
@@ -64,14 +64,14 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		capability, err := NewCapabilityClient(client, instance.Capabilities...)
+		capability, err := NewCapabilityClient(client, instance.MaxConcurrentCalls, instance.Capabilities...)
 		if err != nil {
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		 runtime.instances[name] = runningInstance{client: client, capability: capability, model: instance}
+		runtime.instances[name] = runningInstance{client: client, capability: capability, model: instance}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())

@@ -439,12 +439,15 @@ TCP-loopback. Целевой контракт описан в
 - [X] Подключить process supervisor, startup handshake, loopback endpoint
   handoff по pluginprotocol launch contract, settings/config apply и HTTP/L4/
   identity dispatch к compiled plugin instances в `core`.
-- [ ] Связать настроенные grants, RSS/call quotas и automatic restart/backoff
-  с процессами plugin runtime.
+- [X] Применять `limits.calls` как максимум одновременных plugin RPC на instance;
+  timeout включает ожидание свободного слота и RPC.
+- [ ] Применить `limits.memory` как RSS limit процесса на macOS и Linux.
+- [ ] Связать scoped storage/secret grants и automatic restart/backoff с
+  process runtime.
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 135 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 136 TS-тестов,
   protocol: 9 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   bidi Stream проверен protocol suite, но не через Gateway fixture. Отдельно

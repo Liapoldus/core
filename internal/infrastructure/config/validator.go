@@ -253,6 +253,8 @@ type runtimeWords struct {
 		Capabilities   string `yaml:"capabilities"`
 		Settings       string `yaml:"settings"`
 		Limits         string `yaml:"limits"`
+		Calls          string `yaml:"calls"`
+		DefaultCalls   int    `yaml:"defaultCalls"`
 		Timeout        string `yaml:"timeout"`
 		DefaultTimeout string `yaml:"defaultTimeout"`
 	} `yaml:"plugin"`

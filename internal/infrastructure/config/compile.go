@@ -322,13 +322,27 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 		if err != nil || timeout <= 0 {
 			return nil, ErrInvalidDocument
 		}
+		maxConcurrentCalls := words.Plugin.DefaultCalls
+		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
+			if configured, ok := fieldValue(limits, words.Plugin.Calls); ok {
+				parsed, parseErr := strconv.Atoi(configured)
+				if parseErr != nil || parsed < 1 {
+					return nil, ErrInvalidDocument
+				}
+				maxConcurrentCalls = parsed
+			}
+		}
+		if maxConcurrentCalls < 1 {
+			return nil, ErrInvalidDocument
+		}
 		instance := models.PluginInstance{
-			Binary:       binary,
-			Args:         sequenceValues(mappingNode(body, words.Plugin.Args)),
-			Env:          sequenceValues(mappingNode(body, words.Plugin.Env)),
-			Capabilities: sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
-			Settings:     settings,
-			Timeout:      timeout,
+			Binary:             binary,
+			Args:               sequenceValues(mappingNode(body, words.Plugin.Args)),
+			Env:                sequenceValues(mappingNode(body, words.Plugin.Env)),
+			Capabilities:       sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
+			Settings:           settings,
+			Timeout:            timeout,
+			MaxConcurrentCalls: maxConcurrentCalls,
 		}
 		instances[name] = instance
 	}

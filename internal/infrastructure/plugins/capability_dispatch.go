@@ -44,17 +44,21 @@ type L4Response struct {
 type CapabilityClient struct {
 	client  *Client
 	allowed map[string]struct{}
+	active  chan struct{}
 }
 
-func NewCapabilityClient(client *Client, capabilities ...string) (*CapabilityClient, error) {
+func NewCapabilityClient(client *Client, maxConcurrentCalls int, capabilities ...string) (*CapabilityClient, error) {
 	if client == nil {
 		return nil, errors.New("plugin capability client is nil")
+	}
+	if maxConcurrentCalls < 1 {
+		return nil, errors.New("plugin call limit is invalid")
 	}
 	allowed := make(map[string]struct{}, len(capabilities))
 	for _, capability := range capabilities {
 		allowed[capability] = struct{}{}
 	}
-	return &CapabilityClient{client: client, allowed: allowed}, nil
+	return &CapabilityClient{client: client, allowed: allowed, active: make(chan struct{}, maxConcurrentCalls)}, nil
 }
 
 func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request HTTPRequest) (HTTPResponse, error) {
@@ -116,7 +120,15 @@ func (c *CapabilityClient) callJSON(ctx context.Context, capability string, requ
 	if err != nil {
 		return fmt.Errorf("marshal plugin request: %w", err)
 	}
-	result, err := c.client.CallJSON(ctx, capability, payload)
+	callContext, cancel := c.client.withDeadline(ctx)
+	defer cancel()
+	select {
+	case c.active <- struct{}{}:
+		defer func() { <-c.active }()
+	case <-callContext.Done():
+		return callContext.Err()
+	}
+	result, err := c.client.CallJSON(callContext, capability, payload)
 	if err != nil {
 		return err
 	}

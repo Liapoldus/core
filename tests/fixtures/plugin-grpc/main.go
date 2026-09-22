@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
-	"time"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	"github.com/Liapoldus/pluginprotocol/transport"
 	"google.golang.org/grpc"
 	"os"
+	"sync/atomic"
+	"time"
 )
 
 type plugin struct {
