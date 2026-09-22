@@ -115,7 +115,9 @@ func TestManagementPluginRestartOperation(t *testing.T) {
 }
 
 func TestSitePublishUsesTypedRegistryBoundary(t *testing.T) {
+	calls := 0
 	server := &Server{PublishSite: func(_ context.Context, site, source, key string) (Operation, error) {
+		calls++
 		if site != "blog" || source != "/incoming/blog" || key != "1234567890abcdef" {
 			t.Fatalf("site=%q source=%q key=%q", site, source, key)
 		}
@@ -127,6 +129,11 @@ func TestSitePublishUsesTypedRegistryBoundary(t *testing.T) {
 	server.Handler().ServeHTTP(recording, request)
 	if recording.Code != http.StatusCreated || !strings.Contains(recording.Body.String(), "op-publish") {
 		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
+	}
+	recording = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodPost, "/api/sites/blog/publish", strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}`)))
+	if calls != 1 || !strings.Contains(recording.Body.String(), "op-publish") {
+		t.Fatalf("idempotency calls=%d body=%s", calls, recording.Body.String())
 	}
 }
 

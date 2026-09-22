@@ -27,6 +27,7 @@ type Server struct {
 	Revision        string
 	Digest          string
 	mu              sync.RWMutex
+	idempotency     map[string]Operation
 	operations      map[string]Operation
 	audit           []Audit
 	AdminSurfaces   []AdminSurface
@@ -395,11 +396,29 @@ func (server *Server) handleSitePublish(response http.ResponseWriter, request *h
 		writeProblem(response, http.StatusBadRequest, "invalid_input", "source and idempotencyKey are required", requestID)
 		return
 	}
+	cacheKey := parts[2] + "|" + input.IdempotencyKey
+	server.mu.RLock()
+	previous, cached := server.idempotency[cacheKey]
+	server.mu.RUnlock()
+	if cached {
+		writeJSON(response, http.StatusCreated, map[string]any{"operationId": previous.ID, "state": previous.State, "requestId": requestID})
+		return
+	}
 	operation, err := server.PublishSite(request.Context(), parts[2], input.Source, input.IdempotencyKey)
 	if err != nil {
 		writeProblem(response, http.StatusUnprocessableEntity, "publish_failed", err.Error(), requestID)
 		return
 	}
+	server.mu.Lock()
+	if server.idempotency == nil {
+		server.idempotency = make(map[string]Operation)
+	}
+	if previous, exists := server.idempotency[cacheKey]; exists {
+		operation = previous
+	} else {
+		server.idempotency[cacheKey] = operation
+	}
+	server.mu.Unlock()
 	writeJSON(response, http.StatusCreated, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
 }
 
