@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	accountstore "github.com/Liapoldus/core/internal/infrastructure/accounts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -83,6 +84,9 @@ func run(options options) int {
 	}
 	if options.command[0] == words.Commands.Serve {
 		return serve(options)
+	}
+	if options.command[0] == words.Commands.Accounts {
+		return accounts(options)
 	}
 	if len(options.command) < 2 || options.command[0] != words.Commands.Config {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
@@ -214,6 +218,51 @@ func run(options options) int {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments
 	}
+}
+
+func accounts(options options) int {
+	if len(options.command) < 3 {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.AccountIDRequired)
+		return words.Exits.Arguments
+	}
+	id, action := options.command[2], options.command[1]
+	root := options.configDir
+	if root == "" {
+		root = filepath.Dir(options.config)
+		if root == "." || root == "" {
+			root = filepath.Dir(words.Paths.DefaultConfig)
+		}
+	}
+	store := accountstore.Store{Root: root, Prefix: words.Accounts.KeyPrefix, Bytes: words.Accounts.KeyBytes, Cost: words.Accounts.HashCost, Extension: words.Accounts.HashExtension}
+	var key string
+	var err error
+	switch action {
+	case words.Accounts.Create:
+		key, err = store.Create(id)
+	case words.Accounts.Rotate:
+		key, err = store.Rotate(id)
+	case words.Accounts.Revoke:
+		err = store.Revoke(id)
+	default:
+		err = errors.New(words.Diagnostics.CommandExpected)
+	}
+	if err != nil {
+		exit := words.Exits.Internal
+		if errors.Is(err, accountstore.ErrConflict) {
+			exit = words.Exits.Conflict
+		}
+		if errors.Is(err, accountstore.ErrNotFound) {
+			exit = words.Exits.NotFound
+		}
+		writeFailure(options.output, exit, words.Codes.ConfigNotFound, err.Error())
+		return exit
+	}
+	if key != "" {
+		fmt.Println(key)
+	} else {
+		fmt.Println(words.Accounts.RevokedMessage)
+	}
+	return words.Exits.OK
 }
 
 func serve(options options) int {
