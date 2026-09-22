@@ -143,6 +143,30 @@ describe("WAF method matcher", () => {
   });
 });
 
+describe("WAF source IP matcher", () => {
+  it("does not apply an in-rule when the direct peer address is outside its CIDR", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  public:`, `    rules:`,
+      `      - when: { sourceIp: { in: [192.0.2.0/24] }, path: { prefix: /api } }`,
+      `        then: { deny: { status: 403 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: public }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/api/read");
+    expect(response.status).toBe(200);
+    expect(upstream.hits().paths).toEqual(["/api/read"]);
+  });
+});
+
 describe("plugin route actions", () => {
   it("does not silently turn a declared plugin action into a 404", async () => {
     const address = await startActionsGateway([
