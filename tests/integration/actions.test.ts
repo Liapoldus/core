@@ -167,6 +167,34 @@ describe("WAF source IP matcher", () => {
   });
 });
 
+describe("WAF header and query matchers", () => {
+  it("combines sibling conditions with AND and only denies matching requests", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  public:`, `    rules:`,
+      `      - when: { method: GET, path: { prefix: /api }, headers: { x-client: { exists: true } }, query: { role: { exact: admin } } }`,
+      `        then: { deny: { status: 403 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: public }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const missing = await request(address, "/api/read?role=admin");
+    const partial = await request(address, "/api/read", { headers: { "x-client": "web" } });
+    const matching = await request(address, "/api/read?role=admin", { headers: { "x-client": "web" } });
+    expect(missing.status).toBe(200);
+    expect(partial.status).toBe(200);
+    expect(matching.status).toBe(403);
+    expect(upstream.hits().paths).toEqual(["/api/read?role=admin", "/api/read"]);
+  });
+});
+
 describe("plugin route actions", () => {
   it("does not silently turn a declared plugin action into a 404", async () => {
     const address = await startActionsGateway([
