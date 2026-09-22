@@ -16,4 +16,11 @@ describe("Management API v1", () => {
     expect(source).toContain("application/problem+json");
     expect(source).toContain("***");
   });
+
+  it("exposes guarded configuration lifecycle endpoints", () => {
+    const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
+    expect(source).toContain("/api/config/reload");
+    expect(source).toContain("If-Match");
+    expect(source).toContain("conflict");
+  });
 });

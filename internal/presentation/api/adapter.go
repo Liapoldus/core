@@ -13,14 +13,16 @@ import (
 )
 
 type Server struct {
-	Token         string
-	Config        string
-	Revision      string
-	Digest        string
-	mu            sync.RWMutex
-	operations    map[string]Operation
-	audit         []Audit
-	AdminSurfaces []AdminSurface
+	Token          string
+	Config         string
+	Revision       string
+	Digest         string
+	mu             sync.RWMutex
+	operations     map[string]Operation
+	audit          []Audit
+	AdminSurfaces  []AdminSurface
+	ValidateConfig func(string) error
+	ReloadConfig   func(context.Context, string) (Operation, error)
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -81,7 +83,38 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "yaml": redact(server.Config), "requestId": requestID})
 	case path == "/api/config/validate" && request.Method == http.MethodPost:
+		var input struct {
+			YAML string `json:"yaml"`
+		}
+		_ = json.NewDecoder(request.Body).Decode(&input)
+		if server.ValidateConfig != nil {
+			if err := server.ValidateConfig(input.YAML); err != nil {
+				writeProblem(response, 422, "config_invalid", err.Error(), requestID)
+				return
+			}
+		}
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "valid": true, "requestId": requestID})
+	case path == "/api/config/reload" && request.Method == http.MethodPost:
+		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
+			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
+			return
+		}
+		if server.ReloadConfig == nil {
+			writeProblem(response, 501, "not_implemented", "configuration reload is unavailable", requestID)
+			return
+		}
+		op, err := server.ReloadConfig(request.Context(), server.Revision)
+		if err != nil {
+			writeProblem(response, 422, "config_invalid", err.Error(), requestID)
+			return
+		}
+		server.mu.Lock()
+		if server.operations == nil {
+			server.operations = make(map[string]Operation)
+		}
+		server.operations[op.ID] = op
+		server.mu.Unlock()
+		writeJSON(response, 202, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
 	case path == "/api/audit" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
