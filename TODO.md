@@ -221,10 +221,14 @@ references are
   source-IP/CIDR, header, query и Geo/ASN country/city/ASN matcher-ы с действиями
   allow/deny/limit. MMDB-reader проверяется перед reload; новая конфигурация и
   WAF/MMDB-поколение меняются только после успешной подготовки, при ошибке
-  остаются прежние digest и трафик. При reload применяются изменения WAF policy,
-  а остальные runtime-компоненты (listeners, routes, upstreams, TLS и plugin
-  generation) пока остаются стартовыми — нужен единый snapshot и drain старого
-  поколения. Ошибка provider теперь возвращается как RFC Problem с кодом
+  остаются прежние digest и трафик. HTTP requests теперь читают один
+  подготовленный generation: при reload уже привязанный listener атомарно
+  начинает использовать новые routes, sites, upstreams, rate limits,
+  auth/WAF policies и MMDB. Смена/добавление/удаление listeners и их адресов,
+  TLS-профилей, L4 rules и plugin processes пока не входит в generation swap;
+  нужны Listener Manager, подготовка этих ресурсов и bounded drain старого
+  поколения, включая согласование data-plane и Management API revision.
+  Ошибка provider теперь возвращается как RFC Problem с кодом
   `waf_provider_unavailable` и покрыта integration-тестом. Geo/ASN положительное
   совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
   успешный MMDB replacement integration-тест и реализовать recursive all/any/not,

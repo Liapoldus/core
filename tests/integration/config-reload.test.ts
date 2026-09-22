@@ -59,7 +59,10 @@ describe("atomic configuration and MMDB reload", () => {
     expect(after.status).toBe(200);
     expect(firstUpstream.hits().requests).toBe(1);
     expect(secondUpstream.hits().requests).toBe(1);
-    expect(JSON.parse(activeConfig.text)).toMatchObject({ yaml: updatedConfig });
+    const active = JSON.parse(activeConfig.text) as { yaml: string };
+    expect(active.yaml).toContain(secondUpstream.address);
+    expect(active.yaml).not.toContain(firstUpstream.address);
+    expect(active.yaml).not.toContain(token);
   });
 
   it("keeps the active revision and traffic when a replacement MMDB cannot be verified", async () => {

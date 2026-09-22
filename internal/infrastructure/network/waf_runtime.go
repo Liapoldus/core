@@ -8,38 +8,62 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 )
 
+type runtimeGeneration struct {
+	graph    models.CompiledGraph
+	geo      interfaces.GeoLookup
+	proxies  map[string][]http.Handler
+	limiters map[string]*rateLimiter
+}
+
 type WAFRuntime struct {
 	mu                 sync.RWMutex
-	policies           map[string]models.WAFPolicy
-	lookup             interfaces.GeoLookup
+	generation         *runtimeGeneration
 	providerProblem    models.Problem
 	problemContentType string
 }
 
-func NewWAFRuntime(policies map[string]models.WAFPolicy, lookup interfaces.GeoLookup, providerProblem models.Problem, problemContentType string) *WAFRuntime {
-	runtime := &WAFRuntime{policies: policies, lookup: lookup}
-	runtime.providerProblem = providerProblem
-	runtime.problemContentType = problemContentType
-	return runtime
+func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, providerProblem models.Problem, problemContentType string) *WAFRuntime {
+	return &WAFRuntime{
+		generation:         prepareRuntimeGeneration(graph, lookup),
+		providerProblem:    providerProblem,
+		problemContentType: problemContentType,
+	}
+}
+
+func (runtime *WAFRuntime) Replace(graph models.CompiledGraph, lookup interfaces.GeoLookup) {
+	next := prepareRuntimeGeneration(graph, lookup)
+	runtime.mu.Lock()
+	runtime.generation = next
+	runtime.mu.Unlock()
+}
+
+func (runtime *WAFRuntime) Acquire() (*runtimeGeneration, func()) {
+	runtime.mu.RLock()
+	return runtime.generation, runtime.mu.RUnlock
+}
+
+func (runtime *WAFRuntime) Evaluate(generation *runtimeGeneration, name string, request models.WAFRequest) (models.WAFAction, bool) {
+	policy, exists := generation.graph.WAFPolicies[name]
+	if !exists {
+		return models.WAFAction{Deny: &models.Deny{Status: http.StatusServiceUnavailable}}, true
+	}
+	return evaluateWAF(policy, request, generation.geo, runtime.providerProblem)
 }
 
 func (runtime *WAFRuntime) ProblemContentType() string {
 	return runtime.problemContentType
 }
 
-func (runtime *WAFRuntime) Replace(policies map[string]models.WAFPolicy, lookup interfaces.GeoLookup) {
-	runtime.mu.Lock()
-	runtime.policies = policies
-	runtime.lookup = lookup
-	runtime.mu.Unlock()
-}
-
-func (runtime *WAFRuntime) Evaluate(name string, request models.WAFRequest) (models.WAFAction, bool) {
-	runtime.mu.RLock()
-	defer runtime.mu.RUnlock()
-	policy, exists := runtime.policies[name]
-	if !exists {
-		return models.WAFAction{Deny: &models.Deny{Status: http.StatusServiceUnavailable}}, true
+func prepareRuntimeGeneration(graph models.CompiledGraph, lookup interfaces.GeoLookup) *runtimeGeneration {
+	generation := &runtimeGeneration{
+		graph:    graph,
+		geo:      lookup,
+		proxies:  make(map[string][]http.Handler, len(graph.Listeners)),
+		limiters: make(map[string]*rateLimiter, len(graph.Listeners)),
 	}
-	return evaluateWAF(policy, request, runtime.lookup, runtime.providerProblem)
+	for _, listener := range graph.Listeners {
+		generation.proxies[listener.Address] = buildProxies(listener.Routes, graph.Upstreams)
+		generation.limiters[listener.Address] = newRateLimiter(graph.RateLimits)
+	}
+	return generation
 }

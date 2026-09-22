@@ -85,7 +85,7 @@ func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listen
 
 func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
 	if wafRuntime == nil {
-		wafRuntime = NewWAFRuntime(policies, geo, models.Problem{}, "")
+		wafRuntime = NewWAFRuntime(models.CompiledGraph{Listeners: listeners, Sites: sites, Upstreams: upstreams, TLSProfiles: profiles, RateLimits: limits, WAFPolicies: policies, AuthPolicies: authPolicies}, geo, models.Problem{}, "")
 	}
 	var started int
 	errs := make(chan error, len(listeners))
@@ -118,6 +118,15 @@ func firstRegistry(registries []*observability.Registry) *observability.Registry
 		return nil
 	}
 	return registries[0]
+}
+
+func runtimeListener(listeners []models.Listener, address string) (models.Listener, bool) {
+	for _, listener := range listeners {
+		if listener.Address == address {
+			return listener, true
+		}
+	}
+	return models.Listener{}, false
 }
 
 // serveTCP owns the public socket and relays each accepted stream to the first
@@ -382,10 +391,15 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 }
 
 func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, wafRuntime *WAFRuntime, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher) error {
-	limiter := newRateLimiter(limits)
-	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
+		generation, release := wafRuntime.Acquire()
+		defer release()
+		activeListener, active := runtimeListener(generation.graph.Listeners, listener.Address)
+		if !active {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		index, route, found := matchedRoute(request.URL.Path, activeListener.Routes)
 		if !found {
 			http.NotFound(writer, request)
 			return
@@ -446,7 +460,10 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 		}
 		if route.Auth != "" {
-			policy, configured := authPolicies[route.Auth]
+			policy, configured := generation.graph.AuthPolicies[route.Auth]
+			if len(generation.graph.AuthPolicies) == 0 {
+				policy, configured = authPolicies[route.Auth]
+			}
 			dispatcher := identity[policy.Instance]
 			if !configured || dispatcher == nil {
 				writer.Header().Set("Content-Type", "application/problem+json")
@@ -491,7 +508,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				query[name] = values
 			}
 			input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
-			if action, matched := wafRuntime.Evaluate(route.WAF, input); matched {
+			if action, matched := wafRuntime.Evaluate(generation, route.WAF, input); matched {
 				if action.Deny != nil {
 					if action.Problem != nil {
 						problem := *action.Problem
@@ -506,7 +523,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 					return
 				}
 				if action.Limit != "" {
-					if retry, limited := limiter.Allow(action.Limit, request); limited {
+					if retry, limited := generation.limiters[listener.Address].Allow(action.Limit, request); limited {
 						writer.Header().Set("Retry-After", strconv.Itoa(retry))
 						writer.WriteHeader(http.StatusTooManyRequests)
 						return
@@ -515,7 +532,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 		}
 		if route.RateLimit != "" {
-			if retry, limited := limiter.Allow(route.RateLimit, request); limited {
+			if retry, limited := generation.limiters[listener.Address].Allow(route.RateLimit, request); limited {
 				writer.Header().Set("Retry-After", strconv.Itoa(retry))
 				writer.WriteHeader(http.StatusTooManyRequests)
 				return
@@ -574,14 +591,14 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.Proxy != nil {
 			responseWriter := responseWriterWithActions(writer, route.Headers)
-			if proxied := proxies[index]; proxied != nil {
+			if proxied := generation.proxies[listener.Address][index]; proxied != nil {
 				proxied.ServeHTTP(responseWriter, request)
 				return
 			}
 			http.NotFound(writer, request)
 			return
 		}
-		site, exists := sites[route.Site]
+		site, exists := generation.graph.Sites[route.Site]
 		if !exists || site.Source != models.SourceDirectory && site.Source != models.SourceRelease {
 			http.NotFound(writer, request)
 			return

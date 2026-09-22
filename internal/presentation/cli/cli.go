@@ -308,7 +308,7 @@ func serve(options options) int {
 	}
 	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
 	defer func() { dataProviders.Close() }()
-	wafRuntime := network.NewWAFRuntime(graph.WAFPolicies, dataProviders.Lookup, providerProblem, managementWords.ContentTypes.Problem)
+	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, managementWords.ContentTypes.Problem)
 	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, ValidateConfig: config.ValidateYAML}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
@@ -351,7 +351,7 @@ func serve(options options) int {
 			return api.Operation{}, providerErr
 		}
 		previousDataProviders := dataProviders
-		wafRuntime.Replace(reloaded.WAFPolicies, nextDataProviders.Lookup)
+		wafRuntime.Replace(reloaded, nextDataProviders.Lookup)
 		dataProviders = nextDataProviders
 		previousDataProviders.Close()
 		management.UpdateRuntimeConfig(reloaded.Revision.Value, reloaded.Revision.Digest, string(contents))
