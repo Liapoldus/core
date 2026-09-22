@@ -84,6 +84,27 @@ func TestConfigPutUpdatesDigestAtomically(t *testing.T) {
 	}
 }
 
+func TestConfigReloadStoresOperation(t *testing.T) {
+	server := &Server{Revision: "rev-1", ReloadConfig: func(_ context.Context, revision string) (Operation, error) {
+		if revision != "rev-1" {
+			t.Fatalf("revision=%q", revision)
+		}
+		return Operation{ID: "op-reload", State: "accepted"}, nil
+	}}
+	recording := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/config/reload", nil)
+	request.Header.Set("If-Match", "rev-1")
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
+	}
+	recording = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodGet, "/api/operations/op-reload", nil))
+	if recording.Code != http.StatusOK || !strings.Contains(recording.Body.String(), "op-reload") {
+		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
+	}
+}
+
 func TestHealthMethodGate(t *testing.T) {
 	server := &Server{}
 	request := httptest.NewRequest(http.MethodPost, "/healthz", nil)
