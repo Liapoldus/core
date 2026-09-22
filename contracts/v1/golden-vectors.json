@@ -48,6 +48,8 @@
     {"id":"cli-config-discovery","input":{"env":{"LIAPOLDUS_CONFIG_DIR":"/etc/lpgw"},"files":["/etc/lpgw/gateway.yaml"]},"expected":{"configPath":"/etc/lpgw/gateway.yaml","source":"LIAPOLDUS_CONFIG_DIR"}},
     {"id":"cli-config-missing","input":{"files":[]},"expected":{"exit":2,"code":"config_not_found"}},
     {"id":"tcp-plugin-protocol","input":{"listener":"tcp","plugin":"peer.session","payloadHex":"0102"},"expected":{"transport":"tcp","payloadEncoding":"raw-bytes"}},
-    {"id":"udp-upstream-protocol","input":{"listener":"udp","upstream":"dns-relay","datagramHex":"ab"},"expected":{"transport":"udp","datagramPreserved":true}}
+    {"id":"udp-upstream-protocol","input":{"listener":"udp","upstream":"dns-relay","datagramHex":"ab"},"expected":{"transport":"udp","datagramPreserved":true}},
+    {"id":"plugin-http-capability","input":{"method":"GET","path":"/admin","capability":"http.forms"},"expected":{"status":200,"contextLimited":true,"socketExposed":false}},
+    {"id":"metrics-exporter-isolation","input":{"trafficStatus":200,"otlp":"unavailable"},"expected":{"trafficStatus":200,"exporterFailureLogged":true}}
   ]
 }
