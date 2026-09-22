@@ -521,6 +521,9 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 			action, err := dispatcher.DispatchIdentity(request.Context(), plugins.IdentityRequest{Instance: policy.Instance, Capability: policy.Capability, Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID")})
 			if err != nil {
+				if writePluginResourceProblem(writer, request, wafRuntime, err) {
+					return
+				}
 				writer.WriteHeader(http.StatusBadGateway)
 				return
 			}
@@ -610,6 +613,9 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 			pluginResponse, err := dispatcher.HTTP(request.Context(), route.Plugin.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr})
 			if err != nil {
+				if writePluginResourceProblem(writer, request, wafRuntime, err) {
+					return
+				}
 				writer.Header().Set("Content-Type", "application/problem+json")
 				writer.WriteHeader(http.StatusBadGateway)
 				return
@@ -727,6 +733,22 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func writePluginResourceProblem(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime, err error) bool {
+	if runtime == nil || !errors.Is(err, plugins.ErrPluginResourceExhausted) {
+		return false
+	}
+	problem := runtime.PluginResourceProblem()
+	if problem.Status == 0 {
+		return false
+	}
+	problem.Instance = request.URL.Path
+	problem.RequestID = request.Header.Get("X-Request-ID")
+	writer.Header().Set("Content-Type", runtime.ProblemContentType())
+	writer.WriteHeader(problem.Status)
+	_ = json.NewEncoder(writer).Encode(problem)
+	return true
 }
 
 func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup, providerProblem models.Problem) (models.WAFAction, bool) {

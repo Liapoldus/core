@@ -71,6 +71,7 @@ type CLIWords struct {
 		NoPreviousRelease      string `yaml:"noPreviousRelease"`
 		WAFProviderUnavailable string `yaml:"wafProviderUnavailable"`
 		BodyTooLarge           string `yaml:"bodyTooLarge"`
+		ResourceExhausted      string `yaml:"resourceExhausted"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`

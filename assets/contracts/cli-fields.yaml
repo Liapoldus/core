@@ -48,6 +48,7 @@ codes:
   noPreviousRelease: no_previous_release
   wafProviderUnavailable: waf_provider_unavailable
   bodyTooLarge: body_too_large
+  resourceExhausted: resource_exhausted
 exits:
   ok: 0
   internal: 1

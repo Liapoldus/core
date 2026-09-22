@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
 
 // HTTPRequest is the bounded HTTP context sent to an HTTP capability. The
@@ -42,9 +43,20 @@ type L4Response struct {
 }
 
 type CapabilityClient struct {
-	client  *Client
-	allowed map[string]struct{}
-	active  chan struct{}
+	client      *Client
+	allowed     map[string]struct{}
+	active      chan struct{}
+	rssLimit    uint64
+	measureRSS  func() (uint64, error)
+	stopProcess func()
+	rssExceeded *atomic.Bool
+}
+
+func (c *CapabilityClient) setRSSLimit(limit uint64, measure func() (uint64, error), stop func(), exceeded *atomic.Bool) {
+	c.rssLimit = limit
+	c.measureRSS = measure
+	c.stopProcess = stop
+	c.rssExceeded = exceeded
 }
 
 func NewCapabilityClient(client *Client, maxConcurrentCalls int, capabilities ...string) (*CapabilityClient, error) {
@@ -130,9 +142,35 @@ func (c *CapabilityClient) callJSON(ctx context.Context, capability string, requ
 	}
 	result, err := c.client.CallJSON(callContext, capability, payload)
 	if err != nil {
+		if c.enforceRSSLimit() {
+			return ErrPluginResourceExhausted
+		}
 		return err
 	}
+	if c.enforceRSSLimit() {
+		return ErrPluginResourceExhausted
+	}
 	return json.Unmarshal(result, response)
+}
+
+func (c *CapabilityClient) enforceRSSLimit() bool {
+	if c.rssExceeded != nil && c.rssExceeded.Load() {
+		return true
+	}
+	if c.measureRSS == nil || c.rssLimit == 0 {
+		return false
+	}
+	resident, err := c.measureRSS()
+	if err != nil || resident <= c.rssLimit {
+		return false
+	}
+	if c.stopProcess != nil {
+		if c.rssExceeded != nil {
+			c.rssExceeded.Store(true)
+		}
+		c.stopProcess()
+	}
+	return true
 }
 
 func (c *CapabilityClient) validateCapability(capability string) error {

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -17,13 +18,14 @@ import (
 var ErrPluginStartup = errors.New("plugin startup failed")
 
 type runningInstance struct {
-	name       string
-	endpoint   string
-	client     *Client
-	capability *CapabilityClient
-	model      models.PluginInstance
-	spec       Spec
-	done       <-chan error
+	name             string
+	endpoint         string
+	client           *Client
+	capability       *CapabilityClient
+	model            models.PluginInstance
+	spec             Spec
+	done             <-chan error
+	resourceExceeded *atomic.Bool
 }
 
 type Runtime struct {
@@ -90,7 +92,13 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, client: client, capability: capability, model: instance, spec: spec, done: done}
+		resourceExceeded := &atomic.Bool{}
+		capability.setRSSLimit(instance.MemoryLimitBytes, func() (uint64, error) {
+			return runtime.supervisor.ResidentMemory(name)
+		}, func() {
+			_ = runtime.supervisor.Stop(name)
+		}, resourceExceeded)
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
@@ -153,6 +161,7 @@ func (r *Runtime) supervise(ctx, processContext context.Context, instance runnin
 			if err != nil || resident <= instance.model.MemoryLimitBytes {
 				continue
 			}
+			instance.resourceExceeded.Store(true)
 			_ = r.supervisor.Stop(instance.name)
 			select {
 			case <-ctx.Done():
@@ -182,6 +191,7 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 		}
 		done, err := r.supervisor.StartWithExit(processContext, instance.spec)
 		if err == nil {
+			instance.resourceExceeded.Store(false)
 			reconnectErr := instance.client.Reconnect(ctx, instance.endpoint, instance.model.Settings, instance.name, instance.model.Capabilities)
 			if reconnectErr == nil {
 				return done

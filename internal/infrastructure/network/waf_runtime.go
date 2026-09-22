@@ -16,11 +16,12 @@ type runtimeGeneration struct {
 }
 
 type WAFRuntime struct {
-	mu                 sync.RWMutex
-	generation         *runtimeGeneration
-	providerProblem    models.Problem
-	bodyTooLarge       models.Problem
-	problemContentType string
+	mu                      sync.RWMutex
+	generation              *runtimeGeneration
+	providerProblem         models.Problem
+	bodyTooLarge            models.Problem
+	pluginResourceExhausted models.Problem
+	problemContentType      string
 }
 
 func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, providerProblem models.Problem, bodyTooLarge models.Problem, problemContentType string) *WAFRuntime {
@@ -34,6 +35,14 @@ func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, prov
 
 func (runtime *WAFRuntime) BodyTooLargeProblem() models.Problem {
 	return runtime.bodyTooLarge
+}
+
+func (runtime *WAFRuntime) SetPluginResourceProblem(problem models.Problem) {
+	runtime.pluginResourceExhausted = problem
+}
+
+func (runtime *WAFRuntime) PluginResourceProblem() models.Problem {
+	return runtime.pluginResourceExhausted
 }
 
 func (runtime *WAFRuntime) Replace(graph models.CompiledGraph, lookup interfaces.GeoLookup) {

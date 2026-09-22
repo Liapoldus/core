@@ -12,9 +12,14 @@ import (
 )
 
 var (
-	ErrProtocolViolation = errors.New("plugin protocol violation")
-	ErrPluginUnavailable = errors.New("plugin unavailable")
+	ErrProtocolViolation             = errors.New("plugin protocol violation")
+	ErrPluginUnavailable             = errors.New("plugin unavailable")
+	ErrPluginResourceExhausted error = pluginResourceExhausted{}
 )
+
+type pluginResourceExhausted struct{}
+
+func (pluginResourceExhausted) Error() string { return ErrPluginUnavailable.Error() }
 
 type Client struct {
 	mu       sync.RWMutex
