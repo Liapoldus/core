@@ -8,7 +8,7 @@
     "http-runtime.json": "sha256:a2a25068435c0e9d4e0c9310a22539ed3f0a7d4190be7ba43710f212bb3d8d34",
     "management.openapi.yaml": "sha256:cc8e0512eab708f0ba4a79eb6ccb0543877b517cd1451f812d4af126df7759d2",
     "plugin-contracts.json": "sha256:336147c7f95bcb34ba2e069b2ade0148ca76a979c6e28624d64ca50cbac7bd23",
-    "security-runtime.json": "sha256:df51fb502d0d74e3ae0f31bd7bcb9845683ce97a846f251877a7261c3fe9a26b",
+    "security-runtime.json": "sha256:bd0ad85953017653140b255e86a4bd9fd36d9c7b3ff4288f27615316750c726a",
     "site.schema.json": "sha256:feeec28a7ed86bd5d1b86caf7191ff1c6ecaa6ce8e7246f28ff1078becb3d11e"
   }
 }

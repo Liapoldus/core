@@ -5,6 +5,7 @@ type Listener struct {
 	Type       string
 	IsHTTP     bool
 	TLSProfile string
+	Limits     ListenerLimits
 	Routes     []Route
 	Rules      []Route
 }

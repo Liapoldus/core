@@ -70,6 +70,7 @@ type CLIWords struct {
 		UnknownField           string `yaml:"unknownField"`
 		NoPreviousRelease      string `yaml:"noPreviousRelease"`
 		WAFProviderUnavailable string `yaml:"wafProviderUnavailable"`
+		BodyTooLarge           string `yaml:"bodyTooLarge"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`

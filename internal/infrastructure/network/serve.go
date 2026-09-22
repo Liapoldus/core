@@ -85,7 +85,7 @@ func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listen
 
 func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
 	if wafRuntime == nil {
-		wafRuntime = NewWAFRuntime(models.CompiledGraph{Listeners: listeners, Sites: sites, Upstreams: upstreams, TLSProfiles: profiles, RateLimits: limits, WAFPolicies: policies, AuthPolicies: authPolicies}, geo, models.Problem{}, "")
+		wafRuntime = NewWAFRuntime(models.CompiledGraph{Listeners: listeners, Sites: sites, Upstreams: upstreams, TLSProfiles: profiles, RateLimits: limits, WAFPolicies: policies, AuthPolicies: authPolicies}, geo, models.Problem{}, models.Problem{}, "")
 	}
 	var started int
 	errs := make(chan error, len(listeners))
@@ -399,6 +399,36 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			writer.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		var requestSize uint64
+		if activeListener.Limits.Enabled {
+			var tooLarge bool
+			var bodyErr error
+			requestSize, tooLarge, bodyErr = bufferRequestBody(request, activeListener.Limits.BodyBytes)
+			if bodyErr != nil {
+				var storageErr requestBodyStorageError
+				if errors.As(bodyErr, &storageErr) {
+					writer.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if tooLarge {
+				problem := wafRuntime.BodyTooLargeProblem()
+				if problem.Status == 0 {
+					writer.WriteHeader(http.StatusRequestEntityTooLarge)
+					return
+				}
+				problem.Instance = request.URL.Path
+				problem.RequestID = request.Header.Get("X-Request-ID")
+				writer.Header().Set("Content-Type", wafRuntime.ProblemContentType())
+				writer.WriteHeader(problem.Status)
+				_ = json.NewEncoder(writer).Encode(problem)
+				return
+			}
+		} else if request.ContentLength > 0 {
+			requestSize = uint64(request.ContentLength)
+		}
 		index, route, found := matchedRoute(request.URL.Path, activeListener.Routes)
 		if !found {
 			http.NotFound(writer, request)
@@ -470,7 +500,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				writer.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
-			body, err := io.ReadAll(io.LimitReader(request.Body, 1<<20))
+			body, err := io.ReadAll(request.Body)
 			if err != nil {
 				writer.WriteHeader(http.StatusBadRequest)
 				return
@@ -507,7 +537,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			for name, values := range request.URL.Query() {
 				query[name] = values
 			}
-			input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
+			input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, RequestSize: requestSize, Headers: headers, Query: query}
 			if action, matched := wafRuntime.Evaluate(generation, route.WAF, input); matched {
 				if action.Deny != nil {
 					if action.Problem != nil {
@@ -559,7 +589,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				writer.WriteHeader(http.StatusServiceUnavailable)
 				return
 			}
-			body, err := io.ReadAll(io.LimitReader(request.Body, 1<<20))
+			body, err := io.ReadAll(request.Body)
 			if err != nil {
 				writer.WriteHeader(http.StatusBadRequest)
 				return
@@ -704,6 +734,67 @@ func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider in
 		}
 	}
 	return models.WAFAction{}, false
+}
+
+func bufferRequestBody(request *http.Request, limit uint64) (uint64, bool, error) {
+	if request.Body == nil || request.Body == http.NoBody {
+		return 0, false, nil
+	}
+	original := request.Body
+	defer original.Close()
+	buffer, err := os.CreateTemp("", "")
+	if err != nil {
+		return 0, false, requestBodyStorageError{cause: err}
+	}
+	path := buffer.Name()
+	removeBuffer := func() {
+		_ = buffer.Close()
+		_ = os.Remove(path)
+	}
+	size, err := io.Copy(buffer, io.LimitReader(original, int64(limit)+1))
+	if err != nil {
+		removeBuffer()
+		return 0, false, err
+	}
+	requestSize := uint64(size)
+	if requestSize > limit {
+		removeBuffer()
+		return requestSize, true, nil
+	}
+	if _, err := buffer.Seek(0, 0); err != nil {
+		removeBuffer()
+		return 0, false, requestBodyStorageError{cause: err}
+	}
+	request.Body = &temporaryRequestBody{File: buffer, path: path}
+	request.ContentLength = size
+	request.TransferEncoding = nil
+	return requestSize, false, nil
+}
+
+type temporaryRequestBody struct {
+	*os.File
+	path string
+}
+
+func (body *temporaryRequestBody) Close() error {
+	closeErr := body.File.Close()
+	removeErr := os.Remove(body.path)
+	if closeErr != nil {
+		return closeErr
+	}
+	return removeErr
+}
+
+type requestBodyStorageError struct {
+	cause error
+}
+
+func (failure requestBodyStorageError) Error() string {
+	return failure.cause.Error()
+}
+
+func (failure requestBodyStorageError) Unwrap() error {
+	return failure.cause
 }
 
 type wafMatcherResult struct {

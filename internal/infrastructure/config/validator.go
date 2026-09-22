@@ -89,11 +89,15 @@ type runtimeWords struct {
 		Tracing     string `yaml:"tracing"`
 	} `yaml:"section"`
 	Listener struct {
-		Type       string
-		Address    string
-		TLSProfile string `yaml:"tls"`
-		Routes     string
-		Rules      string
+		Type             string
+		Address          string
+		TLSProfile       string `yaml:"tls"`
+		Routes           string
+		Rules            string
+		Limits           string            `yaml:"limits"`
+		BodyBytes        string            `yaml:"bodyBytes"`
+		BodyBytesDefault string            `yaml:"bodyBytesDefault"`
+		SizeUnits        map[string]uint64 `yaml:"sizeUnits"`
 	}
 	Site struct {
 		Source           string `yaml:"source"`
@@ -191,34 +195,42 @@ type runtimeWords struct {
 		Burst    string `yaml:"burst"`
 	} `yaml:"rateLimit"`
 	WAF struct {
-		Rules    string `yaml:"rules"`
-		When     string `yaml:"when"`
-		Then     string `yaml:"then"`
-		Path     string `yaml:"path"`
-		Method   string `yaml:"method"`
-		SourceIP string `yaml:"sourceIP"`
-		Headers  string `yaml:"headers"`
-		Query    string `yaml:"query"`
-		Geo      string `yaml:"geo"`
-		ASN      string `yaml:"asn"`
-		Provider string `yaml:"provider"`
-		Country  string `yaml:"country"`
-		City     string `yaml:"city"`
-		OnError  string `yaml:"onError"`
-		Prefix   string `yaml:"prefix"`
-		Exact    string `yaml:"exact"`
-		Regex    string `yaml:"regex"`
-		Exists   string `yaml:"exists"`
-		In       string `yaml:"in"`
-		NotIn    string `yaml:"notIn"`
-		All      string `yaml:"all"`
-		Any      string `yaml:"any"`
-		Not      string `yaml:"not"`
-		Allow    string `yaml:"allow"`
-		Deny     string `yaml:"deny"`
-		Status   string `yaml:"status"`
-		Code     string `yaml:"code"`
-		Limit    string `yaml:"limit"`
+		Rules       string `yaml:"rules"`
+		When        string `yaml:"when"`
+		Then        string `yaml:"then"`
+		Path        string `yaml:"path"`
+		Method      string `yaml:"method"`
+		SourceIP    string `yaml:"sourceIP"`
+		Headers     string `yaml:"headers"`
+		Query       string `yaml:"query"`
+		Geo         string `yaml:"geo"`
+		ASN         string `yaml:"asn"`
+		Provider    string `yaml:"provider"`
+		Country     string `yaml:"country"`
+		City        string `yaml:"city"`
+		OnError     string `yaml:"onError"`
+		Prefix      string `yaml:"prefix"`
+		Exact       string `yaml:"exact"`
+		Regex       string `yaml:"regex"`
+		Exists      string `yaml:"exists"`
+		In          string `yaml:"in"`
+		NotIn       string `yaml:"notIn"`
+		All         string `yaml:"all"`
+		Any         string `yaml:"any"`
+		Not         string `yaml:"not"`
+		RequestSize string `yaml:"requestSize"`
+		Comparison  struct {
+			GreaterThan        string `yaml:"greaterThan"`
+			GreaterThanOrEqual string `yaml:"greaterThanOrEqual"`
+			LessThan           string `yaml:"lessThan"`
+			LessThanOrEqual    string `yaml:"lessThanOrEqual"`
+		} `yaml:"comparison"`
+		SizeUnits map[string]uint64 `yaml:"sizeUnits"`
+		Allow     string            `yaml:"allow"`
+		Deny      string            `yaml:"deny"`
+		Status    string            `yaml:"status"`
+		Code      string            `yaml:"code"`
+		Limit     string            `yaml:"limit"`
 	} `yaml:"waf"`
 	DataProvider struct {
 		Type    string `yaml:"type"`

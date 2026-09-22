@@ -19,15 +19,21 @@ type WAFRuntime struct {
 	mu                 sync.RWMutex
 	generation         *runtimeGeneration
 	providerProblem    models.Problem
+	bodyTooLarge       models.Problem
 	problemContentType string
 }
 
-func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, providerProblem models.Problem, problemContentType string) *WAFRuntime {
+func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, providerProblem models.Problem, bodyTooLarge models.Problem, problemContentType string) *WAFRuntime {
 	return &WAFRuntime{
 		generation:         prepareRuntimeGeneration(graph, lookup),
 		providerProblem:    providerProblem,
+		bodyTooLarge:       bodyTooLarge,
 		problemContentType: problemContentType,
 	}
+}
+
+func (runtime *WAFRuntime) BodyTooLargeProblem() models.Problem {
+	return runtime.bodyTooLarge
 }
 
 func (runtime *WAFRuntime) Replace(graph models.CompiledGraph, lookup interfaces.GeoLookup) {

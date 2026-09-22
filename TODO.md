@@ -231,8 +231,15 @@ references are
   Ошибка provider теперь возвращается как RFC Problem с кодом
   `waf_provider_unavailable` и покрыта integration-тестом. Geo/ASN положительное
   совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
-  успешный MMDB replacement integration-тест, connection/request comparisons и
-  challenge. Recursive WAF `all`/`any`/`not` теперь компилируются и выполняются;
+  успешный MMDB replacement integration-тест с изменившимся содержимым базы,
+  matcher `connectionAge`, request-size matcher для L4, согласование HTTP route
+  matcher-ов и challenge. HTTP WAF `requestSize` реализован как фактический
+  размер тела после снятия transfer framing; chunked учитывается, тело
+  сохраняется для downstream, а `listener.limits.bodyBytes` ограничивает
+  чтение до диспетчеризации. Семантика описана в
+  `liapoldus.github.io/gateway/configuration/security.md` и
+  `liapoldus.github.io/public/spec/security-runtime.json`. Recursive WAF
+  `all`/`any`/`not` теперь компилируются и выполняются;
   provider failure вычисляется как unknown и не инвертируется через `not`.
   Семантика композиции описана в Gateway security-документации и
   `security-runtime.json`.

@@ -78,6 +78,9 @@ runtime:
     address: address
     routes: routes
     rules: rules
+    limits: limits
+    bodyBytes: bodyBytes
+    bodyBytesDefault: 10MiB
   site:
     source: source
     type: type
@@ -203,6 +206,16 @@ runtime:
     all: all
     any: any
     not: not
+    requestSize: requestSize
+    comparison:
+      greaterThan: gt
+      greaterThanOrEqual: gte
+      lessThan: lt
+      lessThanOrEqual: lte
+    sizeUnits:
+      KiB: 1024
+      MiB: 1048576
+      GiB: 1073741824
     allow: allow
     deny: deny
     status: status

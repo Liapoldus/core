@@ -3,16 +3,17 @@ package models
 import "strings"
 
 type WAFMatcher struct {
-	Path     PathMatcher
-	Method   *StringMatcher
-	SourceIP *IPMatcher
-	Headers  map[string]StringMatcher
-	Query    map[string]StringMatcher
-	Geo      *GeoMatcher
-	ASN      *ASNMatcher
-	All      []WAFMatcher
-	Any      []WAFMatcher
-	Not      *WAFMatcher
+	Path        PathMatcher
+	Method      *StringMatcher
+	SourceIP    *IPMatcher
+	Headers     map[string]StringMatcher
+	Query       map[string]StringMatcher
+	RequestSize *SizeComparison
+	Geo         *GeoMatcher
+	ASN         *ASNMatcher
+	All         []WAFMatcher
+	Any         []WAFMatcher
+	Not         *WAFMatcher
 }
 
 func (matcher WAFMatcher) Matches(request WAFRequest) bool {
@@ -20,6 +21,9 @@ func (matcher WAFMatcher) Matches(request WAFRequest) bool {
 }
 
 func (matcher WAFMatcher) MatchesRequestFields(request WAFRequest) bool {
+	if matcher.RequestSize != nil && !matcher.RequestSize.Matches(request.RequestSize) {
+		return false
+	}
 	if !matcher.Path.Matches(request.Path) {
 		return false
 	}

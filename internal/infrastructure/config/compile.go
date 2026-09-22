@@ -389,6 +389,13 @@ func compileWAFMatcher(node *yaml.Node, words runtimeWords) (models.WAFMatcher, 
 		provider, _ := fieldValue(asn, words.WAF.Provider)
 		matcher.ASN = &models.ASNMatcher{Provider: provider, In: collectASNs(mappingNode(asn, words.WAF.In)), NotIn: collectASNs(mappingNode(asn, words.WAF.NotIn))}
 	}
+	if requestSize := mappingNode(node, words.WAF.RequestSize); requestSize != nil {
+		comparison, err := compileSizeComparison(requestSize, words)
+		if err != nil {
+			return matcher, err
+		}
+		matcher.RequestSize = comparison
+	}
 	var err error
 	matcher.Headers, err = compileStringMatcherMap(mappingNode(node, words.WAF.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
 	if err != nil {
@@ -658,6 +665,20 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 		listener.IsHTTP = typ == words.HTTP
 		listener.Address, _ = fieldValue(body, words.Listener.Address)
 		listener.TLSProfile, _ = fieldValue(body, words.Listener.TLSProfile)
+		listener.Limits.Enabled = true
+		bodyBytes, err := parseByteCount(words.Listener.BodyBytesDefault, words.WAF.SizeUnits)
+		if err != nil {
+			return nil, err
+		}
+		listener.Limits.BodyBytes = bodyBytes
+		if limits := mappingNode(body, words.Listener.Limits); limits != nil {
+			if configured, exists := fieldValue(limits, words.Listener.BodyBytes); exists {
+				listener.Limits.BodyBytes, err = parseByteCount(configured, words.WAF.SizeUnits)
+				if err != nil || listener.Limits.BodyBytes > uint64(^uint64(0)>>1) {
+					return nil, ErrInvalidDocument
+				}
+			}
+		}
 		routeField := words.Listener.Routes
 		if !listener.IsHTTP {
 			routeField = words.Listener.Rules
@@ -671,6 +692,50 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 		listeners = append(listeners, listener)
 	}
 	return listeners, nil
+}
+
+func compileSizeComparison(node *yaml.Node, words runtimeWords) (*models.SizeComparison, error) {
+	if node.Kind != yaml.MappingNode || len(node.Content) == 0 {
+		return nil, ErrInvalidDocument
+	}
+	comparison := &models.SizeComparison{}
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		key, value := node.Content[index].Value, node.Content[index+1].Value
+		parsed, err := parseByteCount(value, words.WAF.SizeUnits)
+		if err != nil {
+			return nil, ErrInvalidDocument
+		}
+		candidate := parsed
+		switch key {
+		case words.WAF.Comparison.GreaterThan:
+			comparison.GreaterThan = &candidate
+		case words.WAF.Comparison.GreaterThanOrEqual:
+			comparison.GreaterThanOrEqual = &candidate
+		case words.WAF.Comparison.LessThan:
+			comparison.LessThan = &candidate
+		case words.WAF.Comparison.LessThanOrEqual:
+			comparison.LessThanOrEqual = &candidate
+		default:
+			return nil, ErrInvalidDocument
+		}
+	}
+	return comparison, nil
+}
+
+func parseByteCount(value string, units map[string]uint64) (uint64, error) {
+	multiplier := uint64(1)
+	for suffix, scale := range units {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix)
+			multiplier = scale
+			break
+		}
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || multiplier == 0 || parsed > ^uint64(0)/multiplier {
+		return 0, ErrInvalidDocument
+	}
+	return parsed * multiplier, nil
 }
 
 func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) {

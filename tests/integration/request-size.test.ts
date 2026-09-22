@@ -53,13 +53,14 @@ describe("WAF requestSize", () => {
     const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
     gateways.push(gateway);
     await waitReady(listener);
+    const baselineBodies = upstream.hits().bodies.length;
 
     const allowed = await request(listener, "/allowed", { method: "POST", body: "abc" });
     const denied = await request(listener, "/denied", { method: "POST", body: "abcd" });
 
     expect(allowed.status).toBe(200);
     expect(denied.status).toBe(451);
-    expect(upstream.hits().bodies).toEqual(["abc"]);
+    expect(upstream.hits().bodies.slice(baselineBodies)).toEqual(["abc"]);
   });
 
   it("measures chunked bodies by received bytes and forwards allowed chunks unchanged", async () => {
@@ -79,13 +80,42 @@ describe("WAF requestSize", () => {
     const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
     gateways.push(gateway);
     await waitReady(listener);
+    const baselineBodies = upstream.hits().bodies.length;
 
     const allowed = await sendChunked(listener, "/allowed", ["a", "bc"]);
     const denied = await sendChunked(listener, "/denied", ["ab", "cd"]);
 
     expect(allowed.status).toBe(200);
     expect(denied.status).toBe(451);
-    expect(upstream.hits().bodies).toEqual(["abc"]);
+    expect(upstream.hits().bodies.slice(baselineBodies)).toEqual(["abc"]);
+  });
+
+  it("accepts binary size units at exact comparison boundaries", async () => {
+    const upstream = await startUpstream();
+    upstreams.push(upstream);
+    const listener = await freeAddress();
+    const config = await writeGatewayConfig([
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  body-size:`, `    rules:`,
+      `      - when: { requestSize: { gte: 1KiB } }`,
+      `        then: { deny: { status: 451 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${listener}`,
+      `    limits: { bodyBytes: 2KiB }`,
+      `    routes:`, `      - when: { path: { prefix: / } }`,
+      `        then: { proxy: { upstream: api }, waf: body-size }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(listener);
+    const baseline = upstream.hits().requests;
+
+    const below = await request(listener, "/below", { method: "POST", body: "x".repeat(1023) });
+    const atBoundary = await request(listener, "/boundary", { method: "POST", body: "x".repeat(1024) });
+
+    expect(below.status).toBe(200);
+    expect(atBoundary.status).toBe(451);
+    expect(upstream.hits().requests - baseline).toBe(1);
+    expect(upstream.hits().bodies.at(-1)).toBe("x".repeat(1023));
   });
 
   it("rejects a body over listener bodyBytes before dispatching it", async () => {
@@ -102,11 +132,12 @@ describe("WAF requestSize", () => {
     const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
     gateways.push(gateway);
     await waitReady(listener);
+    const baselineRequests = upstream.hits().requests;
 
     const response = await request(listener, "/too-large", { method: "POST", body: "four" });
 
     expect(response.status).toBe(413);
     expect(response.text).toContain("body_too_large");
-    expect(upstream.hits().requests).toBe(0);
+    expect(upstream.hits().requests).toBe(baselineRequests);
   });
 });

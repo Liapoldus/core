@@ -47,6 +47,7 @@ codes:
   unknownField: unknown_field
   noPreviousRelease: no_previous_release
   wafProviderUnavailable: waf_provider_unavailable
+  bodyTooLarge: body_too_large
 exits:
   ok: 0
   internal: 1
