@@ -1,8 +1,11 @@
+import { copyFile, mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
 import { startGateway } from "../support/gateway.js";
 import { freeAddress, portOf, request, waitReady, writeGatewayConfig } from "../support/http.js";
 import { startUpstream } from "../support/upstream.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 interface Handle {
   stop: () => Promise<void>;
@@ -243,6 +246,34 @@ describe("WAF GeoIP provider failures", () => {
     const response = await request(address, "/api/private");
     expect(response.status).toBe(200);
     expect(upstream.hits().paths).toEqual(["/api/private"]);
+  });
+});
+
+describe("WAF GeoIP provider", () => {
+	it("fails closed when a valid MMDB has no record for the direct peer", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-mmdb-fixture-"));
+    const databasePath = join(directory, "city.mmdb");
+    await copyFile("fixtures/GeoIP2-City-Test.mmdb", databasePath);
+    const configPath = await writeGatewayConfig([
+      `dataProviders:`, `  geo: { type: mmdb, path: ${databasePath}, onError: deny }`,
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  geo:`, `    rules:`,
+      `      - when: { geo: { provider: geo, country: { exact: GB } }, path: { prefix: /api } }`,
+      `        then: { deny: { status: 451 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: geo }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/api/private");
+	    expect(response.status).toBe(403);
+    expect(upstream.hits().paths).toEqual([]);
   });
 });
 
