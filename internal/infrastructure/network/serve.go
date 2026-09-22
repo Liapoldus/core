@@ -53,7 +53,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				proxied.ServeHTTP(responseWriter, request)
 				return
 			}
-http.NotFound(writer, request)
+			http.NotFound(writer, request)
 			return
 		}
 		site, exists := sites[route.Site]

@@ -1,3 +1,7 @@
 package models
 
-type TLSProfile struct{}
+type TLSProfile struct {
+	Certificates []TLSCertificate
+	Protocols    []string
+	ClientAuth   ClientAuth
+}

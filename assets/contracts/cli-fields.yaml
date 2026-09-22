@@ -1,6 +1,7 @@
 commands:
   serve: serve
   config: config
+  accounts: accounts
 subcommands:
   path: path
   validate: validate
@@ -13,6 +14,22 @@ flags:
   config: --config
   configDir: --config-dir
   noManagement: --no-management
+  role: --role
+accounts:
+  create: create
+  rotate: rotate
+  revoke: revoke
+  rolePlatformAdmin: platform-admin
+  keyPrefix: lpgw_
+  keyBytes: 32
+  hashCost: 12
+  hashExtension: .bcrypt
+  secretsDir: secrets
+  accountsDir: accounts
+  keyHashWord: keyHash
+  saveMessage: "service account %s created; save this key now — it will not be shown again:"
+  rotateMessage: "service account %s rotated; save this key now — it will not be shown again:"
+  revokedMessage: "service account %s revoked"
 serve:
   gracefulTimeout: 10s
 outputs:
@@ -28,11 +45,16 @@ codes:
   configNotFound: config_not_found
   configInvalid: config_invalid
   unknownField: unknown_field
+  noPreviousRelease: no_previous_release
 exits:
   ok: 0
   internal: 1
   arguments: 2
   validation: 3
+  conflict: 4
+  notFound: 5
+  authorization: 6
+  unavailable: 7
 sources:
   flag: flag
   environment: environment
@@ -73,6 +95,9 @@ display:
   format: config format
   explain: config explain
   diff: config diff
+  accountsCreate: accounts create
+  accountsRotate: accounts rotate
+  accountsRevoke: accounts revoke
 explain:
   listener: "listener %s %s %s"
   route: "route %s %d -> site %s"
@@ -95,3 +120,8 @@ diagnostics:
   configRequired: --config requires a path
   configDirRequired: --config-dir requires a path
   configLookupFailed: config not found
+  roleRequired: --role is required
+  roleInvalid: --role must be platform-admin
+  accountIDRequired: account id is required
+  accountNotFound: service account not found
+  hashInvalid: key hash file must contain a bcrypt hash

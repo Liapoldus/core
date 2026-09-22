@@ -1,8 +1,6 @@
 package application
 
 import (
-	"reflect"
-
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 )
@@ -20,7 +18,7 @@ func (service RuntimeService) Apply(snapshot models.Snapshot) error {
 	if err != nil {
 		return err
 	}
-	if reflect.ValueOf(previous.Graph.Revision).IsZero() {
+	if previous.Graph.Revision.Value == "" && previous.Graph.Revision.Digest == "" {
 		return nil
 	}
 	return service.Store.Drain(previous)

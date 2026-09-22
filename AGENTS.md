@@ -37,7 +37,8 @@ module and owns only process supervision, grants, and traffic dispatch.
   environment names, paths, defaults, error codes, diagnostic text and JSON
   keys belong to versioned external contract files under `assets/contracts/`
   (mirroring the canonical interface from `liapoldus.github.io/public/spec/`).
-  They are loaded through the embedded `assets` package via `go:embed`. Go code
+  They are loaded through the root `core` contract adapter via `go:embed`; the
+  `assets/` directory itself contains static files only. Go code
   may contain only import paths, the `//go:embed` asset directives, and
   identifiers bound to loaded contract values. Asset file names referenced by
   `assets.Contract` are treated as those embed directives and are the single

@@ -4,12 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"gopkg.in/yaml.v3"
@@ -47,7 +49,103 @@ func validateReferences(graph models.CompiledGraph) error {
 			}
 		}
 	}
+	catalog, err := errorCatalog()
+	if err != nil {
+		return err
+	}
+	if err := validateSiteSemantics(graph, catalog); err != nil {
+		return err
+	}
+	return validateManagementSemantics(graph, catalog)
+}
+
+func validateSiteSemantics(graph models.CompiledGraph, catalog ErrorCatalog) error {
+	words, err := loadContractFile()
+	if err != nil {
+		return err
+	}
+	for name, site := range graph.Sites {
+		if site.DefaultLocale == "" {
+			continue
+		}
+		listed := false
+		for _, locale := range site.Locales {
+			if locale == site.DefaultLocale {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			return &CompileProblem{
+				Problem: catalog.Problem(words.Codes.SiteInvalid, words.Semantics.DefaultLocaleMustBeListed, name),
+			}
+		}
+	}
 	return nil
+}
+
+func validateManagementSemantics(graph models.CompiledGraph, catalog ErrorCatalog) error {
+	loaded, err := loadContractFile()
+	if err != nil {
+		return err
+	}
+	words := loaded.Runtime
+	management := graph.Management
+	address := management.Listener.Address
+	if address == "" {
+		return nil
+	}
+	remote := !isLoopback(address)
+	if remote {
+		if management.Listener.TLSProfile == "" {
+			return &CompileProblem{
+				Problem: catalog.Problem(loaded.Codes.ManagementTLSRequired, loaded.Semantics.ManagementNonLoopbackTLS, "management.listener"),
+			}
+		}
+		profile, exists := graph.TLSProfiles[management.Listener.TLSProfile]
+		if !exists || profile.ClientAuth.Mode != words.ClientAuth.Require {
+			return &CompileProblem{
+				Problem: catalog.Problem(loaded.Codes.ManagementMTLSRequired, loaded.Semantics.ManagementNonLoopbackMTLS, "management.listener"),
+			}
+		}
+	}
+	if management.StaticToken != "" {
+		if remote {
+			return &CompileProblem{
+				Problem: catalog.Problem(loaded.Codes.ConfigInvalid, loaded.Semantics.ManagementStaticTokenNonLoopback, "management.staticToken"),
+			}
+		}
+		if len(management.ServiceAccounts) > 0 {
+			return &CompileProblem{
+				Problem: catalog.Problem(loaded.Codes.ConfigInvalid, loaded.Semantics.ManagementStaticTokenExclusive, "management.staticToken"),
+			}
+		}
+	}
+	if remote && len(management.ServiceAccounts) == 0 {
+		return &CompileProblem{
+			Problem: catalog.Problem(loaded.Codes.ConfigInvalid, loaded.Semantics.ManagementRemoteRequiresAccount, "management.serviceAccounts"),
+		}
+	}
+	return nil
+}
+
+func isLoopback(address string) bool {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+var errorCatalogOnce = sync.OnceValues(loadErrorCatalogOnce)
+
+func loadErrorCatalogOnce() (ErrorCatalog, error) {
+	return LoadErrorCatalog()
+}
+
+func errorCatalog() (ErrorCatalog, error) {
+	return errorCatalogOnce()
 }
 
 func buildCompiled(path string, loaded contractFile, compiled *graph) (models.CompiledGraph, error) {
@@ -56,9 +154,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 			Value:  path,
 			Digest: hex.EncodeToString(compiled.hasher.Sum(nil)),
 		},
-		Sites:   map[string]models.Site{},
-		Secrets: map[string]models.Secret{},
-		Upstreams: map[string]models.Upstream{},
+		Sites:       map[string]models.Site{},
+		Secrets:     map[string]models.Secret{},
+		Upstreams:   map[string]models.Upstream{},
+		TLSProfiles: map[string]models.TLSProfile{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -77,11 +176,21 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				}
 				graph.Listeners = append(graph.Listeners, listeners...)
 			case loaded.Sites:
-				collectSites(node, loaded.Runtime, base, registryRoot, layout, graph.Sites)
+				if err := collectSites(node, loaded.Runtime, base, registryRoot, layout, graph.Sites); err != nil {
+					return models.CompiledGraph{}, err
+				}
 			case loaded.Upstreams:
 				if err := collectUpstreams(node, loaded.Runtime, graph.Upstreams); err != nil {
 					return models.CompiledGraph{}, err
 				}
+			case loaded.Runtime.Section.TLSProfiles:
+				if err := collectTLSProfiles(node, loaded.Runtime, graph.TLSProfiles); err != nil {
+					return models.CompiledGraph{}, err
+				}
+			case loaded.Runtime.Section.Management:
+				graph.Management = collectManagement(node, loaded.Runtime)
+			case loaded.Runtime.Section.Logging, loaded.Runtime.Section.Metrics, loaded.Runtime.Section.Tracing:
+				graph.Observability = collectObservability(graph.Observability, key.Value, node, loaded.Runtime)
 			}
 		}
 	}
@@ -444,24 +553,29 @@ func compilePathMatcher(node *yaml.Node, words runtimeWords) (models.PathMatcher
 	return models.PathMatcher{}, nil
 }
 
-func collectSites(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout, sites map[string]models.Site) {
+func collectSites(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout, sites map[string]models.Site) error {
 	if node.Kind != yaml.MappingNode {
-		return
+		return nil
 	}
 	for index := 0; index < len(node.Content); index += 2 {
 		name, body := node.Content[index], node.Content[index+1]
 		if body.Kind != yaml.MappingNode {
 			continue
 		}
-		sites[name.Value] = compileSite(body, words, base, registryRoot, layout)
+		site, err := compileSite(body, words, base, registryRoot, layout)
+		if err != nil {
+			return err
+		}
+		sites[name.Value] = site
 	}
+	return nil
 }
 
-func compileSite(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout) models.Site {
+func compileSite(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout) (models.Site, error) {
 	site := models.Site{Index: words.Site.IndexDefault}
 	source := mappingNode(node, words.Site.Source)
 	if source == nil {
-		return site
+		return site, nil
 	}
 	if kind, ok := fieldValue(source, words.Site.Type); ok {
 		switch kind {
@@ -483,31 +597,190 @@ func compileSite(node *yaml.Node, words runtimeWords, base, registryRoot string,
 		}
 	}
 	if site.Root == "" {
-		return site
+		return site, nil
 	}
-	if index, err := manifestIndex(filepath.Join(site.Root, words.Site.ManifestFileName), words.Site.Index); err == nil && index != "" {
-		site.Index = index
+	manifest := readManifest(filepath.Join(site.Root, words.Site.ManifestFileName))
+	if manifest != nil {
+		applyManifest(manifest, words, &site)
 	}
-	return site
+	return site, nil
 }
 
-func manifestIndex(path string, field string) (string, error) {
+func applyManifest(manifest *yaml.Node, words runtimeWords, site *models.Site) {
+	if index, ok := fieldValue(manifest, words.Site.Index); ok && index != "" {
+		site.Index = index
+	}
+	if spa, ok := fieldValue(manifest, words.Site.SPA); ok {
+		if parsed, err := strconv.ParseBool(spa); err == nil {
+			site.SPA = parsed
+		}
+	}
+	if defaultLocale, ok := fieldValue(manifest, words.Site.DefaultLocale); ok {
+		site.DefaultLocale = defaultLocale
+	}
+	if locales := mappingNode(manifest, words.Site.Locales); locales != nil && locales.Kind == yaml.SequenceNode {
+		for _, item := range locales.Content {
+			if item.Kind == yaml.ScalarNode && item.Value != "" {
+				site.Locales = append(site.Locales, item.Value)
+			}
+		}
+	}
+	site.Redirects = collectSiteRedirects(mappingNode(manifest, words.Site.Redirects), words)
+	site.Headers = compileHeaderActions(mappingNode(manifest, words.Site.Headers), words)
+	site.Cache = collectSiteCache(mappingNode(manifest, words.Site.Cache), words)
+}
+
+func collectSiteRedirects(node *yaml.Node, words runtimeWords) []models.SiteRedirect {
+	if node == nil || node.Kind != yaml.SequenceNode {
+		return nil
+	}
+	var redirects []models.SiteRedirect
+	for _, item := range node.Content {
+		if item.Kind != yaml.MappingNode {
+			continue
+		}
+		redirect := models.SiteRedirect{Status: 308}
+		redirect.From, _ = fieldValue(item, words.SiteRedirect.From)
+		redirect.To, _ = fieldValue(item, words.SiteRedirect.To)
+		if status, ok := fieldValue(item, words.SiteRedirect.Status); ok {
+			if parsed, err := strconv.Atoi(status); err == nil && parsed != 0 {
+				redirect.Status = parsed
+			}
+		}
+		redirects = append(redirects, redirect)
+	}
+	return redirects
+}
+
+func collectSiteCache(node *yaml.Node, words runtimeWords) *models.SiteCache {
+	if node == nil {
+		return nil
+	}
+	cache := models.SiteCache{}
+	if static := mappingNode(node, words.SiteCache.Static); static != nil {
+		cache.Static.Visibility, _ = fieldValue(static, words.SiteCache.Visibility)
+		cache.Static.MaxAge, _ = fieldValue(static, words.SiteCache.MaxAge)
+	}
+	return &cache
+}
+
+func collectTLSProfiles(node *yaml.Node, words runtimeWords, profiles map[string]models.TLSProfile) error {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index < len(node.Content); index += 2 {
+		name, body := node.Content[index], node.Content[index+1]
+		if body.Kind != yaml.MappingNode {
+			continue
+		}
+		profile := models.TLSProfile{}
+		if certificates := mappingNode(body, words.TLSProfile.Certificates); certificates != nil && certificates.Kind == yaml.SequenceNode {
+			for _, item := range certificates.Content {
+				if item.Kind != yaml.MappingNode {
+					continue
+				}
+				certificate := models.TLSCertificate{}
+				certificate.Issuer, _ = fieldValue(item, words.TLSProfile.Issuer)
+				certificate.Cert, _ = fieldValue(item, words.TLSProfile.Cert)
+				certificate.Key, _ = fieldValue(item, words.TLSProfile.Key)
+				if domains := mappingNode(item, words.TLSProfile.Domains); domains != nil && domains.Kind == yaml.SequenceNode {
+					for _, domain := range domains.Content {
+						if domain.Kind == yaml.ScalarNode && domain.Value != "" {
+							certificate.Domains = append(certificate.Domains, domain.Value)
+						}
+					}
+				}
+				profile.Certificates = append(profile.Certificates, certificate)
+			}
+		}
+		if protocols := mappingNode(body, words.TLSProfile.Protocols); protocols != nil && protocols.Kind == yaml.SequenceNode {
+			for _, item := range protocols.Content {
+				if item.Kind == yaml.ScalarNode && item.Value != "" {
+					profile.Protocols = append(profile.Protocols, item.Value)
+				}
+			}
+		}
+		if clientAuth := mappingNode(body, words.TLSProfile.ClientAuth); clientAuth != nil {
+			profile.ClientAuth.Mode, _ = fieldValue(clientAuth, words.ClientAuth.Mode)
+			profile.ClientAuth.CA, _ = fieldValue(clientAuth, words.ClientAuth.CA)
+		}
+		profiles[name.Value] = profile
+	}
+	return nil
+}
+
+func collectManagement(node *yaml.Node, words runtimeWords) models.Management {
+	management := models.Management{}
+	if listener := mappingNode(node, words.Management.Listener); listener != nil {
+		management.Listener.Address, _ = fieldValue(listener, words.Management.Address)
+		management.Listener.TLSProfile, _ = fieldValue(listener, words.Management.TLSProfile)
+	}
+	management.StaticToken, _ = fieldValue(node, words.Management.StaticToken)
+	if accounts := mappingNode(node, words.Management.ServiceAccounts); accounts != nil && accounts.Kind == yaml.SequenceNode {
+		for _, item := range accounts.Content {
+			if item.Kind != yaml.MappingNode {
+				continue
+			}
+			management.ServiceAccounts = append(management.ServiceAccounts, models.ServiceAccount{
+				ID:      firstField(item, words.Management.Account.ID),
+				Role:    firstField(item, words.Management.Account.Role),
+				KeyHash: firstField(item, words.Management.Account.KeyHash),
+			})
+		}
+	}
+	return management
+}
+
+func firstField(node *yaml.Node, name string) string {
+	value, _ := fieldValue(node, name)
+	return value
+}
+
+func collectObservability(current models.Observability, section string, node *yaml.Node, words runtimeWords) models.Observability {
+	switch section {
+	case words.Section.Logging:
+		current.Logging.Format, _ = fieldValue(node, words.Logging.Format)
+		if access := mappingNode(node, words.Logging.Access); access != nil && access.Kind == yaml.SequenceNode {
+			for _, item := range access.Content {
+				if item.Kind == yaml.ScalarNode && item.Value != "" {
+					current.Logging.Access = append(current.Logging.Access, item.Value)
+				}
+			}
+		}
+	case words.Section.Metrics:
+		if prometheus, ok := fieldValue(node, words.Metrics.Prometheus); ok {
+			if parsed, err := strconv.ParseBool(prometheus); err == nil {
+				current.Metrics.Prometheus = parsed
+			}
+		}
+		if otlp := mappingNode(node, words.Metrics.OTLP); otlp != nil {
+			current.Metrics.OTLP = &models.MetricsOTLP{}
+			current.Metrics.OTLP.Endpoint, _ = fieldValue(otlp, words.Metrics.Endpoint)
+			current.Metrics.OTLP.Interval, _ = fieldValue(otlp, words.Metrics.Interval)
+		}
+	case words.Section.Tracing:
+		if otlp := mappingNode(node, words.Tracing.OTLP); otlp != nil {
+			current.Tracing.OTLP = &models.TracingOTLP{}
+			current.Tracing.OTLP.Endpoint, _ = fieldValue(otlp, words.Tracing.Endpoint)
+		}
+		current.Tracing.Sampling, _ = fieldValue(node, words.Tracing.Sampling)
+	}
+	return current
+}
+
+func readManifest(path string) *yaml.Node {
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return nil
 	}
 	var document yaml.Node
 	if err := yaml.Unmarshal(contents, &document); err != nil {
-		return "", err
+		return nil
 	}
-	if len(document.Content) == 0 {
-		return "", os.ErrInvalid
+	if len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return nil
 	}
-	index, ok := fieldValue(document.Content[0], field)
-	if !ok {
-		return "", os.ErrInvalid
-	}
-	return index, nil
+	return document.Content[0]
 }
 
 func mappingNode(node *yaml.Node, name string) *yaml.Node {

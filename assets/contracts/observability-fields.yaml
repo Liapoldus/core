@@ -1,0 +1,37 @@
+audit:
+  directory: audit
+  extension: .jsonl
+  retentionDays: 90
+operations:
+  retention: 24h
+  directory: operations
+metrics:
+  intervalDefault: 15s
+  names:
+    requestTotal: liapoldus_http_requests_total
+    requestDuration: liapoldus_http_request_duration_seconds
+    managementTotal: liapoldus_management_requests_total
+    auditRecordsTotal: liapoldus_audit_records_total
+    exportFailuresTotal: liapoldus_otel_export_failures_total
+  labels:
+    listener: listener
+    route: route
+    site: site
+    method: method
+    status: status
+    exporter: exporter
+logging:
+  formats:
+    json: json
+  accessSinks:
+    stdout: stdout
+    stderr: stderr
+tracing:
+  samplingParentBased: parent-based
+redaction:
+  - secret
+  - cookie
+  - authorization
+  - private-key
+  - service-key
+  - grant

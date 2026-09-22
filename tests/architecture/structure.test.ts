@@ -49,4 +49,9 @@ describe("Gateway architecture", () => {
     expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
     expect(await directories(join(root, "cmd"))).toEqual(["gateway"]);
   });
+
+  it("keeps assets static and places its embed adapter outside assets", async () => {
+    expect(await goFiles(join(root, "assets"))).toEqual([]);
+    expect(await readFile(join(root, "contractassets.go"), "utf8")).toContain("go:embed assets/contracts");
+  });
 });

@@ -105,13 +105,8 @@ func run(options options) int {
 			writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
 			return words.Exits.Arguments
 		}
-		code := words.Codes.ConfigInvalid
 		if err := config.Validate(path); err != nil {
-			if config.IsUnknownField(err) {
-				code = words.Codes.UnknownField
-			}
-			writeFailure(options.output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
-			return words.Exits.Validation
+			return configValidationFailure(options.output, err)
 		}
 		writeSuccess(options.output, map[string]any{
 			words.JSON.OK: true, words.JSON.Command: words.Display.Validate, words.JSON.Valid: true,
@@ -355,10 +350,15 @@ func diffJSON(words config.CLIWords, report config.DiffReport) map[string]any {
 
 func configValidationFailure(output string, err error) int {
 	code := words.Codes.ConfigInvalid
+	detail := words.Diagnostics.ConfigInvalid
+	if compileProblem, ok := config.ProblemFrom(err); ok {
+		code = compileProblem.Code
+		detail = compileProblem.Detail
+	}
 	if config.IsUnknownField(err) {
 		code = words.Codes.UnknownField
 	}
-	writeFailure(output, words.Exits.Validation, code, words.Diagnostics.ConfigInvalid)
+	writeFailure(output, words.Exits.Validation, code, detail)
 	return words.Exits.Validation
 }
 

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Liapoldus/core/assets"
+	assets "github.com/Liapoldus/core"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 )
@@ -34,35 +34,54 @@ const (
 )
 
 type contractFile struct {
-	Root         []string `yaml:"root"`
-	Listener     []string `yaml:"listener"`
-	Includes     string   `yaml:"includes"`
-	Listeners    string   `yaml:"listeners"`
-	Sites        string   `yaml:"sites"`
-	Secrets      string   `yaml:"secrets"`
-	Variables    string   `yaml:"variables"`
-	Upstreams    string   `yaml:"upstreams"`
-Registry struct {
+	Root      []string `yaml:"root"`
+	Listener  []string `yaml:"listener"`
+	Includes  string   `yaml:"includes"`
+	Listeners string   `yaml:"listeners"`
+	Sites     string   `yaml:"sites"`
+	Secrets   string   `yaml:"secrets"`
+	Variables string   `yaml:"variables"`
+	Upstreams string   `yaml:"upstreams"`
+	Registry  struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
 	} `yaml:"registry"`
 	SecretReference contractSecretReference `yaml:"secretReference"`
-	Substitution struct {
+	Substitution    struct {
 		Open  string `yaml:"open"`
 		Close string `yaml:"close"`
 	} `yaml:"substitution"`
 	Semantics struct {
-		UnusedSite     string `yaml:"unusedSite"`
-		OverriddenSite string `yaml:"overriddenSite"`
+		UnusedSite                       string `yaml:"unusedSite"`
+		OverriddenSite                   string `yaml:"overriddenSite"`
+		DefaultLocaleMustBeListed        string `yaml:"defaultLocaleMustBeListed"`
+		ManagementNonLoopbackTLS         string `yaml:"managementNonLoopbackTLS"`
+		ManagementNonLoopbackMTLS        string `yaml:"managementNonLoopbackMTLS"`
+		ManagementStaticTokenNonLoopback string `yaml:"managementStaticTokenNonLoopback"`
+		ManagementStaticTokenExclusive   string `yaml:"managementStaticTokenExclusive"`
+		ManagementRemoteRequiresAccount  string `yaml:"managementRemoteRequiresAccount"`
 	} `yaml:"semantics"`
+	Codes struct {
+		ConfigInvalid          string `yaml:"configInvalid"`
+		ManagementTLSRequired  string `yaml:"managementTLSRequired"`
+		ManagementMTLSRequired string `yaml:"managementMTLSRequired"`
+		SiteInvalid            string `yaml:"siteInvalid"`
+	} `yaml:"codes"`
 	Runtime runtimeWords `yaml:"runtime"`
 }
 
 type runtimeWords struct {
-	HTTP      string
-	Directory string
-	Release   string
-	Listener  struct {
+	HTTP      string `yaml:"http"`
+	Directory string `yaml:"directory"`
+	Release   string `yaml:"release"`
+	Section   struct {
+		TLSProfiles string `yaml:"tlsProfiles"`
+		Management  string `yaml:"management"`
+		Logging     string `yaml:"logging"`
+		Metrics     string `yaml:"metrics"`
+		Tracing     string `yaml:"tracing"`
+	} `yaml:"section"`
+	Listener struct {
 		Type    string
 		Address string
 		Routes  string
@@ -75,7 +94,66 @@ type runtimeWords struct {
 		IndexDefault     string `yaml:"indexDefault"`
 		ManifestFileName string `yaml:"manifestFileName"`
 		Slug             string `yaml:"slug"`
+		SPA              string `yaml:"spa"`
+		Locales          string `yaml:"locales"`
+		DefaultLocale    string `yaml:"defaultLocale"`
+		Redirects        string `yaml:"redirects"`
+		Headers          string `yaml:"headers"`
+		Cache            string `yaml:"cache"`
 	}
+	SiteRedirect struct {
+		From   string `yaml:"from"`
+		To     string `yaml:"to"`
+		Status string `yaml:"status"`
+	} `yaml:"siteRedirect"`
+	SiteCache struct {
+		Static     string `yaml:"static"`
+		Visibility string `yaml:"visibility"`
+		MaxAge     string `yaml:"maxAge"`
+	} `yaml:"siteCache"`
+	TLSProfile struct {
+		Certificates string `yaml:"certificates"`
+		Cert         string `yaml:"cert"`
+		Key          string `yaml:"key"`
+		Domains      string `yaml:"domains"`
+		Issuer       string `yaml:"issuer"`
+		Protocols    string `yaml:"protocols"`
+		ClientAuth   string `yaml:"clientAuth"`
+	} `yaml:"tlsProfile"`
+	ClientAuth struct {
+		Mode     string `yaml:"mode"`
+		CA       string `yaml:"ca"`
+		Require  string `yaml:"require"`
+		Optional string `yaml:"optional"`
+	} `yaml:"clientAuth"`
+	Logging struct {
+		Format string `yaml:"format"`
+		Access string `yaml:"access"`
+	} `yaml:"logging"`
+	Metrics struct {
+		Prometheus string `yaml:"prometheus"`
+		OTLP       string `yaml:"otlp"`
+		Endpoint   string `yaml:"endpoint"`
+		Interval   string `yaml:"interval"`
+	} `yaml:"metrics"`
+	Tracing struct {
+		OTLP     string `yaml:"otlp"`
+		Endpoint string `yaml:"endpoint"`
+		Sampling string `yaml:"sampling"`
+	} `yaml:"tracing"`
+	Management struct {
+		Listener        string `yaml:"listener"`
+		Address         string `yaml:"address"`
+		TLSProfile      string `yaml:"tlsProfile"`
+		StaticToken     string `yaml:"staticToken"`
+		ServiceAccounts string `yaml:"serviceAccounts"`
+		Account         struct {
+			ID                string `yaml:"id"`
+			Role              string `yaml:"role"`
+			KeyHash           string `yaml:"keyHash"`
+			RolePlatformAdmin string `yaml:"rolePlatformAdmin"`
+		} `yaml:"account"`
+	} `yaml:"management"`
 	Route struct {
 		When     string
 		Then     string
@@ -140,11 +218,11 @@ type runtimeWords struct {
 }
 
 type graph struct {
-	variables    map[string]string
-	secrets      map[string]string
-	documents    []*yaml.Node
-	root         *yaml.Node
-	hasher       hash.Hash
+	variables map[string]string
+	secrets   map[string]string
+	documents []*yaml.Node
+	root      *yaml.Node
+	hasher    hash.Hash
 }
 
 func supervise(path string) (*graph, contractFile, error) {
@@ -168,7 +246,7 @@ func supervise(path string) (*graph, contractFile, error) {
 }
 
 func Validate(path string) error {
-	_, _, err := supervise(path)
+	_, err := CompileGateway(path)
 	return err
 }
 

@@ -43,11 +43,33 @@ substitution:
 semantics:
   unusedSite: unused
   overriddenSite: overridden
+  defaultLocaleMustBeListed: |
+    При наличии defaultLocale его значение должно точно совпадать с одним из locales. Это межполевое правило проверяет Gateway после JSON Schema; $data и иные расширения валидатора не используются.
+  managementNonLoopbackTLS: |
+    Для не-loopback адреса listener требуется tlsProfile, ссылающийся на запись tlsProfiles с clientAuth.mode=require.
+  managementNonLoopbackMTLS: |
+    Для не-loopback адреса listener профиль TLS должен требовать клиентский сертификат (clientAuth.mode=require).
+  managementStaticTokenNonLoopback: |
+    staticToken разрешён только на loopback-адресе listener.
+  managementStaticTokenExclusive: |
+    staticToken и serviceAccounts взаимоисключающие: нельзя задавать оба.
+  managementRemoteRequiresAccount: |
+    Для не-loopback адреса listener требуется как минимум один serviceAccounts. Каждый /api запрос также требует Bearer key.
+codes:
+  configInvalid: config_invalid
+  managementTLSRequired: management_tls_required
+  managementMTLSRequired: management_mtls_required
+  siteInvalid: site_invalid
 runtime:
   http: http
   directory: directory
   release: release
-  upstreams: upstreams
+  section:
+    tlsProfiles: tlsProfiles
+    management: management
+    logging: logging
+    metrics: metrics
+    tracing: tracing
   listener:
     type: type
     address: address
@@ -60,6 +82,56 @@ runtime:
     indexDefault: index.html
     manifestFileName: site.yaml
     slug: slug
+    spa: spa
+    locales: locales
+    defaultLocale: defaultLocale
+    redirects: redirects
+    headers: headers
+    cache: cache
+  siteRedirect:
+    from: from
+    to: to
+    status: status
+  siteCache:
+    static: static
+    visibility: visibility
+    maxAge: maxAge
+  tlsProfile:
+    certificates: certificates
+    cert: cert
+    key: key
+    domains: domains
+    issuer: issuer
+    protocols: protocols
+    clientAuth: clientAuth
+  clientAuth:
+    mode: mode
+    ca: ca
+    require: require
+    optional: optional
+  logging:
+    format: format
+    access: access
+  metrics:
+    prometheus: prometheus
+    otlp: otlp
+    endpoint: endpoint
+    interval: interval
+  tracing:
+    otlp: otlp
+    endpoint: endpoint
+    sampling: sampling
+  management:
+    listener: listener
+    address: address
+    tlsProfile: tlsProfile
+    staticToken: staticToken
+    serviceAccounts: serviceAccounts
+    account:
+      id: id
+      role: role
+      keyHash: keyHash
+      rolePlatformAdmin: platform-admin
   route:
     when: when
     then: then

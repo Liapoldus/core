@@ -142,6 +142,49 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   `deny`/`plugin` beside a supported terminal is not yet rejected, and a route
   built solely on `deny`/`plugin` currently serves 404 (no terminal matched),
   which must be revisited when those actions land.
+- Schema bug: `$defs.tlsProfile.certificates.items` had
+  `additionalProperties: false` as a sibling of `oneOf`, rejecting every
+  certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch
+  (both listed required keys are siblings of the requirement that the object
+  allow no additional properties, so schema validation of any TLS-bearing
+  config failed as `config_invalid` before semantic rules could run). Fixed
+  canonical `liapoldus.github.io/public/spec/gateway.schema.json` and the
+  mirrored copy `assets/contracts/gateway.schema.json`: `additionalProperties:
+  false` now sits inside each `oneOf` item. Verified with the exact validator
+  ordered by the Go dependency (`santhosh-tekuri/jsonschema/v6`) that `cert`+`key`,
+  `domains`+`issuer`, and `clientAuth: {mode: require}` all validate. The
+  `cert`+`key` form is exercised by the config-semantics tests
+  (`management_mtls_required`, `management-remote-valid`). Fixed after a User
+  decision (fix canonical + copy).
+- Runtime word binding bug (round 2): `yaml.v3` lowercases untagged struct
+  field names, so the camelCase runtime words never bound and management
+  semantics mis-fired: `runtimeWords.SiteRedirect`/`SiteCache`/`TLSProfile`/
+  `ClientAuth` (and `SiteCache.MaxAge`) matched no YAML keys, leaving
+  `words.ClientAuth.Require` empty so the mTLS check
+  `profile.ClientAuth.Mode != "" == ""` never tripped and a remote listener
+  with a non-mTLS profile slipped to the account-required error instead of
+  `management_mtls_required`; TLS certificate collection (`collectTLSProfiles`)
+  read nothing. Added the missing yaml tags in `validator.go`. Separately, the
+  `runtime.http/directory/release` value words (`words.HTTP`, `words.Directory`,
+  `words.Release`) had no contract entries at all, so `listener.IsHTTP` stayed
+  false and `source.type: directory|release` never set `site.Source`/`Root`
+  (directory sites lost their root and release/directory detection failed).
+  Added `http:/directory:/release:` keys under `runtime:` in
+  `assets/contracts/config-fields.yaml`. After the fix `config explain` and the
+  serve pipeline resolve source kinds and roots, and `missing-mtls` returns
+  `management_mtls_required`.
+- WIP regression caught before commit: uncommitted management-semantics work
+  replaced `validateReferences` and dropped its undefined-site/undefined-upstream
+  membership checks, silently letting `config explain` and `serve` accept a
+  route targeting an undefined site/upstream (regression against the committed
+  `config_explain` red/green). Restored the checks at the top of
+  `validateReferences` using the existing `ErrUndefinedSite`/`ErrUndefinedUpstream`
+  sentinels (bare errors map to the canonical `config_invalid`, exit 3 via
+  `configValidationFailure`).
+- Contract adapter arch-lint rule: the `go:embed` contract adapter lives in
+  the module-root `core` package (`contractassets.go`, moved from
+  `assets/embed.go`). `.go-arch-lint.yml` now declares a `contractAdapter`
+  component (`in: [.]`) and lets `infrastructureConfig` depend on it.
 
 ## 0. Foundation
 
@@ -189,7 +232,8 @@ TypeScript test under `tests/` before the implementation that satisfies it.
 
 - [ ] TLS profiles/storage/reload, certificate selection, mTLS and issuer
   operation lifecycle.
-- [ ] JWT/OIDC, WAF, rate limiting, source-IP/geo and captcha policy paths.
+- [ ] Implement generic identity-plugin dispatch after the external identity
+  plugin is delivered; OIDC/OAuth and JWT/JWKS are not Gateway core features.
 - [ ] TCP and UDP listener/rule engines, TLS passthrough/termination, upstream
   relays, flow limits and graceful shutdown.
 
