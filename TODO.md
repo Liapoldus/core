@@ -427,8 +427,9 @@ TCP-loopback. Целевой контракт описан в
   plugin: handshake, health, unary Call, HTTP/TCP dispatch, secret redaction и
   штатный shutdown. Bidi Stream пока покрыт на уровне protocol suite, не через
   Gateway child-process fixture.
-- [ ] Автоматически проверить reflection через grpcurl и restart/backoff после
-  сбоя дочернего процесса.
+- [X] Проверить grpcurl reflection и health на реальном gRPC fixture;
+  `list`/`describe` возвращают health, reflection и `PluginService` v1.
+- [ ] Автоматически проверить restart/backoff после сбоя дочернего процесса.
 - [X] Удалить production `framing/`, `session/`, probe и generated
   framing-only code после replacement suite green.
 - [X] Добавить в `pluginprotocol` generated Go gRPC stubs, test-only TypeScript
