@@ -9,6 +9,7 @@ type CompiledGraph struct {
 	TLSProfiles   map[string]TLSProfile
 	RateLimits    map[string]RateLimit
 	WAFPolicies   map[string]WAFPolicy
+	AuthPolicies  map[string]AuthPolicy
 	Management    Management
 	Observability Observability
 }

@@ -156,12 +156,13 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 			Value:  path,
 			Digest: hex.EncodeToString(compiled.hasher.Sum(nil)),
 		},
-		Sites:       map[string]models.Site{},
-		Secrets:     map[string]models.Secret{},
-		Upstreams:   map[string]models.Upstream{},
-		TLSProfiles: map[string]models.TLSProfile{},
-		RateLimits:  map[string]models.RateLimit{},
-		WAFPolicies: map[string]models.WAFPolicy{},
+		Sites:        map[string]models.Site{},
+		Secrets:      map[string]models.Secret{},
+		Upstreams:    map[string]models.Upstream{},
+		TLSProfiles:  map[string]models.TLSProfile{},
+		RateLimits:   map[string]models.RateLimit{},
+		WAFPolicies:  map[string]models.WAFPolicy{},
+		AuthPolicies: map[string]models.AuthPolicy{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -195,6 +196,8 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				if err := collectWAFPolicies(node, loaded.Runtime, graph.WAFPolicies); err != nil {
 					return models.CompiledGraph{}, err
 				}
+			case loaded.AuthPolicies:
+				collectAuthPolicies(node, graph.AuthPolicies)
 			case loaded.Runtime.Section.TLSProfiles:
 				if err := collectTLSProfiles(node, loaded.Runtime, graph.TLSProfiles); err != nil {
 					return models.CompiledGraph{}, err
@@ -210,6 +213,24 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.Secrets[name] = models.Secret{Value: value}
 	}
 	return graph, nil
+}
+
+func collectAuthPolicies(node *yaml.Node, policies map[string]models.AuthPolicy) {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		name, body := node.Content[i].Value, node.Content[i+1]
+		plugin := mappingNode(body, "plugin")
+		if plugin == nil {
+			continue
+		}
+		instance, _ := fieldValue(plugin, "instance")
+		capability, _ := fieldValue(plugin, "capability")
+		if instance != "" && capability != "" {
+			policies[name] = models.AuthPolicy{Instance: instance, Capability: capability}
+		}
+	}
 }
 
 func collectWAFPolicies(node *yaml.Node, _ runtimeWords, policies map[string]models.WAFPolicy) error {
