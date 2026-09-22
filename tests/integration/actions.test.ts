@@ -93,6 +93,38 @@ describe("route deny actions", () => {
   });
 });
 
+describe("CORS preflight matching", () => {
+	it("only short-circuits a configured origin and requested method", async () => {
+		const upstream = await startUpstream();
+		servers.push(upstream);
+		const address = await startActionsGateway(
+			[
+				`    routes:`,
+				`      - when: { path: { prefix: /api } }`,
+				`        then:`,
+				`          proxy: { upstream: api }`,
+				`          cors: { origins: [https://app.example], methods: [POST] }`,
+			].join("\n"),
+			`      - address: ${upstream.address}`,
+		);
+
+		const invalidOrigin = await request(address, "/api/resource", {
+			method: "OPTIONS",
+			headers: { Origin: "https://evil.example", "Access-Control-Request-Method": "POST" },
+		});
+		const invalidMethod = await request(address, "/api/resource", {
+			method: "OPTIONS",
+			headers: { Origin: "https://app.example", "Access-Control-Request-Method": "DELETE" },
+		});
+
+		expect(invalidOrigin.status).toBe(200);
+		expect(invalidOrigin.headers.get("access-control-allow-origin")).toBeNull();
+		expect(invalidMethod.status).toBe(200);
+		expect(invalidMethod.headers.get("access-control-allow-origin")).toBeNull();
+		expect(upstream.hits().requests).toBe(2);
+	});
+});
+
 describe("WAF policy limit action", () => {
   it("uses the named token bucket and stops before proxying on exhaustion", async () => {
     const upstream = await startUpstream();
