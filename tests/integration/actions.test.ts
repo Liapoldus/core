@@ -218,6 +218,29 @@ describe("composed WAF matchers", () => {
 		expect([allMiss.status, anyMiss.status, notMiss.status]).toEqual([200, 200, 200]);
 		expect(upstream.hits().requests).toBe(3);
 	});
+
+	it("lets a true any-branch decide the result despite an unavailable Geo branch", async () => {
+		const upstream = await startUpstream();
+		servers.push(upstream);
+		const address = await freeAddress();
+		const configPath = await writeGatewayConfig([
+			`dataProviders:`, `  geo: { type: mmdb, path: /missing/GeoLite2-City.mmdb, onError: deny }`,
+			`upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+			`wafPolicies:`, `  any-policy:`, `    rules:`,
+			`      - when: { any: [{ geo: { provider: geo, country: { exact: US } } }, { path: { prefix: /api } }] }`,
+			`        onError: deny`, `        then: { deny: { status: 451 } }`,
+			`listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+			`    routes:`, `      - when: { path: { prefix: /api } }`,
+			`        then: { proxy: api, waf: any-policy }`,
+		].join("\n"));
+		const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+		gateways.push(gateway);
+		await waitReady(address);
+
+		const response = await request(address, "/api/private");
+		expect(response.status).toBe(451);
+		expect(upstream.hits().requests).toBe(0);
+	});
 });
 
 describe("WAF source IP matcher", () => {
