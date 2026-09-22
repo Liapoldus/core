@@ -90,6 +90,21 @@ describe("route deny actions", () => {
   });
 });
 
+describe("plugin route actions", () => {
+  it("does not silently turn a declared plugin action into a 404", async () => {
+    const address = await startActionsGateway([
+      `    routes:`,
+      `      - when:`,
+      `          path:`,
+      `            prefix: /plugin`,
+      `        then:`,
+      `          plugin: { instance: forms, capability: forms.submit }`,
+    ].join("\n"));
+    const response = await request(address, "/plugin/submit");
+    expect(response.status).toBe(503);
+  });
+});
+
 describe("route redirect actions", () => {
   it("redirects with the default 308 status and preserves the query by default", async () => {
     const address = await startActionsGateway(redirectRoute(`/old`, `{ path: /new }`));

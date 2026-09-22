@@ -158,19 +158,28 @@ type runtimeWords struct {
 		} `yaml:"account"`
 	} `yaml:"management"`
 	Route struct {
-		When     string
-		Then     string
-		Path     string
-		Prefix   string
-		Exact    string
-		Regex    string
-		Site     string
-		Proxy    string
-		Redirect string `yaml:"redirect"`
-		Rewrite  string `yaml:"rewrite"`
-		Headers  string `yaml:"headers"`
-		Deny     string `yaml:"deny"`
+		When      string
+		Then      string
+		Path      string
+		Prefix    string
+		Exact     string
+		Regex     string
+		Site      string
+		Proxy     string
+		Redirect  string `yaml:"redirect"`
+		Rewrite   string `yaml:"rewrite"`
+		Headers   string `yaml:"headers"`
+		Deny      string `yaml:"deny"`
+		Plugin    string `yaml:"plugin"`
+		Auth      string `yaml:"auth"`
+		WAF       string `yaml:"waf"`
+		RateLimit string `yaml:"rateLimit"`
+		CORS      string `yaml:"cors"`
 	}
+	Plugin struct {
+		Instance   string `yaml:"instance"`
+		Capability string `yaml:"capability"`
+	} `yaml:"plugin"`
 	Proxy struct {
 		Upstream     string `yaml:"upstream"`
 		Host         string `yaml:"host"`

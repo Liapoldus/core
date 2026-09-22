@@ -205,6 +205,13 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			writer.WriteHeader(route.Deny.Status)
 			return
 		}
+		if route.Plugin != nil {
+			// Capability dispatch is attached by the plugin runtime adapter. A
+			// missing adapter is an explicit unavailable response, never 404.
+			writer.Header().Set("Content-Type", "application/problem+json")
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if route.Proxy != nil {
 			responseWriter := responseWriterWithActions(writer, route.Headers)
 			if proxied := proxies[index]; proxied != nil {

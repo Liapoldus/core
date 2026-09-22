@@ -281,6 +281,11 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 			route.Rewrite = rewrite
 			route.Headers = compileHeaderActions(mappingNode(then, words.Route.Headers), words)
 			route.Deny = compileDeny(mappingNode(then, words.Route.Deny), words)
+			route.Plugin = compilePlugin(mappingNode(then, words.Route.Plugin), words)
+			route.Auth, _ = fieldValue(then, words.Route.Auth)
+			route.WAF, _ = fieldValue(then, words.Route.WAF)
+			route.RateLimit, _ = fieldValue(then, words.Route.RateLimit)
+			route.CORS = mappingNode(then, words.Route.CORS) != nil
 		}
 		if terminals := countTerminalActions(route); terminals > 1 {
 			return nil, ErrMultipleTerminalActions
@@ -320,7 +325,22 @@ func countTerminalActions(route models.Route) int {
 	if route.Deny != nil {
 		terminals++
 	}
+	if route.Plugin != nil {
+		terminals++
+	}
 	return terminals
+}
+
+func compilePlugin(node *yaml.Node, words runtimeWords) *models.PluginTarget {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	instance, _ := fieldValue(node, words.Plugin.Instance)
+	capability, _ := fieldValue(node, words.Plugin.Capability)
+	if instance == "" || capability == "" {
+		return nil
+	}
+	return &models.PluginTarget{Instance: instance, Capability: capability}
 }
 
 func compileProxyTarget(node *yaml.Node, words runtimeWords) *models.ProxyTarget {

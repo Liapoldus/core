@@ -148,6 +148,11 @@ runtime:
     rewrite: rewrite
     headers: headers
     deny: deny
+    plugin: plugin
+    auth: auth
+    waf: waf
+    rateLimit: rateLimit
+    cors: cors
   redirect:
     scheme: scheme
     host: host
@@ -166,6 +171,9 @@ runtime:
   deny:
     status: status
     code: code
+  plugin:
+    instance: instance
+    capability: capability
   proxy:
     upstream: upstream
     host: host
