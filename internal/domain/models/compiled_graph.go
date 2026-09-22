@@ -7,6 +7,7 @@ type CompiledGraph struct {
 	Secrets       map[string]Secret
 	Upstreams     map[string]Upstream
 	TLSProfiles   map[string]TLSProfile
+	RateLimits    map[string]RateLimit
 	Management    Management
 	Observability Observability
 }

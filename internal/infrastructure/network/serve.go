@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -46,6 +47,15 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 }
 
 func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
+}
+
+// ServeWithRateLimits is the full runtime entry point used by the CLI.
+func ServeWithRateLimits(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, drainTimeout, capabilities, l4Capabilities, metrics...)
+}
+
+func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -57,7 +67,7 @@ func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits)
 			}
 		}(listener)
 	}
@@ -232,6 +242,50 @@ type l4RoutePlugin struct {
 	capability string
 }
 
+type rateBucket struct {
+	started time.Time
+	count   int
+}
+
+type rateLimiter struct {
+	limits  map[string]models.RateLimit
+	mu      sync.Mutex
+	buckets map[string]rateBucket
+}
+
+func newRateLimiter(limits map[string]models.RateLimit) *rateLimiter {
+	return &rateLimiter{limits: limits, buckets: make(map[string]rateBucket)}
+}
+
+func (limiter *rateLimiter) Allow(name string, request *http.Request) (int, bool) {
+	limit, ok := limiter.limits[name]
+	if !ok {
+		return 0, false
+	}
+	period, err := time.ParseDuration(limit.Per)
+	if err != nil || period <= 0 {
+		return 0, false
+	}
+	key := name + "|" + request.RemoteAddr
+	now := time.Now()
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	bucket := limiter.buckets[key]
+	if bucket.started.IsZero() || now.Sub(bucket.started) >= period {
+		bucket = rateBucket{started: now}
+	}
+	if bucket.count >= limit.Requests {
+		remaining := int((period - now.Sub(bucket.started) + time.Second - 1) / time.Second)
+		if remaining < 1 {
+			remaining = 1
+		}
+		return remaining, true
+	}
+	bucket.count++
+	limiter.buckets[key] = bucket
+	return 0, false
+}
+
 func l4Plugin(rules []models.Route, capabilities map[string]L4CapabilityDispatcher) l4RoutePlugin {
 	for _, rule := range rules {
 		if rule.Plugin != nil {
@@ -280,7 +334,8 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit) error {
+	limiter := newRateLimiter(limits)
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
@@ -290,6 +345,13 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.Headers != nil {
 			applyHeaderActions(request.Header, route.Headers.Request)
+		}
+		if route.RateLimit != "" {
+			if retry, limited := limiter.Allow(route.RateLimit, request); limited {
+				writer.Header().Set("Retry-After", strconv.Itoa(retry))
+				writer.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
 		}
 		if route.CORS {
 			origin := request.Header.Get("Origin")

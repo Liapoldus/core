@@ -34,15 +34,16 @@ const (
 )
 
 type contractFile struct {
-	Root      []string `yaml:"root"`
-	Listener  []string `yaml:"listener"`
-	Includes  string   `yaml:"includes"`
-	Listeners string   `yaml:"listeners"`
-	Sites     string   `yaml:"sites"`
-	Secrets   string   `yaml:"secrets"`
-	Variables string   `yaml:"variables"`
-	Upstreams string   `yaml:"upstreams"`
-	Registry  struct {
+	Root       []string `yaml:"root"`
+	Listener   []string `yaml:"listener"`
+	Includes   string   `yaml:"includes"`
+	Listeners  string   `yaml:"listeners"`
+	Sites      string   `yaml:"sites"`
+	Secrets    string   `yaml:"secrets"`
+	Variables  string   `yaml:"variables"`
+	Upstreams  string   `yaml:"upstreams"`
+	RateLimits string   `yaml:"rateLimits"`
+	Registry   struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
 	} `yaml:"registry"`
@@ -176,6 +177,12 @@ type runtimeWords struct {
 		RateLimit string `yaml:"rateLimit"`
 		CORS      string `yaml:"cors"`
 	}
+	RateLimit struct {
+		Key      string `yaml:"key"`
+		Requests string `yaml:"requests"`
+		Per      string `yaml:"per"`
+		Burst    string `yaml:"burst"`
+	} `yaml:"rateLimit"`
 	Plugin struct {
 		Instance   string `yaml:"instance"`
 		Capability string `yaml:"capability"`

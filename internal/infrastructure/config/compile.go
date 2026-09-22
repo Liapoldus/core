@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"hash"
 	"net"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"gopkg.in/yaml.v3"
@@ -158,6 +160,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		Secrets:     map[string]models.Secret{},
 		Upstreams:   map[string]models.Upstream{},
 		TLSProfiles: map[string]models.TLSProfile{},
+		RateLimits:  map[string]models.RateLimit{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -183,6 +186,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				if err := collectUpstreams(node, loaded.Runtime, graph.Upstreams); err != nil {
 					return models.CompiledGraph{}, err
 				}
+			case loaded.RateLimits:
+				if err := collectRateLimits(node, loaded.Runtime, graph.RateLimits); err != nil {
+					return models.CompiledGraph{}, err
+				}
 			case loaded.Runtime.Section.TLSProfiles:
 				if err := collectTLSProfiles(node, loaded.Runtime, graph.TLSProfiles); err != nil {
 					return models.CompiledGraph{}, err
@@ -198,6 +205,35 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.Secrets[name] = models.Secret{Value: value}
 	}
 	return graph, nil
+}
+
+func collectRateLimits(node *yaml.Node, words runtimeWords, limits map[string]models.RateLimit) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index < len(node.Content); index += 2 {
+		name, body := node.Content[index], node.Content[index+1]
+		if body.Kind != yaml.MappingNode {
+			continue
+		}
+		requests, _ := fieldValue(body, words.RateLimit.Requests)
+		burst, _ := fieldValue(body, words.RateLimit.Burst)
+		per, _ := fieldValue(body, words.RateLimit.Per)
+		key, _ := fieldValue(body, words.RateLimit.Key)
+		parsedRequests, err := strconv.Atoi(requests)
+		if err != nil || parsedRequests < 1 {
+			return fmt.Errorf("invalid rate limit %q requests", name.Value)
+		}
+		parsedBurst, err := strconv.Atoi(burst)
+		if err != nil || parsedBurst < 1 {
+			return fmt.Errorf("invalid rate limit %q burst", name.Value)
+		}
+		if _, err := time.ParseDuration(per); err != nil {
+			return fmt.Errorf("invalid rate limit %q period: %w", name.Value, err)
+		}
+		limits[name.Value] = models.RateLimit{Key: key, Requests: parsedRequests, Per: per, Burst: parsedBurst}
+	}
+	return nil
 }
 
 func collectRegistryRoot(documents []*yaml.Node, loaded contractFile, base string) string {

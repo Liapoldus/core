@@ -31,6 +31,7 @@ sites: sites
 secrets: secrets
 variables: variables
 upstreams: upstreams
+rateLimits: rateLimits
 secretReference:
   envPrefix: "env:"
   filePrefix: "file:"
@@ -171,6 +172,11 @@ runtime:
   deny:
     status: status
     code: code
+  rateLimit:
+    key: key
+    requests: requests
+    per: per
+    burst: burst
   plugin:
     instance: instance
     capability: capability
