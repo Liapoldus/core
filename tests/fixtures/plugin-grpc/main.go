@@ -10,6 +10,8 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
+
+	"google.golang.org/grpc/status"
 )
 
 type plugin struct {
@@ -30,7 +32,7 @@ type httpRequest struct {
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "tcp.echo"}}, nil
+	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "forms.slow", "tcp.echo"}}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
@@ -46,7 +48,17 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 	return &pluginv1.ShutdownResult{Closed: true}, nil
 }
 
-func (p *plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+	if request.GetCapability() == "forms.slow" {
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil, status.FromContextError(ctx.Err()).Err()
+		case <-timer.C:
+			return &pluginv1.CallResponse{Payload: []byte(`{"status":200}`)}, nil
+		}
+	}
 	if request.GetCapability() == "forms.memory" {
 		memoryBlock = make([]byte, 128<<20)
 		for index := 0; index < len(memoryBlock); index += 4096 {

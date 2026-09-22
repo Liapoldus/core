@@ -147,6 +147,36 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     ]);
   }, 60_000);
 
+  it("maps an expired plugin call deadline to the plugin_timeout problem", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-timeout-"));
+    const binary = join(directory, "forms-plugin");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    capabilities: [forms.slow]",
+      "    limits: { timeout: 2s }",
+      "    settings: {}",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${address}`,
+      "    routes:",
+      "      - when: { path: { exact: /slow } }",
+      "        then:",
+      "          plugin: { instance: forms, capability: forms.slow }",
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/slow");
+    expect(response.status).toBe(504);
+    expect(JSON.parse(response.text).code).toBe("plugin_timeout");
+  }, 60_000);
+
   it("restarts a plugin process after an unexpected child exit", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-restart-"));
     const binary = join(directory, "forms-plugin");
