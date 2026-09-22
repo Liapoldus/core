@@ -117,6 +117,32 @@ describe("WAF policy limit action", () => {
   });
 });
 
+describe("WAF method matcher", () => {
+  it("only applies a WAF rule when its method matcher is satisfied", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  public:`, `    rules:`,
+      `      - when: { method: [POST], path: { prefix: /api } }`,
+      `        then: { deny: { status: 405 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: public }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const get = await request(address, "/api/read");
+    const post = await request(address, "/api/write", { method: "POST" });
+    expect(get.status).toBe(200);
+    expect(post.status).toBe(405);
+    expect(upstream.hits().paths).toEqual(["/api/read"]);
+  });
+});
+
 describe("plugin route actions", () => {
   it("does not silently turn a declared plugin action into a 404", async () => {
     const address = await startActionsGateway([
