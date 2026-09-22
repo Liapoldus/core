@@ -25,5 +25,9 @@ jobs:
         run: make build
       - name: Run TypeScript test suite
         run: npm --prefix tests ci && make test
+      - name: Go race and shutdown acceptance
+        run: make test-race
+      - name: Docker smoke
+        run: make docker-smoke
       - name: Enforce architecture
         run: make arch-lint

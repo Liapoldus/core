@@ -1,5 +1,13 @@
 # Gateway v1 delivery checklist
 
+## Acceptance gates
+
+CI обязана выполнять полный TypeScript-набор, `go test -race ./...` и Docker
+smoke-проверку образа. Smoke-проверка подтверждает, что минимальный
+distroless-образ запускает собранный бинарник; runtime-поведение проверяется
+интеграционными тестами и не подменяется проверкой только сборки. Протокол
+плагинов проверяется существующими golden-wire и malformed-frame тестами.
+
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
 
