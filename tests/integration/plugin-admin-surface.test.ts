@@ -25,7 +25,7 @@ describe("plugin supervisor и admin surface boundary", () => {
     const contract = resolve(protocol, "contracts/forms-db/v1/admin-surface.json");
     expect(existsSync(contract)).toBe(true);
     const parsed = JSON.parse(readFileSync(contract, "utf8"));
-    expect(parsed.capability).toBe("admin.surface");
-    expect(parsed.namespace).toBe("forms-db");
+    expect(parsed.plugin).toBe("forms-db");
+    expect(parsed.requiredCapabilities).toContain("admin.surface.get");
   });
 });
