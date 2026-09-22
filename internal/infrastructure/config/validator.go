@@ -102,9 +102,10 @@ type runtimeWords struct {
 		Cache            string `yaml:"cache"`
 	}
 	SiteRedirect struct {
-		From   string `yaml:"from"`
-		To     string `yaml:"to"`
-		Status string `yaml:"status"`
+		From     string `yaml:"from"`
+		To       string `yaml:"to"`
+		Status   string `yaml:"status"`
+		Location string `yaml:"location"`
 	} `yaml:"siteRedirect"`
 	SiteCache struct {
 		Static     string `yaml:"static"`

@@ -92,6 +92,7 @@ runtime:
     from: from
     to: to
     status: status
+    location: Location
   siteCache:
     static: static
     visibility: visibility

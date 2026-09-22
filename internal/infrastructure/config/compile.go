@@ -639,7 +639,7 @@ func collectSiteRedirects(node *yaml.Node, words runtimeWords) []models.SiteRedi
 		if item.Kind != yaml.MappingNode {
 			continue
 		}
-		redirect := models.SiteRedirect{Status: 308}
+		redirect := models.SiteRedirect{Status: 308, LocationHeader: words.SiteRedirect.Location}
 		redirect.From, _ = fieldValue(item, words.SiteRedirect.From)
 		redirect.To, _ = fieldValue(item, words.SiteRedirect.To)
 		if status, ok := fieldValue(item, words.SiteRedirect.Status); ok {

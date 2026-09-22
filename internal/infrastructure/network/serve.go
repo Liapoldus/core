@@ -44,11 +44,8 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			serveRedirect(writer, request, *route.Redirect, route.Headers)
 			return
 		}
-		responseWriter := writer
-		if route.Headers != nil && headerSetNonEmpty(route.Headers.Response) {
-			responseWriter = &headerActionsWriter{ResponseWriter: writer, actions: route.Headers.Response}
-		}
 		if route.Proxy != nil {
+			responseWriter := responseWriterWithActions(writer, route.Headers)
 			if proxied := proxies[index]; proxied != nil {
 				proxied.ServeHTTP(responseWriter, request)
 				return
@@ -61,6 +58,11 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			http.NotFound(writer, request)
 			return
 		}
+		if redirect, found := siteRedirect(request.URL.Path, site.Redirects); found {
+			serveSiteRedirect(writer, redirect, responseHeaderActions(site.Headers, route.Headers))
+			return
+		}
+		responseWriter := responseWriterWithActions(writer, site.Headers, route.Headers)
 		if request.URL.Path == "" || strings.Contains(request.URL.Path, "/..") {
 			http.NotFound(writer, request)
 			return
@@ -103,6 +105,41 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func siteRedirect(requestPath string, redirects []models.SiteRedirect) (models.SiteRedirect, bool) {
+	for _, redirect := range redirects {
+		if redirect.From == requestPath {
+			return redirect, true
+		}
+	}
+	return models.SiteRedirect{}, false
+}
+
+func serveSiteRedirect(writer http.ResponseWriter, redirect models.SiteRedirect, actions []models.HeaderSet) {
+	for _, action := range actions {
+		applyHeaderActions(writer.Header(), action)
+	}
+	writer.Header().Set(redirect.LocationHeader, redirect.To)
+	writer.WriteHeader(redirect.Status)
+}
+
+func responseHeaderActions(sets ...*models.HeaderActions) []models.HeaderSet {
+	var actions []models.HeaderSet
+	for _, set := range sets {
+		if set != nil && headerSetNonEmpty(set.Response) {
+			actions = append(actions, set.Response)
+		}
+	}
+	return actions
+}
+
+func responseWriterWithActions(writer http.ResponseWriter, sets ...*models.HeaderActions) http.ResponseWriter {
+	actions := responseHeaderActions(sets...)
+	if len(actions) == 0 {
+		return writer
+	}
+	return &headerActionsWriter{ResponseWriter: writer, actions: actions}
 }
 
 func matchedRoute(requestPath string, routes []models.Route) (int, models.Route, bool) {
@@ -169,14 +206,16 @@ func redirectLocation(request *http.Request, redirect models.RouteRedirect) stri
 
 type headerActionsWriter struct {
 	http.ResponseWriter
-	actions models.HeaderSet
+	actions []models.HeaderSet
 	wrote   bool
 }
 
 func (writer *headerActionsWriter) WriteHeader(status int) {
 	if !writer.wrote {
 		writer.wrote = true
-		applyHeaderActions(writer.Header(), writer.actions)
+		for _, actions := range writer.actions {
+			applyHeaderActions(writer.Header(), actions)
+		}
 	}
 	writer.ResponseWriter.WriteHeader(status)
 }
