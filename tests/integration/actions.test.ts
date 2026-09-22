@@ -1,7 +1,7 @@
 import { copyFile, mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { startGateway } from "../support/gateway.js";
+import { runGateway, startGateway } from "../support/gateway.js";
 import { freeAddress, portOf, request, waitReady, writeGatewayConfig } from "../support/http.js";
 import { startUpstream } from "../support/upstream.js";
 import { tmpdir } from "node:os";
@@ -176,6 +176,48 @@ describe("WAF method matcher", () => {
     expect(post.status).toBe(405);
     expect(upstream.hits().paths).toEqual(["/api/read"]);
   });
+});
+
+describe("composed WAF matchers", () => {
+	it("evaluates nested all, any, and not conditions instead of ignoring them", async () => {
+		const upstream = await startUpstream();
+		servers.push(upstream);
+		const address = await freeAddress();
+		const configPath = await writeGatewayConfig([
+			`upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+			`wafPolicies:`,
+			`  all-policy:`, `    rules:`,
+			`      - when: { all: [{ method: { exact: GET } }, { path: { prefix: /all } }] }`,
+			`        then: { deny: { status: 451 } }`,
+			`  any-policy:`, `    rules:`,
+			`      - when: { any: [{ method: { exact: TRACE } }, { path: { prefix: /any-hit } }] }`,
+			`        then: { deny: { status: 452 } }`,
+			`  not-policy:`, `    rules:`,
+			`      - when: { path: { prefix: /not }, not: { method: { exact: DELETE } } }`,
+			`        then: { deny: { status: 453 } }`,
+			`listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+			`    routes:`,
+			`      - when: { path: { prefix: /all } }`, `        then: { proxy: { upstream: api }, waf: all-policy }`,
+			`      - when: { path: { prefix: /any } }`, `        then: { proxy: { upstream: api }, waf: any-policy }`,
+			`      - when: { path: { prefix: /not } }`, `        then: { proxy: { upstream: api }, waf: not-policy }`,
+		].join("\n"));
+		const validation = await runGateway(["--output", "json", "--config", configPath, "config", "validate"]);
+		if (validation.exitCode !== 0) throw new Error(JSON.stringify(validation));
+		const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+		gateways.push(gateway);
+		await waitReady(address);
+
+		const allMatch = await request(address, "/all/item", { method: "GET" });
+		const allMiss = await request(address, "/all/item", { method: "POST" });
+		const anyMatch = await request(address, "/any-hit/item", { method: "GET" });
+		const anyMiss = await request(address, "/any-miss/item", { method: "GET" });
+		const notMatch = await request(address, "/not/item", { method: "GET" });
+		const notMiss = await request(address, "/not/item", { method: "DELETE" });
+
+		expect([allMatch.status, anyMatch.status, notMatch.status]).toEqual([451, 452, 453]);
+		expect([allMiss.status, anyMiss.status, notMiss.status]).toEqual([200, 200, 200]);
+		expect(upstream.hits().requests).toBe(3);
+	});
 });
 
 describe("WAF source IP matcher", () => {
