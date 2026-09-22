@@ -146,4 +146,47 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       { maxConcurrent: 1 },
     ]);
   }, 60_000);
+
+  it("restarts a plugin process after an unexpected child exit", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-restart-"));
+    const binary = join(directory, "forms-plugin");
+    const marker = join(directory, "crashed-once");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    env:",
+      `      - ${JSON.stringify(`LIAPOLDUS_FIXTURE_CRASH_MARKER=${marker}`)}`,
+      "    capabilities: [forms.crash-once]",
+      "    settings: {}",
+      "    restart: { enabled: true, backoff: 100ms, maxBackoff: 500ms }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${address}`,
+      "    routes:",
+      "      - when: { path: { exact: /crash } }",
+      "        then:",
+      "          plugin: { instance: forms, capability: forms.crash-once }",
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const crashed = await request(address, "/crash");
+    expect(crashed.status).toBe(502);
+
+    let recovered = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const response = await request(address, "/crash");
+      if (response.status === 200) {
+        recovered = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(recovered).toBe(true);
+  }, 60_000);
 });
