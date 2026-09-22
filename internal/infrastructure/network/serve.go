@@ -291,6 +291,21 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		if route.Headers != nil {
 			applyHeaderActions(request.Header, route.Headers.Request)
 		}
+		if route.CORS {
+			origin := request.Header.Get("Origin")
+			if origin != "" {
+				writer.Header().Set("Access-Control-Allow-Origin", origin)
+				writer.Header().Add("Vary", "Origin")
+			}
+			if request.Method == http.MethodOptions {
+				writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+				if requested := request.Header.Get("Access-Control-Request-Headers"); requested != "" {
+					writer.Header().Set("Access-Control-Allow-Headers", requested)
+				}
+				writer.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
 		if route.Rewrite != nil && route.Rewrite.Pattern != nil {
 			request.URL.Path = route.Rewrite.Pattern.ReplaceAllString(request.URL.Path, route.Rewrite.Replacement)
 		}
