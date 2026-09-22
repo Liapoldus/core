@@ -1,6 +1,6 @@
 package models
 
 type WAFRule struct {
-	When   PathMatcher
+	When   WAFMatcher
 	Action WAFAction
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -274,15 +275,27 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 			if when == nil || then == nil {
 				continue
 			}
-			rule := models.WAFRule{When: models.PathMatcher{}}
+			rule := models.WAFRule{}
 			if path := mappingNode(when, words.WAF.Path); path != nil {
-				if path.Kind == yaml.ScalarNode {
-					rule.When.Exact = path.Value
-				} else if p := mappingNode(path, words.WAF.Prefix); p != nil {
-					rule.When.Prefixes = []string{p.Value}
-				} else if p := mappingNode(path, words.WAF.Exact); p != nil {
-					rule.When.Exact = p.Value
+				matcher, err := compilePathMatcher(path, words)
+				if err != nil {
+					return err
 				}
+				rule.When.Path = matcher
+			}
+			if method := mappingNode(when, words.WAF.Method); method != nil {
+				matcher, err := compileStringMatcher(method, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+				if err != nil {
+					return err
+				}
+				rule.When.Method = matcher
+			}
+			if sourceIP := mappingNode(when, words.WAF.SourceIP); sourceIP != nil {
+				matcher, err := compileIPMatcher(sourceIP, words.WAF.Exact, words.WAF.In, words.WAF.NotIn)
+				if err != nil {
+					return err
+				}
+				rule.When.SourceIP = matcher
 			}
 			if mappingNode(then, words.WAF.Allow) != nil {
 				rule.Action.Allow = true
@@ -305,6 +318,116 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 		policies[name] = policy
 	}
 	return nil
+}
+
+func compileIPMatcher(node *yaml.Node, exact, in, notIn string) (*models.IPMatcher, error) {
+	matcher := &models.IPMatcher{}
+	values := func(source *yaml.Node, target *[]netip.Prefix) error {
+		for _, value := range collectMatcherValues(source) {
+			prefix, err := netip.ParsePrefix(value)
+			if err != nil {
+				address, addressErr := netip.ParseAddr(value)
+				if addressErr != nil {
+					return ErrInvalidDocument
+				}
+				address = address.Unmap()
+				prefix = netip.PrefixFrom(address, address.BitLen())
+			}
+			*target = append(*target, prefix.Masked())
+		}
+		return nil
+	}
+	switch node.Kind {
+	case yaml.ScalarNode, yaml.SequenceNode:
+		matcher.HasIn = true
+		if err := values(node, &matcher.In); err != nil {
+			return nil, err
+		}
+	case yaml.MappingNode:
+		if value := mappingNode(node, exact); value != nil {
+			matcher.HasIn = true
+			if err := values(value, &matcher.In); err != nil {
+				return nil, err
+			}
+		}
+		if value := mappingNode(node, in); value != nil {
+			matcher.HasIn = true
+			if err := values(value, &matcher.In); err != nil {
+				return nil, err
+			}
+		}
+		if value := mappingNode(node, notIn); value != nil {
+			matcher.HasNotIn = true
+			if err := values(value, &matcher.NotIn); err != nil {
+				return nil, err
+			}
+		}
+	default:
+		return nil, ErrInvalidDocument
+	}
+	return matcher, nil
+}
+
+func compileStringMatcher(node *yaml.Node, exact, prefix, regex, exists, in, notIn string) (*models.StringMatcher, error) {
+	matcher := &models.StringMatcher{}
+	switch node.Kind {
+	case yaml.ScalarNode:
+		matcher.Exact, matcher.HasExact = node.Value, true
+	case yaml.SequenceNode:
+		matcher.HasIn = true
+		for _, value := range node.Content {
+			if value.Kind != yaml.ScalarNode {
+				return nil, ErrInvalidDocument
+			}
+			matcher.In = append(matcher.In, value.Value)
+		}
+	case yaml.MappingNode:
+		if value, ok := fieldValue(node, exact); ok {
+			matcher.Exact, matcher.HasExact = value, true
+		}
+		if value, ok := fieldValue(node, prefix); ok {
+			matcher.Prefix, matcher.HasPrefix = value, true
+		}
+		if value, ok := fieldValue(node, regex); ok {
+			compiled, err := regexp.Compile(value)
+			if err != nil {
+				return nil, err
+			}
+			matcher.Regex = compiled
+		}
+		if value, ok := fieldValue(node, exists); ok {
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return nil, ErrInvalidDocument
+			}
+			matcher.Exists = &parsed
+		}
+		if values := mappingNode(node, in); values != nil {
+			matcher.In, matcher.HasIn = collectMatcherValues(values), true
+		}
+		if values := mappingNode(node, notIn); values != nil {
+			matcher.NotIn, matcher.HasNotIn = collectMatcherValues(values), true
+		}
+	default:
+		return nil, ErrInvalidDocument
+	}
+	return matcher, nil
+}
+
+func collectMatcherValues(node *yaml.Node) []string {
+	if node.Kind == yaml.ScalarNode {
+		return []string{node.Value}
+	}
+	if node.Kind != yaml.SequenceNode {
+		return nil
+	}
+	values := make([]string, 0, len(node.Content))
+	for _, child := range node.Content {
+		if child.Kind == yaml.ScalarNode {
+			values = append(values, child.Value)
+		}
+	}
+	return values
 }
 
 func collectRateLimits(node *yaml.Node, words runtimeWords, limits map[string]models.RateLimit) error {

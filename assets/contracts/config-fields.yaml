@@ -183,8 +183,14 @@ runtime:
     when: when
     then: then
     path: path
+    method: method
+    sourceIP: sourceIp
     prefix: prefix
     exact: exact
+    regex: regex
+    exists: exists
+    in: in
+    notIn: notIn
     allow: allow
     deny: deny
     status: status

@@ -190,17 +190,23 @@ type runtimeWords struct {
 		Burst    string `yaml:"burst"`
 	} `yaml:"rateLimit"`
 	WAF struct {
-		Rules  string `yaml:"rules"`
-		When   string `yaml:"when"`
-		Then   string `yaml:"then"`
-		Path   string `yaml:"path"`
-		Prefix string `yaml:"prefix"`
-		Exact  string `yaml:"exact"`
-		Allow  string `yaml:"allow"`
-		Deny   string `yaml:"deny"`
-		Status string `yaml:"status"`
-		Code   string `yaml:"code"`
-		Limit  string `yaml:"limit"`
+		Rules    string `yaml:"rules"`
+		When     string `yaml:"when"`
+		Then     string `yaml:"then"`
+		Path     string `yaml:"path"`
+		Method   string `yaml:"method"`
+		SourceIP string `yaml:"sourceIP"`
+		Prefix   string `yaml:"prefix"`
+		Exact    string `yaml:"exact"`
+		Regex    string `yaml:"regex"`
+		Exists   string `yaml:"exists"`
+		In       string `yaml:"in"`
+		NotIn    string `yaml:"notIn"`
+		Allow    string `yaml:"allow"`
+		Deny     string `yaml:"deny"`
+		Status   string `yaml:"status"`
+		Code     string `yaml:"code"`
+		Limit    string `yaml:"limit"`
 	} `yaml:"waf"`
 	Plugin struct {
 		Instance   string `yaml:"instance"`

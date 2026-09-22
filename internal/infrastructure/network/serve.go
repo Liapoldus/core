@@ -457,7 +457,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.WAF != "" {
 			if policy, ok := policies[route.WAF]; ok {
-				if action, matched := policy.Evaluate(request.URL.Path); matched {
+				if action, matched := policy.Evaluate(request.URL.Path, request.Method, request.RemoteAddr); matched {
 					if action.Deny != nil {
 						writer.WriteHeader(action.Deny.Status)
 						return
