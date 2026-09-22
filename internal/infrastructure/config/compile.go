@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"net"
@@ -199,6 +200,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		WAFPolicies:   map[string]models.WAFPolicy{},
 		DataProviders: map[string]models.DataProvider{},
 		AuthPolicies:  map[string]models.AuthPolicy{},
+		Plugins:       map[string]models.PluginInstance{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -210,6 +212,14 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		for index := 0; index < len(document.Content); index += 2 {
 			key, node := document.Content[index], document.Content[index+1]
 			switch key.Value {
+			case loaded.Plugins:
+				plugins, err := collectPluginInstances(node, loaded.Runtime, base)
+				if err != nil {
+					return models.CompiledGraph{}, err
+				}
+				for name, instance := range plugins {
+					graph.Plugins[name] = instance
+				}
 			case loaded.DataProviders:
 				if err := collectDataProviders(node, loaded.Runtime, base, graph.DataProviders); err != nil {
 					return models.CompiledGraph{}, err
@@ -273,6 +283,67 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.WAFPolicies[policyName] = policy
 	}
 	return graph, nil
+}
+
+func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (map[string]models.PluginInstance, error) {
+	instances := make(map[string]models.PluginInstance)
+	if node == nil || node.Kind != yaml.MappingNode {
+		return instances, nil
+	}
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		name := node.Content[index].Value
+		body := node.Content[index+1]
+		binary, _ := fieldValue(body, words.Plugin.Binary)
+		if binary == "" {
+			return nil, ErrInvalidDocument
+		}
+		if !filepath.IsAbs(binary) {
+			binary = filepath.Join(base, binary)
+		}
+		settings := []byte("{}")
+		if settingsNode := mappingNode(body, words.Plugin.Settings); settingsNode != nil {
+			var value any
+			if err := settingsNode.Decode(&value); err != nil {
+				return nil, ErrInvalidDocument
+			}
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return nil, ErrInvalidDocument
+			}
+			settings = encoded
+		}
+		timeoutText := words.Plugin.DefaultTimeout
+		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
+			if configured, ok := fieldValue(limits, words.Plugin.Timeout); ok {
+				timeoutText = configured
+			}
+		}
+		timeout, err := time.ParseDuration(timeoutText)
+		if err != nil || timeout <= 0 {
+			return nil, ErrInvalidDocument
+		}
+		instance := models.PluginInstance{
+			Binary:       binary,
+			Args:         sequenceValues(mappingNode(body, words.Plugin.Args)),
+			Env:          sequenceValues(mappingNode(body, words.Plugin.Env)),
+			Capabilities: sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
+			Settings:     settings,
+			Timeout:      timeout,
+		}
+		instances[name] = instance
+	}
+	return instances, nil
+}
+
+func sequenceValues(node *yaml.Node) []string {
+	if node == nil || node.Kind != yaml.SequenceNode {
+		return nil
+	}
+	values := make([]string, 0, len(node.Content))
+	for _, item := range node.Content {
+		values = append(values, item.Value)
+	}
+	return values
 }
 
 func collectAuthPolicies(node *yaml.Node, policies map[string]models.AuthPolicy) {

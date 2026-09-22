@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"google.golang.org/grpc"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	"github.com/Liapoldus/pluginprotocol/transport"
+	"google.golang.org/grpc"
+	"os"
 )
 
 type plugin struct {
@@ -16,14 +16,14 @@ type plugin struct {
 }
 
 type httpRequest struct {
-	Method string `json:"method"`
-	Path string `json:"path"`
+	Method  string            `json:"method"`
+	Path    string            `json:"path"`
 	Headers map[string]string `json:"headers"`
-	Body []byte `json:"body"`
+	Body    []byte            `json:"body"`
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit"}}, nil
+	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "tcp.echo"}}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
@@ -40,6 +40,21 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 }
 
 func (*plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+	if request.GetCapability() == "tcp.echo" {
+		var input struct {
+			Payload []byte `json:"payload"`
+		}
+		if err := json.Unmarshal(request.GetPayload(), &input); err != nil {
+			return &pluginv1.CallResponse{Code: "invalid_request"}, nil
+		}
+		response, err := json.Marshal(struct {
+			Payload []byte `json:"payload"`
+		}{Payload: append([]byte("plugin:"), input.Payload...)})
+		if err != nil {
+			return nil, err
+		}
+		return &pluginv1.CallResponse{Payload: response}, nil
+	}
 	var input httpRequest
 	if err := json.Unmarshal(request.GetPayload(), &input); err != nil {
 		return &pluginv1.CallResponse{Code: "invalid_request"}, nil
@@ -47,16 +62,23 @@ func (*plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1
 	_, authPresent := input.Headers["Authorization"]
 	_, cookiePresent := input.Headers["Cookie"]
 	body, err := json.Marshal(map[string]any{
-		"method": input.Method,
-		"path": input.Path,
-		"body": string(input.Body),
+		"method":               input.Method,
+		"path":                 input.Path,
+		"body":                 string(input.Body),
 		"authorizationPresent": authPresent,
-		"cookiePresent": cookiePresent,
+		"cookiePresent":        cookiePresent,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &pluginv1.CallResponse{Payload: body}, nil
+	response, err := json.Marshal(struct {
+		Status int    `json:"status"`
+		Body   []byte `json:"body"`
+	}{Status: 200, Body: body})
+	if err != nil {
+		return nil, err
+	}
+	return &pluginv1.CallResponse{Payload: response}, nil
 }
 
 func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage]) error {

@@ -77,6 +77,12 @@ func ServeWithWAFRuntime(parent context.Context, listeners []models.Listener, si
 	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, nil, nil, metrics, nil, runtime)
 }
 
+func ServeWithPluginRuntime(parent context.Context, graph models.CompiledGraph, runtime *WAFRuntime, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, identity map[string]IdentityCapabilityDispatcher, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles,
+		graph.RateLimits, graph.WAFPolicies, graph.AuthPolicies, identity, drainTimeout,
+		capabilities, l4Capabilities, metrics, nil, runtime)
+}
+
 // ServeWithIdentityPolicies additionally wires compiled auth policies to
 // already-handshaken identity plugin instances.
 func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {

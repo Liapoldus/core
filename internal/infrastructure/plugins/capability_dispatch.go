@@ -42,18 +42,23 @@ type L4Response struct {
 }
 
 type CapabilityClient struct {
-	client *Client
+	client  *Client
+	allowed map[string]struct{}
 }
 
-func NewCapabilityClient(client *Client) (*CapabilityClient, error) {
+func NewCapabilityClient(client *Client, capabilities ...string) (*CapabilityClient, error) {
 	if client == nil {
 		return nil, errors.New("plugin capability client is nil")
 	}
-	return &CapabilityClient{client: client}, nil
+	allowed := make(map[string]struct{}, len(capabilities))
+	for _, capability := range capabilities {
+		allowed[capability] = struct{}{}
+	}
+	return &CapabilityClient{client: client, allowed: allowed}, nil
 }
 
 func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request HTTPRequest) (HTTPResponse, error) {
-	if err := validateCapability(capability, "http."); err != nil {
+	if err := c.validateCapability(capability); err != nil {
 		return HTTPResponse{}, err
 	}
 	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" {
@@ -70,7 +75,7 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 }
 
 func (c *CapabilityClient) L4(ctx context.Context, capability string, request L4Request) (L4Response, error) {
-	if err := validateCapability(capability, "tcp.", "udp."); err != nil {
+	if err := c.validateCapability(capability); err != nil {
 		return L4Response{}, err
 	}
 	if request.Transport != "tcp" && request.Transport != "udp" {
@@ -89,6 +94,23 @@ func (c *CapabilityClient) L4(ctx context.Context, capability string, request L4
 	return response, nil
 }
 
+func (c *CapabilityClient) DispatchIdentity(ctx context.Context, request IdentityRequest) (IdentityAction, error) {
+	if err := c.validateCapability(request.Capability); err != nil {
+		return IdentityAction{}, err
+	}
+	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" {
+		return IdentityAction{}, errors.New("identity request is invalid")
+	}
+	var response IdentityAction
+	if err := c.callJSON(ctx, request.Capability, request, &response); err != nil {
+		return IdentityAction{}, err
+	}
+	if response.Status < 100 || response.Status > 599 {
+		return IdentityAction{}, errors.New("identity response status is invalid")
+	}
+	return response, nil
+}
+
 func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any) error {
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -101,11 +123,14 @@ func (c *CapabilityClient) callJSON(ctx context.Context, capability string, requ
 	return json.Unmarshal(result, response)
 }
 
-func validateCapability(capability string, prefixes ...string) error {
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(capability, prefix) && len(capability) > len(prefix) {
-			return nil
+func (c *CapabilityClient) validateCapability(capability string) error {
+	if strings.TrimSpace(capability) == "" {
+		return errors.New("plugin capability is not allowed")
+	}
+	if len(c.allowed) > 0 {
+		if _, ok := c.allowed[capability]; !ok {
+			return errors.New("plugin capability is not allowed")
 		}
 	}
-	return errors.New("plugin capability is not allowed")
+	return nil
 }

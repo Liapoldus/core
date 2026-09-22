@@ -49,6 +49,7 @@ type contractFile struct {
 	WAFPolicies   string   `yaml:"wafPolicies"`
 	AuthPolicies  string   `yaml:"authPolicies"`
 	DataProviders string   `yaml:"dataProviders"`
+	Plugins       string   `yaml:"plugins"`
 	Registry      struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
@@ -241,8 +242,16 @@ type runtimeWords struct {
 		Deny    string `yaml:"deny"`
 	} `yaml:"dataProvider"`
 	Plugin struct {
-		Instance   string `yaml:"instance"`
-		Capability string `yaml:"capability"`
+		Instance       string `yaml:"instance"`
+		Capability     string `yaml:"capability"`
+		Binary         string `yaml:"binary"`
+		Args           string `yaml:"args"`
+		Env            string `yaml:"env"`
+		Capabilities   string `yaml:"capabilities"`
+		Settings       string `yaml:"settings"`
+		Limits         string `yaml:"limits"`
+		Timeout        string `yaml:"timeout"`
+		DefaultTimeout string `yaml:"defaultTimeout"`
 	} `yaml:"plugin"`
 	Proxy struct {
 		Upstream     string `yaml:"upstream"`

@@ -411,7 +411,7 @@ TCP-loopback. Целевой контракт описан в
 - [X] Сохранить JSON contracts и Gateway dispatch types `HTTPRequest`,
   `L4Request`, `IdentityRequest`, `RequestContext`, grants и redaction; не
   переносить Gateway process supervision/policy в протокол.
-- [ ] Включить standard gRPC reflection на plugin loopback endpoint для
+- [X] Включить standard gRPC reflection на plugin loopback endpoint для
   `grpcurl`; Constructor ↔ Gateway control plane оставить REST.
 - [ ] Добавлять отдельные TS red-test commits перед каждым protocol/core
   implementation increment. Никаких Go `*_test.go`; generated TS stubs —
@@ -419,21 +419,26 @@ TCP-loopback. Целевой контракт описан в
 - [ ] Проверить protobuf descriptor conformance, versioned JSON schema
   examples, malformed/oversized payloads, deadlines, cancellation, concurrency,
   обе стороны bidi stream, bounded backpressure, close race и restart.
-- [ ] Заменить framing wire-hex vectors protocol suite на proto/schema
+- [X] Заменить framing wire-hex vectors protocol suite на proto/JSON
   conformance. Оставить Gateway golden vectors только для observable Gateway
   behavior; синхронно обновить source docs, `contracts/v1/manifest.json` и
   contract checksum.
-- [ ] Добавить TypeScript integration suite с реальным child-process gRPC
-  plugin: handshake, health, unary Call, Stream, reflection, shutdown/restart.
+- [X] Добавить TypeScript integration suite с реальным child-process gRPC
+  plugin: handshake, health, unary Call, HTTP/TCP dispatch, secret redaction,
+  bidirectional Stream и штатный shutdown.
+- [ ] Автоматически проверить reflection через grpcurl и restart/backoff после
+  сбоя дочернего процесса.
 - [X] Удалить production `framing/`, `session/`, probe и generated
   framing-only code после replacement suite green.
 - [X] Добавить в `pluginprotocol` generated Go gRPC stubs, test-only TypeScript
   gRPC stubs и CI `make check-generated` stale-output gate.
 - [X] Добавить protobuf/JSON conformance CI; переключить core protocol adapter
   на v1 gRPC transport API с local sibling-module replace.
-- [ ] Подключить process supervisor, grants, startup handshake, endpoint
-  lifecycle и dispatch к compiled plugin instances в `core`; проверить реальный
-  child-process plugin.
-- [ ] Проверить macOS + Linux на CI.
+- [X] Подключить process supervisor, startup handshake, loopback endpoint
+  handoff по pluginprotocol launch contract, settings/config apply и HTTP/L4/
+  identity dispatch к compiled plugin instances в `core`.
+- [ ] Связать настроенные grants, RSS/call quotas и automatic restart/backoff
+  с процессами plugin runtime.
+- [X] Настроить protocol CI matrix для macOS и Linux.
 - [ ] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.

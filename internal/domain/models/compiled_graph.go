@@ -11,6 +11,7 @@ type CompiledGraph struct {
 	WAFPolicies   map[string]WAFPolicy
 	DataProviders map[string]DataProvider
 	AuthPolicies  map[string]AuthPolicy
+	Plugins       map[string]PluginInstance
 	Management    Management
 	Observability Observability
 }

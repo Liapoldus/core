@@ -35,6 +35,15 @@ func NewClient(endpoint string, deadline time.Duration) (*Client, error) {
 
 func (c *Client) Close() error { return c.client.Close() }
 
+func (c *Client) Shutdown(ctx context.Context) error {
+	ctx, cancel := c.withDeadline(ctx)
+	defer cancel()
+	if err := c.client.Shutdown(ctx); err != nil {
+		return ErrPluginUnavailable
+	}
+	return nil
+}
+
 func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error) {
 	ctx, cancel := c.withDeadline(ctx)
 	defer cancel()

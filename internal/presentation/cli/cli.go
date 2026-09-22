@@ -18,6 +18,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
+	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
@@ -290,6 +291,22 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	pluginRuntime, err := plugins.StartRuntime(ctx, graph.Plugins)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Unavailable
+	}
+	defer func() { _ = pluginRuntime.Stop(context.Background()) }()
+	httpCapabilities := make(map[string]network.HTTPCapabilityDispatcher)
+	l4Capabilities := make(map[string]network.L4CapabilityDispatcher)
+	identityCapabilities := make(map[string]network.IdentityCapabilityDispatcher)
+	for name, capability := range pluginRuntime.HTTPDispatchers() {
+		httpCapabilities[name] = capability
+		l4Capabilities[name] = capability
+	}
+	for name, capability := range pluginRuntime.IdentityDispatchers() {
+		identityCapabilities[name] = capability
+	}
 	metrics := observability.NewRegistry()
 	managementWords, wordsErr := config.LoadManagement()
 	if wordsErr != nil {
@@ -365,7 +382,7 @@ func serve(options options) int {
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.ServeWithWAFRuntime(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, wafRuntime, drain, metrics); err != nil {
+	if err := network.ServeWithPluginRuntime(ctx, graph, wafRuntime, drain, httpCapabilities, l4Capabilities, identityCapabilities, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

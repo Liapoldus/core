@@ -27,6 +27,7 @@ listener:
   - limits
 includes: includes
 listeners: listeners
+plugins: plugins
 sites: sites
 secrets: secrets
 variables: variables
@@ -231,6 +232,14 @@ runtime:
   plugin:
     instance: instance
     capability: capability
+    binary: binary
+    args: args
+    env: env
+    capabilities: capabilities
+    settings: settings
+    limits: limits
+    timeout: timeout
+    defaultTimeout: 5s
   proxy:
     upstream: upstream
     host: host
