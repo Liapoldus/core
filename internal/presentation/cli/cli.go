@@ -15,6 +15,7 @@ import (
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
+	"github.com/Liapoldus/core/internal/presentation/api"
 )
 
 var words = func() config.CLIWords {
@@ -237,6 +238,10 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	management := &api.Server{Token: graph.Management.StaticToken, Revision: graph.Revision.Value, Digest: graph.Revision.Digest}
+	if !options.noManagement && graph.Management.Listener.Address != "" {
+		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
+	}
 	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, drain); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
