@@ -114,6 +114,22 @@ func TestManagementPluginRestartOperation(t *testing.T) {
 	}
 }
 
+func TestSitePublishUsesTypedRegistryBoundary(t *testing.T) {
+	server := &Server{PublishSite: func(_ context.Context, site, source, key string) (Operation, error) {
+		if site != "blog" || source != "/incoming/blog" || key != "1234567890abcdef" {
+			t.Fatalf("site=%q source=%q key=%q", site, source, key)
+		}
+		return Operation{ID: "op-publish", State: "accepted"}, nil
+	}}
+	recording := httptest.NewRecorder()
+	body := strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}`)
+	request := httptest.NewRequest(http.MethodPost, "/api/sites/blog/publish", body)
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusCreated || !strings.Contains(recording.Body.String(), "op-publish") {
+		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
+	}
+}
+
 func TestPluginAdminDispatchBoundary(t *testing.T) {
 	dispatcher := plugins.NewDispatcher()
 	if err := dispatcher.Register("forms", testAdminPlugin{}); err != nil {

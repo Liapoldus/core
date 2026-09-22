@@ -40,10 +40,12 @@ type Server struct {
 	ReloadConfig    func(context.Context, string) (Operation, error)
 	// RenewTLS and RevokeTLS are the typed boundary to the configured TLS issuer.
 	// The API adapter never receives certificate material or storage paths.
-	RenewTLS  func(context.Context, string, string) (Operation, error)
-	RevokeTLS func(context.Context, string, string) (Operation, error)
-	Metrics   *observability.Registry
-	TLSConfig *tls.Config
+	RenewTLS     func(context.Context, string, string) (Operation, error)
+	RevokeTLS    func(context.Context, string, string) (Operation, error)
+	PublishSite  func(context.Context, string, string, string) (Operation, error)
+	RollbackSite func(context.Context, string, string) (Operation, error)
+	Metrics      *observability.Registry
+	TLSConfig    *tls.Config
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -187,6 +189,10 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.Revision = randomID()
 		server.mu.Unlock()
 		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
+	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/publish") && request.Method == http.MethodPost:
+		server.handleSitePublish(response, request, path, requestID)
+	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/rollback") && request.Method == http.MethodPost:
+		server.handleSiteRollback(response, request, path, requestID)
 	case path == "/api/config/validate" && request.Method == http.MethodPost:
 		var input struct {
 			YAML string `json:"yaml"`
@@ -369,6 +375,50 @@ func (server *Server) handleTLSOperation(response http.ResponseWriter, request *
 	server.operations[op.ID] = op
 	server.mu.Unlock()
 	writeJSON(response, http.StatusAccepted, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
+}
+
+func (server *Server) handleSitePublish(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.PublishSite == nil {
+		writeProblem(response, http.StatusServiceUnavailable, "plugin_unavailable", "registry publisher is unavailable", requestID)
+		return
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "sites" || parts[2] == "" {
+		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+		return
+	}
+	var input struct {
+		Source         string `json:"source"`
+		IdempotencyKey string `json:"idempotencyKey"`
+	}
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.Source == "" || len(input.IdempotencyKey) < 16 {
+		writeProblem(response, http.StatusBadRequest, "invalid_input", "source and idempotencyKey are required", requestID)
+		return
+	}
+	operation, err := server.PublishSite(request.Context(), parts[2], input.Source, input.IdempotencyKey)
+	if err != nil {
+		writeProblem(response, http.StatusUnprocessableEntity, "publish_failed", err.Error(), requestID)
+		return
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
+}
+
+func (server *Server) handleSiteRollback(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.RollbackSite == nil {
+		writeProblem(response, http.StatusServiceUnavailable, "registry_unavailable", "registry rollback is unavailable", requestID)
+		return
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "sites" || parts[2] == "" {
+		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+		return
+	}
+	operation, err := server.RollbackSite(request.Context(), parts[2], request.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeProblem(response, http.StatusUnprocessableEntity, "rollback_failed", err.Error(), requestID)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
 }
 
 func ascii(value string) bool {
