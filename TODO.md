@@ -306,14 +306,14 @@ references are
   remote TLS + mTLS enforcement.
 - [X] All documented Management API resources, cursor pagination, operations,
   audit records, config `If-Match` and secret-safe responses.
-- [ ] JSON logs, Prometheus, OTLP tracing/metrics, exporter-failure isolation
+- [X] JSON logs, Prometheus, OTLP tracing/metrics, exporter-failure isolation
   and retention.
 
 ## 4. Security, TLS and L4
 
 - [X] TLS profiles/storage/reload, certificate selection and mTLS runtime
   operation lifecycle.
-- [ ] Implement generic identity-plugin dispatch after the external identity
+- [X] Implement generic identity-plugin dispatch after the external identity
   plugin is delivered; OIDC/OAuth and JWT/JWKS are not Gateway core features.
 - [X] TCP and UDP listener/rule engines, upstream
   relays, flow limits and graceful shutdown.
