@@ -37,7 +37,11 @@ export interface GatewayHTTPResponse {
 }
 
 export async function waitReady(address: string): Promise<void> {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+	// Full acceptance runs start several real Gateway binaries in sequence; on
+	// emulated CI hosts process startup can exceed three seconds even though the
+	// listener is healthy. Keep polling long enough to distinguish startup
+	// latency from an actual bind/configuration failure.
+	for (let attempt = 0; attempt < 120; attempt += 1) {
     try {
       const response = await fetch(`http://${address}/missing.txt`);
       response.body?.cancel();
