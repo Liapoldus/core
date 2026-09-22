@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Liapoldus/pluginprotocol/framing"
+	"github.com/Liapoldus/pluginprotocol/pluginv1"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/Liapoldus/pluginprotocol/framing"
-	"github.com/Liapoldus/pluginprotocol/pluginv1"
-	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -19,8 +18,6 @@ var (
 	ErrPluginUnavailable = errors.New("plugin unavailable")
 )
 
-// Client is the typed unary control/capability boundary for one plugin.
-// The stream is deliberately opaque to domain and presentation layers.
 type Client struct {
 	conn     io.ReadWriteCloser
 	mu       sync.Mutex
@@ -34,50 +31,40 @@ func NewClient(conn io.ReadWriteCloser, deadline time.Duration) *Client {
 	}
 	return &Client{conn: conn, deadline: deadline, next: 1}
 }
-
 func (c *Client) Call(ctx context.Context, method, capability string, payload proto.Message, result proto.Message) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	clearDeadline := c.setDeadline(ctx)
-	defer clearDeadline()
-	request, err := proto.Marshal(payload)
+	b, err := proto.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	id := c.next
-	c.next++
-	frame := &pluginv1.Frame{Kind: pluginv1.FrameKind_CALL, RequestId: id, Payload: mustEnvelope(method, capability, request)}
-	if err := framing.Encode(c.conn, frame); err != nil {
-		return fmt.Errorf("%w: write: %v", ErrPluginUnavailable, err)
-	}
-	response, err := framing.Decode(c.conn)
+	data, err := c.call(ctx, method, capability, b)
 	if err != nil {
-		return fmt.Errorf("%w: read: %v", ErrPluginUnavailable, err)
-	}
-	if response.GetRequestId() != id || response.GetKind() != pluginv1.FrameKind_CALL_RESULT {
-		return ErrProtocolViolation
-	}
-	envelope := new(pluginv1.Envelope)
-	if err := proto.Unmarshal(response.GetPayload(), envelope); err != nil {
-		return ErrProtocolViolation
-	}
-	if envelope.GetError() != nil {
-		return fmt.Errorf("plugin %s: %s", envelope.GetError().GetCode(), envelope.GetError().GetMessage())
+		return err
 	}
 	if result != nil {
-		if err := proto.Unmarshal(envelope.GetPayload(), result); err != nil {
+		if err := proto.Unmarshal(data, result); err != nil {
+			return ErrProtocolViolation
+		}
+	}
+	return nil
+}
+func (c *Client) CallRaw(ctx context.Context, method, capability string, payload []byte, result proto.Message) error {
+	data, err := c.call(ctx, method, capability, payload)
+	if err != nil {
+		return err
+	}
+	if result != nil {
+		if err := proto.Unmarshal(data, result); err != nil {
 			return ErrProtocolViolation
 		}
 	}
 	return nil
 }
 
-func (c *Client) CallRaw(ctx context.Context, method, capability string, payload []byte, result proto.Message) error {
+// CallRawJSON keeps capability payloads as versioned JSON while the transport
+// envelope remains protobuf framed.
+func (c *Client) CallRawJSON(ctx context.Context, method, capability string, payload []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -87,46 +74,72 @@ func (c *Client) CallRaw(ctx context.Context, method, capability string, payload
 	c.next++
 	b, err := proto.Marshal(&pluginv1.Envelope{Method: method, Capability: capability, Payload: payload})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := framing.Encode(c.conn, &pluginv1.Frame{Kind: pluginv1.FrameKind_CALL, RequestId: id, Payload: b}); err != nil {
-		return fmt.Errorf("%w: write: %v", ErrPluginUnavailable, err)
+		return nil, fmt.Errorf("%w: write: %v", ErrPluginUnavailable, err)
 	}
 	response, err := framing.Decode(c.conn)
 	if err != nil {
-		return fmt.Errorf("%w: read: %v", ErrPluginUnavailable, err)
+		return nil, fmt.Errorf("%w: read: %v", ErrPluginUnavailable, err)
 	}
 	if response.GetRequestId() != id || response.GetKind() != pluginv1.FrameKind_CALL_RESULT {
-		return ErrProtocolViolation
+		return nil, ErrProtocolViolation
 	}
 	envelope := new(pluginv1.Envelope)
 	if err := proto.Unmarshal(response.GetPayload(), envelope); err != nil {
-		return ErrProtocolViolation
+		return nil, ErrProtocolViolation
 	}
 	if envelope.GetError() != nil {
-		return fmt.Errorf("plugin %s: %s", envelope.GetError().GetCode(), envelope.GetError().GetMessage())
+		return nil, fmt.Errorf("plugin %s: %s", envelope.GetError().GetCode(), envelope.GetError().GetMessage())
 	}
-	if result != nil {
-		if err := proto.Unmarshal(envelope.GetPayload(), result); err != nil {
-			return ErrProtocolViolation
-		}
-	}
-	return nil
+	return envelope.GetPayload(), nil
 }
-
+func (c *Client) call(ctx context.Context, method, capability string, payload []byte) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	clear := c.setDeadline(ctx)
+	defer clear()
+	id := c.next
+	c.next++
+	b, err := proto.Marshal(&pluginv1.Envelope{Method: method, Capability: capability, Payload: payload})
+	if err != nil {
+		return nil, err
+	}
+	if err := framing.Encode(c.conn, &pluginv1.Frame{Kind: pluginv1.FrameKind_CALL, RequestId: id, Payload: b}); err != nil {
+		return nil, fmt.Errorf("%w: write: %v", ErrPluginUnavailable, err)
+	}
+	response, err := framing.Decode(c.conn)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read: %v", ErrPluginUnavailable, err)
+	}
+	if response.GetRequestId() != id || response.GetKind() != pluginv1.FrameKind_CALL_RESULT {
+		return nil, ErrProtocolViolation
+	}
+	envelope := new(pluginv1.Envelope)
+	if err := proto.Unmarshal(response.GetPayload(), envelope); err != nil {
+		return nil, ErrProtocolViolation
+	}
+	if envelope.GetError() != nil {
+		return nil, fmt.Errorf("plugin %s: %s", envelope.GetError().GetCode(), envelope.GetError().GetMessage())
+	}
+	return envelope.GetPayload(), nil
+}
 func (c *Client) setDeadline(ctx context.Context) func() {
 	conn, ok := c.conn.(net.Conn)
 	if !ok {
 		return func() {}
 	}
 	deadline := time.Now().Add(c.deadline)
-	if requested, ok := ctx.Deadline(); ok && requested.Before(deadline) {
-		deadline = requested
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
 	}
 	_ = conn.SetDeadline(deadline)
 	return func() { _ = conn.SetDeadline(time.Time{}) }
 }
-
 func mustEnvelope(method, capability string, payload []byte) []byte {
 	b, _ := proto.Marshal(&pluginv1.Envelope{Method: method, Capability: capability, Payload: payload})
 	return b
