@@ -454,11 +454,6 @@ TCP-loopback. Целевой контракт описан в
   call concurrency и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
   Остаются scoped grant enforcement и семантический прогон всех Gateway vectors.
-+ [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
-+  опрашивается раз в секунду; превышение завершает процесс и при включённом
-+  restart запускает его снова согласно backoff. Default — `256MiB` из
-+  contract assets; TS child-process integration проверяет превышение на
-+  реальном gRPC plugin process.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
   опрашивается раз в секунду; превышение завершает процесс и при включённом
   restart запускает его снова согласно backoff. Default — `256MiB` из
