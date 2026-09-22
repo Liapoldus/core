@@ -16,6 +16,7 @@ import (
 	accountstore "github.com/Liapoldus/core/internal/infrastructure/accounts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
+	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
 
@@ -287,7 +288,8 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest}
+	metrics := observability.NewRegistry()
+	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics}
 	if raw, readErr := os.ReadFile(path); readErr == nil {
 		management.Config = string(raw)
 	}
@@ -302,7 +304,7 @@ func serve(options options) int {
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, drain); err != nil {
+	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, drain, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

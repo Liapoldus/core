@@ -19,9 +19,10 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/observability"
 )
 
-func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration) error {
+func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics ...*observability.Registry) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -33,7 +34,7 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics))
 			}
 		}(listener)
 	}
@@ -46,6 +47,13 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 		}
 	}
 	return nil
+}
+
+func firstRegistry(registries []*observability.Registry) *observability.Registry {
+	if len(registries) == 0 {
+		return nil
+	}
+	return registries[0]
 }
 
 // serveTCP owns the public socket and relays each accepted stream to the first
@@ -172,7 +180,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry) error {
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
@@ -262,7 +270,11 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		applyStaticCache(responseWriter.Header(), site.Cache)
 		http.ServeFile(responseWriter, request, candidate)
 	})
-	server := &http.Server{Addr: listener.Address, Handler: gzipHandler(baseHandler)}
+	handler := gzipHandler(baseHandler)
+	if metrics != nil {
+		handler = instrumentHTTP(handler, metrics, listener.Address)
+	}
+	server := &http.Server{Addr: listener.Address, Handler: handler}
 	var tlsConfig *tls.Config
 	if listener.TLSProfile != "" {
 		profile, ok := profiles[listener.TLSProfile]
@@ -295,6 +307,36 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+type metricsResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *metricsResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *metricsResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
+func instrumentHTTP(next http.Handler, metrics *observability.Registry, listener string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		wrapped := &metricsResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(wrapped, r)
+		status := wrapped.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		metrics.ObserveHTTP(listener, r.URL.Path, "", r.Method, fmt.Sprintf("%d", status), time.Since(started))
+	})
 }
 
 func loadTLSConfig(profile models.TLSProfile) (*tls.Config, error) {

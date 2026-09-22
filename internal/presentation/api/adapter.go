@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
@@ -40,6 +41,7 @@ type Server struct {
 	// The API adapter never receives certificate material or storage paths.
 	RenewTLS  func(context.Context, string, string) (Operation, error)
 	RevokeTLS func(context.Context, string, string) (Operation, error)
+	Metrics   *observability.Registry
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -63,7 +65,37 @@ type Audit struct {
 	RequestID string    `json:"requestId"`
 }
 
-func (server *Server) Handler() http.Handler { return http.HandlerFunc(server.handle) }
+func (server *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		wrapped := &metricResponseWriter{ResponseWriter: response}
+		server.handle(wrapped, request)
+		if server.Metrics != nil {
+			status := wrapped.status
+			if status == 0 {
+				status = http.StatusOK
+			}
+			server.Metrics.ObserveManagement(request.Method, strconv.Itoa(status))
+		}
+	})
+}
+
+type metricResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *metricResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *metricResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
 
 func (server *Server) Listen(ctx context.Context, address string) error {
 	httpServer := &http.Server{Addr: address, Handler: server.Handler()}
@@ -187,10 +219,13 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RUnlock()
 		server.writePage(response, items, request, requestID)
 	case path == "/metrics" && request.Method == http.MethodGet:
+		if server.Metrics != nil {
+			server.Metrics.Handler().ServeHTTP(response, request)
+			return
+		}
 		response.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintln(response, "# HELP liapoldus_management_requests_total Management API requests")
 		_, _ = fmt.Fprintln(response, "# TYPE liapoldus_management_requests_total counter")
-		_, _ = fmt.Fprintln(response, "liapoldus_management_requests_total 1")
 	case path == "/api/plugins/admin-surfaces" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
