@@ -444,12 +444,21 @@ TCP-loopback. Целевой контракт описан в
   timeout включает ожидание свободного слота и RPC.
 - [X] Подключить `restart.enabled/backoff/maxBackoff` и health probe (5 s,
   restart после 3 последовательных failures) к plugin process runtime.
-- [ ] Связать scoped storage/secret grants с process runtime.
+- [ ] Связать scoped storage/secret grants с process runtime. Contract gap:
+  `public/spec/plugin-contracts.json` describes only opaque grant metadata;
+  `proto/liapoldus/plugin/v1/service.proto` has no redemption/storage RPC;
+  `plugins/tls-issuer.md` promises temporary DNS-secret access, while
+  `gateway/architecture/protocol.md` prohibits raw secrets in ordinary IPC.
+  `liapoldus.github.io/public/spec/gateway.schema.json` (mirrored under
+  `assets/contracts/gateway.schema.json`) accepts grants, but
+  `collectPluginInstances` does not compile them. Wait for the product
+  decision on secret delivery and the
+  storage operation model before implementing a transport/broker boundary.
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
   На 2026-09-23 все перечисленные проверки проходят; core: 138 TS-тестов,
-  protocol: 10 TS-тестов. Реальный core child-process acceptance покрывает
+  protocol: 11 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
