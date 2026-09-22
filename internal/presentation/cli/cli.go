@@ -314,6 +314,14 @@ func serve(options options) int {
 	for name, upstream := range graph.Upstreams {
 		management.Upstreams = append(management.Upstreams, map[string]any{"name": name, "targets": len(upstream.Targets), "balance": upstream.Balance})
 	}
+	management.ReloadConfig = func(_ context.Context, _ string) (api.Operation, error) {
+		reloaded, reloadErr := config.CompileGateway(path)
+		if reloadErr != nil {
+			return api.Operation{}, reloadErr
+		}
+		management.UpdateRuntimeRevision(reloaded.Revision.Value, reloaded.Revision.Digest)
+		return api.Operation{ID: "reload-" + reloaded.Revision.Digest[:8], State: "accepted", CreatedAt: time.Now()}, nil
+	}
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}

@@ -49,6 +49,16 @@ type Server struct {
 	Metrics      *observability.Registry
 	TLSConfig    *tls.Config
 }
+
+// UpdateRuntimeRevision atomically updates the management snapshot metadata
+// after an application-layer reload has prepared a new graph.
+func (server *Server) UpdateRuntimeRevision(revision, digest string) {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.Revision = revision
+	server.Digest = digest
+}
+
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
 	Namespace    string   `json:"namespace"`
