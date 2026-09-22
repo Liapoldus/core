@@ -1,6 +1,6 @@
 version: 3
 workdir: .
-exclude: [tests]
+exclude: [tests, "**/*_test.go"]
 allow:
   depOnAnyVendor: false
   deepScan: true
@@ -10,6 +10,7 @@ components:
   domainInterfaces: { in: internal/domain/interfaces }
   application: { in: internal/application }
   infrastructureConfig: { in: internal/infrastructure/config }
+  infrastructureAccounts: { in: internal/infrastructure/accounts }
   infrastructureNetwork: { in: internal/infrastructure/network }
   contractAdapter: { in: [.] }
   infrastructureSecurity: { in: internal/infrastructure/security }
@@ -21,8 +22,11 @@ components:
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
-  bcrypt: { in: [golang.org/x/crypto] }
+  bcrypt: { in: [golang.org/x/crypto/bcrypt] }
   otel: { in: [go.opentelemetry.io/otel, go.opentelemetry.io/otel/sdk, go.opentelemetry.io/otel/exporters] }
+  prometheus: { in: [github.com/prometheus/client_golang/prometheus, github.com/prometheus/client_golang/prometheus/promhttp] }
+  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/framing, github.com/Liapoldus/pluginprotocol/pluginv1] }
+  protobuf: { in: [google.golang.org/protobuf/proto] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -38,10 +42,13 @@ deps:
   infrastructureConfig:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter]
     canUse: [yaml, jsonschema]
+  infrastructureAccounts:
+    mayDependOn: [domainModels, domainInterfaces]
+    canUse: [bcrypt]
   contractAdapter:
     mayDependOn: [domainModels]
   infrastructureNetwork:
-    mayDependOn: [domainModels, domainInterfaces]
+    mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt]
@@ -49,10 +56,12 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
+    canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [otel]
+    canUse: [otel, prometheus]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
+    canUse: [bcrypt]
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability, infrastructureAccounts, presentationAPI]
