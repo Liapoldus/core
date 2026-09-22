@@ -74,6 +74,7 @@ runtime:
     type: type
     address: address
     routes: routes
+    rules: rules
   site:
     source: source
     type: type

@@ -1,7 +1,10 @@
 package models
 
 type Listener struct {
-	Address string
-	IsHTTP  bool
-	Routes  []Route
+	Address    string
+	Type       string
+	IsHTTP     bool
+	TLSProfile string
+	Routes     []Route
+	Rules      []Route
 }

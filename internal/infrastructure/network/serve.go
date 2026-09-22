@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,15 +21,21 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 )
 
-func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
-		if !listener.IsHTTP {
-			continue
-		}
 		started++
-		go func(current models.Listener) { errs <- serveHTTP(parent, current, sites, upstreams, drainTimeout) }(listener)
+		go func(current models.Listener) {
+			switch current.Type {
+			case "tcp":
+				errs <- serveTCP(parent, current, upstreams, drainTimeout)
+			case "udp":
+				errs <- serveUDP(parent, current, upstreams, drainTimeout)
+			default:
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout)
+			}
+		}(listener)
 	}
 	if started == 0 {
 		return errors.New("no http listener")
@@ -39,7 +48,127 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 	return nil
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+// serveTCP owns the public socket and relays each accepted stream to the first
+// healthy configured target. L4 rules are deliberately evaluated before any
+// plugin boundary; plugins never receive the public socket.
+func serveTCP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+	ln, err := net.Listen("tcp", listener.Address)
+	if err != nil {
+		return err
+	}
+	defer ln.Close()
+	go func() { <-parent.Done(); _ = ln.Close() }()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if parent.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		go relayTCP(parent, conn, listener.Rules, upstreams, drainTimeout)
+	}
+}
+
+func relayTCP(parent context.Context, client net.Conn, rules []models.Route, upstreams map[string]models.Upstream, drainTimeout time.Duration) {
+	defer client.Close()
+	target := l4Target(rules, upstreams)
+	if target == "" {
+		return
+	}
+	dialer := net.Dialer{}
+	server, err := dialer.DialContext(parent, "tcp", target)
+	if err != nil {
+		return
+	}
+	defer server.Close()
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(server, client); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(client, server); done <- struct{}{} }()
+	select {
+	case <-done:
+	case <-parent.Done():
+	}
+	if drainTimeout > 0 {
+		_ = client.SetDeadline(time.Now().Add(drainTimeout))
+		_ = server.SetDeadline(time.Now().Add(drainTimeout))
+	}
+}
+
+func serveUDP(parent context.Context, listener models.Listener, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+	addr, err := net.ResolveUDPAddr("udp", listener.Address)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	go func() { <-parent.Done(); _ = conn.Close() }()
+	buffer := make([]byte, 64*1024)
+	for {
+		n, source, err := conn.ReadFromUDP(buffer)
+		if err != nil {
+			if parent.Err() != nil {
+				return nil
+			}
+			return err
+		}
+		target := l4Target(listener.Rules, upstreams)
+		if target == "" {
+			continue
+		}
+		payload := append([]byte(nil), buffer[:n]...)
+		go relayUDP(parent, conn, source, target, payload, drainTimeout)
+	}
+}
+
+func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, target string, payload []byte, idle time.Duration) {
+	addr, err := net.ResolveUDPAddr("udp", target)
+	if err != nil {
+		return
+	}
+	upstream, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return
+	}
+	defer upstream.Close()
+	if idle <= 0 {
+		idle = 30 * time.Second
+	}
+	_ = upstream.SetReadDeadline(time.Now().Add(idle))
+	if _, err = upstream.Write(payload); err != nil {
+		return
+	}
+	response := make([]byte, 64*1024)
+	if n, err := upstream.Read(response); err == nil {
+		_, _ = public.WriteToUDP(response[:n], source)
+	}
+	select {
+	case <-parent.Done():
+	default:
+	}
+}
+
+func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string {
+	for _, rule := range rules {
+		if rule.Deny != nil {
+			return ""
+		}
+		if rule.Proxy == nil {
+			continue
+		}
+		upstream, ok := upstreams[rule.Proxy.Upstream]
+		if !ok || len(upstream.Targets) == 0 {
+			continue
+		}
+		return upstream.Targets[0].Address
+	}
+	return ""
+}
+
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration) error {
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
@@ -130,8 +259,27 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		http.ServeFile(responseWriter, request, candidate)
 	})
 	server := &http.Server{Addr: listener.Address, Handler: gzipHandler(baseHandler)}
+	var tlsConfig *tls.Config
+	if listener.TLSProfile != "" {
+		profile, ok := profiles[listener.TLSProfile]
+		if !ok {
+			return fmt.Errorf("tls profile %q not found", listener.TLSProfile)
+		}
+		loaded, err := loadTLSConfig(profile)
+		if err != nil {
+			return err
+		}
+		tlsConfig = loaded
+		server.TLSConfig = tlsConfig
+	}
 	serveError := make(chan error, 1)
-	go func() { serveError <- server.ListenAndServe() }()
+	go func() {
+		if tlsConfig != nil {
+			serveError <- server.ListenAndServeTLS("", "")
+		} else {
+			serveError <- server.ListenAndServe()
+		}
+	}()
 	select {
 	case err := <-serveError:
 		return err
@@ -143,6 +291,40 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func loadTLSConfig(profile models.TLSProfile) (*tls.Config, error) {
+	config := &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: profile.Protocols}
+	for _, certificate := range profile.Certificates {
+		if certificate.Cert == "" || certificate.Key == "" {
+			continue
+		}
+		pair, err := tls.LoadX509KeyPair(certificate.Cert, certificate.Key)
+		if err != nil {
+			return nil, fmt.Errorf("load tls certificate: %w", err)
+		}
+		config.Certificates = append(config.Certificates, pair)
+	}
+	if len(config.Certificates) == 0 {
+		return nil, errors.New("tls profile has no certificate")
+	}
+	if profile.ClientAuth.Mode != "" {
+		caBytes, err := os.ReadFile(profile.ClientAuth.CA)
+		if err != nil {
+			return nil, fmt.Errorf("load client ca: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caBytes) {
+			return nil, errors.New("invalid client ca")
+		}
+		config.ClientCAs = pool
+		if profile.ClientAuth.Mode == "require" {
+			config.ClientAuth = tls.RequireAndVerifyClientCert
+		} else {
+			config.ClientAuth = tls.VerifyClientCertIfGiven
+		}
+	}
+	return config, nil
 }
 
 func shouldSPAFallback(request *http.Request, site models.Site, requested string) bool {

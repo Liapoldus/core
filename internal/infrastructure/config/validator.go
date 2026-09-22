@@ -82,9 +82,11 @@ type runtimeWords struct {
 		Tracing     string `yaml:"tracing"`
 	} `yaml:"section"`
 	Listener struct {
-		Type    string
-		Address string
-		Routes  string
+		Type       string
+		Address    string
+		TLSProfile string `yaml:"tls"`
+		Routes     string
+		Rules      string
 	}
 	Site struct {
 		Source           string `yaml:"source"`

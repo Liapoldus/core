@@ -232,13 +232,20 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 		}
 		listener := models.Listener{}
 		typ, _ := fieldValue(body, words.Listener.Type)
+		listener.Type = typ
 		listener.IsHTTP = typ == words.HTTP
 		listener.Address, _ = fieldValue(body, words.Listener.Address)
-		routes, err := collectRoutes(mappingNode(body, words.Listener.Routes), words)
+		listener.TLSProfile, _ = fieldValue(body, words.Listener.TLSProfile)
+		routeField := words.Listener.Routes
+		if !listener.IsHTTP {
+			routeField = words.Listener.Rules
+		}
+		routes, err := collectRoutes(mappingNode(body, routeField), words)
 		if err != nil {
 			return nil, err
 		}
 		listener.Routes = routes
+		listener.Rules = routes
 		listeners = append(listeners, listener)
 	}
 	return listeners, nil
