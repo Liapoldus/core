@@ -7,11 +7,14 @@ const protocol = resolve(root, "../pluginprotocol");
 
 describe("plugin supervisor и admin surface boundary", () => {
   it("имеет реалный supervisor с жизненным циклом процесса", () => {
-    const source = readFileSync(resolve(root, "internal/infrastructure/plugins/supervisor.go"), "utf8");
-    expect(source).toContain("func NewSupervisor");
-    expect(source).toContain("func (s *Supervisor) Start");
-    expect(source).toContain("func (s *Supervisor) Stop");
-    expect(source).toContain("func (s *Supervisor) Restart");
+    const supervisor = readFileSync(resolve(root, "internal/infrastructure/plugins/supervisor.go"), "utf8");
+    const runtime = readFileSync(resolve(root, "internal/infrastructure/plugins/runtime.go"), "utf8");
+    expect(supervisor).toContain("func NewSupervisor");
+    expect(supervisor).toContain("func (s *Supervisor) StartWithExit");
+    expect(supervisor).toContain("func (s *Supervisor) Stop");
+    expect(supervisor).toContain("func (p RestartPolicy) Delay");
+    expect(runtime).toContain("func (r *Runtime) supervise");
+    expect(runtime).toContain("func (r *Runtime) restartUntilReady");
   });
 
   it("публикует типизированную admin-surface boundary", () => {

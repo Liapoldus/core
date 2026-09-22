@@ -430,7 +430,7 @@ TCP-loopback. Целевой контракт описан в
   Gateway child-process fixture.
 - [X] Проверить grpcurl reflection и health на реальном gRPC fixture;
   `list`/`describe` возвращают health, reflection и `PluginService` v1.
-- [ ] Автоматически проверить restart/backoff после сбоя дочернего процесса.
+- [X] Проверить restart/backoff после падения дочернего процесса через child-process E2E.
 - [X] Удалить production `framing/`, `session/`, probe и generated
   framing-only code после replacement suite green.
 - [X] Добавить в `pluginprotocol` generated Go gRPC stubs, test-only TypeScript
@@ -442,14 +442,16 @@ TCP-loopback. Целевой контракт описан в
   identity dispatch к compiled plugin instances в `core`.
 - [X] Применять `limits.calls` как максимум одновременных plugin RPC на instance;
   timeout включает ожидание свободного слота и RPC.
+- [X] Подключить `restart.enabled/backoff/maxBackoff` и health probe (5 s,
+  restart после 3 последовательных failures) к plugin process runtime.
 - [ ] Применить `limits.memory` как RSS limit процесса на macOS и Linux.
-- [ ] Связать scoped storage/secret grants и automatic restart/backoff с
-  process runtime.
+- [ ] Связать scoped storage/secret grants с process runtime.
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 136 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 137 TS-тестов,
   protocol: 9 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
-  bidi Stream проверен protocol suite, но не через Gateway fixture. Отдельно
-  остаются reflection через grpcurl, restart/backoff и quota/grant enforcement.
+  call concurrency и restart после child exit; bidi Stream покрыт protocol
+  suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
+  Остаются RSS/grant enforcement и семантический прогон всех Gateway vectors.

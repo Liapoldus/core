@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/pluginprotocol/transport"
@@ -16,20 +17,26 @@ import (
 var ErrPluginStartup = errors.New("plugin startup failed")
 
 type runningInstance struct {
+	name       string
+	endpoint   string
 	client     *Client
 	capability *CapabilityClient
 	model      models.PluginInstance
+	spec       Spec
+	done       <-chan error
 }
 
 type Runtime struct {
-	supervisor *Supervisor
-	instances  map[string]runningInstance
-	cancel     context.CancelFunc
+	supervisor  *Supervisor
+	instances   map[string]runningInstance
+	cancel      context.CancelFunc
+	watchCancel context.CancelFunc
 }
 
 func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance) (*Runtime, error) {
 	processContext, cancel := context.WithCancel(context.Background())
-	runtime := &Runtime{supervisor: NewSupervisor(), instances: make(map[string]runningInstance, len(configured)), cancel: cancel}
+	watchContext, watchCancel := context.WithCancel(ctx)
+	runtime := &Runtime{supervisor: NewSupervisor(), instances: make(map[string]runningInstance, len(configured)), cancel: cancel, watchCancel: watchCancel}
 	names := make([]string, 0, len(configured))
 	for name := range configured {
 		names = append(names, name)
@@ -47,7 +54,19 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		if err := runtime.supervisor.Start(processContext, Spec{Instance: name, Binary: instance.Binary, Args: instance.Args, Env: env}); err != nil {
+		spec := Spec{
+			Instance: name,
+			Binary:   instance.Binary,
+			Args:     instance.Args,
+			Env:      env,
+			Restart: RestartPolicy{
+				Enabled: instance.RestartEnabled,
+				Initial: instance.RestartInitialBackoff,
+				Max:     instance.RestartMaximumBackoff,
+			},
+		}
+		done, err := runtime.supervisor.StartWithExit(processContext, spec)
+		if err != nil {
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
@@ -71,13 +90,92 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		runtime.instances[name] = runningInstance{client: client, capability: capability, model: instance}
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, client: client, capability: capability, model: instance, spec: spec, done: done}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
 		return nil, ErrPluginStartup
 	}
+	for _, instance := range runtime.instances {
+		go runtime.supervise(watchContext, processContext, instance)
+	}
 	return runtime, nil
+}
+
+func (r *Runtime) supervise(ctx, processContext context.Context, instance runningInstance) {
+	ticker := time.NewTicker(instance.model.HealthProbeInterval)
+	defer ticker.Stop()
+	done := instance.done
+	failures := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			if ctx.Err() != nil || !instance.spec.Restart.Enabled {
+				return
+			}
+			done = r.restartUntilReady(ctx, processContext, instance)
+			if done == nil {
+				return
+			}
+			failures = 0
+		case <-ticker.C:
+			healthContext, cancel := context.WithTimeout(ctx, instance.model.Timeout)
+			err := instance.client.CheckHealth(healthContext)
+			cancel()
+			if err == nil {
+				failures = 0
+				continue
+			}
+			failures++
+			if failures < instance.model.HealthFailureThreshold {
+				continue
+			}
+			if ctx.Err() != nil || !instance.spec.Restart.Enabled {
+				return
+			}
+			_ = r.supervisor.Stop(instance.name)
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+			}
+			done = r.restartUntilReady(ctx, processContext, instance)
+			if done == nil {
+				return
+			}
+			failures = 0
+		}
+	}
+}
+
+func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instance runningInstance) <-chan error {
+	for attempt := 1; ; attempt++ {
+		timer := time.NewTimer(instance.spec.Restart.Delay(attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		done, err := r.supervisor.StartWithExit(processContext, instance.spec)
+		if err == nil {
+			reconnectErr := instance.client.Reconnect(ctx, instance.endpoint, instance.model.Settings, instance.name, instance.model.Capabilities)
+			if reconnectErr == nil {
+				return done
+			}
+			_ = r.supervisor.Stop(instance.name)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-done:
+			}
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+	}
 }
 
 func reserveLoopbackEndpoint() (string, error) {
@@ -145,6 +243,9 @@ func (r *Runtime) IdentityDispatchers() map[string]*CapabilityClient {
 func (r *Runtime) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil
+	}
+	if r.watchCancel != nil {
+		r.watchCancel()
 	}
 	var failures []error
 	for name, instance := range r.instances {

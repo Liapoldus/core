@@ -245,18 +245,27 @@ type runtimeWords struct {
 		Deny    string `yaml:"deny"`
 	} `yaml:"dataProvider"`
 	Plugin struct {
-		Instance       string `yaml:"instance"`
-		Capability     string `yaml:"capability"`
-		Binary         string `yaml:"binary"`
-		Args           string `yaml:"args"`
-		Env            string `yaml:"env"`
-		Capabilities   string `yaml:"capabilities"`
-		Settings       string `yaml:"settings"`
-		Limits         string `yaml:"limits"`
-		Calls          string `yaml:"calls"`
-		DefaultCalls   int    `yaml:"defaultCalls"`
-		Timeout        string `yaml:"timeout"`
-		DefaultTimeout string `yaml:"defaultTimeout"`
+		Instance                      string `yaml:"instance"`
+		Capability                    string `yaml:"capability"`
+		Binary                        string `yaml:"binary"`
+		Args                          string `yaml:"args"`
+		Env                           string `yaml:"env"`
+		Capabilities                  string `yaml:"capabilities"`
+		Settings                      string `yaml:"settings"`
+		Limits                        string `yaml:"limits"`
+		Calls                         string `yaml:"calls"`
+		DefaultCalls                  int    `yaml:"defaultCalls"`
+		Timeout                       string `yaml:"timeout"`
+		DefaultTimeout                string `yaml:"defaultTimeout"`
+		Restart                       string `yaml:"restart"`
+		Enabled                       string `yaml:"enabled"`
+		Backoff                       string `yaml:"backoff"`
+		MaxBackoff                    string `yaml:"maxBackoff"`
+		DefaultRestartEnabled         bool   `yaml:"defaultRestartEnabled"`
+		DefaultRestartBackoff         string `yaml:"defaultRestartBackoff"`
+		DefaultRestartMaxBackoff      string `yaml:"defaultRestartMaxBackoff"`
+		DefaultHealthProbeInterval    string `yaml:"defaultHealthProbeInterval"`
+		DefaultHealthFailureThreshold int    `yaml:"defaultHealthFailureThreshold"`
 	} `yaml:"plugin"`
 	Proxy struct {
 		Upstream     string `yaml:"upstream"`

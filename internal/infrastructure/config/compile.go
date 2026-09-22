@@ -335,14 +335,48 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 		if maxConcurrentCalls < 1 {
 			return nil, ErrInvalidDocument
 		}
+		restartEnabled := words.Plugin.DefaultRestartEnabled
+		restartBackoffText := words.Plugin.DefaultRestartBackoff
+		restartMaxBackoffText := words.Plugin.DefaultRestartMaxBackoff
+		if restart := mappingNode(body, words.Plugin.Restart); restart != nil {
+			if enabled, ok := fieldValue(restart, words.Plugin.Enabled); ok {
+				restartEnabled, err = strconv.ParseBool(enabled)
+				if err != nil {
+					return nil, ErrInvalidDocument
+				}
+			}
+			if backoff, ok := fieldValue(restart, words.Plugin.Backoff); ok {
+				restartBackoffText = backoff
+			}
+			if maxBackoff, ok := fieldValue(restart, words.Plugin.MaxBackoff); ok {
+				restartMaxBackoffText = maxBackoff
+			}
+		}
+		restartBackoff, err := time.ParseDuration(restartBackoffText)
+		if err != nil || restartBackoff <= 0 {
+			return nil, ErrInvalidDocument
+		}
+		restartMaxBackoff, err := time.ParseDuration(restartMaxBackoffText)
+		if err != nil || restartMaxBackoff < restartBackoff {
+			return nil, ErrInvalidDocument
+		}
+		healthProbeInterval, err := time.ParseDuration(words.Plugin.DefaultHealthProbeInterval)
+		if err != nil || healthProbeInterval <= 0 || words.Plugin.DefaultHealthFailureThreshold < 1 {
+			return nil, ErrInvalidDocument
+		}
 		instance := models.PluginInstance{
-			Binary:             binary,
-			Args:               sequenceValues(mappingNode(body, words.Plugin.Args)),
-			Env:                sequenceValues(mappingNode(body, words.Plugin.Env)),
-			Capabilities:       sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
-			Settings:           settings,
-			Timeout:            timeout,
-			MaxConcurrentCalls: maxConcurrentCalls,
+			Binary:                 binary,
+			Args:                   sequenceValues(mappingNode(body, words.Plugin.Args)),
+			Env:                    sequenceValues(mappingNode(body, words.Plugin.Env)),
+			Capabilities:           sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
+			Settings:               settings,
+			Timeout:                timeout,
+			MaxConcurrentCalls:     maxConcurrentCalls,
+			RestartEnabled:         restartEnabled,
+			RestartInitialBackoff:  restartBackoff,
+			RestartMaximumBackoff:  restartMaxBackoff,
+			HealthProbeInterval:    healthProbeInterval,
+			HealthFailureThreshold: words.Plugin.DefaultHealthFailureThreshold,
 		}
 		instances[name] = instance
 	}

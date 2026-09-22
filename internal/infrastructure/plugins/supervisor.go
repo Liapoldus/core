@@ -21,10 +21,9 @@ type Spec struct {
 }
 
 type RestartPolicy struct {
-	Enabled     bool
-	Initial     time.Duration
-	Max         time.Duration
-	MaxAttempts int
+	Enabled bool
+	Initial time.Duration
+	Max     time.Duration
 }
 
 func (p RestartPolicy) Delay(attempt int) time.Duration {
@@ -52,73 +51,56 @@ func (p RestartPolicy) Delay(attempt int) time.Duration {
 
 type Supervisor struct {
 	mu      sync.Mutex
-	process map[string]*exec.Cmd
+	process map[string]*supervisedProcess
 }
 
-func NewSupervisor() *Supervisor { return &Supervisor{process: make(map[string]*exec.Cmd)} }
-func (s *Supervisor) Start(ctx context.Context, spec Spec) error {
+type supervisedProcess struct {
+	command *exec.Cmd
+	done    chan error
+}
+
+func NewSupervisor() *Supervisor { return &Supervisor{process: make(map[string]*supervisedProcess)} }
+
+func (s *Supervisor) StartWithExit(ctx context.Context, spec Spec) (<-chan error, error) {
 	if spec.Instance == "" || spec.Binary == "" {
-		return errors.New("plugin instance and binary are required")
+		return nil, errors.New("plugin instance and binary are required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.process[spec.Instance]; ok {
-		return errors.New("plugin is already running")
+		return nil, errors.New("plugin is already running")
 	}
 	cmd := exec.CommandContext(ctx, spec.Binary, spec.Args...)
 	cmd.Env = append(os.Environ(), spec.Env...)
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	s.process[spec.Instance] = cmd
-	go func() { _ = cmd.Wait(); s.mu.Lock(); delete(s.process, spec.Instance); s.mu.Unlock() }()
-	return nil
-}
-func (s *Supervisor) Stop(instance string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	cmd, ok := s.process[instance]
-	if !ok {
-		return ErrPluginNotRunning
-	}
-	if cmd.Process != nil {
-		_ = cmd.Process.Kill()
-	}
-	delete(s.process, instance)
-	return nil
-}
-func (s *Supervisor) Restart(ctx context.Context, spec Spec) error {
-	if err := s.Stop(spec.Instance); err != nil && !errors.Is(err, ErrPluginNotRunning) {
-		return err
-	}
-	return s.Start(ctx, spec)
+	process := &supervisedProcess{command: cmd, done: make(chan error, 1)}
+	s.process[spec.Instance] = process
+	go func() {
+		err := cmd.Wait()
+		s.mu.Lock()
+		if s.process[spec.Instance] == process {
+			delete(s.process, spec.Instance)
+		}
+		s.mu.Unlock()
+		process.done <- err
+		close(process.done)
+	}()
+	return process.done, nil
 }
 
-// RestartWithBackoff retries process startup with bounded exponential delay.
-// It is intentionally explicit: callers decide whether a failed plugin is safe to retry.
-func (s *Supervisor) RestartWithBackoff(ctx context.Context, spec Spec) error {
-	if !spec.Restart.Enabled {
-		return s.Restart(ctx, spec)
+func (s *Supervisor) Stop(instance string) error {
+	s.mu.Lock()
+	process, ok := s.process[instance]
+	if !ok {
+		s.mu.Unlock()
+		return ErrPluginNotRunning
 	}
-	limit := spec.Restart.MaxAttempts
-	if limit <= 0 {
-		limit = 5
+	delete(s.process, instance)
+	s.mu.Unlock()
+	if process.command.Process != nil {
+		_ = process.command.Process.Kill()
 	}
-	var err error
-	for attempt := 1; attempt <= limit; attempt++ {
-		if attempt > 1 {
-			timer := time.NewTimer(spec.Restart.Delay(attempt - 1))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return ctx.Err()
-			case <-timer.C:
-			}
-		}
-		err = s.Restart(ctx, spec)
-		if err == nil {
-			return nil
-		}
-	}
-	return err
+	return nil
 }

@@ -245,6 +245,15 @@ runtime:
     defaultCalls: 100
     timeout: timeout
     defaultTimeout: 5s
+    restart: restart
+    enabled: enabled
+    backoff: backoff
+    maxBackoff: maxBackoff
+    defaultRestartEnabled: true
+    defaultRestartBackoff: 1s
+    defaultRestartMaxBackoff: 30s
+    defaultHealthProbeInterval: 5s
+    defaultHealthFailureThreshold: 3
   proxy:
     upstream: upstream
     host: host

@@ -14,9 +14,9 @@ import (
 
 type plugin struct {
 	pluginv1.UnimplementedPluginServiceServer
-	server     *grpc.Server
-	activeCall atomic.Int32
-	maxCall    atomic.Int32
+	server      *grpc.Server
+	activeCall  atomic.Int32
+	maxCall     atomic.Int32
 	crashMarker string
 }
 
