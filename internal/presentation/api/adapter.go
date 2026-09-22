@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,16 +14,17 @@ import (
 )
 
 type Server struct {
-	Token          string
-	Config         string
-	Revision       string
-	Digest         string
-	mu             sync.RWMutex
-	operations     map[string]Operation
-	audit          []Audit
-	AdminSurfaces  []AdminSurface
-	ValidateConfig func(string) error
-	ReloadConfig   func(context.Context, string) (Operation, error)
+	Token           string
+	Config          string
+	Revision        string
+	Digest          string
+	mu              sync.RWMutex
+	operations      map[string]Operation
+	audit           []Audit
+	AdminSurfaces   []AdminSurface
+	AdminDispatcher *plugins.Dispatcher
+	ValidateConfig  func(string) error
+	ReloadConfig    func(context.Context, string) (Operation, error)
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -124,6 +126,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
 		server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
+	case strings.HasPrefix(path, "/api/plugins/") && strings.Contains(path, "/admin/pages/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
+		server.handlePluginAdmin(response, request, path, requestID)
 	case strings.HasPrefix(path, "/api/operations/") && request.Method == http.MethodGet:
 		id := strings.TrimPrefix(path, "/api/operations/")
 		server.mu.RLock()
@@ -137,6 +141,45 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
 	}
+}
+
+func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.AdminDispatcher == nil {
+		writeProblem(response, 503, "plugin_unavailable", "plugin admin surface is unavailable", requestID)
+		return
+	}
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 6 {
+		writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
+		return
+	}
+	instance, page := parts[2], parts[5]
+	action := ""
+	if len(parts) == 7 {
+		action = parts[6]
+	}
+	var input json.RawMessage
+	if request.Method == http.MethodPost {
+		defer request.Body.Close()
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil && err.Error() != "EOF" {
+			writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
+			return
+		}
+	}
+	result, err := server.AdminDispatcher.Dispatch(request.Context(), instance, plugins.RequestContext{Instance: instance, Page: page, Action: action, Method: request.Method, RequestID: requestID, Actor: "management", Input: input})
+	if err != nil {
+		writeProblem(response, 502, "plugin_error", err.Error(), requestID)
+		return
+	}
+	if result.Status == 0 {
+		result.Status = 200
+	}
+	if result.ContentType == "" {
+		result.ContentType = "application/json"
+	}
+	response.Header().Set("Content-Type", result.ContentType)
+	response.WriteHeader(result.Status)
+	_, _ = response.Write(result.Body)
 }
 func randomID() string {
 	bytes := make([]byte, 8)
