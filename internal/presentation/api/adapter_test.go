@@ -71,6 +71,16 @@ func TestManagementResourceListsAndPagination(t *testing.T) {
 	}
 }
 
+func TestHealthMethodGate(t *testing.T) {
+	server := &Server{}
+	request := httptest.NewRequest(http.MethodPost, "/healthz", nil)
+	recording := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", recording.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 func TestManagementPluginRestartOperation(t *testing.T) {
 	server := &Server{RestartPlugin: func(context.Context, string) (Operation, error) { return Operation{ID: "op-1", State: "accepted"}, nil }}
 	recording := httptest.NewRecorder()

@@ -27,9 +27,23 @@ async function startSite(manifest: string): Promise<string> {
 describe("HTTP runtime v1", () => {
   it("uses index.html for an extensionless HTML navigation when SPA is enabled", async () => {
     const address = await startSite("slug: web\nindex: index.html\nspa: true\n");
-    const response = await request(address, "/dashboard", { headers: { accept: "text/html" } });
+    const response = await request(address, "/dashboard");
     expect(response.status).toBe(200);
     expect(response.text).toBe("shell");
+  });
+
+  it("only allows GET and HEAD on health endpoints", async () => {
+    const address = await startSite("slug: web\nindex: index.html\n");
+    const response = await fetch(`http://${address}/healthz`, { method: "POST" });
+    expect(response.status).toBe(404);
+  });
+
+  it("compresses eligible responses when gzip is accepted", async () => {
+    const address = await startSite("slug: web\nindex: index.html\n");
+    const response = await fetch(`http://${address}/assets/data.json`, { headers: { "accept-encoding": "gzip" } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBe("gzip");
+    expect(response.headers.get("vary")).toContain("Accept-Encoding");
   });
 
   it("emits MIME, validators and conditional 304 for static files", async () => {
