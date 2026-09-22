@@ -219,14 +219,16 @@ references are
   still requires a supervisor-provided capability map. The route-level
   `challenge` action is not compiled yet. WAF поддерживает path, method, прямой
   source-IP/CIDR, header, query и Geo/ASN country/city/ASN matcher-ы с действиями
-  allow/deny/limit. MMDB-reader проверяется при открытии; отсутствие записи
-  обрабатывается через `onError` правила с fallback на провайдера, а ошибка
-  reload сохраняет активный reader. Осталось подключить MMDB reload к lifecycle
-  активной конфигурации, возвращать catalog Problem `waf_provider_unavailable`,
-  добавить положительные Geo/ASN и atomic reload integration-тесты, реализовать
-  recursive all/any/not, connection/request comparisons и challenge. Проверку
-  взаимоисключения terminal actions нужно расширить при реализации route-level
-  challenge.
+  allow/deny/limit. MMDB-reader проверяется перед reload; новая конфигурация и
+  WAF/MMDB-поколение меняются только после успешной подготовки, при ошибке
+  остаются прежние digest и трафик. При reload применяются изменения WAF policy,
+  а остальные runtime-компоненты (listeners, routes, upstreams, TLS и plugin
+  generation) пока остаются стартовыми — нужен единый snapshot и drain старого
+  поколения. Осталось возвращать Problem с кодом `waf_provider_unavailable`,
+  добавить положительные Geo/ASN и успешный MMDB replacement integration-тесты,
+  реализовать recursive all/any/not, connection/request comparisons и challenge.
+  Проверку взаимоисключения terminal actions нужно расширить при реализации
+  route-level challenge.
 - Schema bug: `$defs.tlsProfile.certificates.items` had
   `additionalProperties: false` as a sibling of `oneOf`, rejecting every
   certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch

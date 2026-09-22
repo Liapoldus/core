@@ -17,6 +17,9 @@ type MMDBRegistry struct {
 func NewMMDBRegistry(providers map[string]models.DataProvider) *MMDBRegistry {
 	registry := &MMDBRegistry{readers: make(map[string]*maxminddb.Reader, len(providers))}
 	for _, provider := range providers {
+		if _, exists := registry.readers[provider.Path]; exists {
+			continue
+		}
 		reader, err := openMMDB(provider.Path)
 		if err != nil {
 			continue
@@ -24,6 +27,22 @@ func NewMMDBRegistry(providers map[string]models.DataProvider) *MMDBRegistry {
 		registry.readers[provider.Path] = reader
 	}
 	return registry
+}
+
+func NewVerifiedMMDBRegistry(providers map[string]models.DataProvider) (*MMDBRegistry, error) {
+	registry := &MMDBRegistry{readers: make(map[string]*maxminddb.Reader, len(providers))}
+	for _, provider := range providers {
+		if _, exists := registry.readers[provider.Path]; exists {
+			continue
+		}
+		reader, err := openMMDB(provider.Path)
+		if err != nil {
+			registry.Close()
+			return nil, err
+		}
+		registry.readers[provider.Path] = reader
+	}
+	return registry, nil
 }
 
 func openMMDB(path string) (*maxminddb.Reader, error) {
@@ -36,22 +55,6 @@ func openMMDB(path string) (*maxminddb.Reader, error) {
 		return nil, err
 	}
 	return reader, nil
-}
-
-func (registry *MMDBRegistry) Reload(previous, next models.DataProvider) error {
-	reader, err := openMMDB(next.Path)
-	if err != nil {
-		return err
-	}
-	registry.mu.Lock()
-	old := registry.readers[previous.Path]
-	delete(registry.readers, previous.Path)
-	registry.readers[next.Path] = reader
-	registry.mu.Unlock()
-	if old != nil {
-		return old.Close()
-	}
-	return nil
 }
 
 func (registry *MMDBRegistry) Lookup(provider models.DataProvider, ip netip.Addr) (models.GeoRecord, error) {

@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -290,6 +291,9 @@ func serve(options options) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	metrics := observability.NewRegistry()
+	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
+	defer func() { dataProviders.Close() }()
+	wafRuntime := network.NewWAFRuntime(graph.WAFPolicies, dataProviders.Lookup)
 	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, ValidateConfig: config.ValidateYAML}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
@@ -315,20 +319,33 @@ func serve(options options) int {
 	for name, upstream := range graph.Upstreams {
 		management.Upstreams = append(management.Upstreams, map[string]any{"name": name, "targets": len(upstream.Targets), "balance": upstream.Balance})
 	}
+	var reloadMu sync.Mutex
 	management.ReloadConfig = func(_ context.Context, _ string) (api.Operation, error) {
+		reloadMu.Lock()
+		defer reloadMu.Unlock()
 		reloaded, reloadErr := config.CompileGateway(path)
 		if reloadErr != nil {
 			return api.Operation{}, reloadErr
 		}
-		management.UpdateRuntimeRevision(reloaded.Revision.Value, reloaded.Revision.Digest)
+		contents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return api.Operation{}, readErr
+		}
+		nextDataProviders, providerErr := security.NewVerifiedMMDBRegistry(reloaded.DataProviders)
+		if providerErr != nil {
+			return api.Operation{}, providerErr
+		}
+		previousDataProviders := dataProviders
+		wafRuntime.Replace(reloaded.WAFPolicies, nextDataProviders.Lookup)
+		dataProviders = nextDataProviders
+		previousDataProviders.Close()
+		management.UpdateRuntimeConfig(reloaded.Revision.Value, reloaded.Revision.Digest, string(contents))
 		return api.Operation{ID: "reload-" + reloaded.Revision.Digest[:8], State: "accepted", CreatedAt: time.Now()}, nil
 	}
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
-	defer dataProviders.Close()
-	if err := network.ServeWithDataProviders(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, graph.WAFPolicies, dataProviders.Lookup, drain, metrics); err != nil {
+	if err := network.ServeWithWAFRuntime(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, wafRuntime, drain, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

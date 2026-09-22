@@ -56,29 +56,36 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 }
 
 func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 // ServeWithRateLimits is the full runtime entry point used by the CLI.
 func ServeWithRateLimits(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 func ServeWithPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 func ServeWithDataProviders(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, providers interfaces.GeoLookup, drainTimeout time.Duration, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, nil, nil, metrics, providers)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, nil, nil, metrics, providers, nil)
+}
+
+func ServeWithWAFRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, runtime *WAFRuntime, drainTimeout time.Duration, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, nil, nil, metrics, nil, runtime)
 }
 
 // ServeWithIdentityPolicies additionally wires compiled auth policies to
 // already-handshaken identity plugin instances.
 func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, authPolicies, identity, drainTimeout, capabilities, l4Capabilities, metrics, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, authPolicies, identity, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
-func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup) error {
+func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
+	if wafRuntime == nil {
+		wafRuntime = NewWAFRuntime(policies, geo)
+	}
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -90,7 +97,7 @@ func serveWithRuntime(parent context.Context, listeners []models.Listener, sites
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, policies, authPolicies, identity, geo)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, wafRuntime, authPolicies, identity)
 			}
 		}(listener)
 	}
@@ -373,7 +380,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, geoProvider interfaces.GeoLookup) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, wafRuntime *WAFRuntime, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher) error {
 	limiter := newRateLimiter(limits)
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -462,32 +469,27 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			return
 		}
 		if route.WAF != "" {
-			if policy, ok := policies[route.WAF]; ok {
-				headers := make(map[string][]string, len(request.Header))
-				for name, values := range request.Header {
-					headers[name] = values
+			headers := make(map[string][]string, len(request.Header))
+			for name, values := range request.Header {
+				headers[name] = values
+			}
+			query := make(map[string][]string, len(request.URL.Query()))
+			for name, values := range request.URL.Query() {
+				query[name] = values
+			}
+			input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
+			if action, matched := wafRuntime.Evaluate(route.WAF, input); matched {
+				if action.Deny != nil {
+					writer.WriteHeader(action.Deny.Status)
+					return
 				}
-				query := make(map[string][]string, len(request.URL.Query()))
-				for name, values := range request.URL.Query() {
-					query[name] = values
-				}
-				input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
-				if action, matched := evaluateWAF(policy, input, geoProvider); matched {
-					if action.Deny != nil {
-						writer.WriteHeader(action.Deny.Status)
+				if action.Limit != "" {
+					if retry, limited := limiter.Allow(action.Limit, request); limited {
+						writer.Header().Set("Retry-After", strconv.Itoa(retry))
+						writer.WriteHeader(http.StatusTooManyRequests)
 						return
 					}
-					if action.Limit != "" {
-						if retry, limited := limiter.Allow(action.Limit, request); limited {
-							writer.Header().Set("Retry-After", strconv.Itoa(retry))
-							writer.WriteHeader(http.StatusTooManyRequests)
-							return
-						}
-					}
 				}
-			} else {
-				writer.WriteHeader(http.StatusServiceUnavailable)
-				return
 			}
 		}
 		if route.RateLimit != "" {

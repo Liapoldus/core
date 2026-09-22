@@ -59,6 +59,14 @@ func (server *Server) UpdateRuntimeRevision(revision, digest string) {
 	server.Digest = digest
 }
 
+func (server *Server) UpdateRuntimeConfig(revision, digest, configuration string) {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.Revision = revision
+	server.Digest = digest
+	server.Config = configuration
+}
+
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
 	Namespace    string   `json:"namespace"`
