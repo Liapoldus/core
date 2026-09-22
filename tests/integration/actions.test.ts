@@ -90,6 +90,33 @@ describe("route deny actions", () => {
   });
 });
 
+describe("WAF policy limit action", () => {
+  it("uses the named token bucket and stops before proxying on exhaustion", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `rateLimits:`, `  api: { key: source-ip, requests: 1, per: 1m, burst: 1 }`,
+      `wafPolicies:`, `  public:`, `    rules:`,
+      `      - when: { path: { prefix: /api } }`, `        then: { limit: api }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: public }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const first = await request(address, "/api/first");
+    const second = await request(address, "/api/second");
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+    expect(second.headers.get("retry-after")).toBe("60");
+    expect(upstream.hits().paths).toEqual(["/api/first"]);
+  });
+});
+
 describe("plugin route actions", () => {
   it("does not silently turn a declared plugin action into a 404", async () => {
     const address = await startActionsGateway([
