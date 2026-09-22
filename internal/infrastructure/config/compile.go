@@ -161,6 +161,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		Upstreams:   map[string]models.Upstream{},
 		TLSProfiles: map[string]models.TLSProfile{},
 		RateLimits:  map[string]models.RateLimit{},
+		WAFPolicies: map[string]models.WAFPolicy{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -190,6 +191,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 				if err := collectRateLimits(node, loaded.Runtime, graph.RateLimits); err != nil {
 					return models.CompiledGraph{}, err
 				}
+			case loaded.WAFPolicies:
+				if err := collectWAFPolicies(node, loaded.Runtime, graph.WAFPolicies); err != nil {
+					return models.CompiledGraph{}, err
+				}
 			case loaded.Runtime.Section.TLSProfiles:
 				if err := collectTLSProfiles(node, loaded.Runtime, graph.TLSProfiles); err != nil {
 					return models.CompiledGraph{}, err
@@ -205,6 +210,54 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.Secrets[name] = models.Secret{Value: value}
 	}
 	return graph, nil
+}
+
+func collectWAFPolicies(node *yaml.Node, _ runtimeWords, policies map[string]models.WAFPolicy) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		name, body := node.Content[i].Value, node.Content[i+1]
+		policy := models.WAFPolicy{}
+		rules := mappingNode(body, "rules")
+		if rules == nil || rules.Kind != yaml.SequenceNode {
+			continue
+		}
+		for _, rn := range rules.Content {
+			when := mappingNode(rn, "when")
+			then := mappingNode(rn, "then")
+			if when == nil || then == nil {
+				continue
+			}
+			rule := models.WAFRule{When: models.PathMatcher{}}
+			if path := mappingNode(when, "path"); path != nil {
+				if path.Kind == yaml.ScalarNode {
+					rule.When.Exact = path.Value
+				} else if p := mappingNode(path, "prefix"); p != nil {
+					rule.When.Prefixes = []string{p.Value}
+				} else if p := mappingNode(path, "exact"); p != nil {
+					rule.When.Exact = p.Value
+				}
+			}
+			if mappingNode(then, "allow") != nil {
+				rule.Action.Allow = true
+			} else if d := mappingNode(then, "deny"); d != nil {
+				action := &models.Deny{Status: 403, Code: "forbidden"}
+				if s := mappingNode(d, "status"); s != nil {
+					if n, e := strconv.Atoi(s.Value); e == nil {
+						action.Status = n
+					}
+				}
+				if c := mappingNode(d, "code"); c != nil {
+					action.Code = c.Value
+				}
+				rule.Action.Deny = action
+			}
+			policy.Rules = append(policy.Rules, rule)
+		}
+		policies[name] = policy
+	}
+	return nil
 }
 
 func collectRateLimits(node *yaml.Node, words runtimeWords, limits map[string]models.RateLimit) error {

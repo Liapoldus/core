@@ -8,6 +8,7 @@ type CompiledGraph struct {
 	Upstreams     map[string]Upstream
 	TLSProfiles   map[string]TLSProfile
 	RateLimits    map[string]RateLimit
+	WAFPolicies   map[string]WAFPolicy
 	Management    Management
 	Observability Observability
 }

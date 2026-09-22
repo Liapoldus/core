@@ -47,15 +47,19 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 }
 
 func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
 }
 
 // ServeWithRateLimits is the full runtime entry point used by the CLI.
 func ServeWithRateLimits(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
 }
 
-func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
+func ServeWithPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, drainTimeout, capabilities, l4Capabilities, metrics...)
+}
+
+func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -67,7 +71,7 @@ func serveWithRuntime(parent context.Context, listeners []models.Listener, sites
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, policies)
 			}
 		}(listener)
 	}
@@ -334,7 +338,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy) error {
 	limiter := newRateLimiter(limits)
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -368,12 +372,23 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				return
 			}
 		}
-		if route.Auth != "" || route.WAF != "" {
+		if route.Auth != "" {
 			// Policy execution is an explicit adapter boundary. Never let a
 			// declared policy silently fall through to an upstream or static site.
 			writer.Header().Set("Content-Type", "application/problem+json")
 			writer.WriteHeader(http.StatusServiceUnavailable)
 			return
+		}
+		if route.WAF != "" {
+			if policy, ok := policies[route.WAF]; ok {
+				if deny, blocked := policy.Evaluate(request.URL.Path); blocked {
+					writer.WriteHeader(deny.Status)
+					return
+				}
+			} else {
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
 		}
 		if route.Rewrite != nil && route.Rewrite.Pattern != nil {
 			request.URL.Path = route.Rewrite.Pattern.ReplaceAllString(request.URL.Path, route.Rewrite.Replacement)

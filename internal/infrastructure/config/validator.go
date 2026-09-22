@@ -34,16 +34,17 @@ const (
 )
 
 type contractFile struct {
-	Root       []string `yaml:"root"`
-	Listener   []string `yaml:"listener"`
-	Includes   string   `yaml:"includes"`
-	Listeners  string   `yaml:"listeners"`
-	Sites      string   `yaml:"sites"`
-	Secrets    string   `yaml:"secrets"`
-	Variables  string   `yaml:"variables"`
-	Upstreams  string   `yaml:"upstreams"`
-	RateLimits string   `yaml:"rateLimits"`
-	Registry   struct {
+	Root        []string `yaml:"root"`
+	Listener    []string `yaml:"listener"`
+	Includes    string   `yaml:"includes"`
+	Listeners   string   `yaml:"listeners"`
+	Sites       string   `yaml:"sites"`
+	Secrets     string   `yaml:"secrets"`
+	Variables   string   `yaml:"variables"`
+	Upstreams   string   `yaml:"upstreams"`
+	RateLimits  string   `yaml:"rateLimits"`
+	WAFPolicies string   `yaml:"wafPolicies"`
+	Registry    struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
 	} `yaml:"registry"`

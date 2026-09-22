@@ -325,7 +325,7 @@ func serve(options options) int {
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.ServeWithRateLimits(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, drain, nil, nil, metrics); err != nil {
+	if err := network.ServeWithPolicies(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, graph.WAFPolicies, drain, nil, nil, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
