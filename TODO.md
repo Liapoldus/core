@@ -229,6 +229,9 @@ references are
   совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
   успешный MMDB replacement integration-тест и реализовать recursive all/any/not,
   connection/request comparisons и challenge.
+  CORS preflight теперь проходит terminal только при разрешённых Origin и
+  `Access-Control-Request-Method`; несовпадающий запрос продолжается обычным
+  маршрутом и покрыт TS integration-тестом.
   Проверку взаимоисключения terminal actions нужно расширить при реализации
   route-level challenge.
 - Schema bug: `$defs.tlsProfile.certificates.items` had

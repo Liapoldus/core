@@ -398,29 +398,41 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.CORS != nil {
 			origin := request.Header.Get("Origin")
-			allowed := len(route.CORS.Origins) == 0
+			originAllowed := len(route.CORS.Origins) == 0
 			for _, candidate := range route.CORS.Origins {
 				if candidate == "*" || candidate == origin {
-					allowed = true
+					originAllowed = true
 				}
 			}
-			if origin != "" && allowed {
+			preflight := request.Method == http.MethodOptions && request.Header.Get("Access-Control-Request-Method") != ""
+			methodAllowed := len(route.CORS.Methods) == 0
+			requestedMethod := request.Header.Get("Access-Control-Request-Method")
+			for _, method := range route.CORS.Methods {
+				if method == requestedMethod {
+					methodAllowed = true
+				}
+			}
+			if preflight && (!originAllowed || !methodAllowed) {
+				preflight = false
+				originAllowed = false
+			}
+			if origin != "" && originAllowed {
 				writer.Header().Set("Access-Control-Allow-Origin", origin)
 				writer.Header().Add("Vary", "Origin")
 			}
-			if len(route.CORS.Methods) > 0 {
+			if preflight && len(route.CORS.Methods) > 0 {
 				writer.Header().Set("Access-Control-Allow-Methods", strings.Join(route.CORS.Methods, ", "))
 			}
-			if len(route.CORS.Headers) > 0 {
+			if preflight && len(route.CORS.Headers) > 0 {
 				writer.Header().Set("Access-Control-Allow-Headers", strings.Join(route.CORS.Headers, ", "))
 			}
-			if len(route.CORS.ExposeHeaders) > 0 {
+			if !preflight && len(route.CORS.ExposeHeaders) > 0 {
 				writer.Header().Set("Access-Control-Expose-Headers", strings.Join(route.CORS.ExposeHeaders, ", "))
 			}
-			if route.CORS.Credentials {
+			if origin != "" && originAllowed && route.CORS.Credentials {
 				writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
-			if request.Method == http.MethodOptions {
+			if preflight {
 				if requested := request.Header.Get("Access-Control-Request-Headers"); requested != "" && len(route.CORS.Headers) == 0 {
 					writer.Header().Set("Access-Control-Allow-Headers", requested)
 				}
