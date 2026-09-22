@@ -16,4 +16,16 @@ describe("identity plugin configuration", () => {
     expect(result.exitCode).toBe(0);
     expect(jsonOutput(result).valid).toBe(true);
   });
+
+  it("uses the normalized identity subject rather than a token-format-specific rate-limit key", async () => {
+    const accepted = await createConfig(
+      "registry:\n  path: ./registry\nrateLimits:\n  identity: { key: identity-subject, requests: 10, per: 1m, burst: 2 }\n",
+    );
+    const rejected = await createConfig(
+      "registry:\n  path: ./registry\nrateLimits:\n  legacy: { key: jwt-subject, requests: 10, per: 1m, burst: 2 }\n",
+    );
+
+    await expect(runGateway(["--output", "json", "config", "validate", accepted])).resolves.toMatchObject({ exitCode: 0 });
+    await expect(runGateway(["--output", "json", "config", "validate", rejected])).resolves.toMatchObject({ exitCode: 3 });
+  });
 });
