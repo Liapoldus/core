@@ -231,8 +231,11 @@ references are
   Ошибка provider теперь возвращается как RFC Problem с кодом
   `waf_provider_unavailable` и покрыта integration-тестом. Geo/ASN положительное
   совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
-  успешный MMDB replacement integration-тест и реализовать recursive all/any/not,
-  connection/request comparisons и challenge.
+  успешный MMDB replacement integration-тест, connection/request comparisons и
+  challenge. Recursive WAF `all`/`any`/`not` теперь компилируются и выполняются;
+  provider failure вычисляется как unknown и не инвертируется через `not`.
+  Семантика композиции описана в Gateway security-документации и
+  `security-runtime.json`.
   CORS preflight теперь проходит terminal только при разрешённых Origin и
   `Access-Control-Request-Method`; несовпадающий запрос продолжается обычным
   маршрутом и покрыт TS integration-тестом.

@@ -695,41 +695,140 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 
 func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup, providerProblem models.Problem) (models.WAFAction, bool) {
 	for _, rule := range policy.Rules {
-		if !rule.When.Matches(request) {
-			continue
+		result := evaluateWAFMatcher(rule.When, request, provider)
+		if !result.determined {
+			return providerFailureAction(rule, *result.failedProvider, providerProblem), true
 		}
-		needsGeo := rule.When.Geo != nil || rule.When.ASN != nil
-		if !needsGeo {
-			return rule.Action, true
-		}
-		address, err := netip.ParseAddr(remoteHost(request.RemoteAddress))
-		if err != nil || provider == nil {
-			return providerFailureAction(rule, dataProviderForRule(rule), providerProblem), true
-		}
-		records := make(map[string]models.GeoRecord, 2)
-		if rule.When.Geo != nil {
-			record, lookupErr := provider(rule.When.Geo.Config, address)
-			if lookupErr != nil {
-				return providerFailureAction(rule, rule.When.Geo.Config, providerProblem), true
-			}
-			records[rule.When.Geo.Provider] = record
-		}
-		if rule.When.ASN != nil {
-			if record, exists := records[rule.When.ASN.Provider]; exists {
-				records[rule.When.ASN.Provider] = record
-			} else {
-				record, lookupErr := provider(rule.When.ASN.Config, address)
-				if lookupErr != nil {
-					return providerFailureAction(rule, rule.When.ASN.Config, providerProblem), true
-				}
-				records[rule.When.ASN.Provider] = record
-			}
-		}
-		if rule.When.MatchesResolved(request, records) {
+		if result.matched {
 			return rule.Action, true
 		}
 	}
 	return models.WAFAction{}, false
+}
+
+type wafMatcherResult struct {
+	matched        bool
+	determined     bool
+	failedProvider *models.DataProvider
+}
+
+func evaluateWAFMatcher(matcher models.WAFMatcher, request models.WAFRequest, provider interfaces.GeoLookup) wafMatcherResult {
+	if !matcher.MatchesRequestFields(request) {
+		return wafMatcherResult{determined: true}
+	}
+	records := make(map[string]models.GeoRecord, 2)
+	var failedProvider *models.DataProvider
+	var address netip.Addr
+	var addressParsed bool
+	var addressValid bool
+	lookupResults := make(map[models.DataProvider]geoLookupResult, 2)
+	lookup := func(configuration models.DataProvider, providerName string) (models.GeoRecord, bool) {
+		if result, exists := lookupResults[configuration]; exists {
+			if result.failed != nil {
+				if failedProvider == nil {
+					failed := *result.failed
+					failedProvider = &failed
+				}
+				return models.GeoRecord{}, false
+			}
+			records[providerName] = result.record
+			return result.record, true
+		}
+		if !addressParsed {
+			address, _ = netip.ParseAddr(remoteHost(request.RemoteAddress))
+			addressValid = address.IsValid()
+			addressParsed = true
+		}
+		if !addressValid || provider == nil {
+			failed := configuration
+			lookupResults[configuration] = geoLookupResult{failed: &failed}
+			if failedProvider == nil {
+				copy := configuration
+				failedProvider = &copy
+			}
+			return models.GeoRecord{}, false
+		}
+		record, err := provider(configuration, address)
+		if err != nil {
+			failed := configuration
+			lookupResults[configuration] = geoLookupResult{failed: &failed}
+			if failedProvider == nil {
+				copy := configuration
+				failedProvider = &copy
+			}
+			return models.GeoRecord{}, false
+		}
+		lookupResults[configuration] = geoLookupResult{record: record}
+		records[providerName] = record
+		return record, true
+	}
+	if matcher.Geo != nil {
+		if _, ok := lookup(matcher.Geo.Config, matcher.Geo.Provider); ok && !(models.WAFMatcher{Geo: matcher.Geo}).MatchesGeoRecords(records) {
+			return wafMatcherResult{determined: true}
+		}
+	}
+	if matcher.ASN != nil {
+		if _, ok := lookup(matcher.ASN.Config, matcher.ASN.Provider); ok && !(models.WAFMatcher{ASN: matcher.ASN}).MatchesGeoRecords(records) {
+			return wafMatcherResult{determined: true}
+		}
+	}
+	result := wafMatcherResult{matched: true, determined: true}
+	if failedProvider != nil {
+		result.determined = false
+		result.failedProvider = failedProvider
+	}
+	for _, child := range matcher.All {
+		childResult := evaluateWAFMatcher(child, request, provider)
+		if childResult.determined && !childResult.matched {
+			return wafMatcherResult{determined: true}
+		}
+		if !childResult.determined && result.determined {
+			result.determined = false
+			result.failedProvider = childResult.failedProvider
+		}
+	}
+	if matcher.Any != nil {
+		matchedAny := false
+		var anyFailure *models.DataProvider
+		for _, child := range matcher.Any {
+			childResult := evaluateWAFMatcher(child, request, provider)
+			if !childResult.determined {
+				if anyFailure == nil {
+					anyFailure = childResult.failedProvider
+				}
+				continue
+			}
+			if childResult.matched {
+				matchedAny = true
+				break
+			}
+		}
+		if !matchedAny {
+			if anyFailure == nil {
+				return wafMatcherResult{determined: true}
+			}
+			if result.determined {
+				result.determined = false
+				result.failedProvider = anyFailure
+			}
+		}
+	}
+	if matcher.Not != nil {
+		childResult := evaluateWAFMatcher(*matcher.Not, request, provider)
+		if childResult.determined && childResult.matched {
+			return wafMatcherResult{determined: true}
+		}
+		if !childResult.determined && result.determined {
+			result.determined = false
+			result.failedProvider = childResult.failedProvider
+		}
+	}
+	return result
+}
+
+type geoLookupResult struct {
+	record models.GeoRecord
+	failed *models.DataProvider
 }
 
 func providerFailureAction(rule models.WAFRule, provider models.DataProvider, problem models.Problem) models.WAFAction {
@@ -744,16 +843,6 @@ func providerFailureAction(rule models.WAFRule, provider models.DataProvider, pr
 		return models.WAFAction{Deny: &models.Deny{Status: http.StatusForbidden}}
 	}
 	return models.WAFAction{Deny: &models.Deny{Status: problem.Status, Code: problem.Code}, Problem: &problem}
-}
-
-func dataProviderForRule(rule models.WAFRule) models.DataProvider {
-	if rule.When.Geo != nil {
-		return rule.When.Geo.Config
-	}
-	if rule.When.ASN != nil {
-		return rule.When.ASN.Config
-	}
-	return models.DataProvider{}
 }
 
 func remoteHost(address string) string {

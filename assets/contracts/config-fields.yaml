@@ -200,6 +200,9 @@ runtime:
     exists: exists
     in: in
     notIn: notIn
+    all: all
+    any: any
+    not: not
     allow: allow
     deny: deny
     status: status

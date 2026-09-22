@@ -211,6 +211,9 @@ type runtimeWords struct {
 		Exists   string `yaml:"exists"`
 		In       string `yaml:"in"`
 		NotIn    string `yaml:"notIn"`
+		All      string `yaml:"all"`
+		Any      string `yaml:"any"`
+		Not      string `yaml:"not"`
 		Allow    string `yaml:"allow"`
 		Deny     string `yaml:"deny"`
 		Status   string `yaml:"status"`

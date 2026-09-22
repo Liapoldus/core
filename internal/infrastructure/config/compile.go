@@ -315,66 +315,11 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 				rule.OnErrorExplicit = true
 				rule.OnErrorAllow = onError == words.DataProvider.Allow
 			}
-			if path := mappingNode(when, words.WAF.Path); path != nil {
-				matcher, err := compilePathMatcher(path, words)
-				if err != nil {
-					return err
-				}
-				rule.When.Path = matcher
-			}
-			if method := mappingNode(when, words.WAF.Method); method != nil {
-				matcher, err := compileStringMatcher(method, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
-				if err != nil {
-					return err
-				}
-				rule.When.Method = matcher
-			}
-			if sourceIP := mappingNode(when, words.WAF.SourceIP); sourceIP != nil {
-				matcher, err := compileIPMatcher(sourceIP, words.WAF.Exact, words.WAF.In, words.WAF.NotIn)
-				if err != nil {
-					return err
-				}
-				rule.When.SourceIP = matcher
-			}
-			if geo := mappingNode(when, words.WAF.Geo); geo != nil {
-				provider, _ := fieldValue(geo, words.WAF.Provider)
-				countryNode := mappingNode(geo, words.WAF.Country)
-				cityNode := mappingNode(geo, words.WAF.City)
-				var country *models.StringMatcher
-				if countryNode != nil {
-					matcher, err := compileStringMatcher(countryNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
-					if err != nil {
-						return err
-					}
-					country = matcher
-				}
-				var city *models.StringMatcher
-				if cityNode != nil {
-					matcher, err := compileStringMatcher(cityNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
-					if err != nil {
-						return err
-					}
-					city = matcher
-				}
-				rule.When.Geo = &models.GeoMatcher{Provider: provider, Country: country, City: city}
-			}
-			if asn := mappingNode(when, words.WAF.ASN); asn != nil {
-				provider, _ := fieldValue(asn, words.WAF.Provider)
-				matcher := &models.ASNMatcher{Provider: provider}
-				matcher.In = collectASNs(mappingNode(asn, words.WAF.In))
-				matcher.NotIn = collectASNs(mappingNode(asn, words.WAF.NotIn))
-				rule.When.ASN = matcher
-			}
-			headers, err := compileStringMatcherMap(mappingNode(when, words.WAF.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			matcher, err := compileWAFMatcher(when, words)
 			if err != nil {
 				return err
 			}
-			rule.When.Headers = headers
-			query, err := compileStringMatcherMap(mappingNode(when, words.WAF.Query), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
-			if err != nil {
-				return err
-			}
-			rule.When.Query = query
+			rule.When = matcher
 			if mappingNode(then, words.WAF.Allow) != nil {
 				rule.Action.Allow = true
 			} else if d := mappingNode(then, words.WAF.Deny); d != nil {
@@ -396,6 +341,91 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 		policies[name] = policy
 	}
 	return nil
+}
+
+func compileWAFMatcher(node *yaml.Node, words runtimeWords) (models.WAFMatcher, error) {
+	matcher := models.WAFMatcher{}
+	if path := mappingNode(node, words.WAF.Path); path != nil {
+		compiled, err := compilePathMatcher(path, words)
+		if err != nil {
+			return matcher, err
+		}
+		matcher.Path = compiled
+	}
+	if method := mappingNode(node, words.WAF.Method); method != nil {
+		compiled, err := compileStringMatcher(method, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+		if err != nil {
+			return matcher, err
+		}
+		matcher.Method = compiled
+	}
+	if sourceIP := mappingNode(node, words.WAF.SourceIP); sourceIP != nil {
+		compiled, err := compileIPMatcher(sourceIP, words.WAF.Exact, words.WAF.In, words.WAF.NotIn)
+		if err != nil {
+			return matcher, err
+		}
+		matcher.SourceIP = compiled
+	}
+	if geo := mappingNode(node, words.WAF.Geo); geo != nil {
+		provider, _ := fieldValue(geo, words.WAF.Provider)
+		var country, city *models.StringMatcher
+		if countryNode := mappingNode(geo, words.WAF.Country); countryNode != nil {
+			compiled, err := compileStringMatcher(countryNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return matcher, err
+			}
+			country = compiled
+		}
+		if cityNode := mappingNode(geo, words.WAF.City); cityNode != nil {
+			compiled, err := compileStringMatcher(cityNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return matcher, err
+			}
+			city = compiled
+		}
+		matcher.Geo = &models.GeoMatcher{Provider: provider, Country: country, City: city}
+	}
+	if asn := mappingNode(node, words.WAF.ASN); asn != nil {
+		provider, _ := fieldValue(asn, words.WAF.Provider)
+		matcher.ASN = &models.ASNMatcher{Provider: provider, In: collectASNs(mappingNode(asn, words.WAF.In)), NotIn: collectASNs(mappingNode(asn, words.WAF.NotIn))}
+	}
+	var err error
+	matcher.Headers, err = compileStringMatcherMap(mappingNode(node, words.WAF.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+	if err != nil {
+		return matcher, err
+	}
+	matcher.Query, err = compileStringMatcherMap(mappingNode(node, words.WAF.Query), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+	if err != nil {
+		return matcher, err
+	}
+	if all := mappingNode(node, words.WAF.All); all != nil && all.Kind == yaml.SequenceNode {
+		matcher.All = make([]models.WAFMatcher, 0, len(all.Content))
+		for _, child := range all.Content {
+			compiled, err := compileWAFMatcher(child, words)
+			if err != nil {
+				return matcher, err
+			}
+			matcher.All = append(matcher.All, compiled)
+		}
+	}
+	if any := mappingNode(node, words.WAF.Any); any != nil && any.Kind == yaml.SequenceNode {
+		matcher.Any = make([]models.WAFMatcher, 0, len(any.Content))
+		for _, child := range any.Content {
+			compiled, err := compileWAFMatcher(child, words)
+			if err != nil {
+				return matcher, err
+			}
+			matcher.Any = append(matcher.Any, compiled)
+		}
+	}
+	if not := mappingNode(node, words.WAF.Not); not != nil {
+		compiled, err := compileWAFMatcher(not, words)
+		if err != nil {
+			return matcher, err
+		}
+		matcher.Not = &compiled
+	}
+	return matcher, nil
 }
 
 func collectASNs(node *yaml.Node) []uint {

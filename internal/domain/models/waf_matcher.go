@@ -10,9 +10,16 @@ type WAFMatcher struct {
 	Query    map[string]StringMatcher
 	Geo      *GeoMatcher
 	ASN      *ASNMatcher
+	All      []WAFMatcher
+	Any      []WAFMatcher
+	Not      *WAFMatcher
 }
 
 func (matcher WAFMatcher) Matches(request WAFRequest) bool {
+	return matcher.MatchesResolved(request, nil)
+}
+
+func (matcher WAFMatcher) MatchesRequestFields(request WAFRequest) bool {
 	if !matcher.Path.Matches(request.Path) {
 		return false
 	}
@@ -45,9 +52,33 @@ func (matcher WAFMatcher) Matches(request WAFRequest) bool {
 }
 
 func (matcher WAFMatcher) MatchesResolved(request WAFRequest, geo map[string]GeoRecord) bool {
-	if !matcher.Matches(request) {
+	if !matcher.MatchesRequestFields(request) || !matcher.MatchesGeoRecords(geo) {
 		return false
 	}
+	for _, child := range matcher.All {
+		if !child.MatchesResolved(request, geo) {
+			return false
+		}
+	}
+	if matcher.Any != nil {
+		matched := false
+		for _, child := range matcher.Any {
+			if child.MatchesResolved(request, geo) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if matcher.Not != nil && matcher.Not.MatchesResolved(request, geo) {
+		return false
+	}
+	return true
+}
+
+func (matcher WAFMatcher) MatchesGeoRecords(geo map[string]GeoRecord) bool {
 	if matcher.Geo != nil {
 		record, ok := geo[matcher.Geo.Provider]
 		if !ok || matcher.Geo.Country != nil && !matcher.Geo.Country.Matches(record.Country, false) || matcher.Geo.City != nil && !matcher.Geo.City.Matches(record.City, false) {
