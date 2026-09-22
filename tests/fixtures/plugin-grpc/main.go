@@ -20,6 +20,8 @@ type plugin struct {
 	crashMarker string
 }
 
+var memoryBlock []byte
+
 type httpRequest struct {
 	Method  string            `json:"method"`
 	Path    string            `json:"path"`
@@ -28,7 +30,7 @@ type httpRequest struct {
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "tcp.echo"}}, nil
+	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "tcp.echo"}}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
@@ -45,6 +47,12 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 }
 
 func (p *plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+	if request.GetCapability() == "forms.memory" {
+		memoryBlock = make([]byte, 128<<20)
+		for index := 0; index < len(memoryBlock); index += 4096 {
+			memoryBlock[index] = 1
+		}
+	}
 	if request.GetCapability() == "forms.crash-once" {
 		if _, err := os.Stat(p.crashMarker); os.IsNotExist(err) {
 			if err := os.WriteFile(p.crashMarker, []byte{}, 0600); err != nil {
@@ -129,6 +137,18 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 }
 
 func main() {
+	startMarker := os.Getenv("LIAPOLDUS_FIXTURE_START_MARKER")
+	if startMarker != "" {
+		file, err := os.OpenFile(startMarker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			return
+		}
+		_, writeErr := file.WriteString("start\n")
+		closeErr := file.Close()
+		if writeErr != nil || closeErr != nil {
+			return
+		}
+	}
 	listener, err := transport.ListenLoopback()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

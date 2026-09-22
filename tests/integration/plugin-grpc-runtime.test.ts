@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import net from "node:net";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -188,5 +188,50 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(recovered).toBe(true);
+  }, 60_000);
+
+  it("restarts a plugin whose resident memory exceeds its configured RSS limit", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-memory-"));
+    const binary = join(directory, "forms-plugin");
+    const marker = join(directory, "starts");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    env:",
+      `      - ${JSON.stringify(`LIAPOLDUS_FIXTURE_START_MARKER=${marker}`)}`,
+      "    capabilities: [forms.memory]",
+      "    limits: { memory: 64MiB }",
+      "    settings: {}",
+      "    restart: { enabled: true, backoff: 100ms, maxBackoff: 500ms }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${address}`,
+      "    routes:",
+      "      - when: { path: { exact: /memory } }",
+      "        then:",
+      "          plugin: { instance: forms, capability: forms.memory }",
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/memory");
+    expect(response.status).toBe(200);
+
+    let startCount = 0;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try {
+        startCount = (await readFile(marker, "utf8")).trim().split("\n").length;
+      } catch {
+        // The plugin process may not have written its first marker yet.
+      }
+      if (startCount >= 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(startCount).toBeGreaterThanOrEqual(2);
   }, 60_000);
 });
