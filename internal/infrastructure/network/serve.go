@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -78,6 +79,12 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		info, err := os.Stat(candidate)
 		if err != nil {
+			if shouldSPAFallback(request, site, requested) {
+				candidate = filepath.Join(site.Root, site.Index)
+				info, err = os.Stat(candidate)
+			}
+		}
+		if err != nil {
 			http.NotFound(writer, request)
 			return
 		}
@@ -89,6 +96,17 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				return
 			}
 		}
+		if !isWithin(site.Root, candidate) || info.IsDir() {
+			http.NotFound(writer, request)
+			return
+		}
+		etag := fmt.Sprintf(`"lpg-r1-%x-%x"`, info.Size(), info.ModTime().UnixNano())
+		responseWriter.Header().Set("ETag", etag)
+		if request.Header.Get("If-None-Match") == etag {
+			responseWriter.WriteHeader(http.StatusNotModified)
+			return
+		}
+		applyStaticCache(responseWriter.Header(), site.Cache)
 		http.ServeFile(responseWriter, request, candidate)
 	})
 	server := &http.Server{Addr: listener.Address, Handler: handler}
@@ -105,6 +123,31 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func shouldSPAFallback(request *http.Request, site models.Site, requested string) bool {
+	if !site.SPA || (request.Method != http.MethodGet && request.Method != http.MethodHead) || strings.Contains(path.Base(requested), ".") {
+		return false
+	}
+	accept := request.Header.Get("Accept")
+	return accept == "" || strings.Contains(accept, "text/html")
+}
+
+func applyStaticCache(header http.Header, cache *models.SiteCache) {
+	if cache == nil || cache.Static.Visibility == "" {
+		return
+	}
+	if cache.Static.Visibility == "no-store" {
+		header.Set("Cache-Control", "no-store")
+		return
+	}
+	value := cache.Static.Visibility
+	if cache.Static.MaxAge != "" {
+		if duration, err := time.ParseDuration(cache.Static.MaxAge); err == nil {
+			value += fmt.Sprintf(", max-age=%d", int64(duration/time.Second))
+		}
+	}
+	header.Set("Cache-Control", value)
 }
 
 func siteRedirect(requestPath string, redirects []models.SiteRedirect) (models.SiteRedirect, bool) {
