@@ -3,6 +3,67 @@
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
 
+## Live audit findings (2026-09-22, need User decision before fix)
+
+Verification was done against build `/tmp/liapoldus-gateway` with fixture
+`/var/folders/qk/694xx2l56_l01zmd37h82szh0000gn/T/opencode/audit/`
+(`gateway.yaml`, `www/` site + `site.yaml` manifest, batteries 1–4). Contract
+references are
+`liapoldus.github.io/public/spec/{gateway.schema.json,management.openapi.yaml,http-runtime.json,errors.json}`.
+
+- `management.staticToken` is accepted as `env:`/`file:` (schema pattern) but
+  **never resolved**: `collectManagement` (compile.go:718) stores the raw
+  reference; `resolveSecrets` only processes the top-level `secrets:` mapping,
+  so `serve` (serve.go:290) hands the literal `env:LIAPOLDUS_MGMT_TOKEN` to the
+  API adapter → Bearer auth can never match the real token. `GET /api/status`
+  only succeeds with `Authorization: Bearer env:...` as-is. Every `/api` and
+  `/metrics` request with the intended token returns 401.
+- `rewrite.replacement` using a capture group (`replacement: /sub/${1}.html`)
+  is rejected by `validateScalar` (validator.go:545) as an undefined config
+  variable → `ErrInvalidDocument` at compile. Plain literal replacements work
+  and rewrite serves correctly at runtime. Needs a decision: exclude
+  route/rewrite scalars from `validateVariables`, or scope variable
+  substitution to a documented field allow-list.
+- Multiple HTTP listeners are not served: `serve` (serve.go:21-25) `return`s on
+  the first `IsHTTP` listener, so only the first listener binds; additional
+  listeners are silently ignored.
+- Route actions `deny`/`plugin`/`auth`/`waf`/`challenge`/`rateLimit`/`cors`/
+  `compression`/`cache` are ignored by `collectRoutes`: config validates but the
+  route behaves as empty → `deny:` serves 404 instead of 403, plugin routes
+  never dispatch. Needs a decision: reject at compile (strict) or implement.
+- `management.serviceAccounts` are validated (schema: `id`+`role:
+  platform-admin`+`keyHash: file:`) but unused: the adapter authenticates
+  staticToken only. Accounts create/rotate/revoke work and match the API (keys
+  `lpgw_<id>_<base64url>`, files `secrets/accounts/<id>.bcrypt` mode 0600,
+  exit 4/5 on conflict/not-found) but keyHash is `.bcrypt` of the key, so keys
+  can never be verified against a runtime account.
+- TLS/mTLS/HTTPS not implemented: `network/http.go` (4 lines) and
+  `security/tls.go` are stubs; `serve` only does `http.ListenAndServe`; listener
+  `tls:` and `tlsProfiles:` compile but are never applied;
+  `X-Forwarded-Proto` is hard-coded `http`. Non-loopback management with
+  clientAuth is accepted by validation but unreachable at runtime. TCP/UDP
+  listeners (`network/l4.go`) are a stub too.
+- `GET /api/config` returns `yaml: ""` (empty) even though the server holds the
+  compiled config; `PUT /api/config` and `/api/operations` and `/api/plugins`
+  are unimplemented (404). `GET /metrics` is 404 (Prometheus export missing;
+  no-token `GET /metrics` is 401-gated). `POST /healthz` is not method-gated
+  (200). `GET /api/status` returns empty `listeners`/`upstreams` arrays.
+- Gzip/compression not applied: `Accept-Encoding: gzip` on a static response
+  returns identity (~13 bytes). SPA fallback only for requests whose `Accept`
+  contains `text/html` (curl default `*/*` gets 404 on `/about`); manifest
+  option works.
+- site-level separator: manifest `headers` must be `headers.response.set` per
+  `site.schema.json`; `headers.set` on the manifest is silently ignored.
+  Canonical `config-fields.yaml` still lists `index`/`spa`/`redirects`/
+  `headers`/`cache` as top-level site words in gateway.yaml, but the schema
+  rejects them there (manifest-driven design) — docs wording needs alignment.
+- Observed working: static index/ETag/304/206 range, traversal 404 for `/..`
+  and `%2e%2e`, site redirect 301, rewrite literal, site cache
+  `Cache-Control`, site response headers, proxy forwarding (request header
+  set, X-Forwarded-For/Host preserved), POST body echo, no-match 404,
+  /healthz 200, /api/status|config|validate|audit|admin-surfaces 200,
+  config validate/explain/print/diff, accounts CRUD + exit codes.
+
 ## Decisions and contract corrections
 
 - Schema bug: `pathMatcher` used `oneOf [$ref stringMatcher, object exact|prefix|regex]`;
