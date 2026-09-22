@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Liapoldus error catalog",
+  "titles": {
+    "config_invalid":"Некорректная конфигурация", "config_not_found":"Конфигурация не найдена", "unknown_field":"Неизвестное поле", "invalid_regex":"Некорректное регулярное выражение", "address_conflict":"Конфликт адреса", "digest_conflict":"Конфликт версии", "publish_in_progress":"Публикация выполняется", "release_invalid":"Некорректная версия сайта", "no_previous_release":"Предыдущая версия отсутствует", "site_source_immutable":"Операция недоступна для directory source", "management_tls_required":"Для удалённого API требуется TLS", "management_mtls_required":"Для удалённого API требуется mTLS", "route_not_found":"Маршрут не найден", "challenge_required":"Требуется captcha", "rate_limited":"Лимит запросов исчерпан", "plugin_unavailable":"Плагин недоступен", "plugin_timeout":"Истекло время ожидания плагина", "protocol_violation":"Нарушен протокол плагина", "payload_too_large":"Слишком большой payload", "resource_exhausted":"Исчерпан ресурс", "tls_degraded":"TLS деградирован", "body_too_large":"Слишком большое тело запроса", "header_too_large":"Слишком большие заголовки", "site_invalid":"Некорректный сайт", "mtls_required":"Требуется клиентский сертификат", "waf_provider_unavailable":"Провайдер WAF недоступен", "publish_lock_recovered":"Восстановлена блокировка публикации", "rewrite_invalid":"Некорректное rewrite-правило"
+  },
+  "errors": [
+    {"code":"config_invalid","status":422,"type":"https://liapoldus.dev/problems/config_invalid","detail":"Конфигурация не прошла проверку.","cliExit":3},
+    {"code":"config_not_found","status":404,"type":"https://liapoldus.dev/problems/config_not_found","detail":"Файл конфигурации не найден.","cliExit":2},
+    {"code":"unknown_field","status":422,"type":"https://liapoldus.dev/problems/unknown_field","detail":"Обнаружено неизвестное поле конфигурации.","cliExit":3},
+    {"code":"invalid_regex","status":422,"type":"https://liapoldus.dev/problems/invalid_regex","detail":"Регулярное выражение недействительно.","cliExit":3},
+    {"code":"address_conflict","status":409,"type":"https://liapoldus.dev/problems/address_conflict","detail":"Адрес listener уже используется.","cliExit":4},
+    {"code":"digest_conflict","status":409,"type":"https://liapoldus.dev/problems/digest_conflict","detail":"Конфигурация была изменена другим оператором.","cliExit":4},
+    {"code":"publish_in_progress","status":409,"type":"https://liapoldus.dev/problems/publish_in_progress","detail":"Публикация этого сайта уже выполняется.","cliExit":4},
+    {"code":"release_invalid","status":422,"type":"https://liapoldus.dev/problems/release_invalid","detail":"Версия сайта не прошла проверку.","cliExit":3},
+    {"code":"no_previous_release","status":404,"type":"https://liapoldus.dev/problems/no_previous_release","detail":"Предыдущая версия сайта отсутствует.","cliExit":5},
+    {"code":"site_source_immutable","status":409,"type":"https://liapoldus.dev/problems/site_source_immutable","detail":"Операция версий недоступна для directory source.","cliExit":4},
+    {"code":"management_tls_required","status":422,"type":"https://liapoldus.dev/problems/management_tls_required","detail":"Для management listener вне loopback требуется TLS-профиль.","cliExit":3},
+    {"code":"management_mtls_required","status":422,"type":"https://liapoldus.dev/problems/management_mtls_required","detail":"TLS-профиль management listener должен требовать клиентский сертификат.","cliExit":3},
+    {"code":"route_not_found","status":404,"type":"https://liapoldus.dev/problems/route_not_found","detail":"Для запроса не найден маршрут.","cliExit":null},
+    {"code":"challenge_required","status":403,"type":"https://liapoldus.dev/problems/challenge_required","detail":"Требуется пройти проверку captcha.","cliExit":null},
+    {"code":"rate_limited","status":429,"type":"https://liapoldus.dev/problems/rate_limited","detail":"Превышен лимит запросов.","cliExit":null},
+    {"code":"plugin_unavailable","status":503,"type":"https://liapoldus.dev/problems/plugin_unavailable","detail":"Плагин недоступен.","cliExit":7},
+    {"code":"plugin_timeout","status":504,"type":"https://liapoldus.dev/problems/plugin_timeout","detail":"Время ожидания ответа плагина истекло.","cliExit":7},
+    {"code":"protocol_violation","status":502,"type":"https://liapoldus.dev/problems/protocol_violation","detail":"Плагин нарушил контракт протокола.","cliExit":1},
+    {"code":"payload_too_large","status":413,"type":"https://liapoldus.dev/problems/payload_too_large","detail":"Payload плагина превышает допустимый размер.","cliExit":3},
+    {"code":"resource_exhausted","status":503,"type":"https://liapoldus.dev/problems/resource_exhausted","detail":"Исчерпан лимит ресурсов.","cliExit":7},
+    {"code":"tls_degraded","status":503,"type":"https://liapoldus.dev/problems/tls_degraded","detail":"TLS-профиль находится в деградированном состоянии.","cliExit":7},
+    {"code":"body_too_large","status":413,"type":"https://liapoldus.dev/problems/body_too_large","detail":"Размер тела запроса превышает допустимый предел.","cliExit":null},
+    {"code":"header_too_large","status":431,"type":"https://liapoldus.dev/problems/header_too_large","detail":"Размер request line или заголовков превышает допустимый предел.","cliExit":null},
+    {"code":"site_invalid","status":422,"type":"https://liapoldus.dev/problems/site_invalid","detail":"Конфигурация сайта не прошла проверку.","cliExit":3},
+    {"code":"mtls_required","status":401,"type":"https://liapoldus.dev/problems/mtls_required","detail":"Требуется действительный клиентский сертификат.","cliExit":null},
+    {"code":"waf_provider_unavailable","status":403,"type":"https://liapoldus.dev/problems/waf_provider_unavailable","detail":"Провайдер данных WAF недоступен.","cliExit":null},
+    {"code":"publish_lock_recovered","status":200,"type":"https://liapoldus.dev/problems/publish_lock_recovered","detail":"Истекшая или осиротевшая блокировка публикации была восстановлена.","cliExit":null},
+    {"code":"rewrite_invalid","status":422,"type":"https://liapoldus.dev/problems/rewrite_invalid","detail":"Результат rewrite не является абсолютным путём.","cliExit":3}
+  ]
+}
