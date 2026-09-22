@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type testAdminPlugin struct{}
@@ -17,12 +18,65 @@ func (testAdminPlugin) Dispatch(_ context.Context, request plugins.RequestContex
 	return plugins.ResponseAction{Status: http.StatusOK, Body: body}, nil
 }
 
+func TestTLSOperationUsesTypedIssuerBoundary(t *testing.T) {
+	server := &Server{RenewTLS: func(_ context.Context, issuer, key string) (Operation, error) {
+		if issuer != "acme" || key != "0123456789abcdef" {
+			t.Fatalf("issuer=%q key=%q", issuer, key)
+		}
+		return Operation{ID: "op-renew", State: "pending", CreatedAt: time.Now()}, nil
+	}}
+	recording := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/tls/acme/renew", nil)
+	request.Header.Set("Idempotency-Key", "0123456789abcdef")
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body = %s", recording.Code, recording.Body.String())
+	}
+	if !strings.Contains(recording.Body.String(), `"operationId":"op-renew"`) {
+		t.Fatalf("body = %s", recording.Body.String())
+	}
+}
+
+func TestTLSOperationRejectsInvalidIdempotencyKey(t *testing.T) {
+	server := &Server{RenewTLS: func(context.Context, string, string) (Operation, error) {
+		t.Fatal("issuer must not be called")
+		return Operation{}, nil
+	}}
+	recording := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/tls/acme/renew", nil)
+	request.Header.Set("Idempotency-Key", "short")
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", recording.Code)
+	}
+}
+
 func TestAdminSurfacesEndpoint(t *testing.T) {
 	server := &Server{AdminSurfaces: []AdminSurface{{Plugin: "forms-db", Namespace: "forms-db", Version: "v1", Title: "Forms", Capabilities: []string{"forms.list"}}}}
 	recording := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodGet, "/api/plugins/admin-surfaces", nil))
 	if recording.Code != http.StatusOK {
 		t.Fatalf("status = %d", recording.Code)
+	}
+}
+
+func TestManagementResourceListsAndPagination(t *testing.T) {
+	server := &Server{Listeners: []any{"a", "b"}, Upstreams: []any{"u"}, Sites: []any{"s"}, Plugins: []any{"p"}, operations: map[string]Operation{"op": {ID: "op", State: "pending"}}}
+	for _, path := range []string{"/api/listeners", "/api/upstreams", "/api/sites", "/api/plugins", "/api/operations"} {
+		recording := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodGet, path+"?limit=1", nil))
+		if recording.Code != http.StatusOK {
+			t.Fatalf("%s: got %d", path, recording.Code)
+		}
+	}
+}
+
+func TestManagementPluginRestartOperation(t *testing.T) {
+	server := &Server{RestartPlugin: func(context.Context, string) (Operation, error) { return Operation{ID: "op-1", State: "accepted"}, nil }}
+	recording := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodPost, "/api/plugins/forms/restart", nil))
+	if recording.Code != http.StatusAccepted {
+		t.Fatalf("got %d", recording.Code)
 	}
 }
 
