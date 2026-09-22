@@ -1,0 +1,26 @@
+name: Release Gateway contracts
+
+on:
+  push:
+    tags:
+      - "gateway-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify versioned contracts
+        run: |
+          test -f contracts/v1/manifest.json
+          test "$(find contracts/v1 -maxdepth 1 -type f | wc -l | tr -d ' ')" -ge 9
+      - name: Package contracts
+        run: tar -czf "liapoldus-gateway-contracts-${GITHUB_REF_NAME#gateway-}.tar.gz" -C contracts v1
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: liapoldus-gateway-contracts-*.tar.gz
