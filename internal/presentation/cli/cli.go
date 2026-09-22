@@ -290,6 +290,19 @@ func serve(options options) int {
 	defer stop()
 	metrics := observability.NewRegistry()
 	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics}
+	if graph.Management.Listener.TLSProfile != "" {
+		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
+		if !ok {
+			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Validation
+		}
+		tlsConfig, tlsErr := network.LoadTLSConfig(profile)
+		if tlsErr != nil {
+			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Validation
+		}
+		management.TLSConfig = tlsConfig
+	}
 	if raw, readErr := os.ReadFile(path); readErr == nil {
 		management.Config = string(raw)
 	}

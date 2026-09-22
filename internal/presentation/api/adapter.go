@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -42,6 +43,7 @@ type Server struct {
 	RenewTLS  func(context.Context, string, string) (Operation, error)
 	RevokeTLS func(context.Context, string, string) (Operation, error)
 	Metrics   *observability.Registry
+	TLSConfig *tls.Config
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -100,7 +102,14 @@ func (w *metricResponseWriter) Write(data []byte) (int, error) {
 func (server *Server) Listen(ctx context.Context, address string) error {
 	httpServer := &http.Server{Addr: address, Handler: server.Handler()}
 	result := make(chan error, 1)
-	go func() { result <- httpServer.ListenAndServe() }()
+	go func() {
+		if server.TLSConfig != nil {
+			httpServer.TLSConfig = server.TLSConfig
+			result <- httpServer.ListenAndServeTLS("", "")
+			return
+		}
+		result <- httpServer.ListenAndServe()
+	}()
 	select {
 	case err := <-result:
 		return err

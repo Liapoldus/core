@@ -392,6 +392,12 @@ func loadTLSConfig(profile models.TLSProfile) (*tls.Config, error) {
 	return config, nil
 }
 
+// LoadTLSConfig exposes the transport TLS adapter to the management
+// presentation layer without leaking certificate loading into domain code.
+func LoadTLSConfig(profile models.TLSProfile) (*tls.Config, error) {
+	return loadTLSConfig(profile)
+}
+
 func shouldSPAFallback(request *http.Request, site models.Site, requested string) bool {
 	if !site.SPA || (request.Method != http.MethodGet && request.Method != http.MethodHead) || strings.Contains(path.Base(requested), ".") {
 		return false
