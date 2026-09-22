@@ -11,7 +11,17 @@ distroless-образ запускает собранный бинарник; ru
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
 
-## Live audit findings (2026-09-22, need User decision before fix)
+## Historical audit findings (2026-09-22; закрыто последующими коммитами)
+
+Первичный аудит ниже сохранён как исторический контекст. Все перечисленные
+runtime-проблемы закрыты последующими реализациями и regression-тестами:
+TLS/mTLS, L4 listeners, management API, secret resolution, service accounts,
+metrics, gzip, SPA fallback, rewrite captures и route/plugin actions.
+Архитектурный lint сейчас завершается `OK - No warnings found`.
+
+Оставшийся acceptance-gap: семантическое исполнение всех 50 golden vectors
+против runtime; сейчас проверяются manifest/checksums, структура и уникальность
+векторов, а runtime-сценарии покрываются отдельными integration suites.
 
 Verification was done against build `/tmp/liapoldus-gateway` with fixture
 `/var/folders/qk/694xx2l56_l01zmd37h82szh0000gn/T/opencode/audit/`
