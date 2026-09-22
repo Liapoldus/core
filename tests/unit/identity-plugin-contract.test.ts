@@ -17,6 +17,13 @@ describe("identity plugin configuration", () => {
     expect(jsonOutput(result).valid).toBe(true);
   });
 
+  it("rejects a route that references an undefined auth policy", async () => {
+    const config = await createConfig(`registry:\n  path: ./registry\nlisteners:\n  web:\n    type: http\n    address: 127.0.0.1:0\n    routes:\n      - when: { path: / }\n        then: { auth: missing }\n`);
+    const result = await runGateway(["--output", "json", "config", "validate", config]);
+    expect(result.exitCode).toBe(3);
+    expect(jsonOutput(result).problem.code).toBe("config_invalid");
+  });
+
   it("uses the normalized identity subject rather than a token-format-specific rate-limit key", async () => {
     const accepted = await createConfig(
       "registry:\n  path: ./registry\nrateLimits:\n  identity: { key: identity-subject, requests: 10, per: 1m, burst: 2 }\n",

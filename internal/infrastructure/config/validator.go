@@ -29,6 +29,7 @@ const (
 	ErrInvalidDocument
 	ErrUndefinedSite
 	ErrUndefinedUpstream
+	ErrUndefinedAuthPolicy
 	ErrInvalidTarget
 	ErrMultipleTerminalActions
 )

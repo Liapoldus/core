@@ -49,6 +49,11 @@ func validateReferences(graph models.CompiledGraph) error {
 					return ErrUndefinedUpstream
 				}
 			}
+			if route.Auth != "" {
+				if _, exists := graph.AuthPolicies[route.Auth]; !exists {
+					return ErrUndefinedAuthPolicy
+				}
+			}
 		}
 	}
 	catalog, err := errorCatalog()
