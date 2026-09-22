@@ -186,34 +186,25 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   `assets/embed.go`). `.go-arch-lint.yml` now declares a `contractAdapter`
   component (`in: [.]`) and lets `infrastructureConfig` depend on it.
 
-## Accounts / bearer auth increment — 4 open contract rules (decision pending)
+## Accounts / bearer auth increment — нормативные правила v1
 
 `gateway accounts create|rotate|revoke` vocabulary is already contracted in
 `assets/contracts/cli-fields.yaml` (`keyPrefix: lpgw_`, `keyBytes: 32`,
 `hashCost: 12`, `hashExtension: .bcrypt`, `secretsDir`, `accountsDir`,
 `keyHashWord`, `saveMessage`/`rotateMessage`/`revokedMessage`,
 `roleRequired`/`roleInvalid`/`accountIDRequired`/`accountNotFound`/
-`hashInvalid`, exits ok/arguments/...). The docs site rule is missing in four
-places; recorded here pending a User decision:
+`hashInvalid`, exits ok/arguments/...). Решения ниже обязательны для v1:
 
-1. Opaque key encoding: the printed service key is `lpgw_` + 32 random bytes.
-   Encoding of those 32 bytes (base64url-no-pad vs hex) and how the bearer is
-   verified later are not specified anywhere in
-   `liapoldus.github.io/public/spec/*`. `security-runtime.json` says the
-   bearer format is `lpgw service key` only.
-2. `create` on an already-existing account and `rotate`/`revoke` on a missing
-   account: which exit code and error text. `errors.json` has no
-   `account_*` codes; `cli-fields.yaml` has only `accountNotFound`.
-   Candidates: conflict(4) / notFound(5) with a new `accountConflict`,
-   `account_not_found` code in `errors.json`.
-3. `create`/`rotate` write `<config-dir>/secrets/accounts/<id>.bcrypt`
-   (absolute `file:` — decision from the earlier auth session). Whether the
-   CLI `mkdir -p` the `secrets/accounts` path, writes the hash atomically with
-   `0600`, and refuses on existing (create) / missing (rotate) is unspecified.
-4. Whether `accounts create` also edits `gateway.yaml` to add the
-   `management.serviceAccounts` entry (keyHash `file:`) or only prints the
-   key once for the operator to wire up (the candidate default: print only,
-   never rewrite the config).
+1. Секрет содержит 32 криптографически случайных байта, кодированных
+   `base64url` без padding: `lpgw_<account-id>_<payload>`. Hex и стандартный
+   base64 недопустимы.
+2. Повторный `create` завершается кодом `4` (`account_conflict`), а
+   `rotate`/`revoke` неизвестного аккаунта — кодом `5` (`account_not_found`).
+3. CLI создаёт `secrets/accounts`, пишет bcrypt с cost `12` через временный
+   файл в том же каталоге и `rename`, выставляя режим `0600`. `create` не
+   перезаписывает существующий файл; `rotate` требует существующий аккаунт.
+4. CLI никогда не переписывает `gateway.yaml`: он печатает ключ ровно один
+   раз и выводит оператору готовый фрагмент `keyHash: file:...`.
 
 ## 0. Foundation
 
