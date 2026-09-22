@@ -20,9 +20,20 @@ import (
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
+	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 )
 
+type HTTPCapabilityDispatcher interface {
+	HTTP(context.Context, string, plugins.HTTPRequest) (plugins.HTTPResponse, error)
+}
+
 func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics ...*observability.Registry) error {
+	return ServeWithCapabilities(parent, listeners, sites, upstreams, profiles, drainTimeout, nil, metrics...)
+}
+
+// ServeWithCapabilities wires already-handshaken plugin clients into HTTP
+// routes. The map is an adapter boundary; it never exposes public sockets.
+func ServeWithCapabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, metrics ...*observability.Registry) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -34,7 +45,7 @@ func Serve(parent context.Context, listeners []models.Listener, sites map[string
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics))
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities)
 			}
 		}(listener)
 	}
@@ -180,7 +191,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher) error {
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
@@ -206,10 +217,40 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			return
 		}
 		if route.Plugin != nil {
-			// Capability dispatch is attached by the plugin runtime adapter. A
-			// missing adapter is an explicit unavailable response, never 404.
-			writer.Header().Set("Content-Type", "application/problem+json")
-			writer.WriteHeader(http.StatusServiceUnavailable)
+			dispatcher := capabilities[route.Plugin.Instance]
+			if dispatcher == nil {
+				writer.Header().Set("Content-Type", "application/problem+json")
+				writer.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(request.Body, 1<<20))
+			if err != nil {
+				writer.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			headers := make(map[string]string, len(request.Header))
+			for name, values := range request.Header {
+				lower := strings.ToLower(name)
+				if lower == "authorization" || lower == "cookie" || len(values) == 0 {
+					continue
+				}
+				headers[name] = values[0]
+			}
+			pluginResponse, err := dispatcher.HTTP(request.Context(), route.Plugin.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr})
+			if err != nil {
+				writer.Header().Set("Content-Type", "application/problem+json")
+				writer.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			for name, value := range pluginResponse.Headers {
+				if strings.EqualFold(name, "Set-Cookie") {
+					writer.Header().Add(name, value)
+				} else {
+					writer.Header().Set(name, value)
+				}
+			}
+			writer.WriteHeader(pluginResponse.Status)
+			_, _ = writer.Write(pluginResponse.Body)
 			return
 		}
 		if route.Proxy != nil {
