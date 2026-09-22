@@ -220,7 +220,8 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     await waitReady(address);
 
     const response = await request(address, "/memory");
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
+    expect(JSON.parse(response.text).code).toBe("resource_exhausted");
 
     let startCount = 0;
     for (let attempt = 0; attempt < 100; attempt += 1) {
