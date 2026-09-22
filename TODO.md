@@ -236,7 +236,7 @@ TypeScript test under `tests/` before the implementation that satisfies it.
   protection, SPA conditions, locales, ETag, conditional and range requests.
 - [ ] Reverse proxy: health checks, DNS/static targets, balancing, retries,
   forwarded headers and WebSocket upgrade.
-- [ ] Filesystem registry: staged immutable publish, locking/recovery,
+- [X] Filesystem registry: staged immutable publish, locking/recovery,
   atomic current/previous changes, retention, rollback and idempotency.
 
 ## 3. Management and observability

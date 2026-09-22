@@ -52,4 +52,14 @@ describe("filesystem release registry", () => {
     await expect(probe(root, "publish", invalid)).rejects.toMatchObject({ code: 1 });
     expect(await readlink(join(root, "sites", "blog", "current"))).toBe(before);
   });
+
+  it("is idempotent for the same source and exposes immutable versions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "liapoldus-registry-"));
+    const first = await source(root, "source-one", "one");
+    const releaseOne = await probe(root, "publish", first);
+    const repeated = await probe(root, "publish", first);
+    expect(repeated.ID).toBe(releaseOne.ID);
+    const versions = await probe(root, "versions");
+    expect(versions).toEqual([{ ID: releaseOne.ID }]);
+  });
 });

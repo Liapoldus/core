@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -73,6 +74,12 @@ func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 	if err != nil {
 		return models.Release{}, err
 	}
+	if _, err = os.Stat(filepath.Join(siteRoot, previous)); err != nil {
+		return models.Release{}, err
+	}
+	if _, err = os.Stat(filepath.Join(siteRoot, current)); err != nil {
+		return models.Release{}, err
+	}
 	if err = store.replacePointer(siteRoot, store.layout.Previous, current); err != nil {
 		return models.Release{}, err
 	}
@@ -80,6 +87,26 @@ func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 		return models.Release{}, err
 	}
 	return models.Release{ID: filepath.Base(previous)}, nil
+}
+
+func (store FilesystemStore) Versions(site string) ([]models.Release, error) {
+	root := filepath.Join(store.root, store.layout.Sites, site, store.layout.Releases)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "" {
+			ids = append(ids, entry.Name())
+		}
+	}
+	sort.Strings(ids)
+	versions := make([]models.Release, 0, len(ids))
+	for _, id := range ids {
+		versions = append(versions, models.Release{ID: id})
+	}
+	return versions, nil
 }
 
 func (store FilesystemStore) lock(site string) func() {

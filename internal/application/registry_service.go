@@ -16,3 +16,7 @@ func (service RegistryService) Publish(site, source string) (models.Release, err
 func (service RegistryService) Rollback(site string) (models.Release, error) {
 	return service.Store.Rollback(site)
 }
+
+func (service RegistryService) Versions(site string) ([]models.Release, error) {
+	return service.Store.Versions(site)
+}
