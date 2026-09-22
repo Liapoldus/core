@@ -21,6 +21,47 @@ afterEach(async () => {
 });
 
 describe("atomic configuration and MMDB reload", () => {
+  it("routes new requests through the upstream from the active reloaded graph", async () => {
+    const firstUpstream = await startUpstream();
+    const secondUpstream = await startUpstream();
+    servers.push(firstUpstream, secondUpstream);
+    const webAddress = await freeAddress();
+    const managementAddress = await freeAddress();
+    const initialConfig = [
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${firstUpstream.address}`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${webAddress}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: { upstream: api } }`,
+      `management:`, `  listener: { address: ${managementAddress} }`,
+      `  staticToken: env:LIAPOLDUS_TEST_MANAGEMENT_TOKEN`,
+    ].join("\n");
+    const configPath = await writeGatewayConfig(initialConfig);
+    const gateway = await startGateway(["--config", configPath, "serve"], environment);
+    gateways.push(gateway);
+    await waitReady(webAddress);
+    await waitReady(managementAddress);
+
+    const auth = { Authorization: `Bearer ${token}` };
+    const before = await request(managementAddress, "/api/status", { headers: auth });
+    const current = JSON.parse(before.text) as { revision: string };
+    expect((await request(webAddress, "/api/resource")).status).toBe(200);
+
+    const updatedConfig = initialConfig.replace(firstUpstream.address, secondUpstream.address);
+    await writeFile(configPath, updatedConfig, "utf8");
+    const reload = await request(managementAddress, "/api/reload", {
+      method: "POST",
+      headers: { ...auth, "If-Match": current.revision },
+    });
+    const after = await request(webAddress, "/api/resource");
+    const activeConfig = await request(managementAddress, "/api/config", { headers: auth });
+
+    expect(reload.status).toBe(202);
+    expect(after.status).toBe(200);
+    expect(firstUpstream.hits().requests).toBe(1);
+    expect(secondUpstream.hits().requests).toBe(1);
+    expect(JSON.parse(activeConfig.text)).toMatchObject({ yaml: updatedConfig });
+  });
+
   it("keeps the active revision and traffic when a replacement MMDB cannot be verified", async () => {
     const upstream = await startUpstream();
     servers.push(upstream);
