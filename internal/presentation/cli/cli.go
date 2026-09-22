@@ -287,7 +287,7 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	management := &api.Server{Token: graph.Management.StaticToken, Revision: graph.Revision.Value, Digest: graph.Revision.Digest}
+	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest}
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
@@ -296,6 +296,20 @@ func serve(options options) int {
 		return words.Exits.Validation
 	}
 	return words.Exits.OK
+}
+
+func resolveSecret(value string) string {
+	if strings.HasPrefix(value, "env:") {
+		return os.Getenv(strings.TrimPrefix(value, "env:"))
+	}
+	if strings.HasPrefix(value, "file:") {
+		data, err := os.ReadFile(strings.TrimPrefix(value, "file:"))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(data))
+	}
+	return value
 }
 
 func configForValidation(options options) (string, error) {
