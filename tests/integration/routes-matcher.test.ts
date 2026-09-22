@@ -165,3 +165,48 @@ describe("path route matchers", () => {
     expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
   });
 });
+
+describe("HTTP route matcher fields", () => {
+  it("requires host, method, headers, query and path to match together", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-route-fields-"));
+    const address = await freeAddress();
+    const config = join(directory, "gateway.yaml");
+    await writeFile(
+      config,
+      [
+        "listeners:",
+        "  web:",
+        "    type: http",
+        `    address: ${address}`,
+        "    routes:",
+        "      - when:",
+        "          host: api.example.test",
+        "          method: POST",
+        "          path: { exact: /secure }",
+        "          headers: { x-client: { exact: trusted } }",
+        "          query: { version: { exact: v1 } }",
+        "        then: { deny: { status: 451 } }",
+      ].join("\n") + "\n",
+      "utf8",
+    );
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    processes.push(gateway);
+    await waitReady(address);
+
+    const send = (url: string, method: string, headers: Record<string, string>) =>
+      fetch(`http://${address}${url}`, { method, headers });
+    const accepted = await send("/secure?version=v1", "POST", {
+      host: "api.example.test",
+      "x-client": "trusted",
+    });
+    expect(accepted.status).toBe(451);
+
+    const mismatches = await Promise.all([
+      send("/secure?version=v1", "POST", { host: "other.example.test", "x-client": "trusted" }),
+      send("/secure?version=v1", "GET", { host: "api.example.test", "x-client": "trusted" }),
+      send("/secure?version=v1", "POST", { host: "api.example.test", "x-client": "untrusted" }),
+      send("/secure?version=v2", "POST", { host: "api.example.test", "x-client": "trusted" }),
+    ]);
+    expect(mismatches.map((response) => response.status)).toEqual([404, 404, 404, 404]);
+  });
+});
