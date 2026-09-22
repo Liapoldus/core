@@ -166,7 +166,7 @@ describe("route rewrite actions", () => {
     const upstream = await startUpstream();
     servers.push(upstream);
     const address = await startActionsGateway(
-      proxyRoute(`/old/`, `          rewrite: { regex: '^/old/(.*)$', replacement: '/new/$1' }`),
+      proxyRoute(`/old/`, `          rewrite: { regex: '^/old/(.*)$', replacement: '/new/\${1}' }`),
       `      - address: ${upstream.address}`,
     );
 
