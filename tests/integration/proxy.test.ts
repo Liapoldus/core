@@ -89,6 +89,30 @@ describe("reverse proxy", () => {
     expect(hitsAfterUrl.paths).toEqual(["/api/echo"]);
   });
 
+  it("emits the canonical forwarding headers and strips a client-supplied host", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await startProxiedGateway(
+      [`  api:`, `    targets:`, `      - address: ${upstream.address}`].join("\n"),
+      proxyRoute(`/api/`, `{ upstream: api }`),
+    );
+
+    const response = await request(address, "/api/forwarded", {
+      headers: {
+        host: "api.example.com",
+        "x-forwarded-host": "evil.example.com",
+        "x-forwarded-for": "198.51.100.7",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const headers = upstream.hits().headers[0];
+    expect(headers["x-forwarded-host"]).toBe("api.example.com");
+    expect(headers["x-forwarded-proto"]).toBe("http");
+    expect(headers["x-forwarded-for"]).toBe("127.0.0.1");
+    expect(headers["x-forwarded-port"]).toBe(address.split(":")[1]);
+  });
+
   it("balances round-robin across equal-weight targets", async () => {
     const first = await startUpstream();
     const second = await startUpstream();

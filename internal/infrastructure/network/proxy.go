@@ -85,6 +85,9 @@ func newReverseProxy(upstream models.Upstream, proxy *models.ProxyTarget) http.H
 
 func (pool *proxyUpstream) director(request *http.Request) {
 	request.Header.Del("X-Forwarded-For")
+	if peer := hostOf(request.RemoteAddr); peer != "" {
+		request.Header.Set("X-Forwarded-For", peer)
+	}
 	request.Header.Set("X-Forwarded-Host", request.Host)
 	proto := "http"
 	if request.TLS != nil {
