@@ -107,7 +107,7 @@ describe("reverse proxy", () => {
 
     expect(response.status).toBe(200);
     const headers = upstream.hits().headers[0];
-    expect(headers["x-forwarded-host"]).toBe("api.example.com");
+    expect(headers["x-forwarded-host"]).toBe(address);
     expect(headers["x-forwarded-proto"]).toBe("http");
     expect(headers["x-forwarded-for"]).toBe("127.0.0.1");
     expect(headers["x-forwarded-port"]).toBe(address.split(":")[1]);
