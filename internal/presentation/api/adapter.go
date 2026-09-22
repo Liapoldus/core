@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,8 +32,14 @@ type Server struct {
 	Listeners       []any
 	Upstreams       []any
 	Plugins         []any
+	Sites           []any
+	RestartPlugin   func(context.Context, string) (Operation, error)
 	ValidateConfig  func(string) error
 	ReloadConfig    func(context.Context, string) (Operation, error)
+	// RenewTLS and RevokeTLS are the typed boundary to the configured TLS issuer.
+	// The API adapter never receives certificate material or storage paths.
+	RenewTLS  func(context.Context, string, string) (Operation, error)
+	RevokeTLS func(context.Context, string, string) (Operation, error)
 }
 type AdminSurface struct {
 	Plugin       string   `json:"plugin"`
@@ -95,6 +103,22 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": server.Listeners, "upstreams": server.Upstreams, "plugins": server.Plugins, "requestId": requestID})
+	case path == "/api/listeners" && request.Method == http.MethodGet:
+		server.writePage(response, server.Listeners, request, requestID)
+	case path == "/api/upstreams" && request.Method == http.MethodGet:
+		server.writePage(response, server.Upstreams, request, requestID)
+	case path == "/api/sites" && request.Method == http.MethodGet:
+		server.writePage(response, server.Sites, request, requestID)
+	case path == "/api/plugins" && request.Method == http.MethodGet:
+		server.writePage(response, server.Plugins, request, requestID)
+	case path == "/api/operations" && request.Method == http.MethodGet:
+		server.mu.RLock()
+		items := make([]Operation, 0, len(server.operations))
+		for _, operation := range server.operations {
+			items = append(items, operation)
+		}
+		server.mu.RUnlock()
+		server.writePage(response, items, request, requestID)
 	case path == "/api/config" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
@@ -155,10 +179,13 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.operations[op.ID] = op
 		server.mu.Unlock()
 		writeJSON(response, 202, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
+	case strings.HasPrefix(path, "/api/tls/") && (strings.HasSuffix(path, "/renew") || strings.HasSuffix(path, "/revoke")) && request.Method == http.MethodPost:
+		server.handleTLSOperation(response, request, path, requestID)
 	case path == "/api/audit" && request.Method == http.MethodGet:
 		server.mu.RLock()
-		defer server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"items": server.audit, "nextCursor": nil, "requestId": requestID})
+		items := append([]Audit(nil), server.audit...)
+		server.mu.RUnlock()
+		server.writePage(response, items, request, requestID)
 	case path == "/metrics" && request.Method == http.MethodGet:
 		response.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintln(response, "# HELP liapoldus_management_requests_total Management API requests")
@@ -171,6 +198,25 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/plugins/") && strings.Contains(path, "/admin/pages/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
 		server.handlePluginAdmin(response, request, path, requestID)
+	case strings.HasPrefix(path, "/api/plugins/") && strings.HasSuffix(path, "/restart") && request.Method == http.MethodPost:
+		if server.RestartPlugin == nil {
+			writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
+			return
+		}
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		instance := parts[2]
+		op, err := server.RestartPlugin(request.Context(), instance)
+		if err != nil {
+			writeProblem(response, 422, "operation_failed", err.Error(), requestID)
+			return
+		}
+		server.mu.Lock()
+		if server.operations == nil {
+			server.operations = map[string]Operation{}
+		}
+		server.operations[op.ID] = op
+		server.mu.Unlock()
+		writeJSON(response, 202, map[string]any{"operationId": op.ID, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/operations/") && request.Method == http.MethodGet:
 		id := strings.TrimPrefix(path, "/api/operations/")
 		server.mu.RLock()
@@ -184,6 +230,110 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
 	}
+}
+
+func (server *Server) writePage(response http.ResponseWriter, values any, request *http.Request, requestID string) {
+	// Lists are kept as typed slices internally; pagination is an opaque offset cursor.
+	limit := 50
+	if raw := request.URL.Query().Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			limit = parsed
+		}
+	}
+	if limit < 1 || limit > 100 {
+		writeProblem(response, 400, "invalid_pagination", "limit must be between 1 and 100", requestID)
+		return
+	}
+	offset := 0
+	if cursor := request.URL.Query().Get("cursor"); cursor != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(cursor)
+		parsed, parseErr := strconv.Atoi(string(decoded))
+		if err != nil || parseErr != nil || parsed < 0 {
+			writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
+			return
+		} else {
+			offset = parsed
+		}
+	}
+	items := sliceValues(values)
+	if offset > len(items) {
+		writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
+		return
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	var next any
+	if end < len(items) {
+		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
+	}
+	writeJSON(response, 200, map[string]any{"items": items[offset:end], "nextCursor": next, "requestId": requestID})
+}
+
+func sliceValues(values any) []any {
+	switch typed := values.(type) {
+	case []any:
+		return typed
+	case []Operation:
+		result := make([]any, len(typed))
+		for i := range typed {
+			result[i] = typed[i]
+		}
+		return result
+	case []Audit:
+		result := make([]any, len(typed))
+		for i := range typed {
+			result[i] = typed[i]
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func (server *Server) handleTLSOperation(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "api" || parts[1] != "tls" || parts[2] == "" {
+		writeProblem(response, http.StatusNotFound, "not_found", "TLS issuer resource not found", requestID)
+		return
+	}
+	idempotencyKey := request.Header.Get("Idempotency-Key")
+	if len(idempotencyKey) < 16 || len(idempotencyKey) > 128 || !ascii(idempotencyKey) {
+		writeProblem(response, http.StatusBadRequest, "invalid_idempotency_key", "Idempotency-Key must contain 16-128 ASCII characters", requestID)
+		return
+	}
+	var operation func(context.Context, string, string) (Operation, error)
+	if parts[3] == "renew" {
+		operation = server.RenewTLS
+	} else {
+		operation = server.RevokeTLS
+	}
+	if operation == nil {
+		writeProblem(response, http.StatusNotImplemented, "not_implemented", "TLS issuer operation is unavailable", requestID)
+		return
+	}
+	op, err := operation(request.Context(), parts[2], idempotencyKey)
+	if err != nil {
+		writeProblem(response, http.StatusUnprocessableEntity, "tls_operation_failed", err.Error(), requestID)
+		return
+	}
+	server.mu.Lock()
+	if server.operations == nil {
+		server.operations = make(map[string]Operation)
+	}
+	server.operations[op.ID] = op
+	server.mu.Unlock()
+	writeJSON(response, http.StatusAccepted, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
+}
+
+func ascii(value string) bool {
+	for index := 0; index < len(value); index++ {
+		if value[index] < 0x21 || value[index] > 0x7e {
+			return false
+		}
+	}
+	return true
 }
 
 func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *http.Request, path, requestID string) {
