@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import net from "node:net";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,20 @@ import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
+
+async function waitTCP(address: string): Promise<void> {
+  const port = Number(address.split(":").at(-1));
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const connected = await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port });
+      socket.once("connect", () => { socket.destroy(); resolve(true); });
+      socket.once("error", () => resolve(false));
+    });
+    if (connected) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Gateway TCP listener did not become ready");
+}
 
 afterEach(async () => {
   for (const gateway of gateways.splice(0)) {
@@ -60,5 +75,40 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       authorizationPresent: false,
       cookiePresent: false,
     });
+  }, 60_000);
+
+  it("uses generic gRPC Call for a configured TCP capability", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-l4-"));
+    const binary = join(directory, "forms-plugin");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    capabilities: [tcp.echo]",
+      "    settings: {}",
+      "listeners:",
+      "  stream:",
+      "    type: tcp",
+      `    address: ${address}`,
+      "    rules:",
+      "      - then:",
+      "          plugin: { instance: forms, capability: tcp.echo }",
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitTCP(address);
+
+    const response = await new Promise<string>((resolve, reject) => {
+      const socket = net.createConnection({ host: "127.0.0.1", port: Number(address.split(":").at(-1)) });
+      let body = "";
+      socket.once("error", reject);
+      socket.on("data", (chunk) => { body += chunk.toString(); });
+      socket.once("end", () => resolve(body));
+      socket.once("connect", () => socket.end("hello"));
+    });
+
+    expect(response).toBe("plugin:hello");
   }, 60_000);
 });
