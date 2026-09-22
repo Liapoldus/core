@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -536,7 +537,7 @@ func shouldSPAFallback(request *http.Request, site models.Site, requested string
 
 func gzipHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if !strings.Contains(request.Header.Get("Accept-Encoding"), "gzip") || request.Header.Get("Range") != "" {
+		if !acceptsGzip(request.Header.Get("Accept-Encoding")) || request.Header.Get("Range") != "" {
 			next.ServeHTTP(writer, request)
 			return
 		}
@@ -544,6 +545,37 @@ func gzipHandler(next http.Handler) http.Handler {
 		defer wrapped.close()
 		next.ServeHTTP(wrapped, request)
 	})
+}
+
+func acceptsGzip(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	wildcard := -1.0
+	for _, item := range strings.Split(value, ",") {
+		parts := strings.Split(item, ";")
+		coding := strings.ToLower(strings.TrimSpace(parts[0]))
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			keyValue := strings.SplitN(strings.TrimSpace(parameter), "=", 2)
+			if len(keyValue) != 2 || strings.ToLower(strings.TrimSpace(keyValue[0])) != "q" {
+				continue
+			}
+			parsed, err := strconv.ParseFloat(strings.TrimSpace(keyValue[1]), 64)
+			if err != nil || parsed < 0 || parsed > 1 {
+				quality = 0
+			} else {
+				quality = parsed
+			}
+		}
+		switch coding {
+		case "gzip":
+			return quality > 0
+		case "*":
+			wildcard = quality
+		}
+	}
+	return wildcard > 0
 }
 
 type gzipResponseWriter struct {
