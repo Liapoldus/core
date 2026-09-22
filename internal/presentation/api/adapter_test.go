@@ -73,6 +73,17 @@ func TestManagementResourceListsAndPagination(t *testing.T) {
 	}
 }
 
+func TestConfigPutUpdatesDigestAtomically(t *testing.T) {
+	server := &Server{Revision: "rev-1", Config: "old", Digest: "old-digest"}
+	recording := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"yaml":"new"}`))
+	request.Header.Set("If-Match", "rev-1")
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusAccepted || server.Digest == "old-digest" || server.Config != "new" || server.Revision == "rev-1" {
+		t.Fatalf("status=%d config=%q revision=%q digest=%q", recording.Code, server.Config, server.Revision, server.Digest)
+	}
+}
+
 func TestHealthMethodGate(t *testing.T) {
 	server := &Server{}
 	request := httptest.NewRequest(http.MethodPost, "/healthz", nil)

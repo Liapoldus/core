@@ -4,6 +4,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
@@ -188,6 +189,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.Lock()
 		server.Config = input.YAML
 		server.Revision = randomID()
+		digest := sha256.Sum256([]byte(input.YAML))
+		server.Digest = hex.EncodeToString(digest[:])
 		server.mu.Unlock()
 		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/publish") && request.Method == http.MethodPost:
