@@ -368,6 +368,13 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				return
 			}
 		}
+		if route.Auth != "" || route.WAF != "" {
+			// Policy execution is an explicit adapter boundary. Never let a
+			// declared policy silently fall through to an upstream or static site.
+			writer.Header().Set("Content-Type", "application/problem+json")
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if route.Rewrite != nil && route.Rewrite.Pattern != nil {
 			request.URL.Path = route.Rewrite.Pattern.ReplaceAllString(request.URL.Path, route.Rewrite.Replacement)
 		}
