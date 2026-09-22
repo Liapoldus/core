@@ -288,10 +288,21 @@ func serve(options options) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest}
+	if raw, readErr := os.ReadFile(path); readErr == nil {
+		management.Config = string(raw)
+	}
+	management.Listeners = make([]any, 0, len(graph.Listeners))
+	for _, listener := range graph.Listeners {
+		management.Listeners = append(management.Listeners, map[string]any{"address": listener.Address, "http": listener.IsHTTP, "routes": len(listener.Routes)})
+	}
+	management.Upstreams = make([]any, 0, len(graph.Upstreams))
+	for name, upstream := range graph.Upstreams {
+		management.Upstreams = append(management.Upstreams, map[string]any{"name": name, "targets": len(upstream.Targets), "balance": upstream.Balance})
+	}
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, drain); err != nil {
+	if err := network.Serve(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, drain); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

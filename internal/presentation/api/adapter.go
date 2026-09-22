@@ -27,6 +27,9 @@ type Server struct {
 	audit           []Audit
 	AdminSurfaces   []AdminSurface
 	AdminDispatcher *plugins.Dispatcher
+	Listeners       []any
+	Upstreams       []any
+	Plugins         []any
 	ValidateConfig  func(string) error
 	ReloadConfig    func(context.Context, string) (Operation, error)
 }
@@ -91,7 +94,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	case path == "/api/status" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": []any{}, "upstreams": []any{}, "plugins": []any{}, "requestId": requestID})
+		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": server.Listeners, "upstreams": server.Upstreams, "plugins": server.Plugins, "requestId": requestID})
 	case path == "/api/config" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
@@ -246,7 +249,21 @@ func (server *Server) authorized(value string) bool {
 	}
 	return false
 }
-func redact(value string) string { return strings.ReplaceAll(value, "secret:", "secret: ***") }
+func redact(value string) string {
+	lines := strings.Split(value, "\n")
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		for _, key := range []string{"statictoken:", "keyhash:", "clientsecret:", "secret:"} {
+			if strings.HasPrefix(lower, key) {
+				indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+				lines[index] = indent + key + " ***"
+				break
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 func writeJSON(response http.ResponseWriter, status int, value any) {
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)
