@@ -273,6 +273,11 @@ describe("WAF GeoIP provider", () => {
 
     const response = await request(address, "/api/private");
 	    expect(response.status).toBe(403);
+	    expect(response.headers.get("content-type")).toContain("application/problem+json");
+	    expect(JSON.parse(response.text)).toMatchObject({
+	      status: 403,
+	      code: "waf_provider_unavailable",
+	    });
     expect(upstream.hits().paths).toEqual([]);
   });
 });
