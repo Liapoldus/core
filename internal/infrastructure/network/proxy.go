@@ -86,7 +86,11 @@ func newReverseProxy(upstream models.Upstream, proxy *models.ProxyTarget) http.H
 func (pool *proxyUpstream) director(request *http.Request) {
 	request.Header.Del("X-Forwarded-For")
 	request.Header.Set("X-Forwarded-Host", request.Host)
-	request.Header.Set("X-Forwarded-Proto", "http")
+	proto := "http"
+	if request.TLS != nil {
+		proto = "https"
+	}
+	request.Header.Set("X-Forwarded-Proto", proto)
 	if port := hostPort(request.Host); port != "" {
 		request.Header.Set("X-Forwarded-Port", port)
 	}

@@ -2,6 +2,7 @@ package network
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -18,18 +19,29 @@ import (
 )
 
 func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
+	var started int
+	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
 		if !listener.IsHTTP {
 			continue
 		}
-		return serveHTTP(parent, listener, sites, upstreams, drainTimeout)
+		started++
+		go func(current models.Listener) { errs <- serveHTTP(parent, current, sites, upstreams, drainTimeout) }(listener)
 	}
-	return errors.New("no http listener")
+	if started == 0 {
+		return errors.New("no http listener")
+	}
+	for i := 0; i < started; i++ {
+		if err := <-errs; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+	}
+	return nil
 }
 
 func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, drainTimeout time.Duration) error {
 	proxies := buildProxies(listener.Routes, upstreams)
-	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		index, route, found := matchedRoute(request.URL.Path, listener.Routes)
 		if !found {
 			http.NotFound(writer, request)
@@ -110,7 +122,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		applyStaticCache(responseWriter.Header(), site.Cache)
 		http.ServeFile(responseWriter, request, candidate)
 	})
-	server := &http.Server{Addr: listener.Address, Handler: handler}
+	server := &http.Server{Addr: listener.Address, Handler: gzipHandler(baseHandler)}
 	serveError := make(chan error, 1)
 	go func() { serveError <- server.ListenAndServe() }()
 	select {
@@ -130,8 +142,59 @@ func shouldSPAFallback(request *http.Request, site models.Site, requested string
 	if !site.SPA || (request.Method != http.MethodGet && request.Method != http.MethodHead) || strings.Contains(path.Base(requested), ".") {
 		return false
 	}
-	accept := request.Header.Get("Accept")
-	return accept == "" || strings.Contains(accept, "text/html")
+	return true
+}
+
+func gzipHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if !strings.Contains(request.Header.Get("Accept-Encoding"), "gzip") || request.Header.Get("Range") != "" {
+			next.ServeHTTP(writer, request)
+			return
+		}
+		wrapped := &gzipResponseWriter{ResponseWriter: writer, request: request}
+		defer wrapped.close()
+		next.ServeHTTP(wrapped, request)
+	})
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	request  *http.Request
+	gzip     *gzip.Writer
+	decided  bool
+	compress bool
+}
+
+func (w *gzipResponseWriter) WriteHeader(status int) {
+	if w.decided {
+		return
+	}
+	w.decided = true
+	contentType := w.Header().Get("Content-Type")
+	w.compress = status >= 200 && status < 300 && (strings.HasPrefix(contentType, "text/") || strings.Contains(contentType, "javascript") || strings.Contains(contentType, "json") || contentType == "") && w.Header().Get("Content-Encoding") == ""
+	if w.compress {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		w.Header().Del("Content-Length")
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *gzipResponseWriter) Write(data []byte) (int, error) {
+	if !w.decided {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.compress {
+		if w.gzip == nil {
+			w.gzip = gzip.NewWriter(w.ResponseWriter)
+		}
+		return len(data), func() error { _, err := w.gzip.Write(data); return err }()
+	}
+	return w.ResponseWriter.Write(data)
+}
+func (w *gzipResponseWriter) close() {
+	if w.gzip != nil {
+		_ = w.gzip.Close()
+	}
 }
 
 func applyStaticCache(header http.Header, cache *models.SiteCache) {

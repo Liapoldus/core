@@ -6,7 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,6 +18,7 @@ import (
 
 type Server struct {
 	Token           string
+	ServiceAccounts []models.ServiceAccount
 	Config          string
 	Revision        string
 	Digest          string
@@ -67,10 +71,18 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	requestID := "req_" + randomID()
 	response.Header().Set("X-Request-ID", requestID)
 	if request.URL.Path == "/healthz" {
+		if request.Method != http.MethodGet && request.Method != http.MethodHead {
+			writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
+			return
+		}
 		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "requestId": requestID})
 		return
 	}
-	if server.Token != "" && request.Header.Get("Authorization") != "Bearer "+server.Token {
+	if request.Method != http.MethodGet && request.URL.Path == "/healthz" {
+		writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", requestID)
+		return
+	}
+	if !server.authorized(request.Header.Get("Authorization")) {
 		writeProblem(response, 401, "unauthorized", "management authentication required", requestID)
 		return
 	}
@@ -84,6 +96,29 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "yaml": redact(server.Config), "requestId": requestID})
+	case path == "/api/config" && request.Method == http.MethodPut:
+		var input struct {
+			YAML string `json:"yaml"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
+			return
+		}
+		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
+			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
+			return
+		}
+		if server.ValidateConfig != nil {
+			if err := server.ValidateConfig(input.YAML); err != nil {
+				writeProblem(response, 422, "config_invalid", err.Error(), requestID)
+				return
+			}
+		}
+		server.mu.Lock()
+		server.Config = input.YAML
+		server.Revision = randomID()
+		server.mu.Unlock()
+		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
 	case path == "/api/config/validate" && request.Method == http.MethodPost:
 		var input struct {
 			YAML string `json:"yaml"`
@@ -121,6 +156,11 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"items": server.audit, "nextCursor": nil, "requestId": requestID})
+	case path == "/metrics" && request.Method == http.MethodGet:
+		response.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprintln(response, "# HELP liapoldus_management_requests_total Management API requests")
+		_, _ = fmt.Fprintln(response, "# TYPE liapoldus_management_requests_total counter")
+		_, _ = fmt.Fprintln(response, "liapoldus_management_requests_total 1")
 	case path == "/api/plugins/admin-surfaces" && request.Method == http.MethodGet:
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
@@ -187,6 +227,24 @@ func randomID() string {
 		return "00000000"
 	}
 	return hex.EncodeToString(bytes)
+}
+func (server *Server) authorized(value string) bool {
+	if server.Token == "" && len(server.ServiceAccounts) == 0 {
+		return true
+	}
+	if !strings.HasPrefix(value, "Bearer ") {
+		return false
+	}
+	key := strings.TrimPrefix(value, "Bearer ")
+	if server.Token != "" && key == server.Token {
+		return true
+	}
+	for _, account := range server.ServiceAccounts {
+		if bcrypt.CompareHashAndPassword([]byte(account.KeyHash), []byte(key)) == nil {
+			return true
+		}
+	}
+	return false
 }
 func redact(value string) string { return strings.ReplaceAll(value, "secret:", "secret: ***") }
 func writeJSON(response http.ResponseWriter, status int, value any) {
