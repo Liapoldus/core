@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
@@ -40,6 +41,8 @@ func (c *Client) Call(ctx context.Context, method, capability string, payload pr
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	clearDeadline := c.setDeadline(ctx)
+	defer clearDeadline()
 	request, err := proto.Marshal(payload)
 	if err != nil {
 		return err
@@ -78,6 +81,8 @@ func (c *Client) CallRaw(ctx context.Context, method, capability string, payload
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	clearDeadline := c.setDeadline(ctx)
+	defer clearDeadline()
 	id := c.next
 	c.next++
 	b, err := proto.Marshal(&pluginv1.Envelope{Method: method, Capability: capability, Payload: payload})
@@ -109,6 +114,19 @@ func (c *Client) CallRaw(ctx context.Context, method, capability string, payload
 	return nil
 }
 
+func (c *Client) setDeadline(ctx context.Context) func() {
+	conn, ok := c.conn.(net.Conn)
+	if !ok {
+		return func() {}
+	}
+	deadline := time.Now().Add(c.deadline)
+	if requested, ok := ctx.Deadline(); ok && requested.Before(deadline) {
+		deadline = requested
+	}
+	_ = conn.SetDeadline(deadline)
+	return func() { _ = conn.SetDeadline(time.Time{}) }
+}
+
 func mustEnvelope(method, capability string, payload []byte) []byte {
 	b, _ := proto.Marshal(&pluginv1.Envelope{Method: method, Capability: capability, Payload: payload})
 	return b
@@ -126,6 +144,10 @@ func (c *Client) Handshake(ctx context.Context, expectedProtocol string, config 
 	}
 	var health pluginv1.Health
 	if err := c.Call(ctx, "health", "", &pluginv1.Health{}, &health); err != nil || !health.GetReady() {
+		return Handshake{}, ErrPluginUnavailable
+	}
+	var schema pluginv1.ConfigSchema
+	if err := c.Call(ctx, "config.schema", "", &pluginv1.ConfigSchema{}, &schema); err != nil {
 		return Handshake{}, ErrPluginUnavailable
 	}
 	var applied pluginv1.ConfigApplyResult

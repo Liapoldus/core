@@ -17,7 +17,7 @@ func TestHandshakeUsesManifestHealthAndConfigApply(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 4; i++ {
 			frame, err := framing.Decode(right)
 			if err != nil {
 				done <- err
@@ -34,6 +34,8 @@ func TestHandshakeUsesManifestHealthAndConfigApply(t *testing.T) {
 				payload, _ = proto.Marshal(&pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"admin.ui"}})
 			case "health":
 				payload, _ = proto.Marshal(&pluginv1.Health{Ready: true})
+			case "config.schema":
+				payload, _ = proto.Marshal(&pluginv1.ConfigSchema{})
 			case "config.apply":
 				if string(req.GetPayload()) != "settings" {
 					done <- ErrProtocolViolation
