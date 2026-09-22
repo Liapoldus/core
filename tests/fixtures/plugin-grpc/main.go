@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+	"time"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	"github.com/Liapoldus/pluginprotocol/transport"
 	"google.golang.org/grpc"
@@ -12,7 +14,9 @@ import (
 
 type plugin struct {
 	pluginv1.UnimplementedPluginServiceServer
-	server *grpc.Server
+	server     *grpc.Server
+	activeCall atomic.Int32
+	maxCall    atomic.Int32
 }
 
 type httpRequest struct {
@@ -23,7 +27,7 @@ type httpRequest struct {
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "tcp.echo"}}, nil
+	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "tcp.echo"}}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
@@ -39,7 +43,29 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 	return &pluginv1.ShutdownResult{Closed: true}, nil
 }
 
-func (*plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+func (p *plugin) Call(_ context.Context, request *pluginv1.CallRequest) (*pluginv1.CallResponse, error) {
+	if request.GetCapability() == "forms.concurrent" {
+		current := p.activeCall.Add(1)
+		defer p.activeCall.Add(-1)
+		for observed := p.maxCall.Load(); current > observed; observed = p.maxCall.Load() {
+			if p.maxCall.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		time.Sleep(150 * time.Millisecond)
+		body, err := json.Marshal(map[string]int32{"maxConcurrent": p.maxCall.Load()})
+		if err != nil {
+			return nil, err
+		}
+		response, err := json.Marshal(struct {
+			Status int    `json:"status"`
+			Body   []byte `json:"body"`
+		}{Status: 200, Body: body})
+		if err != nil {
+			return nil, err
+		}
+		return &pluginv1.CallResponse{Payload: response}, nil
+	}
 	if request.GetCapability() == "tcp.echo" {
 		var input struct {
 			Payload []byte `json:"payload"`

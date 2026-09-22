@@ -111,4 +111,39 @@ describe("Gateway gRPC plugin process lifecycle", () => {
 
     expect(response).toBe("plugin:hello");
   }, 60_000);
+
+  it("limits concurrent capability calls to the configured per-plugin bound", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-limit-"));
+    const binary = join(directory, "forms-plugin");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    capabilities: [forms.concurrent]",
+      "    limits: { calls: 1, timeout: 5s }",
+      "    settings: {}",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${address}`,
+      "    routes:",
+      "      - when: { path: { exact: /concurrent } }",
+      "        then:",
+      "          plugin: { instance: forms, capability: forms.concurrent }",
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const responses = await Promise.all([
+      request(address, "/concurrent"),
+      request(address, "/concurrent"),
+    ]);
+    expect(responses.map((response) => JSON.parse(response.text))).toEqual([
+      { maxConcurrent: 1 },
+      { maxConcurrent: 1 },
+    ]);
+  }, 60_000);
 });
