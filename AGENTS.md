@@ -12,11 +12,11 @@ Do not silently resolve a contradiction or a missing rule in that contract.
 Record the exact files and conflicting behaviour in `TODO.md` and ask for a
 decision before implementing it.
 
-The plugin wire protocol does **not** belong in this repository. Its source,
-protobuf definitions, generated types, framing, session API, and protocol
-tests belong in `/Users/docup/Projects/Liapoldus Engine/pluginprotocol` and
-are released as `github.com/Liapoldus/pluginprotocol`. Gateway imports that
-module and owns only process supervision, grants, and traffic dispatch.
+The plugin transport contract does **not** belong in this repository. Its
+source, protobuf definitions, generated types, gRPC transport API, and protocol
+tests belong in `/Users/docup/Projects/Liapoldus Engine/pluginprotocol` and are
+released as `github.com/Liapoldus/pluginprotocol`. Gateway imports that module
+and owns process supervision, grants, and traffic dispatch.
 
 ## Implementation rules
 
@@ -68,8 +68,9 @@ module and owns only process supervision, grants, and traffic dispatch.
 
 ## Architecture gate
 
-- Run `make check` before declaring a milestone complete. It builds Gateway,
-  runs the TypeScript suite, and executes the architecture gate.
+- Run `go vet ./...` and `make check` before declaring a milestone complete.
+  It builds Gateway, runs the TypeScript suite, and executes the architecture
+  gate.
 - `make arch-lint` runs `fe3dback/go-arch-lint` in Docker. Do not replace it
   with a host-installed binary: CI intentionally uses the same Docker image.
 - The linter enforces allowed import directions. The TypeScript architecture

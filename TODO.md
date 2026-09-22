@@ -2,11 +2,11 @@
 
 ## Acceptance gates
 
-CI обязана выполнять полный TypeScript-набор, `go test -race ./...` и Docker
-smoke-проверку образа. Smoke-проверка подтверждает, что минимальный
-distroless-образ запускает собранный бинарник; runtime-поведение проверяется
-интеграционными тестами и не подменяется проверкой только сборки. Протокол
-плагинов проверяется существующими golden-wire и malformed-frame тестами.
+CI обязана выполнять полный TypeScript-набор, `go test -race ./...`,
+`go vet ./...` и Docker smoke-проверку образа. Smoke-проверка подтверждает, что
+минимальный distroless-образ запускает собранный бинарник; runtime-поведение
+проверяется интеграционными тестами и не подменяется проверкой только сборки.
+Legacy framing coverage существует только до выполнения gRPC migration ниже.
 
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
@@ -392,3 +392,48 @@ references are
 - [X] Generate Gateway contracts in `core` and publish the versioned GitHub
   Release asset `gateway-v1.0.1`; the documentation now links to the release
   and its downloadable archive.
+
+## Plugin protocol: gRPC transport migration (блокирует v1 readiness)
+
+Core переходит с pluginprotocol v1.0.0 TCP framing на gRPC/HTTP/2 по
+TCP-loopback. Целевой контракт описан в
+`liapoldus.github.io/gateway/architecture/protocol.md` и в README
+`pluginprotocol`. По решению пользователя migration breaking, но остаётся
+внутри protocol/module v1: сохраняются import path и protobuf namespace
+`liapoldus.plugin.v1`; старые v1.0.0 framing plugins несовместимы и dual-stack
+не будет. Следующая planned публикация — pluginprotocol v1.1.0. Это намеренное
+исключение из обычного semantic-versioning ожидания и должно быть явно
+отмечено.
+
+- [X] В `pluginprotocol` заменить framing/session API на generated gRPC service;
+  добавить typed control RPCs `Manifest`, `ConfigSchema`, `ConfigApply`,
+  `Shutdown`, стандартный `grpc.health.v1`, unary `Call` и bidi `Stream`.
+- [X] Сохранить JSON contracts и Gateway dispatch types `HTTPRequest`,
+  `L4Request`, `IdentityRequest`, `RequestContext`, grants и redaction; не
+  переносить Gateway process supervision/policy в протокол.
+- [ ] Включить standard gRPC reflection на plugin loopback endpoint для
+  `grpcurl`; Constructor ↔ Gateway control plane оставить REST.
+- [ ] Добавлять отдельные TS red-test commits перед каждым protocol/core
+  implementation increment. Никаких Go `*_test.go`; generated TS stubs —
+  только в `tests/`, без публикуемого npm package.
+- [ ] Проверить protobuf descriptor conformance, versioned JSON schema
+  examples, malformed/oversized payloads, deadlines, cancellation, concurrency,
+  обе стороны bidi stream, bounded backpressure, close race и restart.
+- [ ] Заменить framing wire-hex vectors protocol suite на proto/schema
+  conformance. Оставить Gateway golden vectors только для observable Gateway
+  behavior; синхронно обновить source docs, `contracts/v1/manifest.json` и
+  contract checksum.
+- [ ] Добавить TypeScript integration suite с реальным child-process gRPC
+  plugin: handshake, health, unary Call, Stream, reflection, shutdown/restart.
+- [X] Удалить production `framing/`, `session/`, probe и generated
+  framing-only code после replacement suite green.
+- [X] Добавить в `pluginprotocol` generated Go gRPC stubs, test-only TypeScript
+  gRPC stubs и CI `make check-generated` stale-output gate.
+- [X] Добавить protobuf/JSON conformance CI; переключить core protocol adapter
+  на v1 gRPC transport API с local sibling-module replace.
+- [ ] Подключить process supervisor, grants, startup handshake, endpoint
+  lifecycle и dispatch к compiled plugin instances в `core`; проверить реальный
+  child-process plugin.
+- [ ] Проверить macOS + Linux на CI.
+- [ ] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
+  `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.

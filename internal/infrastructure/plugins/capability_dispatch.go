@@ -60,7 +60,7 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 		return HTTPResponse{}, errors.New("plugin http request is invalid")
 	}
 	var response HTTPResponse
-	if err := c.callJSON(ctx, "http.handle", capability, request, &response); err != nil {
+	if err := c.callJSON(ctx, capability, request, &response); err != nil {
 		return HTTPResponse{}, err
 	}
 	if response.Status < 100 || response.Status > 599 {
@@ -83,18 +83,18 @@ func (c *CapabilityClient) L4(ctx context.Context, capability string, request L4
 		return L4Response{}, errors.New("plugin l4 connection id is required")
 	}
 	var response L4Response
-	if err := c.callJSON(ctx, "l4.handle", capability, request, &response); err != nil {
+	if err := c.callJSON(ctx, capability, request, &response); err != nil {
 		return L4Response{}, err
 	}
 	return response, nil
 }
 
-func (c *CapabilityClient) callJSON(ctx context.Context, method, capability string, request, response any) error {
+func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any) error {
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("marshal plugin request: %w", err)
 	}
-	result, err := c.client.CallRawJSON(ctx, method, capability, payload)
+	result, err := c.client.CallJSON(ctx, capability, payload)
 	if err != nil {
 		return err
 	}
