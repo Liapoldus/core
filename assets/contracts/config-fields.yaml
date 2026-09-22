@@ -185,6 +185,8 @@ runtime:
     path: path
     method: method
     sourceIP: sourceIp
+    headers: headers
+    query: query
     prefix: prefix
     exact: exact
     regex: regex

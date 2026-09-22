@@ -457,7 +457,16 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.WAF != "" {
 			if policy, ok := policies[route.WAF]; ok {
-				if action, matched := policy.Evaluate(request.URL.Path, request.Method, request.RemoteAddr); matched {
+				headers := make(map[string][]string, len(request.Header))
+				for name, values := range request.Header {
+					headers[name] = values
+				}
+				query := make(map[string][]string, len(request.URL.Query()))
+				for name, values := range request.URL.Query() {
+					query[name] = values
+				}
+				input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
+				if action, matched := policy.Evaluate(input); matched {
 					if action.Deny != nil {
 						writer.WriteHeader(action.Deny.Status)
 						return

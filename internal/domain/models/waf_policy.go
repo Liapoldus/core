@@ -4,9 +4,9 @@ type WAFPolicy struct {
 	Rules []WAFRule
 }
 
-func (policy WAFPolicy) Evaluate(path, method, remoteAddress string) (WAFAction, bool) {
+func (policy WAFPolicy) Evaluate(request WAFRequest) (WAFAction, bool) {
 	for _, rule := range policy.Rules {
-		if !rule.When.Matches(path, method, remoteAddress) {
+		if !rule.When.Matches(request) {
 			continue
 		}
 		return rule.Action, true

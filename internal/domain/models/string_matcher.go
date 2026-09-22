@@ -40,3 +40,21 @@ func (matcher StringMatcher) Matches(value string, exists bool) bool {
 	}
 	return true
 }
+
+func (matcher StringMatcher) MatchesAny(values []string, exists bool) bool {
+	if matcher.Exists != nil && *matcher.Exists != exists {
+		return false
+	}
+	if !exists {
+		return matcher.Exists != nil && !*matcher.Exists && !matcher.HasExact && !matcher.HasPrefix && matcher.Regex == nil && !matcher.HasIn && !matcher.HasNotIn
+	}
+	if len(values) == 0 {
+		values = []string{""}
+	}
+	for _, value := range values {
+		if matcher.Matches(value, true) {
+			return true
+		}
+	}
+	return false
+}

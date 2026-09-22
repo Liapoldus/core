@@ -297,6 +297,16 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 				}
 				rule.When.SourceIP = matcher
 			}
+			headers, err := compileStringMatcherMap(mappingNode(when, words.WAF.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return err
+			}
+			rule.When.Headers = headers
+			query, err := compileStringMatcherMap(mappingNode(when, words.WAF.Query), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return err
+			}
+			rule.When.Query = query
 			if mappingNode(then, words.WAF.Allow) != nil {
 				rule.Action.Allow = true
 			} else if d := mappingNode(then, words.WAF.Deny); d != nil {
@@ -318,6 +328,24 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 		policies[name] = policy
 	}
 	return nil
+}
+
+func compileStringMatcherMap(node *yaml.Node, exact, prefix, regex, exists, in, notIn string) (map[string]models.StringMatcher, error) {
+	if node == nil {
+		return nil, nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return nil, ErrInvalidDocument
+	}
+	matchers := make(map[string]models.StringMatcher, len(node.Content)/2)
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		matcher, err := compileStringMatcher(node.Content[index+1], exact, prefix, regex, exists, in, notIn)
+		if err != nil {
+			return nil, err
+		}
+		matchers[node.Content[index].Value] = *matcher
+	}
+	return matchers, nil
 }
 
 func compileIPMatcher(node *yaml.Node, exact, in, notIn string) (*models.IPMatcher, error) {

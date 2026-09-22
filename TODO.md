@@ -218,10 +218,11 @@ references are
   `site`, `proxy`, `redirect`, `deny` and `plugin` route actions; plugin dispatch
   still requires a supervisor-provided capability map. The route-level
   `challenge` action is not compiled yet. WAF supports path, method and direct
-  peer source-IP/CIDR matching with allow/deny/limit actions; the rest of the
-  matcher language, Geo/ASN providers and challenge action remain acceptance
-  gaps. The route exclusivity check must be extended when route-level challenge
-  is implemented.
+  peer source-IP/CIDR, header and query matching with allow/deny/limit actions;
+  the remaining matcher language (including recursive all/any/not, Geo/ASN and
+  connection/request comparisons), providers and challenge action remain
+  acceptance gaps. The route exclusivity check must be extended when route-level
+  challenge is implemented.
 - Schema bug: `$defs.tlsProfile.certificates.items` had
   `additionalProperties: false` as a sibling of `oneOf`, rejecting every
   certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch
@@ -353,8 +354,9 @@ references are
   WAF/rate-limit references fail config validation instead of failing open at
   request time. The TS integration case covers first-request pass, exhaustion,
   `Retry-After`, and confirms that the denied request never reaches upstream.
-  Additional integration cases verify that method and source-IP/CIDR conditions
-  gate policy actions using the socket peer address.
+  Additional integration cases verify that method, source-IP/CIDR, header and
+  query conditions gate policy actions with AND semantics and the socket peer
+  address.
 
 - [ ] Execute all 50 current documentation golden vectors semantically against
   runtime on macOS/Linux.

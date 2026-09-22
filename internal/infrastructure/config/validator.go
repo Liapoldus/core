@@ -196,6 +196,8 @@ type runtimeWords struct {
 		Path     string `yaml:"path"`
 		Method   string `yaml:"method"`
 		SourceIP string `yaml:"sourceIP"`
+		Headers  string `yaml:"headers"`
+		Query    string `yaml:"query"`
 		Prefix   string `yaml:"prefix"`
 		Exact    string `yaml:"exact"`
 		Regex    string `yaml:"regex"`
