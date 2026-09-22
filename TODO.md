@@ -6,7 +6,8 @@ CI обязана выполнять полный TypeScript-набор, `go tes
 `go vet ./...` и Docker smoke-проверку образа. Smoke-проверка подтверждает, что
 минимальный distroless-образ запускает собранный бинарник; runtime-поведение
 проверяется интеграционными тестами и не подменяется проверкой только сборки.
-Legacy framing coverage существует только до выполнения gRPC migration ниже.
+Legacy framing удалён; раздел ниже фиксирует переход на gRPC внутри plugin
+protocol v1 и оставшиеся runtime-задачи.
 
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
