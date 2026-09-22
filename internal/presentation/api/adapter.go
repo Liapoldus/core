@@ -421,6 +421,10 @@ func (server *Server) handleSitePublish(response http.ResponseWriter, request *h
 	} else {
 		server.idempotency[cacheKey] = operation
 	}
+	if server.operations == nil {
+		server.operations = make(map[string]Operation)
+	}
+	server.operations[operation.ID] = operation
 	server.mu.Unlock()
 	writeJSON(response, http.StatusCreated, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
 }
@@ -440,6 +444,12 @@ func (server *Server) handleSiteRollback(response http.ResponseWriter, request *
 		writeProblem(response, http.StatusUnprocessableEntity, "rollback_failed", err.Error(), requestID)
 		return
 	}
+	server.mu.Lock()
+	if server.operations == nil {
+		server.operations = make(map[string]Operation)
+	}
+	server.operations[operation.ID] = operation
+	server.mu.Unlock()
 	writeJSON(response, http.StatusAccepted, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
 }
 
