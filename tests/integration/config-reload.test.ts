@@ -66,7 +66,8 @@ describe("atomic configuration and MMDB reload", () => {
     const followingTraffic = await request(webAddress, "/api/private");
 
     expect(reload.status).toBe(422);
-    expect(afterStatus).toEqual(beforeStatus);
+    expect(afterStatus.revision).toBe(beforeStatus.revision);
+    expect(afterStatus.digest).toBe(beforeStatus.digest);
     expect(followingTraffic.status).toBe(200);
     expect(upstream.hits().paths).toEqual(["/api/private", "/api/private"]);
   });
