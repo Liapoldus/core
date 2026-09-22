@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -78,6 +80,28 @@ func TestHealthMethodGate(t *testing.T) {
 	server.Handler().ServeHTTP(recording, request)
 	if recording.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", recording.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestServiceAccountBearerAuthentication(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("account-secret"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{ServiceAccounts: []models.ServiceAccount{{ID: "operator", KeyHash: string(hash)}}}
+	request := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	request.Header.Set("Authorization", "Bearer account-secret")
+	recording := httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recording.Code, recording.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	request.Header.Set("Authorization", "Bearer wrong-secret")
+	recording = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d", recording.Code)
 	}
 }
 
