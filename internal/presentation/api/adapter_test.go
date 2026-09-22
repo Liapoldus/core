@@ -146,6 +146,11 @@ func TestSitePublishUsesTypedRegistryBoundary(t *testing.T) {
 	if calls != 1 || !strings.Contains(recording.Body.String(), "op-publish") {
 		t.Fatalf("idempotency calls=%d body=%s", calls, recording.Body.String())
 	}
+	recording = httptest.NewRecorder()
+	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodGet, "/api/operations", nil))
+	if recording.Code != http.StatusOK || !strings.Contains(recording.Body.String(), "op-publish") {
+		t.Fatalf("operations status=%d body=%s", recording.Code, recording.Body.String())
+	}
 }
 
 func TestPluginAdminDispatchBoundary(t *testing.T) {
