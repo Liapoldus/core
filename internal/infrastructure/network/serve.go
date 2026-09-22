@@ -86,7 +86,11 @@ func relayTCP(parent context.Context, client net.Conn, rules []models.Route, ups
 	go func() { _, _ = io.Copy(server, client); done <- struct{}{} }()
 	go func() { _, _ = io.Copy(client, server); done <- struct{}{} }()
 	select {
-	case <-done:
+	case <-func() <-chan struct{} {
+		finished := make(chan struct{})
+		go func() { <-done; <-done; close(finished) }()
+		return finished
+	}():
 	case <-parent.Done():
 	}
 	if drainTimeout > 0 {
