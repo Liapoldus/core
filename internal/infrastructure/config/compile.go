@@ -374,7 +374,8 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 			route.Auth, _ = fieldValue(then, words.Route.Auth)
 			route.WAF, _ = fieldValue(then, words.Route.WAF)
 			route.RateLimit, _ = fieldValue(then, words.Route.RateLimit)
-			route.CORS = mappingNode(then, words.Route.CORS) != nil
+			route.CORS = compileRouteCORS(mappingNode(then, words.Route.CORS), words)
+			route.Cache = compileRouteCache(mappingNode(then, words.Route.Cache), words)
 		}
 		if terminals := countTerminalActions(route); terminals > 1 {
 			return nil, ErrMultipleTerminalActions
@@ -382,6 +383,56 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 		routes = append(routes, route)
 	}
 	return routes, nil
+}
+
+func compileRouteCache(node *yaml.Node, words runtimeWords) *models.RouteCache {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	c := &models.RouteCache{}
+	c.Visibility, _ = fieldValue(node, words.SiteCache.Visibility)
+	c.MaxAge, _ = fieldValue(node, words.SiteCache.MaxAge)
+	return c
+}
+
+func compileRouteCORS(node *yaml.Node, words runtimeWords) *models.RouteCORS {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	c := &models.RouteCORS{}
+	if origins := mappingNode(node, "origins"); origins != nil && origins.Kind == yaml.SequenceNode {
+		for _, n := range origins.Content {
+			if n.Kind == yaml.ScalarNode {
+				c.Origins = append(c.Origins, n.Value)
+			}
+		}
+	}
+	if methods := mappingNode(node, "methods"); methods != nil && methods.Kind == yaml.SequenceNode {
+		for _, n := range methods.Content {
+			if n.Kind == yaml.ScalarNode {
+				c.Methods = append(c.Methods, n.Value)
+			}
+		}
+	}
+	if headers := mappingNode(node, "headers"); headers != nil && headers.Kind == yaml.SequenceNode {
+		for _, n := range headers.Content {
+			if n.Kind == yaml.ScalarNode {
+				c.Headers = append(c.Headers, n.Value)
+			}
+		}
+	}
+	if expose := mappingNode(node, "exposeHeaders"); expose != nil && expose.Kind == yaml.SequenceNode {
+		for _, n := range expose.Content {
+			if n.Kind == yaml.ScalarNode {
+				c.ExposeHeaders = append(c.ExposeHeaders, n.Value)
+			}
+		}
+	}
+	if value, ok := fieldValue(node, "credentials"); ok {
+		c.Credentials, _ = strconv.ParseBool(value)
+	}
+	c.MaxAge, _ = fieldValue(node, words.SiteCache.MaxAge)
+	return c
 }
 
 func compileDeny(node *yaml.Node, words runtimeWords) *models.Deny {

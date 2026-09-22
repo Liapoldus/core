@@ -12,5 +12,6 @@ type Route struct {
 	Auth      string
 	WAF       string
 	RateLimit string
-	CORS      bool
+	CORS      *RouteCORS
+	Cache     *RouteCache
 }

@@ -350,6 +350,9 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		if route.Headers != nil {
 			applyHeaderActions(request.Header, route.Headers.Request)
 		}
+		if route.Cache != nil {
+			applyRouteCache(writer.Header(), route.Cache)
+		}
 		if route.RateLimit != "" {
 			if retry, limited := limiter.Allow(route.RateLimit, request); limited {
 				writer.Header().Set("Retry-After", strconv.Itoa(retry))
@@ -357,16 +360,38 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				return
 			}
 		}
-		if route.CORS {
+		if route.CORS != nil {
 			origin := request.Header.Get("Origin")
-			if origin != "" {
+			allowed := len(route.CORS.Origins) == 0
+			for _, candidate := range route.CORS.Origins {
+				if candidate == "*" || candidate == origin {
+					allowed = true
+				}
+			}
+			if origin != "" && allowed {
 				writer.Header().Set("Access-Control-Allow-Origin", origin)
 				writer.Header().Add("Vary", "Origin")
 			}
+			if len(route.CORS.Methods) > 0 {
+				writer.Header().Set("Access-Control-Allow-Methods", strings.Join(route.CORS.Methods, ", "))
+			}
+			if len(route.CORS.Headers) > 0 {
+				writer.Header().Set("Access-Control-Allow-Headers", strings.Join(route.CORS.Headers, ", "))
+			}
+			if len(route.CORS.ExposeHeaders) > 0 {
+				writer.Header().Set("Access-Control-Expose-Headers", strings.Join(route.CORS.ExposeHeaders, ", "))
+			}
+			if route.CORS.Credentials {
+				writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 			if request.Method == http.MethodOptions {
-				writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-				if requested := request.Header.Get("Access-Control-Request-Headers"); requested != "" {
+				if requested := request.Header.Get("Access-Control-Request-Headers"); requested != "" && len(route.CORS.Headers) == 0 {
 					writer.Header().Set("Access-Control-Allow-Headers", requested)
+				}
+				if route.CORS.MaxAge != "" {
+					if duration, err := time.ParseDuration(route.CORS.MaxAge); err == nil {
+						writer.Header().Set("Access-Control-Max-Age", strconv.FormatInt(int64(duration/time.Second), 10))
+					}
 				}
 				writer.WriteHeader(http.StatusNoContent)
 				return
@@ -728,6 +753,19 @@ func applyStaticCache(header http.Header, cache *models.SiteCache) {
 	value := cache.Static.Visibility
 	if cache.Static.MaxAge != "" {
 		if duration, err := time.ParseDuration(cache.Static.MaxAge); err == nil {
+			value += fmt.Sprintf(", max-age=%d", int64(duration/time.Second))
+		}
+	}
+	header.Set("Cache-Control", value)
+}
+
+func applyRouteCache(header http.Header, cache *models.RouteCache) {
+	if cache == nil || cache.Visibility == "" {
+		return
+	}
+	value := cache.Visibility
+	if cache.MaxAge != "" {
+		if duration, err := time.ParseDuration(cache.MaxAge); err == nil {
 			value += fmt.Sprintf(", max-age=%d", int64(duration/time.Second))
 		}
 	}

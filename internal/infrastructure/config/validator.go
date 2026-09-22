@@ -177,6 +177,7 @@ type runtimeWords struct {
 		WAF       string `yaml:"waf"`
 		RateLimit string `yaml:"rateLimit"`
 		CORS      string `yaml:"cors"`
+		Cache     string `yaml:"cache"`
 	}
 	RateLimit struct {
 		Key      string `yaml:"key"`
