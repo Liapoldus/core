@@ -332,14 +332,14 @@ references are
   sibling `pluginprotocol` repository.
 - [X] Gateway plugin supervisor: loopback launch, manifest/health/config.apply
   handshake, restart/backoff, logs, RSS/call limits and scoped grants.
-- [ ] HTTP capability, TCP stream and UDP flow dispatch using test plugin
+- [X] HTTP capability, TCP stream and UDP flow dispatch using test plugin
   processes in `tests/fixtures/` only.
 
 ## 6. v1 acceptance and ownership transfer
 
 - [ ] Pass all 50 current documentation golden vectors plus race, malformed
   input, shutdown/recovery and no-secret regression suites on macOS/Linux.
-- [ ] Build and smoke-test the Docker image; ensure GitHub Actions reports all
+- [X] Build and smoke-test the Docker image; ensure GitHub Actions reports all
   test and contract failures.
 - [ ] Generate Gateway contracts in `core`, release them as versioned GitHub
   Release assets, then update `liapoldus.github.io` to consume them.
