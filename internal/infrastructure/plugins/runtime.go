@@ -105,6 +105,8 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 func (r *Runtime) supervise(ctx, processContext context.Context, instance runningInstance) {
 	ticker := time.NewTicker(instance.model.HealthProbeInterval)
 	defer ticker.Stop()
+	memoryTicker := time.NewTicker(instance.model.MemoryProbeInterval)
+	defer memoryTicker.Stop()
 	done := instance.done
 	failures := 0
 	for {
@@ -140,6 +142,25 @@ func (r *Runtime) supervise(ctx, processContext context.Context, instance runnin
 			case <-ctx.Done():
 				return
 			case <-done:
+			}
+			done = r.restartUntilReady(ctx, processContext, instance)
+			if done == nil {
+				return
+			}
+			failures = 0
+		case <-memoryTicker.C:
+			resident, err := r.supervisor.ResidentMemory(instance.name)
+			if err != nil || resident <= instance.model.MemoryLimitBytes {
+				continue
+			}
+			_ = r.supervisor.Stop(instance.name)
+			select {
+			case <-ctx.Done():
+				return
+			case <-done:
+			}
+			if ctx.Err() != nil || !instance.spec.Restart.Enabled {
+				return
 			}
 			done = r.restartUntilReady(ctx, processContext, instance)
 			if done == nil {

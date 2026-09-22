@@ -444,14 +444,23 @@ TCP-loopback. Целевой контракт описан в
   timeout включает ожидание свободного слота и RPC.
 - [X] Подключить `restart.enabled/backoff/maxBackoff` и health probe (5 s,
   restart после 3 последовательных failures) к plugin process runtime.
-- [ ] Применить `limits.memory` как RSS limit процесса на macOS и Linux.
 - [ ] Связать scoped storage/secret grants с process runtime.
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 137 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 138 TS-тестов,
   protocol: 9 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
-  Остаются RSS/grant enforcement и семантический прогон всех Gateway vectors.
+  Остаются scoped grant enforcement и семантический прогон всех Gateway vectors.
++ [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
++  опрашивается раз в секунду; превышение завершает процесс и при включённом
++  restart запускает его снова согласно backoff. Default — `256MiB` из
++  contract assets; TS child-process integration проверяет превышение на
++  реальном gRPC plugin process.
+- [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
+  опрашивается раз в секунду; превышение завершает процесс и при включённом
+  restart запускает его снова согласно backoff. Default — `256MiB` из
+  contract assets; TS child-process integration проверяет превышение на
+  реальном gRPC plugin process.

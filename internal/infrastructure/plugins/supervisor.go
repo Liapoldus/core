@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 var ErrPluginNotRunning = errors.New("plugin is not running")
@@ -103,4 +105,24 @@ func (s *Supervisor) Stop(instance string) error {
 		_ = process.command.Process.Kill()
 	}
 	return nil
+}
+
+func (s *Supervisor) ResidentMemory(instance string) (uint64, error) {
+	s.mu.Lock()
+	managed, ok := s.process[instance]
+	if !ok || managed.command.Process == nil {
+		s.mu.Unlock()
+		return 0, ErrPluginNotRunning
+	}
+	pid := int32(managed.command.Process.Pid)
+	s.mu.Unlock()
+	processInfo, err := process.NewProcess(pid)
+	if err != nil {
+		return 0, err
+	}
+	memory, err := processInfo.MemoryInfo()
+	if err != nil {
+		return 0, err
+	}
+	return memory.RSS, nil
 }

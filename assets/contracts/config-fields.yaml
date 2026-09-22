@@ -245,6 +245,9 @@ runtime:
     defaultCalls: 100
     timeout: timeout
     defaultTimeout: 5s
+    memory: memory
+    defaultMemory: 256MiB
+    defaultMemoryProbeInterval: 1s
     restart: restart
     enabled: enabled
     backoff: backoff

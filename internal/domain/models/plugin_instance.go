@@ -9,6 +9,8 @@ type PluginInstance struct {
 	Capabilities           []string
 	Settings               []byte
 	Timeout                time.Duration
+	MemoryLimitBytes       uint64
+	MemoryProbeInterval    time.Duration
 	MaxConcurrentCalls     int
 	RestartEnabled         bool
 	RestartInitialBackoff  time.Duration

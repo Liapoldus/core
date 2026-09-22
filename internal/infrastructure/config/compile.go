@@ -322,6 +322,20 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 		if err != nil || timeout <= 0 {
 			return nil, ErrInvalidDocument
 		}
+		memoryText := words.Plugin.DefaultMemory
+		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
+			if configured, ok := fieldValue(limits, words.Plugin.Memory); ok {
+				memoryText = configured
+			}
+		}
+		memoryLimitBytes, err := parseByteCount(memoryText, words.WAF.SizeUnits)
+		if err != nil || memoryLimitBytes == 0 {
+			return nil, ErrInvalidDocument
+		}
+		memoryProbeInterval, err := time.ParseDuration(words.Plugin.DefaultMemoryProbeInterval)
+		if err != nil || memoryProbeInterval <= 0 {
+			return nil, ErrInvalidDocument
+		}
 		maxConcurrentCalls := words.Plugin.DefaultCalls
 		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
 			if configured, ok := fieldValue(limits, words.Plugin.Calls); ok {
@@ -371,6 +385,8 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 			Capabilities:           sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
 			Settings:               settings,
 			Timeout:                timeout,
+			MemoryLimitBytes:       memoryLimitBytes,
+			MemoryProbeInterval:    memoryProbeInterval,
 			MaxConcurrentCalls:     maxConcurrentCalls,
 			RestartEnabled:         restartEnabled,
 			RestartInitialBackoff:  restartBackoff,

@@ -28,6 +28,7 @@ vendors:
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
+  gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -57,7 +58,7 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf]
+    canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [otel, prometheus]
