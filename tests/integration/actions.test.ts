@@ -195,6 +195,57 @@ describe("WAF header and query matchers", () => {
   });
 });
 
+describe("WAF GeoIP provider failures", () => {
+  it("fails closed when a referenced MMDB provider cannot be opened", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `dataProviders:`,
+      `  geo: { type: mmdb, path: /missing/GeoLite2-City.mmdb, onError: deny }`,
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  geo:`, `    rules:`,
+      `      - when: { geo: { provider: geo, country: { exact: US } }, path: { prefix: /api } }`,
+      `        then: { deny: { status: 451 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: geo }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/api/private");
+    expect(response.status).toBe(403);
+    expect(upstream.hits().paths).toEqual([]);
+  });
+
+  it("does not turn a missing lookup reader into a successful country match", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const address = await freeAddress();
+    const configPath = await writeGatewayConfig([
+      `dataProviders:`,
+      `  geo: { type: mmdb, path: /missing/GeoLite2-City.mmdb, onError: deny }`,
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  geo:`, `    rules:`,
+      `      - when: { geo: { provider: geo, country: { exact: US } }, path: { prefix: /api } }`,
+      `        onError: allow`,
+      `        then: { deny: { status: 451 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: geo }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", configPath, "serve", "--no-management"]);
+    gateways.push(gateway);
+    await waitReady(address);
+
+    const response = await request(address, "/api/private");
+    expect(response.status).toBe(200);
+    expect(upstream.hits().paths).toEqual(["/api/private"]);
+  });
+});
+
 describe("plugin route actions", () => {
   it("does not silently turn a declared plugin action into a 404", async () => {
     const address = await startActionsGateway([
