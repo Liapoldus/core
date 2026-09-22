@@ -46,6 +46,7 @@ codes:
   configInvalid: config_invalid
   unknownField: unknown_field
   noPreviousRelease: no_previous_release
+  wafProviderUnavailable: waf_provider_unavailable
 exits:
   ok: 0
   internal: 1

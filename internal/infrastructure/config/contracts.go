@@ -65,10 +65,11 @@ type CLIWords struct {
 		FileName      string `yaml:"fileName"`
 	} `yaml:"paths"`
 	Codes struct {
-		ConfigNotFound    string `yaml:"configNotFound"`
-		ConfigInvalid     string `yaml:"configInvalid"`
-		UnknownField      string `yaml:"unknownField"`
-		NoPreviousRelease string `yaml:"noPreviousRelease"`
+		ConfigNotFound         string `yaml:"configNotFound"`
+		ConfigInvalid          string `yaml:"configInvalid"`
+		UnknownField           string `yaml:"unknownField"`
+		NoPreviousRelease      string `yaml:"noPreviousRelease"`
+		WAFProviderUnavailable string `yaml:"wafProviderUnavailable"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`
@@ -479,6 +480,11 @@ type errorCatalogFile struct {
 
 type ErrorCatalog struct {
 	codes map[string]models.Problem
+}
+
+func (catalog ErrorCatalog) Lookup(code string) (models.Problem, bool) {
+	problem, exists := catalog.codes[code]
+	return problem, exists
 }
 
 func LoadErrorCatalog() (ErrorCatalog, error) {

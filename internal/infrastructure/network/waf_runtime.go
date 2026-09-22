@@ -9,13 +9,22 @@ import (
 )
 
 type WAFRuntime struct {
-	mu       sync.RWMutex
-	policies map[string]models.WAFPolicy
-	lookup   interfaces.GeoLookup
+	mu                 sync.RWMutex
+	policies           map[string]models.WAFPolicy
+	lookup             interfaces.GeoLookup
+	providerProblem    models.Problem
+	problemContentType string
 }
 
-func NewWAFRuntime(policies map[string]models.WAFPolicy, lookup interfaces.GeoLookup) *WAFRuntime {
-	return &WAFRuntime{policies: policies, lookup: lookup}
+func NewWAFRuntime(policies map[string]models.WAFPolicy, lookup interfaces.GeoLookup, providerProblem models.Problem, problemContentType string) *WAFRuntime {
+	runtime := &WAFRuntime{policies: policies, lookup: lookup}
+	runtime.providerProblem = providerProblem
+	runtime.problemContentType = problemContentType
+	return runtime
+}
+
+func (runtime *WAFRuntime) ProblemContentType() string {
+	return runtime.problemContentType
 }
 
 func (runtime *WAFRuntime) Replace(policies map[string]models.WAFPolicy, lookup interfaces.GeoLookup) {
@@ -32,5 +41,5 @@ func (runtime *WAFRuntime) Evaluate(name string, request models.WAFRequest) (mod
 	if !exists {
 		return models.WAFAction{Deny: &models.Deny{Status: http.StatusServiceUnavailable}}, true
 	}
-	return evaluateWAF(policy, request, runtime.lookup)
+	return evaluateWAF(policy, request, runtime.lookup, runtime.providerProblem)
 }

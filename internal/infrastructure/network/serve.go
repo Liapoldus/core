@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -84,7 +85,7 @@ func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listen
 
 func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
 	if wafRuntime == nil {
-		wafRuntime = NewWAFRuntime(policies, geo)
+		wafRuntime = NewWAFRuntime(policies, geo, models.Problem{}, "")
 	}
 	var started int
 	errs := make(chan error, len(listeners))
@@ -480,6 +481,15 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
 			if action, matched := wafRuntime.Evaluate(route.WAF, input); matched {
 				if action.Deny != nil {
+					if action.Problem != nil {
+						problem := *action.Problem
+						problem.Instance = request.URL.Path
+						problem.RequestID = request.Header.Get("X-Request-ID")
+						writer.Header().Set("Content-Type", wafRuntime.ProblemContentType())
+						writer.WriteHeader(problem.Status)
+						_ = json.NewEncoder(writer).Encode(problem)
+						return
+					}
 					writer.WriteHeader(action.Deny.Status)
 					return
 				}
@@ -654,7 +664,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 	}
 }
 
-func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup) (models.WAFAction, bool) {
+func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup, providerProblem models.Problem) (models.WAFAction, bool) {
 	for _, rule := range policy.Rules {
 		if !rule.When.Matches(request) {
 			continue
@@ -665,13 +675,13 @@ func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider in
 		}
 		address, err := netip.ParseAddr(remoteHost(request.RemoteAddress))
 		if err != nil || provider == nil {
-			return providerFailureAction(rule, dataProviderForRule(rule)), true
+			return providerFailureAction(rule, dataProviderForRule(rule), providerProblem), true
 		}
 		records := make(map[string]models.GeoRecord, 2)
 		if rule.When.Geo != nil {
 			record, lookupErr := provider(rule.When.Geo.Config, address)
 			if lookupErr != nil {
-				return providerFailureAction(rule, rule.When.Geo.Config), true
+				return providerFailureAction(rule, rule.When.Geo.Config, providerProblem), true
 			}
 			records[rule.When.Geo.Provider] = record
 		}
@@ -681,7 +691,7 @@ func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider in
 			} else {
 				record, lookupErr := provider(rule.When.ASN.Config, address)
 				if lookupErr != nil {
-					return providerFailureAction(rule, rule.When.ASN.Config), true
+					return providerFailureAction(rule, rule.When.ASN.Config, providerProblem), true
 				}
 				records[rule.When.ASN.Provider] = record
 			}
@@ -693,7 +703,7 @@ func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider in
 	return models.WAFAction{}, false
 }
 
-func providerFailureAction(rule models.WAFRule, provider models.DataProvider) models.WAFAction {
+func providerFailureAction(rule models.WAFRule, provider models.DataProvider, problem models.Problem) models.WAFAction {
 	onErrorAllow := rule.OnErrorAllow
 	if !rule.OnErrorExplicit {
 		onErrorAllow = provider.OnErrorAllow
@@ -701,7 +711,10 @@ func providerFailureAction(rule models.WAFRule, provider models.DataProvider) mo
 	if onErrorAllow {
 		return models.WAFAction{Allow: true}
 	}
-	return models.WAFAction{Deny: &models.Deny{Status: http.StatusForbidden}}
+	if problem.Status == 0 {
+		return models.WAFAction{Deny: &models.Deny{Status: http.StatusForbidden}}
+	}
+	return models.WAFAction{Deny: &models.Deny{Status: problem.Status, Code: problem.Code}, Problem: &problem}
 }
 
 func dataProviderForRule(rule models.WAFRule) models.DataProvider {

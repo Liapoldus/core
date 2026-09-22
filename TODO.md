@@ -224,9 +224,11 @@ references are
   остаются прежние digest и трафик. При reload применяются изменения WAF policy,
   а остальные runtime-компоненты (listeners, routes, upstreams, TLS и plugin
   generation) пока остаются стартовыми — нужен единый snapshot и drain старого
-  поколения. Осталось возвращать Problem с кодом `waf_provider_unavailable`,
-  добавить положительные Geo/ASN и успешный MMDB replacement integration-тесты,
-  реализовать recursive all/any/not, connection/request comparisons и challenge.
+  поколения. Ошибка provider теперь возвращается как RFC Problem с кодом
+  `waf_provider_unavailable` и покрыта integration-тестом. Geo/ASN положительное
+  совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
+  успешный MMDB replacement integration-тест и реализовать recursive all/any/not,
+  connection/request comparisons и challenge.
   Проверку взаимоисключения terminal actions нужно расширить при реализации
   route-level challenge.
 - Schema bug: `$defs.tlsProfile.certificates.items` had

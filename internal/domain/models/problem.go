@@ -6,15 +6,15 @@ import "fmt"
 // versioned error catalog at the adapter layer; the domain never owns the
 // catalog spelling.
 type Problem struct {
-	Type      string
-	Title     string
-	Status    int
-	Code      string
-	Detail    string
-	Instance  string
-	Path      string
-	RequestID string
-	CLIExit   int
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Status    int    `json:"status"`
+	Code      string `json:"code"`
+	Detail    string `json:"detail"`
+	Instance  string `json:"instance"`
+	Path      string `json:"path,omitempty"`
+	RequestID string `json:"requestId"`
+	CLIExit   int    `json:"-"`
 }
 
 func (problem Problem) Error() string {
