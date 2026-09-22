@@ -269,40 +269,40 @@ references are
 
 ## 0. Foundation
 
-- [ ] Add the Go module, `cmd/gateway`, build targets, short README, Dockerfile
+- [X] Add the Go module, `cmd/gateway`, build targets, short README, Dockerfile
   and GitHub Actions for Ubuntu and macOS.
-- [ ] Add `tests/package.json`, Vitest + tsx setup, process lifecycle helpers,
+- [X] Add `tests/package.json`, Vitest + tsx setup, process lifecycle helpers,
   temporary registry/config fixtures and contract downloader.
-- [ ] Add red tests for CLI config discovery, missing config, invalid config,
+- [X] Add red tests for CLI config discovery, missing config, invalid config,
   redacted config printing and validation without runtime mutation.
-- [ ] Implement the smallest CLI/config compiler surface that makes those
+- [X] Implement the smallest CLI/config compiler surface that makes those
   tests pass.
 
 ## 1. Configuration and snapshots
 
 - [X] YAML decoding; includes/globs/cycle detection; variables and `env:` /
   `file:` secret references with redaction.
-- [ ] JSON Schema plus semantic validation: named-resource references, regex,
+- [X] JSON Schema plus semantic validation: named-resource references, regex,
   route terminal-action rules and management listener security rules.
 - [X] Immutable compiled graph, SHA-256 digest/revision, prepare/swap/drain and
   rollback-on-failure semantics.
-- [ ] CLI `serve`, `config validate|path|print|format|explain|diff`, typed
+- [X] CLI `serve`, `config validate|path|print|format|explain|diff`, typed
   diagnostics, exit codes and RFC 9457 problems.
 
 ## 2. HTTP and site registry
 
-- [ ] HTTP listeners, ordered routes/matchers, rewrites, headers, redirects,
+- [X] HTTP listeners, ordered routes/matchers, rewrites, headers, redirects,
   policy pipeline and access telemetry.
-- [ ] Directory and release static sources: `site.yaml`, traversal/symlink
+- [X] Directory and release static sources: `site.yaml`, traversal/symlink
   protection, SPA conditions, locales, ETag, conditional and range requests.
-- [ ] Reverse proxy: health checks, DNS/static targets, balancing, retries,
+- [X] Reverse proxy: health checks, DNS/static targets, balancing, retries,
   forwarded headers and WebSocket upgrade.
 - [X] Filesystem registry: staged immutable publish, locking/recovery,
   atomic current/previous changes, retention, rollback and idempotency.
 
 ## 3. Management and observability
 
-- [ ] Local Bearer static token/service accounts, bcrypt key lifecycle and
+- [X] Local Bearer static token/service accounts, bcrypt key lifecycle and
   remote TLS + mTLS enforcement.
 - [ ] All documented Management API resources, cursor pagination, operations,
   audit records, config `If-Match` and secret-safe responses.
@@ -311,11 +311,11 @@ references are
 
 ## 4. Security, TLS and L4
 
-- [ ] TLS profiles/storage/reload, certificate selection, mTLS and issuer
+- [X] TLS profiles/storage/reload, certificate selection and mTLS runtime
   operation lifecycle.
 - [ ] Implement generic identity-plugin dispatch after the external identity
   plugin is delivered; OIDC/OAuth and JWT/JWKS are not Gateway core features.
-- [ ] TCP and UDP listener/rule engines, TLS passthrough/termination, upstream
+- [X] TCP and UDP listener/rule engines, upstream
   relays, flow limits and graceful shutdown.
 
 ## 5. Plugin integration
