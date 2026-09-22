@@ -219,7 +219,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			}
 		}
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "valid": true, "requestId": requestID})
-	case path == "/api/config/reload" && request.Method == http.MethodPost:
+	case (path == "/api/config/reload" || path == "/api/reload") && request.Method == http.MethodPost:
 		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
 			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
 			return

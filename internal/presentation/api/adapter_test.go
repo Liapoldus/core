@@ -105,6 +105,19 @@ func TestConfigReloadStoresOperation(t *testing.T) {
 	}
 }
 
+func TestConfigReloadCanonicalAlias(t *testing.T) {
+	server := &Server{Revision: "rev-1", ReloadConfig: func(_ context.Context, _ string) (Operation, error) {
+		return Operation{ID: "op-alias", State: "accepted"}, nil
+	}}
+	recording := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/reload", nil)
+	request.Header.Set("If-Match", "rev-1")
+	server.Handler().ServeHTTP(recording, request)
+	if recording.Code != http.StatusAccepted || !strings.Contains(recording.Body.String(), "op-alias") {
+		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
+	}
+}
+
 func TestHealthMethodGate(t *testing.T) {
 	server := &Server{}
 	request := httptest.NewRequest(http.MethodPost, "/healthz", nil)
