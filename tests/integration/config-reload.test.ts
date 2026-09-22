@@ -71,4 +71,47 @@ describe("atomic configuration and MMDB reload", () => {
     expect(followingTraffic.status).toBe(200);
     expect(upstream.hits().paths).toEqual(["/api/private", "/api/private"]);
   });
+
+  it("activates a valid replacement WAF generation for subsequent traffic", async () => {
+    const upstream = await startUpstream();
+    servers.push(upstream);
+    const webAddress = await freeAddress();
+    const managementAddress = await freeAddress();
+    const fixtureDirectory = await mkdtemp(join(tmpdir(), "liapoldus-reload-waf-"));
+    const database = join(fixtureDirectory, "city.mmdb");
+    await copyFile("fixtures/GeoIP2-City-Test.mmdb", database);
+    const initialConfig = [
+      `dataProviders:`, `  geo: { type: mmdb, path: ${database}, onError: deny }`,
+      `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
+      `wafPolicies:`, `  geo:`, `    rules:`,
+      `      - when: { geo: { provider: geo, country: { exact: US } }, path: { prefix: /api } }`,
+      `        onError: allow`, `        then: { deny: { status: 451 } }`,
+      `listeners:`, `  web:`, `    type: http`, `    address: ${webAddress}`,
+      `    routes:`, `      - when: { path: { prefix: /api } }`,
+      `        then: { proxy: api, waf: geo }`,
+      `management:`, `  listener: { address: ${managementAddress} }`,
+      `  staticToken: env:LIAPOLDUS_TEST_MANAGEMENT_TOKEN`,
+    ].join("\n");
+    const configPath = await writeGatewayConfig(initialConfig);
+    const gateway = await startGateway(["--config", configPath, "serve"], environment);
+    gateways.push(gateway);
+    await waitReady(webAddress);
+    await waitReady(managementAddress);
+    const auth = { Authorization: `Bearer ${token}` };
+    const before = await request(managementAddress, "/api/status", { headers: auth });
+    const revision = (JSON.parse(before.text) as { revision: string }).revision;
+
+    const firstTraffic = await request(webAddress, "/api/private");
+    await writeFile(configPath, initialConfig.replace("onError: allow", "onError: deny"), "utf8");
+    const reload = await request(managementAddress, "/api/reload", {
+      method: "POST",
+      headers: { ...auth, "If-Match": revision },
+    });
+    const followingTraffic = await request(webAddress, "/api/private");
+
+    expect(firstTraffic.status).toBe(200);
+    expect(reload.status).toBe(202);
+    expect(followingTraffic.status).toBe(403);
+    expect(upstream.hits().paths).toEqual(["/api/private"]);
+  });
 });
