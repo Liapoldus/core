@@ -347,8 +347,10 @@ references are
 
 ## 6. v1 acceptance and ownership transfer
 
-- [ ] Pass all 50 current documentation golden vectors plus race, malformed
-  input, shutdown/recovery and no-secret regression suites on macOS/Linux.
+- [ ] Execute all 50 current documentation golden vectors semantically against
+  runtime on macOS/Linux.
+- [X] Pass race, malformed-input, shutdown/recovery and no-secret regression
+  suites on the current CI host.
 - [X] Build and smoke-test the Docker image; ensure GitHub Actions reports all
   test and contract failures.
 - [X] Generate Gateway contracts in `core` and publish the versioned GitHub
