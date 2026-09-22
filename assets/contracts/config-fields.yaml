@@ -87,6 +87,7 @@ runtime:
     defaultLocale: defaultLocale
     redirects: redirects
     headers: headers
+    deny: deny
     cache: cache
   siteRedirect:
     from: from
@@ -145,6 +146,7 @@ runtime:
     redirect: redirect
     rewrite: rewrite
     headers: headers
+    deny: deny
   redirect:
     scheme: scheme
     host: host
@@ -160,6 +162,9 @@ runtime:
     set: set
     setIfAbsent: setIfAbsent
     delete: delete
+  deny:
+    status: status
+    code: code
   proxy:
     upstream: upstream
     host: host

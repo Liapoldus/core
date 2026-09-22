@@ -167,6 +167,7 @@ type runtimeWords struct {
 		Redirect string `yaml:"redirect"`
 		Rewrite  string `yaml:"rewrite"`
 		Headers  string `yaml:"headers"`
+		Deny     string `yaml:"deny"`
 	}
 	Proxy struct {
 		Upstream     string `yaml:"upstream"`
@@ -192,6 +193,10 @@ type runtimeWords struct {
 		SetIfAbsent string `yaml:"setIfAbsent"`
 		Delete      string `yaml:"delete"`
 	} `yaml:"headers"`
+	Deny struct {
+		Status string `yaml:"status"`
+		Code   string `yaml:"code"`
+	} `yaml:"deny"`
 	UpstreamConfig struct {
 		Targets                 string `yaml:"targets"`
 		TargetAddress           string `yaml:"targetAddress"`
@@ -553,11 +558,24 @@ func validateScalar(value string, variables map[string]string, loaded contractFi
 		if end < 0 {
 			return ErrInvalidDocument
 		}
-		if _, exists := variables[remainder[:end]]; !exists {
+		name := remainder[:end]
+		if _, exists := variables[name]; !exists && !isRewriteCapture(name, value) {
 			return ErrInvalidDocument
 		}
 		remainder = remainder[end+len(loaded.Substitution.Close):]
 	}
+}
+
+func isRewriteCapture(name, value string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return strings.Contains(value, "/")
 }
 
 func validateListeners(node *yaml.Node, loaded contractFile) error {

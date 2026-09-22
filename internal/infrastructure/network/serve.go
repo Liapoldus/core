@@ -57,6 +57,13 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			serveRedirect(writer, request, *route.Redirect, route.Headers)
 			return
 		}
+		if route.Deny != nil {
+			if route.Deny.Code != "" {
+				writer.Header().Set("Content-Type", "application/problem+json")
+			}
+			writer.WriteHeader(route.Deny.Status)
+			return
+		}
 		if route.Proxy != nil {
 			responseWriter := responseWriterWithActions(writer, route.Headers)
 			if proxied := proxies[index]; proxied != nil {

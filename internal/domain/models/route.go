@@ -7,4 +7,5 @@ type Route struct {
 	Redirect *RouteRedirect
 	Rewrite  *Rewrite
 	Headers  *HeaderActions
+	Deny     *Deny
 }

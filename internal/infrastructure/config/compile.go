@@ -273,6 +273,7 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 			}
 			route.Rewrite = rewrite
 			route.Headers = compileHeaderActions(mappingNode(then, words.Route.Headers), words)
+			route.Deny = compileDeny(mappingNode(then, words.Route.Deny), words)
 		}
 		if terminals := countTerminalActions(route); terminals > 1 {
 			return nil, ErrMultipleTerminalActions
@@ -280,6 +281,22 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 		routes = append(routes, route)
 	}
 	return routes, nil
+}
+
+func compileDeny(node *yaml.Node, words runtimeWords) *models.Deny {
+	if node == nil {
+		return nil
+	}
+	d := &models.Deny{Status: 403, Code: "forbidden"}
+	if status, ok := fieldValue(node, words.Deny.Status); ok {
+		if parsed, err := strconv.Atoi(status); err == nil {
+			d.Status = parsed
+		}
+	}
+	if code, ok := fieldValue(node, words.Deny.Code); ok && code != "" {
+		d.Code = code
+	}
+	return d
 }
 
 func countTerminalActions(route models.Route) int {
@@ -291,6 +308,9 @@ func countTerminalActions(route models.Route) int {
 		terminals++
 	}
 	if route.Redirect != nil {
+		terminals++
+	}
+	if route.Deny != nil {
 		terminals++
 	}
 	return terminals

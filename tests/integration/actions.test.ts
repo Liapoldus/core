@@ -71,6 +71,25 @@ function redirectRoute(prefix: string, action: string): string {
   ].join("\n");
 }
 
+function denyRoute(prefix: string, action = `{ status: 403, code: forbidden }`): string {
+  return [
+    `    routes:`,
+    `      - when:`,
+    `          path:`,
+    `            prefix: ${prefix}`,
+    `        then:`,
+    `          deny: ${action}`,
+  ].join("\n");
+}
+
+describe("route deny actions", () => {
+  it("returns the configured denial status instead of silently becoming a 404", async () => {
+    const address = await startActionsGateway(denyRoute(`/private`, `{ status: 451, code: policy_denied }`));
+    const response = await request(address, "/private/data");
+    expect(response.status).toBe(451);
+  });
+});
+
 describe("route redirect actions", () => {
   it("redirects with the default 308 status and preserves the query by default", async () => {
     const address = await startActionsGateway(redirectRoute(`/old`, `{ path: /new }`));

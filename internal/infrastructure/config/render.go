@@ -3,6 +3,7 @@ package config
 
 import (
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -83,7 +84,12 @@ func substituteVariables(value string, variables map[string]string, open, close 
 			buffer.WriteString(rest)
 			return buffer.String()
 		}
-		buffer.WriteString(variables[rest[:end]])
+		name := rest[:end]
+		if replacement, ok := variables[name]; ok {
+			buffer.WriteString(replacement)
+		} else if name != "" && strings.IndexFunc(name, func(r rune) bool { return !unicode.IsDigit(r) }) < 0 {
+			buffer.WriteString(open + name + close)
+		}
 		remainder = rest[end+len(close):]
 	}
 }
