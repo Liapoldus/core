@@ -95,6 +95,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				http.NotFound(writer, request)
 				return
 			}
+			info = indexInfo
 		}
 		if !isWithin(site.Root, candidate) || info.IsDir() {
 			http.NotFound(writer, request)
