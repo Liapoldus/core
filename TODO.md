@@ -341,5 +341,6 @@ references are
   input, shutdown/recovery and no-secret regression suites on macOS/Linux.
 - [X] Build and smoke-test the Docker image; ensure GitHub Actions reports all
   test and contract failures.
-- [ ] Generate Gateway contracts in `core`, release them as versioned GitHub
-  Release assets, then update `liapoldus.github.io` to consume them.
+- [X] Generate Gateway contracts in `core` and publish the versioned GitHub
+  Release asset `gateway-v1.0.1`; the documentation now links to the release
+  and its downloadable archive.
