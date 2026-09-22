@@ -25,7 +25,7 @@ vendors:
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
   otel: { in: [go.opentelemetry.io/otel, go.opentelemetry.io/otel/sdk, go.opentelemetry.io/otel/exporters] }
   prometheus: { in: [github.com/prometheus/client_golang/prometheus, github.com/prometheus/client_golang/prometheus/promhttp] }
-  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/framing, github.com/Liapoldus/pluginprotocol/pluginv1] }
+  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
 commonComponents: [domainModels]

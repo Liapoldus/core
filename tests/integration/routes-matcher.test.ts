@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -193,8 +194,22 @@ describe("HTTP route matcher fields", () => {
     processes.push(gateway);
     await waitReady(address);
 
-    const send = (url: string, method: string, headers: Record<string, string>) =>
-      fetch(`http://${address}${url}`, { method, headers });
+    const [, portValue] = address.split(":");
+    const send = (path: string, method: string, headers: Record<string, string>) =>
+      new Promise<{ status: number }>((resolve, reject) => {
+        const request = httpRequest({
+          host: "127.0.0.1",
+          port: Number(portValue),
+          path,
+          method,
+          headers,
+        }, (response) => {
+          response.resume();
+          resolve({ status: response.statusCode ?? 0 });
+        });
+        request.once("error", reject);
+        request.end();
+      });
     const accepted = await send("/secure?version=v1", "POST", {
       host: "api.example.test",
       "x-client": "trusted",

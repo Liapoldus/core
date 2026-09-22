@@ -145,6 +145,8 @@ runtime:
   route:
     when: when
     then: then
+    host: host
+    method: method
     path: path
     prefix: prefix
     exact: exact
@@ -154,6 +156,7 @@ runtime:
     redirect: redirect
     rewrite: rewrite
     headers: headers
+    query: query
     deny: deny
     plugin: plugin
     auth: auth

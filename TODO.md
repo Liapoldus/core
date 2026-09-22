@@ -413,7 +413,7 @@ TCP-loopback. Целевой контракт описан в
   переносить Gateway process supervision/policy в протокол.
 - [X] Включить standard gRPC reflection на plugin loopback endpoint для
   `grpcurl`; Constructor ↔ Gateway control plane оставить REST.
-- [ ] Добавлять отдельные TS red-test commits перед каждым protocol/core
+- [X] Добавлять отдельные TS red-test commits перед каждым protocol/core
   implementation increment. Никаких Go `*_test.go`; generated TS stubs —
   только в `tests/`, без публикуемого npm package.
 - [ ] Проверить protobuf descriptor conformance, versioned JSON schema
@@ -424,8 +424,9 @@ TCP-loopback. Целевой контракт описан в
   behavior; синхронно обновить source docs, `contracts/v1/manifest.json` и
   contract checksum.
 - [X] Добавить TypeScript integration suite с реальным child-process gRPC
-  plugin: handshake, health, unary Call, HTTP/TCP dispatch, secret redaction,
-  bidirectional Stream и штатный shutdown.
+  plugin: handshake, health, unary Call, HTTP/TCP dispatch, secret redaction и
+  штатный shutdown. Bidi Stream пока покрыт на уровне protocol suite, не через
+  Gateway child-process fixture.
 - [ ] Автоматически проверить reflection через grpcurl и restart/backoff после
   сбоя дочернего процесса.
 - [X] Удалить production `framing/`, `session/`, probe и generated
@@ -440,5 +441,10 @@ TCP-loopback. Целевой контракт описан в
 - [ ] Связать настроенные grants, RSS/call quotas и automatic restart/backoff
   с процессами plugin runtime.
 - [X] Настроить protocol CI matrix для macOS и Linux.
-- [ ] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
+- [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
+  На 2026-09-23 все перечисленные проверки проходят; core: 135 TS-тестов,
+  protocol: 9 TS-тестов. Реальный core child-process acceptance покрывает
+  handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
+  bidi Stream проверен protocol suite, но не через Gateway fixture. Отдельно
+  остаются reflection через grpcurl, restart/backoff и quota/grant enforcement.

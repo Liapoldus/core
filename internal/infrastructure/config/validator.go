@@ -172,6 +172,8 @@ type runtimeWords struct {
 	Route struct {
 		When      string
 		Then      string
+		Host      string
+		Method    string
 		Path      string
 		Prefix    string
 		Exact     string
@@ -181,6 +183,7 @@ type runtimeWords struct {
 		Redirect  string `yaml:"redirect"`
 		Rewrite   string `yaml:"rewrite"`
 		Headers   string `yaml:"headers"`
+		Query     string `yaml:"query"`
 		Deny      string `yaml:"deny"`
 		Plugin    string `yaml:"plugin"`
 		Auth      string `yaml:"auth"`

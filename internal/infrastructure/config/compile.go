@@ -820,12 +820,38 @@ func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) 
 		}
 		var route models.Route
 		if when := mappingNode(routeNode, words.Route.When); when != nil {
+			if hostNode := mappingNode(when, words.Route.Host); hostNode != nil {
+				matcher, err := compileStringMatcher(hostNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+				if err != nil {
+					return nil, err
+				}
+				route.When.Host = matcher
+			}
+			if methodNode := mappingNode(when, words.Route.Method); methodNode != nil {
+				matcher, err := compileStringMatcher(methodNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+				if err != nil {
+					return nil, err
+				}
+				route.When.Method = matcher
+			}
+			headers, err := compileStringMatcherMap(mappingNode(when, words.Route.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return nil, err
+			}
+			route.When.Headers = headers
+			query, err := compileStringMatcherMap(mappingNode(when, words.Route.Query), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+			if err != nil {
+				return nil, err
+			}
+			route.When.Query = query
 			if pathNode := mappingNode(when, words.Route.Path); pathNode != nil {
 				matcher, err := compilePathMatcher(pathNode, words)
 				if err != nil {
 					return nil, err
 				}
-				route.When = matcher
+				route.When.Prefixes = matcher.Prefixes
+				route.When.Exact = matcher.Exact
+				route.When.Regex = matcher.Regex
 			}
 		}
 		if then := mappingNode(routeNode, words.Route.Then); then != nil {

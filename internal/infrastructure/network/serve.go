@@ -435,7 +435,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		} else if request.ContentLength > 0 {
 			requestSize = uint64(request.ContentLength)
 		}
-		index, route, found := matchedRoute(request.URL.Path, activeListener.Routes)
+		index, route, found := matchedRoute(request, activeListener.Routes)
 		if !found {
 			http.NotFound(writer, request)
 			return
@@ -1187,9 +1187,9 @@ func responseWriterWithActions(writer http.ResponseWriter, sets ...*models.Heade
 	return &headerActionsWriter{ResponseWriter: writer, actions: actions}
 }
 
-func matchedRoute(requestPath string, routes []models.Route) (int, models.Route, bool) {
+func matchedRoute(request *http.Request, routes []models.Route) (int, models.Route, bool) {
 	for index, route := range routes {
-		if !route.When.Matches(requestPath) {
+		if !route.When.MatchesRequest(request.Host, request.Method, request.URL.Path, request.Header, request.URL.Query()) {
 			continue
 		}
 		return index, route, true
