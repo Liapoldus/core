@@ -33,6 +33,7 @@ variables: variables
 upstreams: upstreams
 rateLimits: rateLimits
 wafPolicies: wafPolicies
+dataProviders: dataProviders
 secretReference:
   envPrefix: "env:"
   filePrefix: "file:"
@@ -187,6 +188,12 @@ runtime:
     sourceIP: sourceIp
     headers: headers
     query: query
+    geo: geo
+    asn: asn
+    provider: provider
+    country: country
+    city: city
+    onError: onError
     prefix: prefix
     exact: exact
     regex: regex
@@ -198,6 +205,13 @@ runtime:
     status: status
     code: code
     limit: limit
+  dataProvider:
+    type: type
+    path: path
+    onError: onError
+    mmdb: mmdb
+    allow: allow
+    deny: deny
   plugin:
     instance: instance
     capability: capability

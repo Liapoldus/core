@@ -74,6 +74,16 @@ func validateReferences(graph models.CompiledGraph) error {
 					return ErrUndefinedRateLimit
 				}
 			}
+			if rule.When.Geo != nil {
+				if _, exists := graph.DataProviders[rule.When.Geo.Provider]; !exists {
+					return ErrInvalidDocument
+				}
+			}
+			if rule.When.ASN != nil {
+				if _, exists := graph.DataProviders[rule.When.ASN.Provider]; !exists {
+					return ErrInvalidDocument
+				}
+			}
 		}
 	}
 	catalog, err := errorCatalog()
@@ -181,13 +191,14 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 			Value:  path,
 			Digest: hex.EncodeToString(compiled.hasher.Sum(nil)),
 		},
-		Sites:        map[string]models.Site{},
-		Secrets:      map[string]models.Secret{},
-		Upstreams:    map[string]models.Upstream{},
-		TLSProfiles:  map[string]models.TLSProfile{},
-		RateLimits:   map[string]models.RateLimit{},
-		WAFPolicies:  map[string]models.WAFPolicy{},
-		AuthPolicies: map[string]models.AuthPolicy{},
+		Sites:         map[string]models.Site{},
+		Secrets:       map[string]models.Secret{},
+		Upstreams:     map[string]models.Upstream{},
+		TLSProfiles:   map[string]models.TLSProfile{},
+		RateLimits:    map[string]models.RateLimit{},
+		WAFPolicies:   map[string]models.WAFPolicy{},
+		DataProviders: map[string]models.DataProvider{},
+		AuthPolicies:  map[string]models.AuthPolicy{},
 	}
 	base := filepath.Dir(path)
 	layout, err := LoadRegistryLayout()
@@ -199,6 +210,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		for index := 0; index < len(document.Content); index += 2 {
 			key, node := document.Content[index], document.Content[index+1]
 			switch key.Value {
+			case loaded.DataProviders:
+				if err := collectDataProviders(node, loaded.Runtime, base, graph.DataProviders); err != nil {
+					return models.CompiledGraph{}, err
+				}
 			case loaded.Listeners:
 				listeners, err := collectListeners(node, loaded.Runtime)
 				if err != nil {
@@ -236,6 +251,26 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 	}
 	for name, value := range compiled.secrets {
 		graph.Secrets[name] = models.Secret{Value: value}
+	}
+	for policyName, policy := range graph.WAFPolicies {
+		for index := range policy.Rules {
+			rule := &policy.Rules[index]
+			providerName := ""
+			if rule.When.Geo != nil {
+				providerName = rule.When.Geo.Provider
+			} else if rule.When.ASN != nil {
+				providerName = rule.When.ASN.Provider
+			}
+			if provider, ok := graph.DataProviders[providerName]; ok {
+				if rule.When.Geo != nil {
+					rule.When.Geo.Config = provider
+				}
+				if rule.When.ASN != nil {
+					rule.When.ASN.Config = provider
+				}
+			}
+		}
+		graph.WAFPolicies[policyName] = policy
 	}
 	return graph, nil
 }
@@ -276,6 +311,10 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 				continue
 			}
 			rule := models.WAFRule{}
+			if onError, ok := fieldValue(rn, words.WAF.OnError); ok {
+				rule.OnErrorExplicit = true
+				rule.OnErrorAllow = onError == words.DataProvider.Allow
+			}
 			if path := mappingNode(when, words.WAF.Path); path != nil {
 				matcher, err := compilePathMatcher(path, words)
 				if err != nil {
@@ -296,6 +335,35 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 					return err
 				}
 				rule.When.SourceIP = matcher
+			}
+			if geo := mappingNode(when, words.WAF.Geo); geo != nil {
+				provider, _ := fieldValue(geo, words.WAF.Provider)
+				countryNode := mappingNode(geo, words.WAF.Country)
+				cityNode := mappingNode(geo, words.WAF.City)
+				var country *models.StringMatcher
+				if countryNode != nil {
+					matcher, err := compileStringMatcher(countryNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+					if err != nil {
+						return err
+					}
+					country = matcher
+				}
+				var city *models.StringMatcher
+				if cityNode != nil {
+					matcher, err := compileStringMatcher(cityNode, words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
+					if err != nil {
+						return err
+					}
+					city = matcher
+				}
+				rule.When.Geo = &models.GeoMatcher{Provider: provider, Country: country, City: city}
+			}
+			if asn := mappingNode(when, words.WAF.ASN); asn != nil {
+				provider, _ := fieldValue(asn, words.WAF.Provider)
+				matcher := &models.ASNMatcher{Provider: provider}
+				matcher.In = collectASNs(mappingNode(asn, words.WAF.In))
+				matcher.NotIn = collectASNs(mappingNode(asn, words.WAF.NotIn))
+				rule.When.ASN = matcher
 			}
 			headers, err := compileStringMatcherMap(mappingNode(when, words.WAF.Headers), words.WAF.Exact, words.WAF.Prefix, words.WAF.Regex, words.WAF.Exists, words.WAF.In, words.WAF.NotIn)
 			if err != nil {
@@ -326,6 +394,43 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 			policy.Rules = append(policy.Rules, rule)
 		}
 		policies[name] = policy
+	}
+	return nil
+}
+
+func collectASNs(node *yaml.Node) []uint {
+	if node == nil || node.Kind != yaml.SequenceNode {
+		return nil
+	}
+	values := make([]uint, 0, len(node.Content))
+	for _, item := range node.Content {
+		value, err := strconv.ParseUint(item.Value, 10, 32)
+		if err == nil {
+			values = append(values, uint(value))
+		}
+	}
+	return values
+}
+
+func collectDataProviders(node *yaml.Node, words runtimeWords, base string, providers map[string]models.DataProvider) error {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		name, body := node.Content[index].Value, node.Content[index+1]
+		path, _ := fieldValue(body, words.DataProvider.Path)
+		typeName, _ := fieldValue(body, words.DataProvider.Type)
+		onError, ok := fieldValue(body, words.DataProvider.OnError)
+		if !ok {
+			onError = words.DataProvider.Deny
+		}
+		if typeName != words.DataProvider.MMDB || path == "" {
+			return ErrInvalidDocument
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(base, path)
+		}
+		providers[name] = models.DataProvider{Path: path, OnErrorAllow: onError == words.DataProvider.Allow}
 	}
 	return nil
 }

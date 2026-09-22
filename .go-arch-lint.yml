@@ -27,6 +27,7 @@ vendors:
   prometheus: { in: [github.com/prometheus/client_golang/prometheus, github.com/prometheus/client_golang/prometheus/promhttp] }
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/framing, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
+  maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -51,7 +52,7 @@ deps:
     mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [bcrypt]
+    canUse: [bcrypt, maxminddb]
   infrastructureStorage:
     mayDependOn: [domainModels, domainInterfaces]
   infrastructurePlugins:

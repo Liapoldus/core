@@ -12,6 +12,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -22,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
@@ -54,25 +56,29 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 }
 
 func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
 }
 
 // ServeWithRateLimits is the full runtime entry point used by the CLI.
 func ServeWithRateLimits(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
 }
 
 func ServeWithPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil)
+}
+
+func ServeWithDataProviders(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, providers interfaces.GeoLookup, drainTimeout time.Duration, metrics ...*observability.Registry) error {
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, nil, nil, metrics, providers)
 }
 
 // ServeWithIdentityPolicies additionally wires compiled auth policies to
 // already-handshaken identity plugin instances.
 func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, authPolicies, identity, drainTimeout, capabilities, l4Capabilities, metrics...)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, authPolicies, identity, drainTimeout, capabilities, l4Capabilities, metrics, nil)
 }
 
-func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
+func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup) error {
 	var started int
 	errs := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -84,7 +90,7 @@ func serveWithRuntime(parent context.Context, listeners []models.Listener, sites
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, policies, authPolicies, identity)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, policies, authPolicies, identity, geo)
 			}
 		}(listener)
 	}
@@ -367,7 +373,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, geoProvider interfaces.GeoLookup) error {
 	limiter := newRateLimiter(limits)
 	proxies := buildProxies(listener.Routes, upstreams)
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -466,7 +472,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 					query[name] = values
 				}
 				input := models.WAFRequest{Path: request.URL.Path, Method: request.Method, RemoteAddress: request.RemoteAddr, Headers: headers, Query: query}
-				if action, matched := policy.Evaluate(input); matched {
+				if action, matched := evaluateWAF(policy, input, geoProvider); matched {
 					if action.Deny != nil {
 						writer.WriteHeader(action.Deny.Status)
 						return
@@ -644,6 +650,74 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup) (models.WAFAction, bool) {
+	for _, rule := range policy.Rules {
+		if !rule.When.Matches(request) {
+			continue
+		}
+		needsGeo := rule.When.Geo != nil || rule.When.ASN != nil
+		if !needsGeo {
+			return rule.Action, true
+		}
+		address, err := netip.ParseAddr(remoteHost(request.RemoteAddress))
+		if err != nil || provider == nil {
+			return providerFailureAction(rule, dataProviderForRule(rule)), true
+		}
+		records := make(map[string]models.GeoRecord, 2)
+		if rule.When.Geo != nil {
+			record, lookupErr := provider(rule.When.Geo.Config, address)
+			if lookupErr != nil {
+				return providerFailureAction(rule, rule.When.Geo.Config), true
+			}
+			records[rule.When.Geo.Provider] = record
+		}
+		if rule.When.ASN != nil {
+			if record, exists := records[rule.When.ASN.Provider]; exists {
+				records[rule.When.ASN.Provider] = record
+			} else {
+				record, lookupErr := provider(rule.When.ASN.Config, address)
+				if lookupErr != nil {
+					return providerFailureAction(rule, rule.When.ASN.Config), true
+				}
+				records[rule.When.ASN.Provider] = record
+			}
+		}
+		if rule.When.MatchesResolved(request, records) {
+			return rule.Action, true
+		}
+	}
+	return models.WAFAction{}, false
+}
+
+func providerFailureAction(rule models.WAFRule, provider models.DataProvider) models.WAFAction {
+	onErrorAllow := rule.OnErrorAllow
+	if !rule.OnErrorExplicit {
+		onErrorAllow = provider.OnErrorAllow
+	}
+	if onErrorAllow {
+		return models.WAFAction{Allow: true}
+	}
+	return models.WAFAction{Deny: &models.Deny{Status: http.StatusForbidden}}
+}
+
+func dataProviderForRule(rule models.WAFRule) models.DataProvider {
+	if rule.When.Geo != nil {
+		return rule.When.Geo.Config
+	}
+	if rule.When.ASN != nil {
+		return rule.When.ASN.Config
+	}
+	return models.DataProvider{}
+}
+
+func remoteHost(address string) string {
+	host, _, err := net.SplitHostPort(address)
+	if err == nil {
+		return host
+	}
+	return address
 }
 
 type metricsResponseWriter struct {

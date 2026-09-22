@@ -8,6 +8,8 @@ type WAFMatcher struct {
 	SourceIP *IPMatcher
 	Headers  map[string]StringMatcher
 	Query    map[string]StringMatcher
+	Geo      *GeoMatcher
+	ASN      *ASNMatcher
 }
 
 func (matcher WAFMatcher) Matches(request WAFRequest) bool {
@@ -40,4 +42,44 @@ func (matcher WAFMatcher) Matches(request WAFRequest) bool {
 		}
 	}
 	return true
+}
+
+func (matcher WAFMatcher) MatchesResolved(request WAFRequest, geo map[string]GeoRecord) bool {
+	if !matcher.Matches(request) {
+		return false
+	}
+	if matcher.Geo != nil {
+		record, ok := geo[matcher.Geo.Provider]
+		if !ok || matcher.Geo.Country != nil && !matcher.Geo.Country.Matches(record.Country, false) || matcher.Geo.City != nil && !matcher.Geo.City.Matches(record.City, false) {
+			return false
+		}
+	}
+	if matcher.ASN != nil {
+		record, ok := geo[matcher.ASN.Provider]
+		if !ok || record.ASN == nil || !numberIn(*record.ASN, matcher.ASN.In, matcher.ASN.NotIn) {
+			return false
+		}
+	}
+	return true
+}
+
+func numberIn(value uint, included, excluded []uint) bool {
+	if len(included) > 0 {
+		for _, candidate := range included {
+			if candidate == value {
+				return !uintContains(excluded, value)
+			}
+		}
+		return false
+	}
+	return !uintContains(excluded, value)
+}
+
+func uintContains(values []uint, value uint) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }

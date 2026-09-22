@@ -17,6 +17,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
+	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
 
@@ -325,7 +326,9 @@ func serve(options options) int {
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.ServeWithPolicies(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, graph.WAFPolicies, drain, nil, nil, metrics); err != nil {
+	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
+	defer dataProviders.Close()
+	if err := network.ServeWithDataProviders(ctx, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles, graph.RateLimits, graph.WAFPolicies, dataProviders.Lookup, drain, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

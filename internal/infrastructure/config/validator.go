@@ -37,18 +37,19 @@ const (
 )
 
 type contractFile struct {
-	Root         []string `yaml:"root"`
-	Listener     []string `yaml:"listener"`
-	Includes     string   `yaml:"includes"`
-	Listeners    string   `yaml:"listeners"`
-	Sites        string   `yaml:"sites"`
-	Secrets      string   `yaml:"secrets"`
-	Variables    string   `yaml:"variables"`
-	Upstreams    string   `yaml:"upstreams"`
-	RateLimits   string   `yaml:"rateLimits"`
-	WAFPolicies  string   `yaml:"wafPolicies"`
-	AuthPolicies string   `yaml:"authPolicies"`
-	Registry     struct {
+	Root          []string `yaml:"root"`
+	Listener      []string `yaml:"listener"`
+	Includes      string   `yaml:"includes"`
+	Listeners     string   `yaml:"listeners"`
+	Sites         string   `yaml:"sites"`
+	Secrets       string   `yaml:"secrets"`
+	Variables     string   `yaml:"variables"`
+	Upstreams     string   `yaml:"upstreams"`
+	RateLimits    string   `yaml:"rateLimits"`
+	WAFPolicies   string   `yaml:"wafPolicies"`
+	AuthPolicies  string   `yaml:"authPolicies"`
+	DataProviders string   `yaml:"dataProviders"`
+	Registry      struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
 	} `yaml:"registry"`
@@ -198,6 +199,12 @@ type runtimeWords struct {
 		SourceIP string `yaml:"sourceIP"`
 		Headers  string `yaml:"headers"`
 		Query    string `yaml:"query"`
+		Geo      string `yaml:"geo"`
+		ASN      string `yaml:"asn"`
+		Provider string `yaml:"provider"`
+		Country  string `yaml:"country"`
+		City     string `yaml:"city"`
+		OnError  string `yaml:"onError"`
 		Prefix   string `yaml:"prefix"`
 		Exact    string `yaml:"exact"`
 		Regex    string `yaml:"regex"`
@@ -210,6 +217,14 @@ type runtimeWords struct {
 		Code     string `yaml:"code"`
 		Limit    string `yaml:"limit"`
 	} `yaml:"waf"`
+	DataProvider struct {
+		Type    string `yaml:"type"`
+		Path    string `yaml:"path"`
+		OnError string `yaml:"onError"`
+		MMDB    string `yaml:"mmdb"`
+		Allow   string `yaml:"allow"`
+		Deny    string `yaml:"deny"`
+	} `yaml:"dataProvider"`
 	Plugin struct {
 		Instance   string `yaml:"instance"`
 		Capability string `yaml:"capability"`

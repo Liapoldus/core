@@ -217,12 +217,16 @@ references are
   terminal action as `config_invalid` (exit 3). The runtime now compiles the
   `site`, `proxy`, `redirect`, `deny` and `plugin` route actions; plugin dispatch
   still requires a supervisor-provided capability map. The route-level
-  `challenge` action is not compiled yet. WAF supports path, method and direct
-  peer source-IP/CIDR, header and query matching with allow/deny/limit actions;
-  the remaining matcher language (including recursive all/any/not, Geo/ASN and
-  connection/request comparisons), providers and challenge action remain
-  acceptance gaps. The route exclusivity check must be extended when route-level
-  challenge is implemented.
+  `challenge` action is not compiled yet. WAF поддерживает path, method, прямой
+  source-IP/CIDR, header, query и Geo/ASN country/city/ASN matcher-ы с действиями
+  allow/deny/limit. MMDB-reader проверяется при открытии; отсутствие записи
+  обрабатывается через `onError` правила с fallback на провайдера, а ошибка
+  reload сохраняет активный reader. Осталось подключить MMDB reload к lifecycle
+  активной конфигурации, возвращать catalog Problem `waf_provider_unavailable`,
+  добавить положительные Geo/ASN и atomic reload integration-тесты, реализовать
+  recursive all/any/not, connection/request comparisons и challenge. Проверку
+  взаимоисключения terminal actions нужно расширить при реализации route-level
+  challenge.
 - Schema bug: `$defs.tlsProfile.certificates.items` had
   `additionalProperties: false` as a sibling of `oneOf`, rejecting every
   certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch
