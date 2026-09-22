@@ -304,7 +304,7 @@ references are
 
 - [X] Local Bearer static token/service accounts, bcrypt key lifecycle and
   remote TLS + mTLS enforcement.
-- [ ] All documented Management API resources, cursor pagination, operations,
+- [X] All documented Management API resources, cursor pagination, operations,
   audit records, config `If-Match` and secret-safe responses.
 - [ ] JSON logs, Prometheus, OTLP tracing/metrics, exporter-failure isolation
   and retention.
@@ -322,7 +322,7 @@ references are
 
 - [ ] Publish and pin `github.com/Liapoldus/pluginprotocol` v1.0.0 from the
   sibling `pluginprotocol` repository.
-- [ ] Gateway plugin supervisor: loopback launch, manifest/health/config.apply
+- [X] Gateway plugin supervisor: loopback launch, manifest/health/config.apply
   handshake, restart/backoff, logs, RSS/call limits and scoped grants.
 - [ ] HTTP capability, TCP stream and UDP flow dispatch using test plugin
   processes in `tests/fixtures/` only.
