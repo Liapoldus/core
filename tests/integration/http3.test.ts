@@ -7,10 +7,12 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import tls from "node:tls";
 import type { ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { startGateway } from "../support/gateway.js";
 import { freeAddress, writeGatewayConfig } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
+const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 
 afterEach(async () => Promise.all(gateways.splice(0).map((gateway) => gateway.stop())));
@@ -63,7 +65,7 @@ describe("HTTP/3 listener", () => {
     const key = join(directory, "server.key");
     await execFileAsync("openssl", [
       "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-      "-subj", "/CN=localhost", "-keyout", key, "-out", cert,
+      "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost", "-keyout", key, "-out", cert,
     ]);
     const address = await freeAddress();
     const config = await writeGatewayConfig([
@@ -86,5 +88,7 @@ describe("HTTP/3 listener", () => {
 
     await waitForTLS(address, gateway.process);
     await expectUDPPortInUse(address);
+    const response = await execFileAsync("go", ["run", "./tests/fixtures/http3-client", `https://${address}/`, cert], { cwd: coreRoot });
+    expect(response.stdout.trim()).toBe("3 404");
   });
 });

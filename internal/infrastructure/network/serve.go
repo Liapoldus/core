@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"github.com/quic-go/quic-go/http3"
 )
 
 type HTTPCapabilityDispatcher interface {
@@ -702,6 +704,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 	}
 	server := &http.Server{Addr: listener.Address, Handler: handler}
 	var tlsConfig *tls.Config
+	var quicServer *http3.Server
 	if listener.TLSProfile != "" {
 		profile, ok := profiles[listener.TLSProfile]
 		if !ok {
@@ -712,9 +715,27 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			return err
 		}
 		tlsConfig = loaded
-		server.TLSConfig = tlsConfig
+		tcpTLSConfig := tlsConfig.Clone()
+		tcpTLSConfig.NextProtos = make([]string, 0, len(tlsConfig.NextProtos))
+		for _, protocol := range tlsConfig.NextProtos {
+			if protocol != http3.NextProtoH3 {
+				tcpTLSConfig.NextProtos = append(tcpTLSConfig.NextProtos, protocol)
+			}
+		}
+		server.TLSConfig = tcpTLSConfig
+		if slices.Contains(tlsConfig.NextProtos, http3.NextProtoH3) {
+			quicServer = &http3.Server{
+				Addr:      listener.Address,
+				Handler:   handler,
+				TLSConfig: http3.ConfigureTLSConfig(tlsConfig.Clone()),
+			}
+		}
 	}
-	serveError := make(chan error, 1)
+	serveCount := 1
+	if quicServer != nil {
+		serveCount++
+	}
+	serveError := make(chan error, serveCount)
 	go func() {
 		if tlsConfig != nil {
 			serveError <- server.ListenAndServeTLS("", "")
@@ -722,14 +743,28 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			serveError <- server.ListenAndServe()
 		}
 	}()
+	if quicServer != nil {
+		go func() { serveError <- quicServer.ListenAndServe() }()
+	}
 	select {
 	case err := <-serveError:
+		if quicServer != nil {
+			_ = quicServer.Close()
+		}
+		_ = server.Close()
 		return err
 	case <-parent.Done():
 		ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 		defer cancel()
-		if err := server.Shutdown(ctx); err != nil {
-			return err
+		shutdownErrors := make(chan error, serveCount)
+		go func() { shutdownErrors <- server.Shutdown(ctx) }()
+		if quicServer != nil {
+			go func() { shutdownErrors <- quicServer.Shutdown(ctx) }()
+		}
+		for count := serveCount; count > 0; count-- {
+			if err := <-shutdownErrors; err != nil {
+				return err
+			}
 		}
 		return nil
 	}

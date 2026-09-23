@@ -24,6 +24,12 @@ metrics, gzip, SPA fallback, rewrite captures и route/plugin actions.
 против runtime; сейчас проверяются manifest/checksums, структура и уникальность
 векторов, а runtime-сценарии покрываются отдельными integration suites.
 
+Повторная проверка 2026-09-23 обнаружила, что TLS-профиль listener терялся:
+в `assets/contracts/config-fields.yaml` отсутствовало runtime-сопоставление
+`tls`. Маппинг восстановлен; новый child-process E2E подтверждает TLS
+handshake, TCP+UDP на одном порту и настоящий HTTP/3 запрос. См. коммиты
+`0aaaa97`, `4b6f1b4`, `a1d966c` и QUIC-limit пункт ниже.
+
 Verification was done against build `/tmp/liapoldus-gateway` with fixture
 `/var/folders/qk/694xx2l56_l01zmd37h82szh0000gn/T/opencode/audit/`
 (`gateway.yaml`, `www/` site + `site.yaml` manifest, batteries 1–4). Contract
@@ -385,7 +391,13 @@ references are
   address.
 
 - [ ] Execute all 50 current documentation golden vectors semantically against
-  runtime on macOS/Linux.
+  runtime on macOS/Linux. `http3-bind` is now exercised end-to-end, including
+  TLS, shared TCP/UDP port and an HTTP/3 request; 49 vectors remain.
+- [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
+  defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
+  while `security-runtime.json` describes listener `connections`,
+  `bytesPerSecond` and idle timeout; reconcile the limit mapping before claiming
+  full QUIC-limit conformance.
 - [ ] Resolve `plugin-startup-order` timeout mismatch before marking the vector
   conformant: `contracts/v1/golden-vectors.json` expects `10s`,
   `gateway/architecture/protocol.md` names `startTimeout`, but
@@ -466,12 +478,13 @@ TCP-loopback. Целевой контракт описан в
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 139 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 140 TS-тестов,
   protocol: 14 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →
   `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
-  suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
+  suite, но пока не Gateway fixture. HTTP/3 проходит реальный child-process
+  запрос через QUIC. `grpcurl list/describe` проверен вручную.
   Остаются scoped grant enforcement и семантический прогон всех Gateway vectors.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
   опрашивается раз в секунду и после capability Call; breach останавливает

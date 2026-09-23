@@ -29,6 +29,7 @@ vendors:
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
+  quicHTTP3: { in: [github.com/quic-go/quic-go/http3] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -51,6 +52,7 @@ deps:
     mayDependOn: [domainModels]
   infrastructureNetwork:
     mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
+    canUse: [quicHTTP3]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt, maxminddb]
