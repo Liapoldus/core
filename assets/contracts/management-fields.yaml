@@ -110,6 +110,7 @@ codes:
   idempotencyConflict: idempotency_conflict
   releaseInvalid: release_invalid
   registryUnavailable: registry_unavailable
+  noPreviousRelease: no_previous_release
 pagination:
   limitDefault: 50
   limitMax: 100

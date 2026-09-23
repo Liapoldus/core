@@ -213,7 +213,10 @@ references are
   remains an explicit product decision; the docs specify a 24 h retry window
   but not restart behavior. Rollback response shape also conflicts between the
   OpenAPI `Publication` schema and generic operation-reference wording in
-  `gateway/api/operations.md`; do not choose one until clarified.
+  `gateway/api/operations.md`; do not choose one until clarified. A rollback
+  without a prior release now returns catalogued `404 no_previous_release`
+  without leaking the registry path. `rollback-missing` is covered by the
+  child-process E2E.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON
@@ -425,9 +428,10 @@ references are
 - [ ] Execute all 50 current documentation golden vectors semantically against
   runtime on macOS/Linux. `http3-bind` is now exercised end-to-end, including
   TLS, shared TCP/UDP port and an HTTP/3 request; `audit-retention` is verified
-  through the authenticated Management API; `publish-idempotent` is verified
+  through the authenticated Management API; `publish-idempotent` and
+  `rollback-missing` are verified
   through a real child-process publish, retry, body/key conflict, serving and
-  audit check. 47 vectors remain.
+  audit check and a no-prior-release rollback. 46 vectors remain.
 - [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
   defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
   while `security-runtime.json` describes listener `connections`,

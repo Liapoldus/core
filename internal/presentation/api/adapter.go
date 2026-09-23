@@ -9,8 +9,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"strconv"
 	"strings"
@@ -100,9 +102,13 @@ type idempotencyRecord struct {
 func (server *Server) Handler() http.Handler {
 	server.contractOnce.Do(func() {
 		if server.Management.Paths.Sites != "" {
-			return
+			if _, exists := server.Errors.Lookup(server.Management.Codes.NoPreviousRelease); exists {
+				return
+			}
+		} else {
+			server.Management, _ = config.LoadManagement()
 		}
-		server.Management, _ = config.LoadManagement()
+		server.Errors, _ = config.LoadErrorCatalog()
 	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		wrapped := &metricResponseWriter{ResponseWriter: response}
@@ -586,7 +592,7 @@ func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, re
 
 func (server *Server) handleSiteRollback(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if server.RollbackSite == nil {
-		writeProblem(response, http.StatusServiceUnavailable, "registry_unavailable", "registry rollback is unavailable", requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -594,9 +600,24 @@ func (server *Server) handleSiteRollback(response http.ResponseWriter, request *
 		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
 		return
 	}
+	if server.SiteSources != nil {
+		definition, exists := server.SiteSources[parts[2]]
+		if !exists {
+			writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+			return
+		}
+		if definition.Source != models.SourceRelease {
+			server.writeCatalogProblem(response, server.Management.Codes.SiteSourceImmutable, requestID)
+			return
+		}
+	}
 	operation, err := server.RollbackSite(request.Context(), parts[2], request.Header.Get("Idempotency-Key"))
 	if err != nil {
-		writeProblem(response, http.StatusUnprocessableEntity, "rollback_failed", err.Error(), requestID)
+		if errors.Is(err, fs.ErrNotExist) {
+			server.writeCatalogProblem(response, server.Management.Codes.NoPreviousRelease, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 		return
 	}
 	server.mu.Lock()

@@ -286,6 +286,7 @@ type ManagementWords struct {
 		IdempotencyConflict string `yaml:"idempotencyConflict"`
 		ReleaseInvalid      string `yaml:"releaseInvalid"`
 		RegistryUnavailable string `yaml:"registryUnavailable"`
+		NoPreviousRelease   string `yaml:"noPreviousRelease"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz        string `yaml:"healthz"`
