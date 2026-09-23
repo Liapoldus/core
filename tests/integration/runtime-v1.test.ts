@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
+import { request as nodeRequest } from "node:http";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +23,23 @@ function vector(id: string) {
   const match = gatewayVectors.vectors.find((candidate) => candidate.id === id);
   if (match === undefined) throw new Error(`missing gateway golden vector ${id}`);
   return match;
+}
+
+async function requestRawPath(address: string, rawPath: string): Promise<{ status: number; text: string; contentType: string | undefined }> {
+  const endpoint = new URL(`http://${address}`);
+  return new Promise((resolve, reject) => {
+    const outgoing = nodeRequest({ hostname: endpoint.hostname, port: Number(endpoint.port), path: rawPath, method: "GET" }, (incoming) => {
+      const chunks: Buffer[] = [];
+      incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+      incoming.on("end", () => resolve({
+        status: incoming.statusCode ?? 0,
+        text: Buffer.concat(chunks).toString("utf8"),
+        contentType: incoming.headers["content-type"],
+      }));
+    });
+    outgoing.once("error", reject);
+    outgoing.end();
+  });
 }
 
 async function startSite(manifest: string): Promise<string> {
@@ -126,6 +144,15 @@ describe("HTTP runtime v1", () => {
     const notModified = await request(address, "/assets/app.js", { headers: { "if-none-match": etag! } });
     expect(notModified.status).toBe(expected.expected.status);
     expect(notModified.text).toBe("");
+  });
+
+  it("rejects the encoded static-path-traversal golden vector as route_not_found", async () => {
+    const expected = vector("static-path-traversal");
+    const address = await startSite("slug: web\nindex: index.html\n");
+    const response = await requestRawPath(address, expected.input.path!);
+    expect(response.status).toBe(expected.expected.status);
+    expect(response.contentType).toContain("application/problem+json");
+    expect(JSON.parse(response.text).code).toBe(expected.expected.code);
   });
 
   it("serves a satisfiable byte range and rejects an unsatisfiable range", async () => {
