@@ -1,11 +1,12 @@
 import { copyFile, mkdtemp } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
 import { runGateway, startGateway } from "../support/gateway.js";
 import { freeAddress, portOf, request, waitReady, writeGatewayConfig } from "../support/http.js";
 import { startUpstream } from "../support/upstream.js";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 interface Handle {
   stop: () => Promise<void>;
@@ -13,6 +14,19 @@ interface Handle {
 
 const gateways: Array<{ process: ChildProcess } & Handle> = [];
 const servers: Array<Handle> = [];
+const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
+  vectors: Array<{
+    id: string;
+    input: { cors?: { origins: string[]; methods: string[] }; method?: string; origin?: string; requestMethod?: string };
+    expected: { status: number; terminalCalled?: boolean; headers?: Record<string, string> };
+  }>;
+};
+
+function vector(id: string) {
+  const match = gatewayVectors.vectors.find((candidate) => candidate.id === id);
+  if (match === undefined) throw new Error(`missing gateway golden vector ${id}`);
+  return match;
+}
 
 async function cleanup(handle: { process: ChildProcess } & Handle): Promise<void> {
   if (!handle.process.killed) {
@@ -94,6 +108,30 @@ describe("route deny actions", () => {
 });
 
 describe("CORS preflight matching", () => {
+	it("satisfies the cors-preflight golden vector before calling the terminal", async () => {
+		const expected = vector("cors-preflight");
+		const upstream = await startUpstream();
+		servers.push(upstream);
+		const address = await startActionsGateway(
+			[
+				`    routes:`,
+				`      - when: { path: { prefix: /api } }`,
+				`        then:`,
+				`          proxy: { upstream: api }`,
+				`          cors: { origins: [${expected.input.cors!.origins.join(", ")}], methods: [${expected.input.cors!.methods.join(", ")}] }`,
+			].join("\n"),
+			`      - address: ${upstream.address}`,
+		);
+		const baseline = upstream.hits().requests;
+		const response = await request(address, "/api/resource", {
+			method: expected.input.method!,
+			headers: { Origin: expected.input.origin!, "Access-Control-Request-Method": expected.input.requestMethod! },
+		});
+		expect(response.status).toBe(expected.expected.status);
+		expect(response.headers.get("access-control-allow-origin")).toBe(expected.expected.headers?.["Access-Control-Allow-Origin"]);
+		expect(upstream.hits().requests - baseline).toBe(Number(expected.expected.terminalCalled));
+	});
+
 	it("only short-circuits a configured origin and requested method", async () => {
 		const upstream = await startUpstream();
 		servers.push(upstream);
