@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createConfig, createConfigDir } from "../support/fixture.js";
 import { jsonOutput, runGateway } from "../support/gateway.js";
+
+const goldenVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
+  vectors: Array<{ id: string; input: { site?: { locales?: string[]; defaultLocale?: string } }; expected: { code?: string } }>;
+};
+
+function vector(id: string) {
+  const match = goldenVectors.vectors.find((candidate) => candidate.id === id);
+  if (match === undefined) throw new Error(`missing gateway golden vector ${id}`);
+  return match;
+}
 
 async function writeSiteRoot(directory: string, manifest: string): Promise<void> {
   await mkdir(directory, { recursive: true });
@@ -73,8 +84,10 @@ describe("gateway config semantic validation", () => {
   });
 
   it("rejects a defaultLocale that is not listed in site locales", async () => {
+    const expected = vector("locale-invalid-default");
+    const invalidSite = expected.input.site!;
     const root = await createConfigDir();
-    await writeSiteRoot(root, "slug: demo\nlocales:\n  - en\n  - ru\ndefaultLocale: de\n");
+    await writeSiteRoot(root, ["slug: demo", "locales:", ...(invalidSite.locales ?? []).map((locale) => `  - ${locale}`), `defaultLocale: ${invalidSite.defaultLocale}`].join("\n"));
     const config = await createConfig(
       "registry:\n  path: ./registry\n" +
         "sites:\n  demo:\n    source:\n      type: directory\n      root: " +
@@ -85,7 +98,7 @@ describe("gateway config semantic validation", () => {
     const result = await runGateway(["--output", "json", "config", "validate", config]);
 
     expect(result.exitCode).toBe(3);
-    expect(jsonOutput(result)).toMatchObject({ problem: { code: "site_invalid" } });
+    expect(jsonOutput(result)).toMatchObject({ problem: { code: expected.expected.code } });
   });
 
   it("accepts a defaultLocale listed in site locales", async () => {

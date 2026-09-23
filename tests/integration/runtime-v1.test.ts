@@ -39,13 +39,13 @@ async function startSite(manifest: string): Promise<string> {
   return address;
 }
 
-async function startLocaleSite(): Promise<string> {
+async function startLocaleSite(locales: string[], defaultLocale: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "liapoldus-runtime-locale-"));
-  for (const locale of ["ru", "en"]) {
+  for (const locale of locales) {
     await mkdir(join(root, locale), { recursive: true });
     await writeFile(join(root, locale, "about"), `${locale} page`, "utf8");
   }
-  await writeFile(join(root, "site.yaml"), "slug: web\nlocales: [ru, en]\ndefaultLocale: ru\n", "utf8");
+  await writeFile(join(root, "site.yaml"), `slug: web\nlocales: [${locales.join(", ")}]\ndefaultLocale: ${defaultLocale}\n`, "utf8");
   const address = await freeAddress();
   const config = await writeGatewayConfig(["sites:", `  web: { source: { type: directory, root: ${root} } }`, "listeners:", "  public:", "    type: http", `    address: ${address}`, "    routes:", "      - when: { path: { prefix: / } }", "        then: { site: web }"].join("\n"));
   const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
@@ -74,7 +74,7 @@ describe("HTTP runtime v1", () => {
 
   it("preserves an explicit declared locale prefix", async () => {
     const expected = vector("locale-prefixed");
-    const address = await startLocaleSite();
+    const address = await startLocaleSite(expected.input.locales!, expected.input.defaultLocale!);
     const response = await request(address, expected.input.path!);
     expect(response.status).toBe(expected.expected.status);
     expect(response.text).toBe("ru page");
@@ -82,7 +82,7 @@ describe("HTTP runtime v1", () => {
 
   it("maps unprefixed paths to the default locale without redirect or language negotiation", async () => {
     const expected = vector("locale-unprefixed");
-    const address = await startLocaleSite();
+    const address = await startLocaleSite(expected.input.locales!, expected.input.defaultLocale!);
     const response = await request(address, expected.input.path!, { headers: { "accept-language": expected.input.acceptLanguage! } });
     expect(response.status).toBe(200);
     expect(response.text).toBe("ru page");
