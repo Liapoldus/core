@@ -20,11 +20,13 @@ type WAFRuntime struct {
 	generation              *runtimeGeneration
 	providerProblem         models.Problem
 	bodyTooLarge            models.Problem
+	headerTooLarge          models.Problem
 	pluginResourceExhausted models.Problem
 	pluginTimeout           models.Problem
 	routeNotFound           models.Problem
 	rateLimited             models.Problem
 	retryAfterHeader        string
+	requestIDHeader         string
 	problemContentType      string
 }
 
@@ -39,6 +41,22 @@ func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, prov
 
 func (runtime *WAFRuntime) BodyTooLargeProblem() models.Problem {
 	return runtime.bodyTooLarge
+}
+
+func (runtime *WAFRuntime) SetHeaderTooLargeProblem(problem models.Problem) {
+	runtime.headerTooLarge = problem
+}
+
+func (runtime *WAFRuntime) HeaderTooLargeProblem() models.Problem {
+	return runtime.headerTooLarge
+}
+
+func (runtime *WAFRuntime) SetRequestIDHeader(header string) {
+	runtime.requestIDHeader = header
+}
+
+func (runtime *WAFRuntime) RequestIDHeader() string {
+	return runtime.requestIDHeader
 }
 
 func (runtime *WAFRuntime) SetPluginResourceProblem(problem models.Problem) {

@@ -51,10 +51,27 @@ var connectionSequence uint64
 const netHTTPReadLimitSlack = 4 * 1024
 
 func netHTTPMaxHeaderBytes(configured int) int {
-	if configured <= netHTTPReadLimitSlack {
-		return 1
+	if configured <= 0 {
+		return netHTTPReadLimitSlack + 1
 	}
-	return configured - netHTTPReadLimitSlack
+	maxInt := int(^uint(0) >> 1)
+	if configured > maxInt-netHTTPReadLimitSlack {
+		return maxInt
+	}
+	return configured + netHTTPReadLimitSlack
+}
+
+func requestHeaderBytes(request *http.Request) int {
+	bytes := len(request.Method) + len(request.RequestURI) + len(request.Proto) + 4
+	if request.Host != "" {
+		bytes += len(request.Host) + 8
+	}
+	for name, values := range request.Header {
+		for _, value := range values {
+			bytes += len(name) + len(value) + 4
+		}
+	}
+	return bytes + 2
 }
 
 func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics ...*observability.Registry) error {
@@ -707,6 +724,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		http.ServeFile(responseWriter, request, candidate)
 	})
 	handler := gzipHandler(baseHandler)
+	handler = enforceHeaderLimit(handler, listener, wafRuntime)
 	if metrics != nil {
 		handler = instrumentHTTP(handler, metrics, listener.Address)
 	}
@@ -776,6 +794,28 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		return nil
 	}
+}
+
+func enforceHeaderLimit(next http.Handler, listener models.Listener, runtime *WAFRuntime) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		generation, release := runtime.Acquire()
+		activeListener, active := runtimeListener(generation.graph.Listeners, listener.Address)
+		release()
+		if active && activeListener.Limits.HeaderBytes > 0 && requestHeaderBytes(request) > activeListener.Limits.HeaderBytes {
+			problem := runtime.HeaderTooLargeProblem()
+			if problem.Status == 0 {
+				http.Error(writer, http.StatusText(http.StatusRequestHeaderFieldsTooLarge), http.StatusRequestHeaderFieldsTooLarge)
+				return
+			}
+			problem.Instance = request.URL.Path
+			problem.RequestID = request.Header.Get(runtime.RequestIDHeader())
+			writer.Header().Set("Content-Type", runtime.ProblemContentType())
+			writer.WriteHeader(problem.Status)
+			_ = json.NewEncoder(writer).Encode(problem)
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
 }
 
 func writePluginProblem(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime, err error) bool {

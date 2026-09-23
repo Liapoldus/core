@@ -597,6 +597,11 @@ func serve(options options) int {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	headerTooLargeProblem, exists := errorCatalog.Lookup(words.Codes.HeaderTooLarge)
+	if !exists {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	resourceExhaustedProblem, exists := errorCatalog.Lookup(words.Codes.ResourceExhausted)
 	if !exists {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -620,6 +625,8 @@ func serve(options options) int {
 	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
 	defer func() { dataProviders.Close() }()
 	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, bodyTooLargeProblem, managementWords.ContentTypes.Problem)
+	wafRuntime.SetHeaderTooLargeProblem(headerTooLargeProblem)
+	wafRuntime.SetRequestIDHeader(observabilityWords.Logging.AccessFields.RequestIDHeader)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
 	wafRuntime.SetPluginTimeoutProblem(pluginTimeoutProblem)
 	wafRuntime.SetRouteNotFoundProblem(routeNotFoundProblem)

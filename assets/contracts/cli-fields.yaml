@@ -54,6 +54,7 @@ codes:
   noPreviousRelease: no_previous_release
   wafProviderUnavailable: waf_provider_unavailable
   bodyTooLarge: body_too_large
+  headerTooLarge: header_too_large
   resourceExhausted: resource_exhausted
   pluginTimeout: plugin_timeout
   rateLimited: rate_limited

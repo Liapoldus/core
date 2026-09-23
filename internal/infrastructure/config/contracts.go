@@ -78,6 +78,7 @@ type CLIWords struct {
 		NoPreviousRelease      string `yaml:"noPreviousRelease"`
 		WAFProviderUnavailable string `yaml:"wafProviderUnavailable"`
 		BodyTooLarge           string `yaml:"bodyTooLarge"`
+		HeaderTooLarge         string `yaml:"headerTooLarge"`
 		ResourceExhausted      string `yaml:"resourceExhausted"`
 		PluginTimeout          string `yaml:"pluginTimeout"`
 		RateLimited            string `yaml:"rateLimited"`
