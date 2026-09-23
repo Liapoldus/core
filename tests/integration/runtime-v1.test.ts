@@ -14,8 +14,8 @@ afterEach(async () => Promise.all(gateways.splice(0).map((gateway) => gateway.st
 const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
-    input: { accept?: string; acceptLanguage?: string; defaultLocale?: string; etag?: string; ifNoneMatch?: string; locales?: string[]; path?: string; range?: string; size?: number };
-    expected: { bodyBytes?: number; code?: string; file?: string; headers?: Record<string, string>; redirect?: boolean; releasePath?: string; status: number; varyAcceptLanguage?: boolean };
+    input: { accept?: string; acceptEncoding?: string; acceptLanguage?: string; bodyBytes?: number; defaultLocale?: string; etag?: string; ifNoneMatch?: string; locales?: string[]; path?: string; range?: string; size?: number };
+    expected: { bodyBytes?: number; code?: string; contentEncoding?: string; file?: string; headers?: Record<string, string>; redirect?: boolean; releasePath?: string; status: number; varyAcceptLanguage?: boolean; varyContains?: string };
   }>;
 };
 
@@ -48,6 +48,7 @@ async function startSite(manifest: string): Promise<string> {
   await writeFile(join(root, "index.html"), "shell", "utf8");
   await writeFile(join(root, "assets", "app.js"), "0123456789", "utf8");
   await writeFile(join(root, "assets", "data.json"), "{}", "utf8");
+  await writeFile(join(root, "assets", "large.txt"), "x".repeat(1024), "utf8");
   await writeFile(join(root, "site.yaml"), manifest, "utf8");
   const address = await freeAddress();
   const config = await writeGatewayConfig(["sites:", `  web: { source: { type: directory, root: ${root} } }`, "listeners:", "  public:", "    type: http", `    address: ${address}`, "    routes:", "      - when: { path: { prefix: / } }", "        then: { site: web }"].join("\n"));
@@ -120,6 +121,16 @@ describe("HTTP runtime v1", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-encoding")).toBe("gzip");
     expect(response.headers.get("vary")).toContain("Accept-Encoding");
+  });
+
+  it("satisfies the compression-qvalue golden vector", async () => {
+    const expected = vector("compression-qvalue");
+    const address = await startSite("slug: web\nindex: index.html\n");
+    const response = await request(address, "/assets/large.txt", { headers: { "accept-encoding": expected.input.acceptEncoding! } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBe(expected.expected.contentEncoding);
+    expect(response.headers.get("vary")).toContain(expected.expected.varyContains);
+    expect(Buffer.byteLength(response.text)).toBe(expected.input.bodyBytes);
   });
 
   it("emits MIME, validators and conditional 304 for static files", async () => {
