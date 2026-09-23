@@ -426,6 +426,9 @@ TCP-loopback. Целевой контракт описан в
 - [ ] Проверить protobuf descriptor conformance, versioned JSON schema
   examples, malformed/oversized payloads, deadlines, cancellation, concurrency,
   обе стороны bidi stream, bounded backpressure, close race и restart.
+  Независимое выполнение четырёх unary-вызовов покрыто реальным protocol
+  child-process TS-тестом; cancellation/close-race stress и остальные пробелы
+  см. `pluginprotocol/TODO.md`.
 - [X] Заменить framing wire-hex vectors protocol suite на proto/JSON
   conformance. Оставить Gateway golden vectors только для observable Gateway
   behavior; синхронно обновить source docs, `contracts/v1/manifest.json` и
@@ -464,7 +467,7 @@ TCP-loopback. Целевой контракт описан в
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
   На 2026-09-23 все перечисленные проверки проходят; core: 139 TS-тестов,
-  protocol: 12 TS-тестов. Реальный core child-process acceptance покрывает
+  protocol: 13 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →
   `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
