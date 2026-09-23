@@ -136,4 +136,41 @@ describe("Management registry operations", () => {
     expect(response.status).toBe(409);
     expect(response.text).toContain("site_source_immutable");
   });
+
+  it("reports a missing rollback target without exposing registry paths", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-no-rollback-"));
+    directories.push(workspace);
+    const managementAddress = await freeAddress();
+    const config = [
+      "registry:",
+      `  path: ${join(workspace, "registry")}`,
+      "sites:",
+      "  blog:",
+      "    source: { type: release, slug: blog }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: blog }",
+      "management:",
+      `  listener: { address: ${managementAddress} }`,
+      "  staticToken: env:LIAPOLDUS_TEST_MANAGEMENT_TOKEN",
+    ].join("\n");
+    const configPath = await writeGatewayConfig(config);
+    const gateway = await startGateway(["--config", configPath, "serve"], environment);
+    gateways.push(gateway);
+    await waitReady(managementAddress);
+
+    const response = await request(managementAddress, "/api/sites/blog/rollback", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ idempotencyKey: "1234567890abcdef" }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.text).toContain("no_previous_release");
+    expect(response.text).not.toContain(workspace);
+  });
 });
