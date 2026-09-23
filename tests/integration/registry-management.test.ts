@@ -85,7 +85,7 @@ describe("Management registry operations", () => {
     expect(conflict.status).toBe(409);
     expect(served.status).toBe(200);
     expect(served.text).toBe("published release\n");
-    expect(audit.items).toContainEqual(expect.objectContaining({ action: "site.publish" }));
+    expect(audit.items).toContainEqual(expect.objectContaining({ action: "site_published" }));
     expect(auditResponse.text).not.toContain(source);
   });
 
