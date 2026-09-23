@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { createServer, type Server } from "node:http";
 import { startGateway } from "../support/gateway.js";
 import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/http.js";
 import { startUpstream } from "../support/upstream.js";
@@ -10,6 +11,7 @@ const gatewayToken = "telemetry-export-test-token";
 const environment = { LIAPOLDUS_TEST_TELEMETRY_TOKEN: gatewayToken };
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 const upstreams: Array<{ stop(): Promise<void> }> = [];
+const collectors: Server[] = [];
 
 const telemetryVectors = (() => {
   const source = readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8");
@@ -33,27 +35,35 @@ afterEach(async () => {
     await gateway.stop();
   }
   for (const upstream of upstreams.splice(0)) await upstream.stop();
+  for (const collector of collectors.splice(0)) {
+    await new Promise<void>((resolveClose, reject) => collector.close((error) => error ? reject(error) : resolveClose()));
+  }
 });
+
+async function startTelemetryGateway(endpoint: string): Promise<{ webAddress: string; managementAddress: string }> {
+  const upstream = await startUpstream();
+  upstreams.push(upstream);
+  const webAddress = await freeAddress();
+  const managementAddress = await freeAddress();
+  const config = await writeGatewayConfig([
+    "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
+    "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
+    "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
+    "management:", `  listener: { address: ${managementAddress} }`,
+    "  staticToken: env:LIAPOLDUS_TEST_TELEMETRY_TOKEN",
+    "metrics:", "  prometheus: true", `  otlp: { endpoint: ${endpoint}, interval: 100ms }`,
+  ].join("\n"));
+  const gateway = await startGateway(["--config", config, "serve"], environment);
+  gateways.push(gateway);
+  await waitReady(webAddress);
+  await waitReady(managementAddress);
+  return { webAddress, managementAddress };
+}
 
 describe("telemetry exporter isolation", () => {
   it("keeps HTTP traffic healthy and records unavailable OTLP metrics exports", async () => {
-    const upstream = await startUpstream();
-    upstreams.push(upstream);
-    const webAddress = await freeAddress();
-    const managementAddress = await freeAddress();
     const unavailableOTLPAddress = await freeAddress();
-    const config = await writeGatewayConfig([
-      "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
-      "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
-      "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
-      "management:", `  listener: { address: ${managementAddress} }`,
-      "  staticToken: env:LIAPOLDUS_TEST_TELEMETRY_TOKEN",
-      "metrics:", "  prometheus: true", `  otlp: { endpoint: http://${unavailableOTLPAddress}/v1/metrics, interval: 100ms }`,
-    ].join("\n"));
-    const gateway = await startGateway(["--config", config, "serve"], environment);
-    gateways.push(gateway);
-    await waitReady(webAddress);
-    await waitReady(managementAddress);
+    const { webAddress, managementAddress } = await startTelemetryGateway(`http://${unavailableOTLPAddress}/v1/metrics`);
 
     const response = await request(webAddress, "/health");
     expect(response.status).toBe(telemetryVectors[0].expected.trafficStatus);
@@ -73,5 +83,39 @@ describe("telemetry exporter isolation", () => {
     expect(metrics).toContain("liapoldus_otel_export_failures_total");
     expect(metrics).toMatch(/liapoldus_otel_export_failures_total\{exporter="otlp"\} [1-9]/);
     expect(telemetryVectors.every(({ expected }) => expected.exporterFailureLogged)).toBe(true);
+  });
+
+  it("sends Prometheus runtime measurements as OTLP/HTTP protobuf metrics", async () => {
+    const bodies: Buffer[] = [];
+    let requestPath = "";
+    let contentType = "";
+    const collector = createServer((incoming, response) => {
+      requestPath = incoming.url ?? "";
+      contentType = String(incoming.headers["content-type"] ?? "");
+      const chunks: Buffer[] = [];
+      incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+      incoming.on("end", () => {
+        bodies.push(Buffer.concat(chunks));
+        response.writeHead(200);
+        response.end();
+      });
+    });
+    collectors.push(collector);
+    await new Promise<void>((resolveListen, reject) => {
+      collector.once("error", reject);
+      collector.listen(0, "127.0.0.1", resolveListen);
+    });
+    const address = collector.address();
+    if (address === null || typeof address === "string") throw new Error("OTLP receiver did not bind TCP");
+    const { webAddress } = await startTelemetryGateway(`http://127.0.0.1:${address.port}/v1/metrics`);
+
+    const response = await request(webAddress, "/telemetry");
+    expect(response.status).toBe(telemetryVectors[0].expected.trafficStatus);
+    const deadline = Date.now() + 3000;
+    while (bodies.length === 0 && Date.now() < deadline) await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+
+    expect(requestPath).toBe("/v1/metrics");
+    expect(contentType).toMatch(/application\/x-protobuf/);
+    expect(bodies[0]?.byteLength).toBeGreaterThan(0);
   });
 });
