@@ -42,6 +42,6 @@ describe("Gateway v1 migration contracts", () => {
     expect(openapi).toContain("multipart/form-data:");
     expect(openapi).toContain("PublishMultipartRequest");
     expect(openapi).toContain("expectedCurrentRevision");
-    expect(openapi).toContain("Exactly one gzip-compressed tar archive.");
+    expect(openapi).toContain("Ровно один gzip-сжатый tar-архив.");
   });
 });
