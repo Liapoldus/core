@@ -99,4 +99,45 @@ describe("configured access logging", () => {
     expect(String(record?.requestId).length).toBeGreaterThan(0);
     expect(response.headers.get("x-request-id")).toBe(record?.requestId);
   });
+
+  it("records Management API requests on their configured access sink", async () => {
+    const upstream = await startUpstream();
+    upstreams.push(upstream);
+    const webAddress = await freeAddress();
+    const managementAddress = await freeAddress();
+    const config = await writeGatewayConfig([
+      "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
+      "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
+      "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
+      "management:", `  listener: { address: ${managementAddress} }`,
+      "  staticToken: env:LIAPOLDUS_TEST_ACCESS_TOKEN",
+      "logging:", "  format: json", "  access: [stderr]",
+    ].join("\n"));
+    const gateway = await startGatewayWithOutput(["--config", config, "serve"], environment);
+    gateways.push(gateway);
+    await waitReady(managementAddress);
+
+    const response = await request(managementAddress, "/api/status", {
+      headers: { authorization: `Bearer ${gatewayToken}` },
+    });
+    expect(response.status).toBe(200);
+    const requestId = response.headers.get("x-request-id");
+    expect(requestId).toBeTruthy();
+    await gateway.stop();
+
+    const record = gateway.stderr
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((line) => line.requestId === requestId);
+    expect(record).toMatchObject({
+      requestId,
+      listener: managementAddress,
+      route: "/api/status",
+      method: "GET",
+      path: "/api/status",
+      status: 200,
+    });
+    expect(gateway.stderr).not.toContain(gatewayToken);
+  });
 });
