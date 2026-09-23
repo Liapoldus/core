@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -21,15 +20,38 @@ type Registry struct {
 	AuditRecords    *prometheus.CounterVec
 	ExportFailures  *prometheus.CounterVec
 	registry        *prometheus.Registry
+	accessLogger    *AccessLogger
 }
 
-func NewRegistry() *Registry {
+type RegistryContract struct {
+	RequestTotalName        string
+	RequestTotalHelp        string
+	RequestDurationName     string
+	RequestDurationHelp     string
+	ManagementTotalName     string
+	ManagementTotalHelp     string
+	AuditRecordsTotalName   string
+	AuditRecordsTotalHelp   string
+	ExportFailuresTotalName string
+	ExportFailuresTotalHelp string
+	ListenerLabel           string
+	RouteLabel              string
+	SiteLabel               string
+	MethodLabel             string
+	StatusLabel             string
+	ExporterLabel           string
+	ActionLabel             string
+	ResultLabel             string
+}
+
+func NewRegistry(contract RegistryContract) *Registry {
 	r := &Registry{registry: prometheus.NewRegistry()}
-	r.Requests = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "liapoldus_http_requests_total", Help: "Gateway HTTP requests."}, []string{"listener", "route", "site", "method", "status"})
-	r.RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "liapoldus_http_request_duration_seconds", Help: "Gateway HTTP request duration."}, []string{"listener", "route", "site", "method", "status"})
-	r.Management = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "liapoldus_management_requests_total", Help: "Management API requests."}, []string{"method", "status"})
-	r.AuditRecords = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "liapoldus_audit_records_total", Help: "Audit records written."}, []string{"action", "result"})
-	r.ExportFailures = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "liapoldus_otel_export_failures_total", Help: "Telemetry exporter failures."}, []string{"exporter"})
+	requestLabels := []string{contract.ListenerLabel, contract.RouteLabel, contract.SiteLabel, contract.MethodLabel, contract.StatusLabel}
+	r.Requests = prometheus.NewCounterVec(prometheus.CounterOpts{Name: contract.RequestTotalName, Help: contract.RequestTotalHelp}, requestLabels)
+	r.RequestDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: contract.RequestDurationName, Help: contract.RequestDurationHelp}, requestLabels)
+	r.Management = prometheus.NewCounterVec(prometheus.CounterOpts{Name: contract.ManagementTotalName, Help: contract.ManagementTotalHelp}, []string{contract.MethodLabel, contract.StatusLabel})
+	r.AuditRecords = prometheus.NewCounterVec(prometheus.CounterOpts{Name: contract.AuditRecordsTotalName, Help: contract.AuditRecordsTotalHelp}, []string{contract.ActionLabel, contract.ResultLabel})
+	r.ExportFailures = prometheus.NewCounterVec(prometheus.CounterOpts{Name: contract.ExportFailuresTotalName, Help: contract.ExportFailuresTotalHelp}, []string{contract.ExporterLabel})
 	r.registry.MustRegister(r.Requests, r.RequestDuration, r.Management, r.AuditRecords, r.ExportFailures)
 	return r
 }
@@ -47,10 +69,35 @@ func (r *Registry) ObserveAudit(action, result string) {
 	r.AuditRecords.WithLabelValues(action, result).Inc()
 }
 
-type JSONLogger struct{ logger *slog.Logger }
+func (r *Registry) SetAccessLogger(logger *AccessLogger) {
+	if r != nil {
+		r.accessLogger = logger
+	}
+}
 
-func NewJSONLogger(output io.Writer, level slog.Level) *JSONLogger {
-	return &JSONLogger{logger: slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: level}))}
+func (r *Registry) WriteAccess(record AccessRecord) {
+	if r != nil {
+		r.accessLogger.Write(record)
+	}
+}
+
+func (r *Registry) EnsureRequestID(response http.ResponseWriter, request *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	return r.accessLogger.EnsureRequestID(response, request)
+}
+
+type JSONLogger struct {
+	logger         *slog.Logger
+	sensitiveTerms []string
+}
+
+func NewJSONLogger(output io.Writer, level slog.Level, sensitiveTerms []string) *JSONLogger {
+	return &JSONLogger{
+		logger:         slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: level})),
+		sensitiveTerms: append([]string(nil), sensitiveTerms...),
+	}
 }
 func (l *JSONLogger) Log(ctx context.Context, level slog.Level, message string, attrs ...slog.Attr) {
 	if l == nil || l.logger == nil {
@@ -58,65 +105,19 @@ func (l *JSONLogger) Log(ctx context.Context, level slog.Level, message string, 
 	}
 	clean := make([]slog.Attr, 0, len(attrs))
 	for _, attr := range attrs {
-		if sensitive(attr.Key) {
+		if l.sensitive(attr.Key) {
 			attr.Value = slog.StringValue("[REDACTED]")
 		}
 		clean = append(clean, attr)
 	}
 	l.logger.LogAttrs(ctx, level, message, clean...)
 }
-func sensitive(key string) bool {
+func (l *JSONLogger) sensitive(key string) bool {
 	key = strings.ToLower(key)
-	return strings.Contains(key, "authorization") || strings.Contains(key, "cookie") || strings.Contains(key, "secret") || strings.Contains(key, "private-key") || strings.Contains(key, "service-key") || strings.Contains(key, "grant") || key == "token" || key == "password"
-}
-
-type OTLPExporter struct {
-	Endpoint string
-	Client   *http.Client
-	Failures *prometheus.CounterVec
-}
-
-func NewOTLPExporter(endpoint string, failures *prometheus.CounterVec) (*OTLPExporter, error) {
-	parsed, err := url.Parse(endpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, errInvalidEndpoint{}
+	for _, term := range l.sensitiveTerms {
+		if strings.Contains(key, strings.ToLower(term)) {
+			return true
+		}
 	}
-	return &OTLPExporter{Endpoint: endpoint, Client: &http.Client{Timeout: 5 * time.Second}, Failures: failures}, nil
+	return false
 }
-
-type errInvalidEndpoint struct{}
-
-func (errInvalidEndpoint) Error() string { return "invalid OTLP endpoint" }
-func (e *OTLPExporter) Export(ctx context.Context, payload []byte) error {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, e.Endpoint, strings.NewReader(string(payload)))
-	if err != nil {
-		e.failed()
-		return err
-	}
-	request.Header.Set("Content-Type", "application/json")
-	response, err := e.Client.Do(request)
-	if err != nil {
-		e.failed()
-		return err
-	}
-	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, response.Body)
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		e.failed()
-		return exportStatusError(response.StatusCode)
-	}
-	return nil
-}
-func (e *OTLPExporter) ExportAsync(ctx context.Context, payload []byte) {
-	copyPayload := append([]byte(nil), payload...)
-	go func() { _ = e.Export(ctx, copyPayload) }()
-}
-func (e *OTLPExporter) failed() {
-	if e.Failures != nil {
-		e.Failures.WithLabelValues("otlp").Inc()
-	}
-}
-
-type exportStatusError int
-
-func (exportStatusError) Error() string { return "OTLP exporter returned HTTP status" }

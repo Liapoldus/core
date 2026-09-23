@@ -25,6 +25,12 @@ vendors:
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
   otel: { in: [go.opentelemetry.io/otel, go.opentelemetry.io/otel/sdk, go.opentelemetry.io/otel/exporters] }
   prometheus: { in: [github.com/prometheus/client_golang/prometheus, github.com/prometheus/client_golang/prometheus/promhttp] }
+  prometheusModel: { in: [github.com/prometheus/client_model/go] }
+  otelAttribute: { in: [go.opentelemetry.io/otel/attribute] }
+  otelMetricExporter: { in: [go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp] }
+  otelInstrumentation: { in: [go.opentelemetry.io/otel/sdk/instrumentation] }
+  otelMetricData: { in: [go.opentelemetry.io/otel/sdk/metric/metricdata] }
+  otelResource: { in: [go.opentelemetry.io/otel/sdk/resource] }
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
@@ -63,7 +69,7 @@ deps:
     canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [otel, prometheus]
+    canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
     canUse: [bcrypt]

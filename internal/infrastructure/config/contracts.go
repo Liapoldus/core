@@ -488,8 +488,20 @@ type ObservabilityWords struct {
 		Directory string `yaml:"directory"`
 	} `yaml:"operations"`
 	Metrics struct {
-		IntervalDefault string `yaml:"intervalDefault"`
-		Names           struct {
+		IntervalDefault        string `yaml:"intervalDefault"`
+		ScopeName              string `yaml:"scopeName"`
+		Unit                   string `yaml:"unit"`
+		ExporterName           string `yaml:"exporterName"`
+		ExportFailureMessage   string `yaml:"exportFailureMessage"`
+		InvalidIntervalMessage string `yaml:"invalidIntervalMessage"`
+		Help                   struct {
+			RequestTotal        string `yaml:"requestTotal"`
+			RequestDuration     string `yaml:"requestDuration"`
+			ManagementTotal     string `yaml:"managementTotal"`
+			AuditRecordsTotal   string `yaml:"auditRecordsTotal"`
+			ExportFailuresTotal string `yaml:"exportFailuresTotal"`
+		} `yaml:"help"`
+		Names struct {
 			RequestTotal        string `yaml:"requestTotal"`
 			RequestDuration     string `yaml:"requestDuration"`
 			ManagementTotal     string `yaml:"managementTotal"`
@@ -503,16 +515,32 @@ type ObservabilityWords struct {
 			Method   string `yaml:"method"`
 			Status   string `yaml:"status"`
 			Exporter string `yaml:"exporter"`
+			Action   string `yaml:"action"`
+			Result   string `yaml:"result"`
 		} `yaml:"labels"`
 	} `yaml:"metrics"`
 	Logging struct {
 		Formats struct {
 			JSON string `yaml:"json"`
 		} `yaml:"formats"`
-		AccessSinks struct {
+		AccessDefault []string `yaml:"accessDefault"`
+		AccessSinks   struct {
 			Stdout string `yaml:"stdout"`
 			Stderr string `yaml:"stderr"`
 		} `yaml:"accessSinks"`
+		AccessFields struct {
+			RequestIDHeader string `yaml:"requestIDHeader"`
+			Timestamp       string `yaml:"timestamp"`
+			RequestID       string `yaml:"requestID"`
+			Listener        string `yaml:"listener"`
+			Route           string `yaml:"route"`
+			Method          string `yaml:"method"`
+			Host            string `yaml:"host"`
+			Path            string `yaml:"path"`
+			Status          string `yaml:"status"`
+			Duration        string `yaml:"duration"`
+			Bytes           string `yaml:"bytes"`
+		} `yaml:"accessFields"`
 	} `yaml:"logging"`
 	Tracing struct {
 		SamplingParentBased string `yaml:"samplingParentBased"`

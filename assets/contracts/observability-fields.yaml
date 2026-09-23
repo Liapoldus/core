@@ -23,6 +23,17 @@ operations:
   directory: operations
 metrics:
   intervalDefault: 15s
+  scopeName: liapoldus.gateway
+  unit: "1"
+  exporterName: otlp
+  exportFailureMessage: OpenTelemetry metrics export failed
+  invalidIntervalMessage: invalid OTLP metrics interval
+  help:
+    requestTotal: Gateway HTTP requests.
+    requestDuration: Gateway HTTP request duration.
+    managementTotal: Management API requests.
+    auditRecordsTotal: Audit records written.
+    exportFailuresTotal: Telemetry exporter failures.
   names:
     requestTotal: liapoldus_http_requests_total
     requestDuration: liapoldus_http_request_duration_seconds
@@ -36,18 +47,36 @@ metrics:
     method: method
     status: status
     exporter: exporter
+    action: action
+    result: result
 logging:
   formats:
     json: json
+  accessDefault:
+  - stdout
   accessSinks:
     stdout: stdout
     stderr: stderr
+  accessFields:
+    requestIDHeader: X-Request-ID
+    timestamp: timestamp
+    requestID: requestId
+    listener: listener
+    route: route
+    method: method
+    host: host
+    path: path
+    status: status
+    duration: duration
+    bytes: bytes
 tracing:
   samplingParentBased: parent-based
 redaction:
   - secret
   - cookie
   - authorization
+  - token
+  - password
   - private-key
   - service-key
   - grant

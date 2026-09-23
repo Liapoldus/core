@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/signal"
@@ -455,11 +456,81 @@ func serve(options options) int {
 	for name, capability := range pluginRuntime.IdentityDispatchers() {
 		identityCapabilities[name] = capability
 	}
-	metrics := observability.NewRegistry()
 	observabilityWords, wordsErr := config.LoadObservability()
 	if wordsErr != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
+	}
+	metricsWords := observabilityWords.Metrics
+	metrics := observability.NewRegistry(observability.RegistryContract{
+		RequestTotalName:        metricsWords.Names.RequestTotal,
+		RequestTotalHelp:        metricsWords.Help.RequestTotal,
+		RequestDurationName:     metricsWords.Names.RequestDuration,
+		RequestDurationHelp:     metricsWords.Help.RequestDuration,
+		ManagementTotalName:     metricsWords.Names.ManagementTotal,
+		ManagementTotalHelp:     metricsWords.Help.ManagementTotal,
+		AuditRecordsTotalName:   metricsWords.Names.AuditRecordsTotal,
+		AuditRecordsTotalHelp:   metricsWords.Help.AuditRecordsTotal,
+		ExportFailuresTotalName: metricsWords.Names.ExportFailuresTotal,
+		ExportFailuresTotalHelp: metricsWords.Help.ExportFailuresTotal,
+		ListenerLabel:           metricsWords.Labels.Listener,
+		RouteLabel:              metricsWords.Labels.Route,
+		SiteLabel:               metricsWords.Labels.Site,
+		MethodLabel:             metricsWords.Labels.Method,
+		StatusLabel:             metricsWords.Labels.Status,
+		ExporterLabel:           metricsWords.Labels.Exporter,
+		ActionLabel:             metricsWords.Labels.Action,
+		ResultLabel:             metricsWords.Labels.Result,
+	})
+	accessSinks := graph.Observability.Logging.Access
+	if len(accessSinks) == 0 {
+		accessSinks = observabilityWords.Logging.AccessDefault
+	}
+	accessWriters := make([]io.Writer, 0, len(accessSinks))
+	for _, sink := range accessSinks {
+		switch sink {
+		case observabilityWords.Logging.AccessSinks.Stdout:
+			accessWriters = append(accessWriters, os.Stdout)
+		case observabilityWords.Logging.AccessSinks.Stderr:
+			accessWriters = append(accessWriters, os.Stderr)
+		}
+	}
+	accessFields := observabilityWords.Logging.AccessFields
+	metrics.SetAccessLogger(observability.NewAccessLogger(accessWriters, observability.AccessFields{
+		RequestIDHeader: accessFields.RequestIDHeader,
+		Timestamp:       accessFields.Timestamp,
+		RequestID:       accessFields.RequestID,
+		Listener:        accessFields.Listener,
+		Route:           accessFields.Route,
+		Method:          accessFields.Method,
+		Host:            accessFields.Host,
+		Path:            accessFields.Path,
+		Status:          accessFields.Status,
+		Duration:        accessFields.Duration,
+		Bytes:           accessFields.Bytes,
+	}))
+	if graph.Observability.Metrics.OTLP != nil {
+		interval := graph.Observability.Metrics.OTLP.Interval
+		if interval == "" {
+			interval = observabilityWords.Metrics.IntervalDefault
+		}
+		exporter, exporterErr := observability.NewOTLPExporter(
+			graph.Observability.Metrics.OTLP.Endpoint,
+			interval,
+			observabilityWords.Metrics.ScopeName,
+			observabilityWords.Metrics.Unit,
+			observabilityWords.Metrics.ExporterName,
+			observabilityWords.Metrics.Labels.Exporter,
+			observabilityWords.Metrics.ExportFailureMessage,
+			observabilityWords.Metrics.InvalidIntervalMessage,
+			observabilityWords.Redaction,
+			metrics,
+		)
+		if exporterErr != nil {
+			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Validation
+		}
+		go exporter.Run(ctx)
 	}
 	managementWords, wordsErr := config.LoadManagement()
 	if wordsErr != nil {

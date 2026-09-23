@@ -1055,6 +1055,7 @@ func remoteHost(address string) string {
 type metricsResponseWriter struct {
 	http.ResponseWriter
 	status int
+	bytes  int64
 }
 
 func (w *metricsResponseWriter) WriteHeader(status int) {
@@ -1067,7 +1068,9 @@ func (w *metricsResponseWriter) Write(data []byte) (int, error) {
 	if w.status == 0 {
 		w.WriteHeader(http.StatusOK)
 	}
-	return w.ResponseWriter.Write(data)
+	written, err := w.ResponseWriter.Write(data)
+	w.bytes += int64(written)
+	return written, err
 }
 func (w *metricsResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := w.ResponseWriter.(http.Hijacker)
@@ -1083,14 +1086,27 @@ func (w *metricsResponseWriter) Flush() {
 }
 func instrumentHTTP(next http.Handler, metrics *observability.Registry, listener string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := metrics.EnsureRequestID(w, r)
 		started := time.Now()
 		wrapped := &metricsResponseWriter{ResponseWriter: w}
 		next.ServeHTTP(wrapped, r)
+		duration := time.Since(started)
 		status := wrapped.status
 		if status == 0 {
 			status = http.StatusOK
 		}
-		metrics.ObserveHTTP(listener, r.URL.Path, "", r.Method, fmt.Sprintf("%d", status), time.Since(started))
+		metrics.ObserveHTTP(listener, r.URL.Path, "", r.Method, fmt.Sprintf("%d", status), duration)
+		metrics.WriteAccess(observability.AccessRecord{
+			RequestID: requestID,
+			Listener:  listener,
+			Route:     r.URL.Path,
+			Method:    r.Method,
+			Host:      r.Host,
+			Path:      r.URL.Path,
+			Status:    status,
+			Duration:  duration.Seconds(),
+			Bytes:     wrapped.bytes,
+		})
 	})
 }
 
