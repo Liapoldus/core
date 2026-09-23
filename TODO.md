@@ -218,11 +218,16 @@ references are
   child-process E2E; CLI publish/release response and directory-source rejection
   now have child-process coverage. CLI success idempotency and management
   rollback idempotency/audit remain incomplete. A repeated publish now reuses
-  the original body and `X-Request-ID` as required by `sameResponse`. `GET /api/sites` still returns
-  an empty list because the contract does not define the `state` mapping for an
-  unpublished release; implementation awaits that decision. CLI publish does
+  the original body and `X-Request-ID` as required by `sameResponse`.
+  `GET /api/sites` still returns an empty list because the contract does not
+  define the `state` mapping for an unpublished release; implementation awaits
+  that decision. CLI publish does
   not yet accept `--idempotency-key`; implement after deciding whether the
-  documented 24 h deduplication must survive process restart.
+  documented 24 h deduplication must survive process restart. `site current`
+  and `site previous` now read and validate the release pointers and return
+  `null` before first publish; `site versions` output shape is not specified
+  beyond listing retained revisions, so that command remains pending contract
+  clarification.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON

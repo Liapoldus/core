@@ -20,3 +20,11 @@ func (service RegistryService) Rollback(site string) (models.Release, error) {
 func (service RegistryService) Versions(site string) ([]models.Release, error) {
 	return service.Store.Versions(site)
 }
+
+func (service RegistryService) Current(site string) (models.Release, error) {
+	return service.Store.Current(site)
+}
+
+func (service RegistryService) Previous(site string) (models.Release, error) {
+	return service.Store.Previous(site)
+}

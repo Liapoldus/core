@@ -241,7 +241,9 @@ func site(options options) int {
 	operation := options.command[1]
 	publish := operation == words.Site.Publish && len(options.command) == 4
 	rollback := operation == words.Site.Rollback && len(options.command) == 3
-	if !publish && !rollback {
+	current := operation == words.Site.Current && len(options.command) == 3
+	previous := operation == words.Site.Previous && len(options.command) == 3
+	if !publish && !rollback && !current && !previous {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments
 	}
@@ -258,6 +260,26 @@ func site(options options) int {
 	definition, exists := graph.Sites[slug]
 	if !exists {
 		return registryCLIFailure(options.output, words.Exits.NotFound, words.Codes.SiteInvalid)
+	}
+	if current || previous {
+		revision := models.Release{}
+		if definition.Source == models.SourceRelease {
+			layout, layoutErr := config.LoadRegistryLayout()
+			if layoutErr != nil {
+				return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
+			}
+			registry := application.RegistryService{Store: storage.NewFilesystemStore(graph.RegistryRoot, layout)}
+			if current {
+				revision, err = registry.Current(slug)
+			} else {
+				revision, err = registry.Previous(slug)
+			}
+			if err != nil {
+				return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
+			}
+		}
+		writeSitePointer(options.output, slug, revision.ID, current)
+		return words.Exits.OK
 	}
 	if definition.Source != models.SourceRelease {
 		return registryCLIFailure(options.output, words.Exits.Conflict, words.Codes.SiteSourceImmutable)
@@ -301,6 +323,29 @@ func site(options options) int {
 		words.JSON.PreviousRevision: previousRevision, words.JSON.RequestID: requestID,
 	})
 	return words.Exits.OK
+}
+
+func writeSitePointer(output, site, revision string, current bool) {
+	command := words.Display.SitePrevious
+	if current {
+		command = words.Display.SiteCurrent
+	}
+	var value any
+	if len(revision) > 0 {
+		value = revision
+	}
+	if output == words.Outputs.JSON {
+		writeSuccess(output, map[string]any{
+			words.JSON.OK: true, words.JSON.Command: command,
+			words.JSON.Site: site, words.JSON.Revision: value,
+		})
+		return
+	}
+	if value == nil {
+		fmt.Println(words.Text.Null)
+		return
+	}
+	fmt.Println(revision)
 }
 
 func cliRequestID() (string, error) {

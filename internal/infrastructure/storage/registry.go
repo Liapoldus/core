@@ -101,6 +101,9 @@ func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 func (store FilesystemStore) Versions(site string) ([]models.Release, error) {
 	root := filepath.Join(store.root, store.layout.Sites, site, store.layout.Releases)
 	entries, err := os.ReadDir(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []models.Release{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +119,34 @@ func (store FilesystemStore) Versions(site string) ([]models.Release, error) {
 		versions = append(versions, models.Release{ID: id})
 	}
 	return versions, nil
+}
+
+func (store FilesystemStore) Current(site string) (models.Release, error) {
+	return store.pointer(site, store.layout.Current)
+}
+
+func (store FilesystemStore) Previous(site string) (models.Release, error) {
+	return store.pointer(site, store.layout.Previous)
+}
+
+func (store FilesystemStore) pointer(site, pointerName string) (models.Release, error) {
+	siteRoot := filepath.Join(store.root, store.layout.Sites, site)
+	target, err := os.Readlink(filepath.Join(siteRoot, pointerName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return models.Release{}, nil
+	}
+	if err != nil {
+		return models.Release{}, err
+	}
+	cleanTarget := filepath.Clean(target)
+	revision := filepath.Base(cleanTarget)
+	if cleanTarget != filepath.Join(store.layout.Releases, revision) {
+		return models.Release{}, fs.ErrInvalid
+	}
+	if _, err = os.Stat(filepath.Join(siteRoot, cleanTarget)); err != nil {
+		return models.Release{}, err
+	}
+	return models.Release{ID: revision}, nil
 }
 
 func (store FilesystemStore) lock(site string) func() {

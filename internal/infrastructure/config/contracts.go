@@ -45,6 +45,8 @@ type CLIWords struct {
 	Site struct {
 		Publish  string `yaml:"publish"`
 		Rollback string `yaml:"rollback"`
+		Current  string `yaml:"current"`
+		Previous string `yaml:"previous"`
 	} `yaml:"site"`
 	Flags struct {
 		Output       string `yaml:"output"`
@@ -143,6 +145,8 @@ type CLIWords struct {
 		AccountsRevoke string `yaml:"accountsRevoke"`
 		SitePublish    string `yaml:"sitePublish"`
 		SiteRollback   string `yaml:"siteRollback"`
+		SiteCurrent    string `yaml:"siteCurrent"`
+		SitePrevious   string `yaml:"sitePrevious"`
 	} `yaml:"display"`
 	Identifiers struct {
 		RequestPrefix string `yaml:"requestPrefix"`
@@ -162,7 +166,8 @@ type CLIWords struct {
 		Entry   string `yaml:"entry"`
 	} `yaml:"diff"`
 	Text struct {
-		OK string `yaml:"ok"`
+		OK   string `yaml:"ok"`
+		Null string `yaml:"null"`
 	} `yaml:"text"`
 	Diagnostics struct {
 		CommandExpected      string `yaml:"commandExpected"`
