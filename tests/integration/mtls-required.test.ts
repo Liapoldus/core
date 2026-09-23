@@ -11,6 +11,8 @@ import { startGateway } from "../support/gateway.js";
 import { freeAddress, writeGatewayConfig } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
+const managementToken = "mtls-management-test-token";
+const managementEnvironment = { LIAPOLDUS_TEST_MTLS_MANAGEMENT_TOKEN: managementToken };
 const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
@@ -28,6 +30,8 @@ async function requestTLS(
   address: string,
   ca: string,
   client?: { certificate: string; key: string },
+  path = "/",
+  authorization?: string,
 ): Promise<{ status: number; body: string }> {
   const port = Number(address.slice(address.lastIndexOf(":") + 1));
   return new Promise((resolve, reject) => {
@@ -35,11 +39,12 @@ async function requestTLS(
       hostname: "127.0.0.1",
       servername: "localhost",
       port,
-      path: "/",
+      path,
       method: "GET",
       ca: readFileSync(ca),
       cert: client ? readFileSync(client.certificate) : undefined,
       key: client ? readFileSync(client.key) : undefined,
+      headers: authorization ? { Authorization: authorization } : undefined,
     }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
@@ -106,6 +111,7 @@ describe("mTLS required golden vector", () => {
     ]);
 
     const address = await freeAddress();
+    const managementAddress = await freeAddress();
     const config = await writeGatewayConfig([
       "tlsProfiles:",
       "  public:",
@@ -119,8 +125,11 @@ describe("mTLS required golden vector", () => {
       `    address: ${address}`,
       "    tls: public",
       "    routes: []",
+      "management:",
+      `  listener: { address: ${managementAddress}, tlsProfile: public }`,
+      "  staticToken: env:LIAPOLDUS_TEST_MTLS_MANAGEMENT_TOKEN",
     ].join("\n"));
-    const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+    const gateway = await startGateway(["--config", config, "serve"], managementEnvironment);
     gateways.push(gateway);
 
     let validCertificateResponse: { status: number; body: string } | undefined;
@@ -135,9 +144,20 @@ describe("mTLS required golden vector", () => {
       }
     }
     expect(validCertificateResponse, String(lastConnectionError)).toMatchObject({ status: 404 });
+    const authorizedManagementResponse = await requestTLS(
+      managementAddress,
+      caCertificate,
+      { certificate: clientCertificate, key: clientKey },
+      "/api/status",
+      `Bearer ${managementToken}`,
+    );
+    expect(authorizedManagementResponse.status).toBe(200);
 
     const missingCertificateResponse = await requestTLS(address, caCertificate);
     expect(missingCertificateResponse.status).toBe(vector.expected.status);
     expect(JSON.parse(missingCertificateResponse.body)).toMatchObject({ code: vector.expected.code });
+    const missingManagementCertificateResponse = await requestTLS(managementAddress, caCertificate, undefined, "/api/status");
+    expect(missingManagementCertificateResponse.status).toBe(vector.expected.status);
+    expect(JSON.parse(missingManagementCertificateResponse.body)).toMatchObject({ code: vector.expected.code });
   }, 60_000);
 });
