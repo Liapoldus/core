@@ -19,6 +19,7 @@ type WAFRuntime struct {
 	mu                      sync.RWMutex
 	generation              *runtimeGeneration
 	providerProblem         models.Problem
+	mtlsRequired            models.Problem
 	bodyTooLarge            models.Problem
 	headerTooLarge          models.Problem
 	pluginResourceExhausted models.Problem
@@ -41,6 +42,14 @@ func NewWAFRuntime(graph models.CompiledGraph, lookup interfaces.GeoLookup, prov
 
 func (runtime *WAFRuntime) BodyTooLargeProblem() models.Problem {
 	return runtime.bodyTooLarge
+}
+
+func (runtime *WAFRuntime) SetMTLSRequiredProblem(problem models.Problem) {
+	runtime.mtlsRequired = problem
+}
+
+func (runtime *WAFRuntime) MTLSRequiredProblem() models.Problem {
+	return runtime.mtlsRequired
 }
 
 func (runtime *WAFRuntime) SetHeaderTooLargeProblem(problem models.Problem) {

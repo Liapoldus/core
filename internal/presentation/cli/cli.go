@@ -617,6 +617,11 @@ func serve(options options) int {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	mtlsRequiredProblem, exists := errorCatalog.Lookup(managementWords.Codes.MTLSRequired)
+	if !exists {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	rateLimitedProblem, exists := errorCatalog.Lookup(words.Codes.RateLimited)
 	if !exists {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -625,6 +630,7 @@ func serve(options options) int {
 	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
 	defer func() { dataProviders.Close() }()
 	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, bodyTooLargeProblem, managementWords.ContentTypes.Problem)
+	wafRuntime.SetMTLSRequiredProblem(mtlsRequiredProblem)
 	wafRuntime.SetHeaderTooLargeProblem(headerTooLargeProblem)
 	wafRuntime.SetRequestIDHeader(observabilityWords.Logging.AccessFields.RequestIDHeader)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
@@ -724,6 +730,7 @@ func serve(options options) int {
 			return words.Exits.Validation
 		}
 		management.TLSConfig = tlsConfig
+		management.RequireClientCertificate = profile.ClientAuth.Required
 	}
 	if raw, readErr := os.ReadFile(path); readErr == nil {
 		management.Config = string(raw)

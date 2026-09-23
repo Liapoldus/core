@@ -119,6 +119,7 @@ codes:
   registryUnavailable: registry_unavailable
   noPreviousRelease: no_previous_release
   releaseRevisionConflict: release_revision_conflict
+  mtlsRequired: mtls_required
 pagination:
   limitDefault: 50
   limitMax: 100

@@ -434,6 +434,20 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			writer.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
+		profile, hasTLSProfile := generation.graph.TLSProfiles[activeListener.TLSProfile]
+		if hasTLSProfile && profile.ClientAuth.Required && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
+			problem := wafRuntime.MTLSRequiredProblem()
+			if problem.Status == 0 {
+				writer.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			problem.Instance = request.URL.Path
+			problem.RequestID = request.Header.Get(wafRuntime.RequestIDHeader())
+			writer.Header().Set("Content-Type", wafRuntime.ProblemContentType())
+			writer.WriteHeader(problem.Status)
+			_ = json.NewEncoder(writer).Encode(problem)
+			return
+		}
 		var requestSize uint64
 		if activeListener.Limits.Enabled {
 			var tooLarge bool
@@ -1185,11 +1199,9 @@ func loadTLSConfig(profile models.TLSProfile) (*tls.Config, error) {
 			return nil, errors.New("invalid client ca")
 		}
 		config.ClientCAs = pool
-		if profile.ClientAuth.Mode == "require" {
-			config.ClientAuth = tls.RequireAndVerifyClientCert
-		} else {
-			config.ClientAuth = tls.VerifyClientCertIfGiven
-		}
+		// Verify any supplied certificate during the handshake; the HTTP layer
+		// applies the required/optional policy and can return a typed problem.
+		config.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 	return config, nil
 }

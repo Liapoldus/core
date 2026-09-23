@@ -1,6 +1,7 @@
 package models
 
 type ClientAuth struct {
-	Mode string
-	CA   string
+	Mode     string
+	CA       string
+	Required bool
 }

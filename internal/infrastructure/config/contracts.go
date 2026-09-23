@@ -313,6 +313,7 @@ type ManagementWords struct {
 		RegistryUnavailable     string `yaml:"registryUnavailable"`
 		NoPreviousRelease       string `yaml:"noPreviousRelease"`
 		ReleaseRevisionConflict string `yaml:"releaseRevisionConflict"`
+		MTLSRequired            string `yaml:"mtlsRequired"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz        string `yaml:"healthz"`

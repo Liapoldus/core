@@ -59,6 +59,7 @@ type Server struct {
 	Errors       config.ErrorCatalog
 	SiteSources  map[string]models.Site
 	TLSConfig    *tls.Config
+	RequireClientCertificate bool
 	contractOnce sync.Once
 }
 
@@ -171,6 +172,10 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "requestId": requestID})
+		return
+	}
+	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
+		server.writeCatalogProblem(response, server.Management.Codes.MTLSRequired, requestID)
 		return
 	}
 	actor, authorized := server.authenticate(request.Header.Get("Authorization"))

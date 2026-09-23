@@ -1602,6 +1602,7 @@ func collectTLSProfiles(node *yaml.Node, words runtimeWords, profiles map[string
 		if clientAuth := mappingNode(body, words.TLSProfile.ClientAuth); clientAuth != nil {
 			profile.ClientAuth.Mode, _ = fieldValue(clientAuth, words.ClientAuth.Mode)
 			profile.ClientAuth.CA, _ = fieldValue(clientAuth, words.ClientAuth.CA)
+			profile.ClientAuth.Required = profile.ClientAuth.Mode == words.ClientAuth.Require
 		}
 		profiles[name.Value] = profile
 	}
