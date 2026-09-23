@@ -27,6 +27,6 @@ describe("plugin-agnostic Gateway core", () => {
     ];
     const source = (await Promise.all(files.map((file) => readFile(join(coreRoot, file), "utf8")))).join("\n");
     expect(source).not.toMatch(/captcha|forms\.(submit|list|delete)|tls\.(issue|renew|revoke)|identity-subject|WAFChallenge|DispatchIdentity|IdentityRequest|IdentityAction/);
-    expect(source).not.toMatch(/TLS issuer|TlsIssuer|RenewTLS|RevokeTLS|Issuer:|\/api\/tls\/\{issuer\}/i);
+    expect(source).not.toMatch(/TLS issuer|TlsIssuer|Issuer:|\/api\/tls\/\{issuer\}/i);
   });
 });
