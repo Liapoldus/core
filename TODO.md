@@ -9,6 +9,69 @@ CI обязана выполнять полный TypeScript-набор, `go tes
 Legacy framing удалён; раздел ниже фиксирует переход на gRPC внутри plugin
 protocol v1 и оставшиеся runtime-задачи.
 
+Проверка 2026-09-23 после plugin-agnostic refactor: `make check` прошёл
+(`go build ./...`, 59 TypeScript-файлов / 196 тестов, Docker architecture lint),
+`go vet ./...` прошёл, VitePress build прошёл. Это не закрывает оставшуюся
+semantic conformance проверку всех Gateway golden vectors против runtime.
+
+## V1: cookie boundary и remote plugin mode (проектирование завершено)
+
+Обе возможности ниже описаны как план Gateway v1 в канонических страницах
+документации:
+[`gateway/architecture/cookies`](https://liapoldus.github.io/gateway/architecture/cookies)
+и
+[`gateway/architecture/plugin-deployment`](https://liapoldus.github.io/gateway/architecture/plugin-deployment).
+Runtime реализации ещё нет, кроме частичного response `Set-Cookie` passthrough
+и обычного cookie forwarding через HTTP proxy. До начала соответствующей
+реализации сначала добавить red TS-тесты в отдельные `tests/` каталоги и
+зафиксировать wire/schema-контракт в `pluginprotocol`; не вносить plugin-specific
+типы/ветви в Gateway core.
+
+### Cookies
+
+- [ ] В pluginprotocol закрепить typed request-cookie context и typed response
+  cookie actions. В HTTP headers `Cookie` и `Set-Cookie` не дублировать.
+- [ ] В core config расширить generic plugin capability context allow-list имен
+  cookies; отсутствующий/пустой список не передаёт cookie. WAF-context всегда
+  остаётся без cookie.
+- [ ] Сохранять многострочный `Set-Cookie` без объединения; атомарно валидировать
+  весь response до записи headers/body.
+- [ ] Валидировать name/value, CRLF/control chars, `SameSite=None; Secure`,
+  `__Host-`/`__Secure-` constraints, deletion/expiry и конфликт между typed
+  actions и generic response headers.
+- [ ] Задать versioned предел числа actions и сериализованного размера; ошибка
+  при превышении до частичного ответа.
+- [ ] Добавить end-to-end cookie round-trip для обычной и `HttpOnly` cookie,
+  CORS credentials cases и тесты редактирования logs/traces/audit/errors.
+
+### Remote plugin connection
+
+- [ ] В pluginprotocol описать typed launch/connection modes, remote endpoint
+  TLS credentials, fixed-address semantics и mTLS GrantBroker callback; не
+  менять protobuf capability payloads или protocol namespace v1.
+- [ ] В Gateway schema закрепить mutually exclusive tagged union `local` /
+  `remote`; старые локальные конфиги остаются default/валидны, remote без TLS и
+  неполные certificate references отвергаются.
+- [ ] Реализовать TLS verification по CA + server SAN и взаимную проверку
+  сертификата для межмашинного remote production mode; никаких insecure
+  fallback/downgrade.
+- [ ] Сохранить handshake, health, Call, Stream, capability allow-list,
+  deadlines, backpressure, cancellation и redaction одинаковыми в обоих режимах.
+- [ ] В remote mode не запускать process, не вызывать process Shutdown и не
+  обещать RSS/process restart controls; disconnect управляется transport health,
+  restart — внешней средой.
+- [ ] Сделать remote GrantBroker доступным только по внутренней mTLS-сети;
+  доказать тестом привязку redemption к живому Call/capability/purpose/domain и
+  запрет выдачи по чужому/истёкшему handle.
+- [ ] Добавить real gRPC TLS integration test, Compose/Kubernetes examples,
+  certificate rotation/failure cases, reconnect и atomic config activation.
+- [ ] Проверить Linux/macOS, `go vet ./...`, `go build ./...`, полный
+  TypeScript suite, `make check`, pluginprotocol conformance и VitePress build.
+
+Gateway runtime остаётся plugin-agnostic: конфигурация создаёт generic instance
+только когда администратор его подключает. Core не содержит знаний о названиях
+plugins, их capabilities/settings schema, image/ports или предметных cookies.
+
 This is the execution order. Every checkbox is test-first: commit a failing
 TypeScript test under `tests/` before the implementation that satisfies it.
 
@@ -20,9 +83,22 @@ TLS/mTLS, L4 listeners, management API, secret resolution, service accounts,
 metrics, gzip, SPA fallback, rewrite captures и route/plugin actions.
 Архитектурный lint сейчас завершается `OK - No warnings found`.
 
-Оставшийся acceptance-gap: семантическое исполнение всех 50 golden vectors
+Оставшийся acceptance-gap: семантическое исполнение всех 51 golden vectors
 против runtime; сейчас проверяются manifest/checksums, структура и уникальность
 векторов, а runtime-сценарии покрываются отдельными integration suites.
+
+После включения OTLP metrics/tracing и access logging для data-plane и
+Management API последняя проверка прошла `go build ./...`, `go vet ./...` и
+Vitest: 51 TypeScript-файл / 182 теста. `make check` остановился на Docker
+architecture lint с `error waiting for container: unexpected EOF` при запуске
+amd64-образа на arm64-хосте; полный gate этим запуском не подтверждён. Предыдущий
+успешный прогон lint/race/Linux build был до последних изменений логирования.
+`npm run build` документации после обновления logging contract прошёл.
+Во время Docker-сбоя оставалось около 118 MiB, после проверки документации —
+около 349 MiB свободного места; системные данные не удалялись.
+Поле `duration` в JSON access record закреплено как число секунд с дробной
+частью; семантика добавлена в HTTP runtime contract и проверяется с задержанным
+upstream.
 
 Audit JSONL реализован для config reload: записи переживают перезапуск Gateway,
 `/api/audit` читает их из `${registry.path}/audit/YYYY-MM-DD.jsonl`, применяет
@@ -32,8 +108,9 @@ runtime использует каталог `registry` рядом с актив�
 `management.staticToken` записывается как `static-token`; service account — по
 ID. Успешные и неуспешные `config.reload` и `config.update` записываются вместе
 с request ID и digest до/после; истёкшие файлы удаляются при чтении. Успешная
-публикация записывает action `site_published` без source path. Остаётся добавить
-audit для rollback и остальных mutating Management API операций. E2E regression
+публикация записывает action `site_published`, успешный и неуспешный вызов rollback —
+`site_rolled_back`; source path не записывается. Остаётся добавить audit для
+остальных mutating Management API операций. E2E regression
 проверяет append, restart, retention и отсутствие credential в ответе в
 `tests/integration/audit-persistence.test.ts`.
 
@@ -76,10 +153,6 @@ references are
 - Multiple HTTP listeners are not served: `serve` (serve.go:21-25) `return`s on
   the first `IsHTTP` listener, so only the first listener binds; additional
   listeners are silently ignored.
-- Route actions `deny`/`plugin`/`auth`/`waf`/`challenge`/`rateLimit`/`cors`/
-  `compression`/`cache` are ignored by `collectRoutes`: config validates but the
-  route behaves as empty → `deny:` serves 404 instead of 403, plugin routes
-  never dispatch. Needs a decision: reject at compile (strict) or implement.
 - `management.serviceAccounts` are validated (schema: `id`+`role:
   platform-admin`+`keyHash: file:`) but unused: the adapter authenticates
   staticToken only. Accounts create/rotate/revoke work and match the API (keys
@@ -208,20 +281,23 @@ references are
   atomically and a failed publish leaves both pointers unchanged.
 - Management publish E2E is backed by the filesystem registry and now matches
   `PublishRequest.additionalProperties: false`: unknown JSON properties and
-  trailing JSON values return 400. Idempotency entries are bounded by pruning
-  expired records on new publish requests. Persistence across Gateway restart
-  remains an explicit product decision; the docs specify a 24 h retry window
-  but not restart behavior. Rollback response shape also conflicts between the
-  OpenAPI `Publication` schema and generic operation-reference wording in
-  `gateway/api/operations.md`; do not choose one until clarified. The
+  trailing JSON values return 400. Publish and rollback require
+  `expectedCurrentRevision`; the filesystem registry compares it and switches
+  release pointers under the same site lock. Stale requests return typed
+  `release_revision_conflict` details without changing pointers. Publish and
+  rollback retries are idempotent for the 24 h in-process window, and operation
+  responses expose a distinct operation ID plus the resulting release revision.
+  `GET /api/sites` now reports sorted live current/previous revisions and never
+  returns directory source paths. Persistence across Gateway restart remains an
+  explicit product decision; the docs specify a 24 h retry window but not
+  restart behavior. The
   Management API rollback error and CLI `rollback-missing` are covered by
   child-process E2E; CLI publish/release response and directory-source rejection
-  now have child-process coverage. CLI success idempotency and management
-  rollback idempotency/audit remain incomplete. A repeated publish now reuses
-  the original body and `X-Request-ID` as required by `sameResponse`.
-  `GET /api/sites` still returns an empty list because the contract does not
-  define the `state` mapping for an unpublished release; implementation awaits
-  that decision. CLI publish does
+  now have child-process coverage. Durable idempotency across
+  process restart remain incomplete. A repeated publish/rollback reuses its
+  original operation response and `X-Request-ID` as required by `sameResponse`.
+  Site state is `ready` for a valid configured site and `invalid` when a release
+  pointer cannot be inspected. CLI publish does
   not yet accept `--idempotency-key`; implement after deciding whether the
   documented 24 h deduplication must survive process restart. `site current`
   and `site previous` now read and validate the release pointers and return
@@ -274,8 +350,9 @@ references are
   `CompileGateway` rejects any route whose `then` carries more than one
   terminal action as `config_invalid` (exit 3). The runtime now compiles the
   `site`, `proxy`, `redirect`, `deny` and `plugin` route actions; plugin dispatch
-  still requires a supervisor-provided capability map. The route-level
-  `challenge` action is not compiled yet. WAF поддерживает path, method, прямой
+  still requires a supervisor-provided capability map. Generic WAF plugin
+  actions dispatch an arbitrary configured capability and apply its typed
+  continuation/HTTP-response result. WAF поддерживает path, method, прямой
   source-IP/CIDR, header, query и Geo/ASN country/city/ASN matcher-ы с действиями
   allow/deny/limit. MMDB-reader проверяется перед reload; новая конфигурация и
   WAF/MMDB-поколение меняются только после успешной подготовки, при ошибке
@@ -291,7 +368,7 @@ references are
   совпадение уже проверяется в `tests/integration/actions.test.ts`; остаётся
   успешный MMDB replacement integration-тест с изменившимся содержимым базы,
   matcher `connectionAge`, request-size matcher для L4, согласование HTTP route
-  matcher-ов и challenge. HTTP WAF `requestSize` реализован как фактический
+  matcher-ов. HTTP WAF `requestSize` реализован как фактический
   размер тела после снятия transfer framing; chunked учитывается, тело
   сохраняется для downstream, а `listener.limits.bodyBytes` ограничивает
   чтение до диспетчеризации. Семантика описана в
@@ -304,22 +381,13 @@ references are
   CORS preflight теперь проходит terminal только при разрешённых Origin и
   `Access-Control-Request-Method`; несовпадающий запрос продолжается обычным
   маршрутом и покрыт TS integration-тестом.
-  Проверку взаимоисключения terminal actions нужно расширить при реализации
-  route-level challenge.
-- Schema bug: `$defs.tlsProfile.certificates.items` had
-  `additionalProperties: false` as a sibling of `oneOf`, rejecting every
-  certificate entry regardless of the `cert`+`key` or `domains`+`issuer` branch
-  (both listed required keys are siblings of the requirement that the object
-  allow no additional properties, so schema validation of any TLS-bearing
-  config failed as `config_invalid` before semantic rules could run). Fixed
-  canonical `liapoldus.github.io/public/spec/gateway.schema.json` and the
-  mirrored copy `assets/contracts/gateway.schema.json`: `additionalProperties:
-  false` now sits inside each `oneOf` item. Verified with the exact validator
-  ordered by the Go dependency (`santhosh-tekuri/jsonschema/v6`) that `cert`+`key`,
-  `domains`+`issuer`, and `clientAuth: {mode: require}` all validate. The
-  `cert`+`key` form is exercised by the config-semantics tests
-  (`management_mtls_required`, `management-remote-valid`). Fixed after a User
-  decision (fix canonical + copy).
+- Schema bug: `$defs.tlsProfile.certificates.items` previously misplaced
+  `additionalProperties: false` next to `oneOf`, rejecting valid certificate
+  entries. The schema was corrected and verified with the Go JSON Schema
+  validator. Gateway v1 now accepts explicit `cert`+`key` material only;
+  certificate issuance/provider settings were removed from the Gateway contract
+  so they can be owned by a separately connected integration. `clientAuth:
+  {mode: require}` remains Gateway transport security.
 - Runtime word binding bug (round 2): `yaml.v3` lowercases untagged struct
   field names, so the camelCase runtime words never bound and management
   semantics mis-fired: `runtimeWords.SiteRedirect`/`SiteCache`/`TLSProfile`/
@@ -400,8 +468,12 @@ references are
   protection, SPA conditions, locales, ETag, conditional and range requests.
 - [X] Reverse proxy: health checks, DNS/static targets, balancing, retries,
   forwarded headers and WebSocket upgrade.
-- [X] Filesystem registry: staged immutable publish, locking/recovery,
-  atomic current/previous changes, retention, rollback and idempotency.
+- [X] Filesystem registry: staged immutable publish, in-process site
+  serialization, cross-process advisory lock, active-lock rejection,
+  dead-owner/expired-lease recovery, recovery audit, atomic current/previous
+  changes, retention and rollback. TS child-process E2E verifies active and
+  stale metadata, unchanged pointers on conflict, recovery audit, and an actual
+  OS lock held by a separate process.
 
 ## 3. Management and observability
 
@@ -409,15 +481,35 @@ references are
   remote TLS + mTLS enforcement.
 - [X] All documented Management API resources, cursor pagination, operations,
   audit records, config `If-Match` and secret-safe responses.
-- [X] JSON logs, Prometheus, OTLP tracing/metrics, exporter-failure isolation
-  and retention.
+- [X] Prometheus exposition and periodic OTLP/HTTP protobuf metrics export.
+  Collector failures leave HTTP requests unaffected, increment the local
+  `liapoldus_otel_export_failures_total` counter and emit a generic JSON warning
+  without logging the endpoint or transport error.
+- [X] Emit configured JSON access records for data-plane and Management API
+  responses to stdout/stderr, excluding query strings and request headers,
+  counting response bytes after content encoding, and correlating request IDs.
+- [X] Finalize the JSON access-record `duration` representation as fractional
+  seconds measured from Gateway handler entry until its return after response
+  writes. The child-process test uses a delayed upstream to distinguish seconds
+  from milliseconds and also verifies structured fields, IDs, wire bytes, and
+  exclusion of query/header secrets.
+- [X] Route OTLP metrics/tracing exporter warnings to `logging.application`
+  sinks, defaulting to `stderr`; an E2E test selects `stdout` and verifies the
+  message is routed there without exposing the collector address. Empty sink
+  lists are rejected by the configuration schema.
+- [X] Export HTTP server spans over OTLP/HTTP protobuf, extract/inject W3C Trace
+  Context, propagate child context to HTTP upstreams, and apply all configured
+  `parent-based`, `always-on`, and `always-off` sampling modes. Spans omit query,
+  headers, body and exporter endpoint. Process-level TS tests verify sampled and
+  unsampled parents and upstream span ID propagation.
 
 ## 4. Security, TLS and L4
 
 - [X] TLS profiles/storage/reload, certificate selection and mTLS runtime
   operation lifecycle.
-- [X] Implement generic identity-plugin dispatch after the external identity
-  plugin is delivered; OIDC/OAuth and JWT/JWKS are not Gateway core features.
+- [X] Bind route auth policies to arbitrary configured plugin capabilities via
+  the common HTTP capability dispatcher. Core does not interpret tokens,
+  claims, sessions, or provider-specific identity settings.
 - [X] TCP and UDP listener/rule engines, upstream
   relays, flow limits and graceful shutdown.
 
@@ -441,7 +533,7 @@ references are
   query conditions gate policy actions with AND semantics and the socket peer
   address.
 
-- [ ] Execute all 50 current documentation golden vectors semantically against
+- [ ] Execute all 51 current documentation golden vectors semantically against
   runtime on macOS/Linux. `http3-bind` is now exercised end-to-end, including
   TLS, shared TCP/UDP port and an HTTP/3 request; `audit-retention` is verified
   through the authenticated Management API; `publish-idempotent` is verified
@@ -451,18 +543,81 @@ references are
   `release-retention` is verified by three real child-process Management API
   publishes, current/previous pointers, removal of the oldest release, and
   exactly three `site_published` audit records. CLI release retention is also
-  independently covered. 44 vectors remain.
-- [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
-  defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
-  while `security-runtime.json` describes listener `connections`,
-  `bytesPerSecond` and idle timeout; reconcile the limit mapping before claiming
-  full QUIC-limit conformance.
-- [ ] Resolve `plugin-startup-order` timeout mismatch before marking the vector
-  conformant: `contracts/v1/golden-vectors.json` expects `10s`,
-  `gateway/architecture/protocol.md` names `startTimeout`, but
-  `public/spec/gateway.schema.json` and `assets/contracts/config-fields.yaml`
-  expose no separate field; core currently reuses `limits.timeout` for
-  handshake and Calls. Await a user decision on a separate startup timeout.
+  independently covered. The `spa-fallback` and `spa-asset-miss` vectors now
+  run against a real Gateway child process; missing assets return the
+  catalogued `route_not_found` problem. `static-etag-not-modified`,
+  `static-range-single`, and `static-range-unsatisfiable` now use catalog values
+  in real Gateway child-process tests. `static-path-traversal` is sent as a raw
+  encoded HTTP path and returns the catalogued problem. `publish-stale-release-revision`,
+  release revision CAS, and concurrent publish conflict are verified against a
+  real Gateway child process. `locale-prefixed` and `locale-unprefixed` are
+  exercised through actual filesystem resolution; `locale-invalid-default` is
+  bound to semantic config validation. Unprefixed paths use `defaultLocale`
+  without redirect or `Accept-Language` negotiation. `compression-qvalue` is
+  verified against a 1024-byte static response and actual response headers.
+  `cors-preflight` checks the catalogued status/header and proves the upstream
+  terminal was not called. `rate-limit` now verifies the RFC 9457 error body,
+  `Retry-After`, and that the exhausted request never reaches upstream.
+  `body-limit` now sends the documented first byte beyond 10 MiB to a real
+  Gateway process and checks the catalogued RFC 9457 code and status.
+  `waf-limit` is now asserted alongside `rate-limit` in the exhausted named
+  token-bucket integration case, including the catalogued status and Problem
+  code before proxy dispatch.
+  `cli-config-discovery` now verifies both the resolved `gateway.yaml` path
+  and the exact `LIAPOLDUS_CONFIG_DIR` source value; the obsolete generic
+  `environment-directory` label was removed from the CLI contract assets.
+  `cli-config-missing` now binds the no-source case to the vector's exit code
+  and error code.
+  `release-symlink` now publishes a valid baseline, attempts a real Management
+  API publish containing a symlink escape, and verifies `release_invalid`, an
+  unchanged current pointer, and no copied target or source path in the reply.
+  `telemetry-export-failure` and `metrics-exporter-isolation` now use a real
+  process to prove HTTP remains healthy when an OTLP collector is unavailable,
+  failure is locally counted/logged without endpoint details, and a healthy
+  collector receives non-empty OTLP/HTTP protobuf at `/v1/metrics`.
+  `geo-provider-failure-deny` verifies fail-closed status and catalogued code
+  when the MMDB cannot be opened. `proxy-websocket` now passes through a real
+  WebSocket echo upgrade. `header-limit` now enforces the configured HTTP/1
+  header threshold and returns the catalogued RFC 9457 `header_too_large`
+  response in a real child-process test. `publish-lock-active`
+  now verifies `409 publish_in_progress`, stable pointers and both metadata-held
+  and OS-held locks; `publish-lock-recovery` verifies a stale PID is recovered,
+  the publish proceeds and `publish_lock_recovered` is audited.
+  `directory-manifest-reload` now passes a real Gateway child-process test:
+  changing only directory `site.yaml` preserves the old manifest until
+  `/api/reload`, then new requests use the recompiled snapshot.
+  `proxy-forwarding` now verifies a real HTTPS child-process request, including
+  spoofed forwarding-header replacement, hop-by-hop stripping, upstream Host,
+  scheme and listener-port propagation. `udp-upstream-protocol` now verifies an
+  opaque UDP datagram reaches a real upstream and returns byte-for-byte intact.
+  `plugin-stream-tcp-bytes` now sends the documented binary payload through a
+  real TCP listener into the child plugin and verifies exact bytes.
+  `mtls-required` verifies catalogued HTTP 401 on public HTTPS and the
+  Management API without a client certificate, and confirms valid certificates
+  continue through both listeners. `plugin-stream-udp-datagram` now sends the
+  vector's exact bytes and a second independent datagram through real Gateway
+  child-process plugin streams, checking raw-byte preservation in both.
+  `tcp-plugin-protocol` now drives the vector's exact bytes through the
+  `peer.session` capability over a child-process Gateway TCP listener. The
+  `plugin-memory-limit` vector now drives the fixture's RSS and configured limit
+  exactly; 12 vectors remain semantically incomplete.
+- [X] Enforce all `listener.limits.quic` fields for HTTP/3. `maxConnections`
+  caps simultaneous established QUIC connections, `maxStreams` caps concurrent
+  incoming bidirectional streams, `idleTimeout` closes an inactive HTTP/3
+  connection at the configured duration, and `maxPacketBytes` caps outgoing
+  UDP datagrams at the configured byte limit through the maintained local
+  quic-go v0.62.0 patch. TS child-process tests exercise each behavior. Generic
+  listener `connections`/`bytesPerSecond` limits remain independent.
+- [X] Resolve `plugin-startup-order` timeout mismatch: add independent
+  `plugins.<instance>.limits.startTimeout` (default `10s`) for endpoint dialing
+  and the complete startup handshake; keep `limits.timeout` (default `5s`) for
+  Calls. Schema, config compiler, runtime and protocol/configuration docs agree;
+  a delayed child-process fixture verifies that startup expires independently.
+- [X] Resolve the invalid-client-certificate outcome mismatch: missing client
+  certificate returns the catalogued HTTP `401 mtls_required`; an invalid
+  presented certificate fails TLS verification before HTTP and receives no HTTP
+  response. This is recorded in `public/spec/security-runtime.json` and the
+  Gateway security/authentication pages.
 - [X] Pass race, malformed-input, shutdown/recovery and no-secret regression
   suites on the current CI host.
 - [X] Build and smoke-test the Docker image; ensure GitHub Actions reports all
@@ -487,8 +642,19 @@ TCP-loopback. Целевой контракт описан в
   добавить typed control RPCs `Manifest`, `ConfigSchema`, `ConfigApply`,
   `Shutdown`, стандартный `grpc.health.v1`, unary `Call` и bidi `Stream`.
 - [X] Сохранить JSON contracts и Gateway dispatch types `HTTPRequest`,
-  `L4Request`, `IdentityRequest`, `RequestContext`, grants и redaction; не
+  `L4Request`, `RequestContext`, grants и redaction; не
   переносить Gateway process supervision/policy в протокол.
+- [X] Зафиксировать typed L4 lifecycle в `pluginprotocol` v1: TCP использует
+  один `Stream` на connection, UDP — один `Stream` на datagram; Open несёт
+  ограниченный JSON context, Data — raw bytes и направление, Close — typed
+  outcome. Единственный источник — `pluginprotocol/proto/.../service.proto` и
+  `contracts/protocol/v1/stream-open-context.schema.json`; docs больше не
+  дублируют старые `Frame/Envelope` encoding.
+- [X] Перевести L4 dispatch на typed bidi Stream без изменения public JSON
+  `L4Request`/`L4Response`: TCP открывает один stream на connection, UDP — один
+  lifecycle на datagram; cancellation закрывает клиентский socket/stream,
+  ответы проверяются по direction/Close code, message size и RSS limits
+  сохраняются. Child-process E2E проверяет TCP dispatch и UDP raw bytes.
 - [X] Включить standard gRPC reflection на plugin loopback endpoint для
   `grpcurl`; Constructor ↔ Gateway control plane оставить REST.
 - [X] Добавлять отдельные TS red-test commits перед каждым protocol/core
@@ -505,9 +671,8 @@ TCP-loopback. Целевой контракт описан в
   behavior; синхронно обновить source docs, `contracts/v1/manifest.json` и
   contract checksum.
 - [X] Добавить TypeScript integration suite с реальным child-process gRPC
-  plugin: handshake, health, unary Call, HTTP/TCP dispatch, secret redaction и
-  штатный shutdown. Bidi Stream пока покрыт на уровне protocol suite, не через
-  Gateway child-process fixture.
+  plugin: handshake, health, unary Call, HTTP/TCP/UDP dispatch, L4 bidi Stream,
+  secret redaction и штатный shutdown.
 - [X] Проверить grpcurl reflection и health на реальном gRPC fixture;
   `list`/`describe` возвращают health, reflection и `PluginService` v1.
 - [X] Проверить restart/backoff после падения дочернего процесса через child-process E2E.
@@ -518,35 +683,56 @@ TCP-loopback. Целевой контракт описан в
 - [X] Добавить protobuf/JSON conformance CI; переключить core protocol adapter
   на v1 gRPC transport API с local sibling-module replace.
 - [X] Подключить process supervisor, startup handshake, loopback endpoint
-  handoff по pluginprotocol launch contract, settings/config apply и HTTP/L4/
-  identity dispatch к compiled plugin instances в `core`.
+  handoff по pluginprotocol launch contract, settings/config apply и generic
+  HTTP/L4 dispatch к configured plugin instances в `core`.
 - [X] Применять `limits.calls` как максимум одновременных plugin RPC на instance;
   timeout включает ожидание свободного слота и RPC.
 - [X] Подключить `restart.enabled/backoff/maxBackoff` и health probe (5 s,
   restart после 3 последовательных failures) к plugin process runtime.
-- [ ] Связать scoped storage/secret grants с process runtime. Contract gap:
-  `public/spec/plugin-contracts.json` describes only opaque grant metadata;
-  `proto/liapoldus/plugin/v1/service.proto` has no redemption/storage RPC;
-  `plugins/tls-issuer.md` promises temporary DNS-secret access, while
-  `gateway/architecture/protocol.md` prohibits raw secrets in ordinary IPC.
-  `liapoldus.github.io/public/spec/gateway.schema.json` (mirrored under
-  `assets/contracts/gateway.schema.json`) accepts grants, but
-  `collectPluginInstances` does not compile them. Wait for the product
-  decision on secret delivery and the
-  storage operation model before implementing a transport/broker boundary.
+- [X] Реализовать scoped secret grants для HTTP plugin routes: compiler
+  разрешает имена только через `plugins.<instance>.grants.secrets` и проверяет
+  наличие исходного secret; `plugin.context.secrets` выбирает grant на один
+  вызов. Gateway создаёт отдельный loopback GrantBroker на instance, передаёт
+  plugin только opaque handles в typed `CallRequest.grants`, а raw secret
+  возвращает только в `RedeemGrantResponse`. Handle связывается с capability,
+  purpose и domain scope; wrong-purpose/domain, чужая capability и отозванный
+  handle отклоняются. Secret/handle не попадают в JSON, ошибки, logs или HTTP
+  response. Протоколный contract — `pluginprotocol/proto/.../grant.proto`.
+- [X] Реализовать plugin-agnostic WAF capability boundary: правило может
+  вызвать любую capability, объявленную подключённым instance; в контекст
+  входят ограниченные request facts без Authorization/Cookie/proxy credentials.
+  Ответ — ровно одно из `continue` или типизированного HTTP response action,
+  включая отдельный список `Set-Cookie` actions. Gateway не владеет challenge,
+  token, provider, verification endpoint, cookie lifecycle или identity claims.
+- [ ] Проверить полный security lifecycle на стороне соответствующего plugin
+  repository; его capability/settings schemas и provider-specific behavior не
+  входят в контракты или runtime-код `core`.
+- [ ] Реализовать отдельно scoped storage operation model/handles; secret
+  redemption RPC не предоставляет plugin файловые пути или storage access.
+- [ ] Развивать конкретные plugin products в отдельных plugin repositories.
+  `core` принимает их только как произвольные подключённые capabilities и не
+  содержит перечня продуктов, capability names или их configuration schema.
+- [X] Проверить core child-process E2E с capability-binding и новые L4 TCP/UDP
+  Stream acceptance suites. Последний полный `make check` прошёл: 57 файлов /
+  191 тест, `go build ./...` и architecture lint `OK - No warnings found`;
+  дополнительно прошёл `go vet ./...`. Protocol `make check` прошёл:
+  24 TS-теста, generated-code gate, `go vet`, `go test -race ./...` и `go build`.
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 143 TS-теста,
-  protocol: 15 TS-тестов. Реальный core child-process acceptance покрывает
-  handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
+  На 2026-09-23: core —
+  57 TypeScript-файлов / 191 тест, protocol — 24 TypeScript-теста.
+  Architecture lint завершился `OK - No warnings found` (на macOS ARM64
+  используется Docker amd64-образ). Реальный core child-process acceptance
+  покрывает handshake/health, unary Call, HTTP/TCP/UDP dispatch, L4 bidi Stream,
+  redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →
-  `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
-  suite, но пока не Gateway fixture. HTTP/3 проходит реальный child-process
-  запрос через QUIC. `grpcurl list/describe` проверен вручную.
-  Остаются scoped grant enforcement, durable idempotency storage (decision
-  requested), аудит rollback/остальных mutating Management API операций и
-  семантический прогон 47 Gateway vectors.
+  `503 resource_exhausted` и restart после child exit. HTTP/3 проходит реальный
+  child-process запрос через QUIC. `grpcurl list/describe` проверен вручную.
+  Остаются scoped storage operation model, завершение forms-db и запуск
+  остальных plugins, durable idempotency storage (decision requested), аудит
+  остальных mutating Management API операций и
+  семантический прогон оставшихся 15 Gateway vectors.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
   опрашивается раз в секунду и после capability Call; breach останавливает
   plugin, возвращает HTTP `503 resource_exhausted`, а при включённом restart

@@ -52,13 +52,13 @@ paths:
       operationId: publishSite
       parameters: [{ $ref: '#/components/parameters/Slug' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PublishRequest' } } } }
-      responses: { '201': { description: Published, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
+      responses: { '201': { description: Published, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }, '400': { $ref: '#/components/responses/Problem' }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
   /api/sites/{slug}/rollback:
     post:
       operationId: rollbackSite
       parameters: [{ $ref: '#/components/parameters/Slug' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IdempotencyRequest' } } } }
-      responses: { '200': { description: Rolled back, content: { application/json: { schema: { $ref: '#/components/schemas/Publication' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RollbackRequest' } } } }
+      responses: { '202': { description: Rollback accepted, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }, '400': { $ref: '#/components/responses/Problem' }, '404': { $ref: '#/components/responses/Problem' }, '409': { $ref: '#/components/responses/Problem' } }
   /api/listeners:
     get:
       operationId: listListeners
@@ -134,8 +134,8 @@ components:
     Site: { type: object, required: [name, source, state], properties: { name: { type: string }, source: { enum: [release, directory] }, slug: { type: [string, 'null'] }, root: { type: [string, 'null'] }, currentRevision: { type: [string, 'null'] }, previousRevision: { type: [string, 'null'] }, state: { enum: [ready, invalid, publishing] } } }
     SiteList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Site' } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
     Publication: { type: object, required: [site, revision, previousRevision, requestId], properties: { site: { type: string }, revision: { type: string }, previousRevision: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    PublishRequest: { type: object, additionalProperties: false, required: [source, idempotencyKey], properties: { source: { type: string }, idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' } } }
-    IdempotencyRequest: { type: object, additionalProperties: false, required: [idempotencyKey], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' } } }
+    PublishRequest: { type: object, additionalProperties: false, required: [source, idempotencyKey, expectedCurrentRevision], properties: { source: { type: string }, idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' }, expectedCurrentRevision: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$', description: Current release revision, or null if the site has never been published } } }
+    RollbackRequest: { type: object, additionalProperties: false, required: [idempotencyKey, expectedCurrentRevision], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' }, expectedCurrentRevision: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$', description: Current release revision } } }
     Listener: { type: object, required: [name, type, address, state, activeConnections], properties: { name: { type: string }, type: { enum: [http, tcp, udp] }, address: { type: string }, state: { enum: [ready, draining, failed] }, activeConnections: { type: integer, minimum: 0 } } }
     ListenerList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Listener' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
     Upstream: { type: object, required: [name, targets, healthyTargets, state], properties: { name: { type: string }, targets: { type: integer }, healthyTargets: { type: integer }, state: { enum: [healthy, degraded, unavailable] } } }
@@ -145,7 +145,7 @@ components:
     LogList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { type: object } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
     Tls: { type: object, required: [profile, domain, serial, notAfter, state], properties: { profile: { type: string }, domain: { type: string }, serial: { type: string }, notAfter: { type: string, format: date-time }, state: { enum: [ready, renewing, degraded] } } }
     TlsList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Tls' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    OperationReference: { type: object, required: [operationId, requestId], properties: { operationId: { type: string }, requestId: { $ref: '#/components/schemas/RequestId' } } }
+    OperationReference: { type: object, required: [operationId, state, requestId], properties: { operationId: { type: string }, state: { type: string }, result: {}, requestId: { $ref: '#/components/schemas/RequestId' } } }
     Operation: { type: object, required: [id, state, createdAt, requestId], properties: { id: { type: string }, state: { enum: [pending, running, succeeded, failed] }, createdAt: { type: string, format: date-time }, startedAt: { type: [string, 'null'], format: date-time }, finishedAt: { type: [string, 'null'], format: date-time }, result: {}, problem: { $ref: '#/components/schemas/Problem' }, requestId: { $ref: '#/components/schemas/RequestId' } } }
     Audit: { type: object, required: [timestamp, actor, action, resource, result, requestId], properties: { timestamp: { type: string, format: date-time }, actor: { type: string }, action: { type: string }, resource: { type: string }, result: { enum: [succeeded, failed] }, requestId: { $ref: '#/components/schemas/RequestId' }, digestBefore: { type: string }, digestAfter: { type: string } } }
     AuditList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Audit' } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }

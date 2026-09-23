@@ -37,5 +37,5 @@
   "cache": "Gateway never stores response bodies. cache only emits Cache-Control for static responses and route responses. public/private require maxAge; no-store emits Cache-Control: no-store. Gateway appends Vary: Accept-Encoding only when compression is selected, Origin only when CORS reflects Origin, and never overwrites upstream Vary.",
   "compression": "Accept-Encoding q-values decide eligibility; q=0 excludes an encoding. Among equal q-values br wins over gzip. Responses below 1024 uncompressed body bytes, with existing Content-Encoding, no-transform, 1xx/204/304, Range, or Upgrade are not compressed. Selected compression emits Vary: Accept-Encoding.",
   "cors": "For an OPTIONS preflight with Origin and Access-Control-Request-Method matching configured CORS, Gateway returns 204 before terminal with Allow-Origin, Allow-Methods, Allow-Headers, optional Allow-Credentials and Max-Age. A non-matching origin does not emit CORS headers and proceeds normally.",
-  "errors": { "headerTooLarge": [431, "header_too_large"], "bodyTooLarge": [413, "body_too_large"], "routeMiss": [404, "route_not_found"], "challenge": [403, "challenge_required"] }
+  "errors": { "headerTooLarge": [431, "header_too_large"], "bodyTooLarge": [413, "body_too_large"], "routeMiss": [404, "route_not_found"] }
 }

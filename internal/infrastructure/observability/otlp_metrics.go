@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"os"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
@@ -28,7 +27,7 @@ type OTLPExporter struct {
 	logger         *JSONLogger
 }
 
-func NewOTLPExporter(endpoint, interval, scopeName, unit, exporterName, exporterLabel, failureMessage, invalidIntervalMessage string, sensitiveTerms []string, registry *Registry) (*OTLPExporter, error) {
+func NewOTLPExporter(endpoint, interval, scopeName, unit, exporterName, exporterLabel, failureMessage, invalidIntervalMessage string, registry *Registry, logger *JSONLogger) (*OTLPExporter, error) {
 	parsedInterval, err := time.ParseDuration(interval)
 	if err != nil {
 		return nil, err
@@ -52,7 +51,7 @@ func NewOTLPExporter(endpoint, interval, scopeName, unit, exporterName, exporter
 		scopeName:      scopeName,
 		unit:           unit,
 		startedAt:      time.Now(),
-		logger:         NewJSONLogger(os.Stderr, slog.LevelWarn, sensitiveTerms),
+		logger:         logger,
 	}, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -302,7 +303,14 @@ func site(options options) int {
 	} else {
 		release, err = registry.Rollback(slug)
 	}
+	if release.LockRecovered {
+		recordRegistryLockRecovery(graph.RegistryRoot, slug, requestID, graph.Revision.Digest)
+	}
 	if err != nil {
+		var lockConflict models.RegistryLockConflict
+		if errors.As(err, &lockConflict) {
+			return registryCLIFailure(options.output, words.Exits.Conflict, words.Codes.PublishInProgress)
+		}
 		if rollback && errors.Is(err, fs.ErrNotExist) {
 			return registryCLIFailure(options.output, words.Exits.NotFound, words.Codes.NoPreviousRelease)
 		}
@@ -325,6 +333,24 @@ func site(options options) int {
 		words.JSON.PreviousRevision: previousRevision, words.JSON.RequestID: requestID,
 	})
 	return words.Exits.OK
+}
+
+func recordRegistryLockRecovery(registryRoot, site, requestID, digest string) {
+	words, err := config.LoadObservability()
+	if err != nil {
+		return
+	}
+	store, err := storage.NewFilesystemAuditStore(registryRoot, words.Audit.Directory, words.Audit.Extension, words.Audit.DateLayout)
+	if err != nil {
+		return
+	}
+	service := application.AuditService{Store: store, RetentionDays: words.Audit.RetentionDays}
+	_ = service.Record(context.Background(), models.AuditRecord{
+		Timestamp: time.Now().UTC(), Actor: words.Audit.Actors.Anonymous,
+		Action: words.Audit.Actions.PublishLockRecovered, Resource: site,
+		Result: words.Audit.Results.Succeeded, RequestID: requestID,
+		DigestBefore: digest, DigestAfter: digest,
+	})
 }
 
 func writeSitePointer(output, site, revision string, current bool) {
@@ -448,13 +474,9 @@ func serve(options options) int {
 	defer func() { _ = pluginRuntime.Stop(context.Background()) }()
 	httpCapabilities := make(map[string]network.HTTPCapabilityDispatcher)
 	l4Capabilities := make(map[string]network.L4CapabilityDispatcher)
-	identityCapabilities := make(map[string]network.IdentityCapabilityDispatcher)
 	for name, capability := range pluginRuntime.HTTPDispatchers() {
 		httpCapabilities[name] = capability
 		l4Capabilities[name] = capability
-	}
-	for name, capability := range pluginRuntime.IdentityDispatchers() {
-		identityCapabilities[name] = capability
 	}
 	observabilityWords, wordsErr := config.LoadObservability()
 	if wordsErr != nil {
@@ -509,6 +531,20 @@ func serve(options options) int {
 		Duration:        accessFields.Duration,
 		Bytes:           accessFields.Bytes,
 	}))
+	applicationSinks := graph.Observability.Logging.Application
+	if len(applicationSinks) == 0 {
+		applicationSinks = observabilityWords.Logging.ApplicationDefault
+	}
+	applicationWriters := make([]io.Writer, 0, len(applicationSinks))
+	for _, sink := range applicationSinks {
+		switch sink {
+		case observabilityWords.Logging.ApplicationSinks.Stdout:
+			applicationWriters = append(applicationWriters, os.Stdout)
+		case observabilityWords.Logging.ApplicationSinks.Stderr:
+			applicationWriters = append(applicationWriters, os.Stderr)
+		}
+	}
+	applicationLogger := observability.NewJSONLogger(io.MultiWriter(applicationWriters...), slog.LevelWarn, observabilityWords.Redaction)
 	if graph.Observability.Tracing.OTLP != nil {
 		tracingWords := observabilityWords.Tracing
 		sampling := graph.Observability.Tracing.Sampling
@@ -536,8 +572,8 @@ func serve(options options) int {
 				ListenerAttribute:                   tracingWords.Attributes.Listener,
 				StatusAttribute:                     tracingWords.Attributes.Status,
 			},
-			observabilityWords.Redaction,
 			metrics,
+			applicationLogger,
 		)
 		if tracingErr != nil {
 			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -568,8 +604,8 @@ func serve(options options) int {
 			observabilityWords.Metrics.Labels.Exporter,
 			observabilityWords.Metrics.ExportFailureMessage,
 			observabilityWords.Metrics.InvalidIntervalMessage,
-			observabilityWords.Redaction,
 			metrics,
+			applicationLogger,
 		)
 		if exporterErr != nil {
 			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -635,6 +671,12 @@ func serve(options options) int {
 	wafRuntime.SetRequestIDHeader(observabilityWords.Logging.AccessFields.RequestIDHeader)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
 	wafRuntime.SetPluginTimeoutProblem(pluginTimeoutProblem)
+	pluginUnavailableProblem, exists := errorCatalog.Lookup(managementWords.Codes.PluginUnavailable)
+	if !exists {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	wafRuntime.SetPluginUnavailableProblem(pluginUnavailableProblem)
 	wafRuntime.SetRouteNotFoundProblem(routeNotFoundProblem)
 	wafRuntime.SetRateLimitedProblem(rateLimitedProblem, managementWords.Headers.RetryAfter)
 	auditStore, auditErr := storage.NewFilesystemAuditStore(graph.RegistryRoot, observabilityWords.Audit.Directory, observabilityWords.Audit.Extension, observabilityWords.Audit.DateLayout)
@@ -697,12 +739,12 @@ func serve(options options) int {
 		}
 		release, conflict, publishErr := registryService.PublishIfCurrent(site, source, expected)
 		if conflict != nil {
-			return api.Operation{}, conflict, nil
+			return api.Operation{LockRecovered: release.LockRecovered}, conflict, nil
 		}
 		if publishErr != nil {
-			return api.Operation{}, nil, publishErr
+			return api.Operation{LockRecovered: release.LockRecovered}, nil, publishErr
 		}
-		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil, nil
+		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}, LockRecovered: release.LockRecovered}, nil, nil
 	}
 	management.RollbackSite = func(_ context.Context, site, _ string, expected *string) (api.Operation, *models.ReleaseRevisionConflict, error) {
 		operationID, operationIDErr := cliRequestID()
@@ -711,12 +753,12 @@ func serve(options options) int {
 		}
 		release, conflict, rollbackErr := registryService.RollbackIfCurrent(site, expected)
 		if conflict != nil {
-			return api.Operation{}, conflict, nil
+			return api.Operation{LockRecovered: release.LockRecovered}, conflict, nil
 		}
 		if rollbackErr != nil {
-			return api.Operation{}, nil, rollbackErr
+			return api.Operation{LockRecovered: release.LockRecovered}, nil, rollbackErr
 		}
-		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil, nil
+		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}, LockRecovered: release.LockRecovered}, nil, nil
 	}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
@@ -769,7 +811,7 @@ func serve(options options) int {
 	if !options.noManagement && graph.Management.Listener.Address != "" {
 		go func() { _ = management.Listen(ctx, graph.Management.Listener.Address) }()
 	}
-	if err := network.ServeWithPluginRuntime(ctx, graph, wafRuntime, drain, httpCapabilities, l4Capabilities, identityCapabilities, metrics); err != nil {
+	if err := network.ServeWithPluginRuntime(ctx, graph, wafRuntime, drain, httpCapabilities, l4Capabilities, metrics); err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}

@@ -20,39 +20,6 @@ func (testAdminPlugin) Dispatch(_ context.Context, request plugins.RequestContex
 	return plugins.ResponseAction{Status: http.StatusOK, Body: body}, nil
 }
 
-func TestTLSOperationUsesTypedIssuerBoundary(t *testing.T) {
-	server := &Server{RenewTLS: func(_ context.Context, issuer, key string) (Operation, error) {
-		if issuer != "acme" || key != "0123456789abcdef" {
-			t.Fatalf("issuer=%q key=%q", issuer, key)
-		}
-		return Operation{ID: "op-renew", State: "pending", CreatedAt: time.Now()}, nil
-	}}
-	recording := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/tls/acme/renew", nil)
-	request.Header.Set("Idempotency-Key", "0123456789abcdef")
-	server.Handler().ServeHTTP(recording, request)
-	if recording.Code != http.StatusAccepted {
-		t.Fatalf("status = %d body = %s", recording.Code, recording.Body.String())
-	}
-	if !strings.Contains(recording.Body.String(), `"operationId":"op-renew"`) {
-		t.Fatalf("body = %s", recording.Body.String())
-	}
-}
-
-func TestTLSOperationRejectsInvalidIdempotencyKey(t *testing.T) {
-	server := &Server{RenewTLS: func(context.Context, string, string) (Operation, error) {
-		t.Fatal("issuer must not be called")
-		return Operation{}, nil
-	}}
-	recording := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/tls/acme/renew", nil)
-	request.Header.Set("Idempotency-Key", "short")
-	server.Handler().ServeHTTP(recording, request)
-	if recording.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d", recording.Code)
-	}
-}
-
 func TestAdminSurfacesEndpoint(t *testing.T) {
 	server := &Server{AdminSurfaces: []AdminSurface{{Plugin: "forms-db", Namespace: "forms-db", Version: "v1", Title: "Forms", Capabilities: []string{"forms.list"}}}}
 	recording := httptest.NewRecorder()
@@ -161,28 +128,28 @@ func TestManagementPluginRestartOperation(t *testing.T) {
 
 func TestSitePublishUsesTypedRegistryBoundary(t *testing.T) {
 	calls := 0
-	server := &Server{PublishSite: func(_ context.Context, site, source, key string) (Operation, error) {
+	server := &Server{PublishSite: func(_ context.Context, site, source, key string, expected *string) (Operation, *models.ReleaseRevisionConflict, error) {
 		calls++
-		if site != "blog" || source != "/incoming/blog" || key != "1234567890abcdef" {
-			t.Fatalf("site=%q source=%q key=%q", site, source, key)
+		if site != "blog" || source != "/incoming/blog" || key != "1234567890abcdef" || expected != nil {
+			t.Fatalf("site=%q source=%q key=%q expected=%v", site, source, key, expected)
 		}
-		return Operation{ID: "op-publish", State: "accepted"}, nil
+		return Operation{ID: "op-publish", State: "accepted", Result: map[string]string{"revision": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}, nil, nil
 	}}
 	recording := httptest.NewRecorder()
-	body := strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}`)
+	body := strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef","expectedCurrentRevision":null}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/sites/blog/publish", body)
 	server.Handler().ServeHTTP(recording, request)
 	if recording.Code != http.StatusCreated || !strings.Contains(recording.Body.String(), "op-publish") {
 		t.Fatalf("status=%d body=%s", recording.Code, recording.Body.String())
 	}
 	recording = httptest.NewRecorder()
-	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodPost, "/api/sites/blog/publish", strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}`)))
+	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodPost, "/api/sites/blog/publish", strings.NewReader(`{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef","expectedCurrentRevision":null}`)))
 	if calls != 1 || !strings.Contains(recording.Body.String(), "op-publish") {
 		t.Fatalf("idempotency calls=%d body=%s", calls, recording.Body.String())
 	}
 	recording = httptest.NewRecorder()
 	server.Handler().ServeHTTP(recording, httptest.NewRequest(http.MethodGet, "/api/operations", nil))
-	if recording.Code != http.StatusOK || !strings.Contains(recording.Body.String(), "op-publish") {
+	if recording.Code != http.StatusOK || !strings.Contains(recording.Body.String(), "op-publish") || !strings.Contains(recording.Body.String(), "revision") {
 		t.Fatalf("operations status=%d body=%s", recording.Code, recording.Body.String())
 	}
 }

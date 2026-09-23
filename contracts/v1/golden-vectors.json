@@ -2,7 +2,8 @@
   "version": "1.0.0",
   "vectors": [
     {"id":"config-invalid","input":{"yaml":"listeners:\n  web:\n    type: http\n    address: ':80'\n    unknown: true"},"expected":{"status":422,"code":"unknown_field","path":"listeners.web.unknown","activeSnapshotChanged":false}},
-    {"id":"publish-idempotent","input":{"method":"POST","path":"/api/sites/blog/publish","body":{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}},"expected":{"firstStatus":201,"repeatStatus":201,"sameResponse":true,"currentChanged":true,"auditAction":"site_published"}},
+    {"id":"publish-idempotent","input":{"method":"POST","path":"/api/sites/blog/publish","body":{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef","expectedCurrentRevision":null}},"expected":{"firstStatus":201,"repeatStatus":201,"sameResponse":true,"currentChanged":true,"auditAction":"site_published"}},
+    {"id":"publish-stale-release-revision","input":{"method":"POST","path":"/api/sites/blog/publish","body":{"source":"/incoming/next","idempotencyKey":"2234567890abcdef","expectedCurrentRevision":"stale-revision"},"currentRevision":"active-revision"},"expected":{"status":409,"code":"release_revision_conflict","currentChanged":false}},
     {"id":"rollback-missing","input":{"command":"gateway rollback blog","previous":null},"expected":{"exit":5,"code":"no_previous_release","currentChanged":false}},
     {"id":"plugin-startup-order","input":{"plugin":"forms"},"expected":{"calls":["manifest","health","config.schema","config.apply"],"startTimeout":"10s","callTimeout":"5s","readyAfter":{"applied":true}}},
     {"id":"rate-limit","input":{"bucket":{"requests":1,"per":"1m","burst":1},"requests":2},"expected":{"secondStatus":429,"code":"rate_limited","headers":{"Retry-After":"60"}}},
@@ -28,8 +29,6 @@
     {"id":"mtls-required","input":{"clientCertificate":null,"mode":"require"},"expected":{"status":401,"code":"mtls_required"}},
     {"id":"geo-provider-failure-deny","input":{"dataProvider":"missing","onError":"deny"},"expected":{"status":403,"code":"waf_provider_unavailable"}},
     {"id":"waf-limit","input":{"action":{"limit":"api"},"bucket":"empty"},"expected":{"status":429,"code":"rate_limited"}},
-    {"id":"captcha-verify","input":{"method":"POST","path":"/.well-known/liapoldus/challenge/verify","body":{"challengeToken":"opaque","responseToken":"captcha"}},"expected":{"status":204,"headers":{"Set-Cookie":"_lpgw_challenge; HttpOnly; Secure; SameSite=Lax; Path=/"},"secretInBrowser":false}},
-    {"id":"captcha-invalid","input":{"challengeToken":"expired"},"expected":{"status":403,"code":"challenge_required"}},
     {"id":"plugin-memory-limit","input":{"rss":"257MiB","limit":"256MiB"},"expected":{"processTerminated":true,"status":503,"code":"resource_exhausted"}},
     {"id":"plugin-stream-tcp-bytes","input":{"frame":"STREAM_DATA","payloadHex":"000102"},"expected":{"payloadEncoding":"raw-bytes"}},
     {"id":"plugin-stream-udp-datagram","input":{"frame":"STREAM_DATA","payloadHex":"0102"},"expected":{"oneDatagram":true,"payloadEncoding":"raw-bytes"}},

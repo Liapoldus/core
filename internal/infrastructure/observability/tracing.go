@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -51,7 +50,7 @@ type traceErrorHandler struct{ runtime *TracingRuntime }
 
 func (h traceErrorHandler) Handle(error) { h.runtime.failed() }
 
-func NewTracingRuntime(endpoint, sampling string, contract TraceContract, sensitiveTerms []string, registry *Registry) (*TracingRuntime, error) {
+func NewTracingRuntime(endpoint, sampling string, contract TraceContract, registry *Registry, logger *JSONLogger) (*TracingRuntime, error) {
 	var sampler sdktrace.Sampler
 	switch sampling {
 	case contract.SamplingAlwaysOn:
@@ -84,7 +83,7 @@ func NewTracingRuntime(endpoint, sampling string, contract TraceContract, sensit
 		propagator: propagation.TraceContext{},
 		contract:   contract,
 		registry:   registry,
-		logger:     NewJSONLogger(os.Stderr, slog.LevelWarn, sensitiveTerms),
+		logger:     logger,
 	}
 	runtime.previousError = otel.GetErrorHandler()
 	otel.SetErrorHandler(traceErrorHandler{runtime: runtime})

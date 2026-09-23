@@ -22,12 +22,29 @@ type HTTPRequest struct {
 	RequestID  string            `json:"requestId"`
 	RemoteAddr string            `json:"remoteAddr,omitempty"`
 	GrantNames []string          `json:"-"`
+	Context    map[string]string `json:"context,omitempty"`
+	WAF        *WAFContext       `json:"waf,omitempty"`
 }
 
 type HTTPResponse struct {
 	Status  int               `json:"status"`
 	Headers map[string]string `json:"headers,omitempty"`
+	Cookies []string          `json:"cookies,omitempty"`
 	Body    []byte            `json:"body,omitempty"`
+}
+
+// WAFContext contains request facts needed by a configured policy capability.
+// Credential headers are removed before this value is constructed.
+type WAFContext struct {
+	Headers     map[string][]string `json:"headers,omitempty"`
+	Query       map[string][]string `json:"query,omitempty"`
+	RequestSize uint64              `json:"requestSize"`
+}
+
+// WAFDecision is the generic continuation/response boundary for WAF plugins.
+type WAFDecision struct {
+	Continue bool          `json:"continue"`
+	Response *HTTPResponse `json:"response,omitempty"`
 }
 
 // L4Request carries a bounded datagram/stream chunk. A plugin never receives
@@ -94,21 +111,24 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 	return response, nil
 }
 
-func (c *CapabilityClient) DispatchIdentity(ctx context.Context, request IdentityRequest) (IdentityAction, error) {
-	if err := c.validateCapability(request.Capability); err != nil {
-		return IdentityAction{}, err
+func (c *CapabilityClient) WAF(ctx context.Context, capability string, request HTTPRequest) (WAFDecision, error) {
+	if err := c.validateCapability(capability); err != nil {
+		return WAFDecision{}, err
 	}
-	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" {
-		return IdentityAction{}, errors.New("identity request is invalid")
+	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" || request.WAF == nil {
+		return WAFDecision{}, errors.New("plugin WAF request is invalid")
 	}
-	var response IdentityAction
-	if err := c.callJSON(ctx, request.Capability, request, &response, nil); err != nil {
-		return IdentityAction{}, err
+	var decision WAFDecision
+	if err := c.callJSON(ctx, capability, request, &decision, request.GrantNames); err != nil {
+		return WAFDecision{}, err
 	}
-	if response.Status < 100 || response.Status > 599 {
-		return IdentityAction{}, errors.New("identity response status is invalid")
+	if decision.Continue == (decision.Response != nil) {
+		return WAFDecision{}, errors.New("plugin WAF decision is invalid")
 	}
-	return response, nil
+	if decision.Response != nil && (decision.Response.Status < 100 || decision.Response.Status > 599) {
+		return WAFDecision{}, errors.New("plugin WAF response status is invalid")
+	}
+	return decision, nil
 }
 
 func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any, grantNames []string) error {

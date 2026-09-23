@@ -1,6 +1,7 @@
 package models
 
 type Release struct {
-	ID         string
-	PreviousID string `json:"-"`
+	ID            string
+	PreviousID    string `json:"-"`
+	LockRecovered bool   `json:"-"`
 }

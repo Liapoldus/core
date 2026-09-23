@@ -10,6 +10,8 @@ audit:
     configReload: config.reload
     configUpdate: config.update
     sitePublished: site_published
+    siteRolledBack: site_rolled_back
+    publishLockRecovered: publish_lock_recovered
   resources:
     gateway: gateway
   results:
@@ -54,7 +56,12 @@ logging:
     json: json
   accessDefault:
   - stdout
+  applicationDefault:
+  - stderr
   accessSinks:
+    stdout: stdout
+    stderr: stderr
+  applicationSinks:
     stdout: stdout
     stderr: stderr
   accessFields:

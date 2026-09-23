@@ -17,6 +17,14 @@ func (service RegistryService) Rollback(site string) (models.Release, error) {
 	return service.Store.Rollback(site)
 }
 
+func (service RegistryService) PublishIfCurrent(site, source string, expected *string) (models.Release, *models.ReleaseRevisionConflict, error) {
+	return service.Store.PublishIfCurrent(site, source, expected)
+}
+
+func (service RegistryService) RollbackIfCurrent(site string, expected *string) (models.Release, *models.ReleaseRevisionConflict, error) {
+	return service.Store.RollbackIfCurrent(site, expected)
+}
+
 func (service RegistryService) Versions(site string) ([]models.Release, error) {
 	return service.Store.Versions(site)
 }

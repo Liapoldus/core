@@ -6,4 +6,12 @@ stagePrefix: .stage-
 manifest: site.yaml
 manifestMissing: site manifest missing
 unsafeSource: unsafe source entry
+publishLock: .publish.lock
+publishLockLease: 15m
+publishLockFields:
+  pid: pid
+  startedAt: startedAt
+  nonce: nonce
+  lease: lease
+publishInProgress: publish already in progress
 defaultRoot: registry

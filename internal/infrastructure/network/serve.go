@@ -37,6 +37,10 @@ type HTTPCapabilityDispatcher interface {
 	HTTP(context.Context, string, plugins.HTTPRequest) (plugins.HTTPResponse, error)
 }
 
+type WAFCapabilityDispatcher interface {
+	WAF(context.Context, string, plugins.HTTPRequest) (plugins.WAFDecision, error)
+}
+
 type L4CapabilityDispatcher interface{}
 
 type L4UnaryCapabilityDispatcher interface {
@@ -45,12 +49,6 @@ type L4UnaryCapabilityDispatcher interface {
 
 type L4StreamCapabilityDispatcher interface {
 	OpenL4Stream(context.Context, string, plugins.L4StreamContext) (plugins.L4Session, error)
-}
-
-// IdentityCapabilityDispatcher is the narrow HTTP boundary for auth policies.
-// It deliberately accepts only the versioned identity request/action types.
-type IdentityCapabilityDispatcher interface {
-	DispatchIdentity(context.Context, plugins.IdentityRequest) (plugins.IdentityAction, error)
 }
 
 var connectionSequence uint64
@@ -92,39 +90,33 @@ func ServeWithCapabilities(parent context.Context, listeners []models.Listener, 
 }
 
 func ServeWithL4Capabilities(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 // ServeWithRateLimits is the full runtime entry point used by the CLI.
 func ServeWithRateLimits(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 func ServeWithPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
 }
 
 func ServeWithDataProviders(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, providers interfaces.GeoLookup, drainTimeout time.Duration, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, nil, drainTimeout, nil, nil, metrics, providers, nil)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, nil, drainTimeout, nil, nil, metrics, providers, nil)
 }
 
 func ServeWithWAFRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, runtime *WAFRuntime, drainTimeout time.Duration, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, nil, drainTimeout, nil, nil, metrics, nil, runtime)
+	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, nil, nil, drainTimeout, nil, nil, metrics, nil, runtime)
 }
 
-func ServeWithPluginRuntime(parent context.Context, graph models.CompiledGraph, runtime *WAFRuntime, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, identity map[string]IdentityCapabilityDispatcher, metrics ...*observability.Registry) error {
+func ServeWithPluginRuntime(parent context.Context, graph models.CompiledGraph, runtime *WAFRuntime, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
 	return serveWithRuntime(parent, graph.Listeners, graph.Sites, graph.Upstreams, graph.TLSProfiles,
-		graph.RateLimits, graph.WAFPolicies, graph.AuthPolicies, identity, drainTimeout,
+		graph.RateLimits, graph.WAFPolicies, graph.AuthPolicies, drainTimeout,
 		capabilities, l4Capabilities, metrics, nil, runtime)
 }
 
-// ServeWithIdentityPolicies additionally wires compiled auth policies to
-// already-handshaken identity plugin instances.
-func ServeWithIdentityPolicies(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics ...*observability.Registry) error {
-	return serveWithRuntime(parent, listeners, sites, upstreams, profiles, limits, policies, authPolicies, identity, drainTimeout, capabilities, l4Capabilities, metrics, nil, nil)
-}
-
-func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
+func serveWithRuntime(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, limits map[string]models.RateLimit, policies map[string]models.WAFPolicy, authPolicies map[string]models.AuthPolicy, drainTimeout time.Duration, capabilities map[string]HTTPCapabilityDispatcher, l4Capabilities map[string]L4CapabilityDispatcher, metrics []*observability.Registry, geo interfaces.GeoLookup, wafRuntime *WAFRuntime) error {
 	if wafRuntime == nil {
 		wafRuntime = NewWAFRuntime(models.CompiledGraph{Listeners: listeners, Sites: sites, Upstreams: upstreams, TLSProfiles: profiles, RateLimits: limits, WAFPolicies: policies, AuthPolicies: authPolicies}, geo, models.Problem{}, models.Problem{}, "")
 	}
@@ -139,7 +131,7 @@ func serveWithRuntime(parent context.Context, listeners []models.Listener, sites
 			case "udp":
 				errs <- serveUDP(parent, current, upstreams, drainTimeout, l4Capabilities)
 			default:
-				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, wafRuntime, authPolicies, identity)
+				errs <- serveHTTP(parent, current, sites, upstreams, profiles, drainTimeout, firstRegistry(metrics), capabilities, limits, wafRuntime, authPolicies)
 			}
 		}(listener)
 	}
@@ -501,7 +493,7 @@ func l4Target(rules []models.Route, upstreams map[string]models.Upstream) string
 	return ""
 }
 
-func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, wafRuntime *WAFRuntime, authPolicies map[string]models.AuthPolicy, identity map[string]IdentityCapabilityDispatcher) error {
+func serveHTTP(parent context.Context, listener models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics *observability.Registry, capabilities map[string]HTTPCapabilityDispatcher, limits map[string]models.RateLimit, wafRuntime *WAFRuntime, authPolicies map[string]models.AuthPolicy) error {
 	baseHandler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		generation, release := wafRuntime.Acquire()
 		defer release()
@@ -619,7 +611,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			if len(generation.graph.AuthPolicies) == 0 {
 				policy, configured = authPolicies[route.Auth]
 			}
-			dispatcher := identity[policy.Instance]
+			dispatcher := capabilities[policy.Instance]
 			if !configured || dispatcher == nil {
 				writer.Header().Set("Content-Type", "application/problem+json")
 				writer.WriteHeader(http.StatusServiceUnavailable)
@@ -638,7 +630,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				}
 				headers[name] = values[0]
 			}
-			action, err := dispatcher.DispatchIdentity(request.Context(), plugins.IdentityRequest{Instance: policy.Instance, Capability: policy.Capability, Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID")})
+			action, err := dispatcher.HTTP(request.Context(), policy.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr, GrantNames: policy.ContextSecrets})
 			if err != nil {
 				if writePluginProblem(writer, request, wafRuntime, err) {
 					return
@@ -646,12 +638,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				writer.WriteHeader(http.StatusBadGateway)
 				return
 			}
-			for name, value := range action.Headers {
-				writer.Header().Set(name, value)
-			}
-			for _, cookie := range action.Cookies {
-				writer.Header().Add("Set-Cookie", cookie)
-			}
+			applyPluginResponseHeaders(writer, action)
 			writer.WriteHeader(action.Status)
 			_, _ = writer.Write(action.Body)
 			return
@@ -683,6 +670,34 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				if action.Limit != "" {
 					if retry, limited := generation.limiters[listener.Address].Allow(action.Limit, request); limited {
 						writeRateLimited(writer, request, wafRuntime, retry)
+						return
+					}
+				}
+				if action.Plugin != nil {
+					dispatcher := capabilities[action.Plugin.Instance]
+					if dispatcher == nil {
+						writePluginUnavailable(writer, request, wafRuntime)
+						return
+					}
+					wafHeaders := make(map[string][]string, len(headers))
+					for name, values := range headers {
+						if strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "Cookie") || strings.EqualFold(name, "Proxy-Authorization") {
+							continue
+						}
+						wafHeaders[name] = append([]string(nil), values...)
+					}
+					decision, err := dispatchWAF(request, dispatcher, *action.Plugin, plugins.WAFContext{Headers: wafHeaders, Query: query, RequestSize: requestSize})
+					if err != nil {
+						if writePluginProblem(writer, request, wafRuntime, err) {
+							return
+						}
+						writer.WriteHeader(http.StatusBadGateway)
+						return
+					}
+					if decision.Response != nil {
+						applyPluginResponseHeaders(writer, *decision.Response)
+						writer.WriteHeader(decision.Response.Status)
+						_, _ = writer.Write(decision.Response.Body)
 						return
 					}
 				}
@@ -938,6 +953,55 @@ func writePluginProblem(writer http.ResponseWriter, request *http.Request, runti
 	writer.WriteHeader(problem.Status)
 	_ = json.NewEncoder(writer).Encode(problem)
 	return true
+}
+
+func dispatchWAF(request *http.Request, dispatcher HTTPCapabilityDispatcher, target models.PluginTarget, context plugins.WAFContext) (plugins.WAFDecision, error) {
+	dispatcherWithWAF, ok := dispatcher.(WAFCapabilityDispatcher)
+	if !ok {
+		return plugins.WAFDecision{}, plugins.ErrProtocolViolation
+	}
+	headers := make(map[string]string, len(request.Header))
+	for name, values := range request.Header {
+		if strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "Cookie") || strings.EqualFold(name, "Proxy-Authorization") || len(values) == 0 {
+			continue
+		}
+		headers[name] = values[0]
+	}
+	return dispatcherWithWAF.WAF(request.Context(), target.Capability, plugins.HTTPRequest{
+		Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery,
+		Headers: headers, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr,
+		GrantNames: target.ContextSecrets, WAF: &context,
+	})
+}
+
+func applyPluginResponseHeaders(writer http.ResponseWriter, response plugins.HTTPResponse) {
+	for name, value := range response.Headers {
+		if strings.EqualFold(name, "Set-Cookie") {
+			writer.Header().Add(name, value)
+			continue
+		}
+		writer.Header().Set(name, value)
+	}
+	for _, cookie := range response.Cookies {
+		writer.Header().Add("Set-Cookie", cookie)
+	}
+}
+
+func writePluginUnavailable(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime) {
+	if runtime == nil {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	problem := runtime.PluginUnavailableProblem()
+	if problem.Status == 0 {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	problem.Instance = request.URL.Path
+	problem.RequestID = request.Header.Get(runtime.RequestIDHeader())
+	writer.Header().Set("Content-Type", runtime.ProblemContentType())
+	writer.WriteHeader(problem.Status)
+	_ = json.NewEncoder(writer).Encode(problem)
 }
 
 func writeNotFound(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime) {

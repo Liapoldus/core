@@ -24,6 +24,7 @@ type WAFRuntime struct {
 	headerTooLarge          models.Problem
 	pluginResourceExhausted models.Problem
 	pluginTimeout           models.Problem
+	pluginUnavailable       models.Problem
 	routeNotFound           models.Problem
 	rateLimited             models.Problem
 	retryAfterHeader        string
@@ -78,6 +79,14 @@ func (runtime *WAFRuntime) PluginResourceProblem() models.Problem {
 
 func (runtime *WAFRuntime) SetPluginTimeoutProblem(problem models.Problem) {
 	runtime.pluginTimeout = problem
+}
+
+func (runtime *WAFRuntime) SetPluginUnavailableProblem(problem models.Problem) {
+	runtime.pluginUnavailable = problem
+}
+
+func (runtime *WAFRuntime) PluginUnavailableProblem() models.Problem {
+	return runtime.pluginUnavailable
 }
 
 func (runtime *WAFRuntime) PluginTimeoutProblem() models.Problem {

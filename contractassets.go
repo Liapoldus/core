@@ -7,14 +7,14 @@ import (
 )
 
 const (
-	ConfigFields       = "config-fields.yaml"
-	CLIFields          = "cli-fields.yaml"
-	RegistryFields     = "registry-fields.yaml"
-	SnapshotFields     = "snapshot-fields.yaml"
-	GatewaySchema      = "gateway.schema.json"
-	ManagementFields   = "management-fields.yaml"
+	ConfigFields        = "config-fields.yaml"
+	CLIFields           = "cli-fields.yaml"
+	RegistryFields      = "registry-fields.yaml"
+	SnapshotFields      = "snapshot-fields.yaml"
+	GatewaySchema       = "gateway.schema.json"
+	ManagementFields    = "management-fields.yaml"
 	ObservabilityFields = "observability-fields.yaml"
-	ErrorsJSON         = "errors.json"
+	ErrorsJSON          = "errors.json"
 )
 
 //go:embed assets/contracts

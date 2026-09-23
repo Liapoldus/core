@@ -39,6 +39,11 @@ func CompileGateway(path string) (models.CompiledGraph, error) {
 }
 
 func validateReferences(graph models.CompiledGraph) error {
+	for _, policy := range graph.AuthPolicies {
+		if err := validatePluginTarget(graph, &models.PluginTarget{Instance: policy.Instance, Capability: policy.Capability, ContextSecrets: policy.ContextSecrets}); err != nil {
+			return err
+		}
+	}
 	for _, listener := range graph.Listeners {
 		for _, route := range listener.Routes {
 			if route.Site != "" {
@@ -75,6 +80,11 @@ func validateReferences(graph models.CompiledGraph) error {
 					return ErrUndefinedRateLimit
 				}
 			}
+			if rule.Action.Plugin != nil {
+				if err := validatePluginTarget(graph, rule.Action.Plugin); err != nil {
+					return err
+				}
+			}
 			if rule.When.Geo != nil {
 				if _, exists := graph.DataProviders[rule.When.Geo.Provider]; !exists {
 					return ErrInvalidDocument
@@ -95,6 +105,33 @@ func validateReferences(graph models.CompiledGraph) error {
 		return err
 	}
 	return validateManagementSemantics(graph, catalog)
+}
+
+func validatePluginTarget(graph models.CompiledGraph, target *models.PluginTarget) error {
+	instance, exists := graph.Plugins[target.Instance]
+	if !exists {
+		return ErrInvalidDocument
+	}
+	capabilityDeclared := false
+	for _, capability := range instance.Capabilities {
+		if capability == target.Capability {
+			capabilityDeclared = true
+			break
+		}
+	}
+	if !capabilityDeclared {
+		return ErrInvalidDocument
+	}
+	allowedGrants := make(map[string]struct{}, len(instance.SecretGrants))
+	for _, grant := range instance.SecretGrants {
+		allowedGrants[grant.Name] = struct{}{}
+	}
+	for _, name := range target.ContextSecrets {
+		if _, exists := allowedGrants[name]; !exists {
+			return ErrInvalidDocument
+		}
+	}
+	return nil
 }
 
 func validateSiteSemantics(graph models.CompiledGraph, catalog ErrorCatalog) error {
@@ -251,7 +288,7 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 					return models.CompiledGraph{}, err
 				}
 			case loaded.AuthPolicies:
-				collectAuthPolicies(node, graph.AuthPolicies)
+				collectAuthPolicies(node, loaded, graph.AuthPolicies)
 			case loaded.Runtime.Section.TLSProfiles:
 				if err := collectTLSProfiles(node, loaded.Runtime, graph.TLSProfiles); err != nil {
 					return models.CompiledGraph{}, err
@@ -506,20 +543,21 @@ func collectPluginSecretGrants(node *yaml.Node, nameField, purposeField, domains
 	return grants
 }
 
-func collectAuthPolicies(node *yaml.Node, policies map[string]models.AuthPolicy) {
+func collectAuthPolicies(node *yaml.Node, words contractFile, policies map[string]models.AuthPolicy) {
 	if node == nil || node.Kind != yaml.MappingNode {
 		return
 	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		name, body := node.Content[i].Value, node.Content[i+1]
-		plugin := mappingNode(body, "plugin")
+		plugin := mappingNode(body, words.AuthPolicy.Plugin)
 		if plugin == nil {
 			continue
 		}
-		instance, _ := fieldValue(plugin, "instance")
-		capability, _ := fieldValue(plugin, "capability")
+		instance, _ := fieldValue(plugin, words.Runtime.Plugin.Instance)
+		capability, _ := fieldValue(plugin, words.Runtime.Plugin.Capability)
 		if instance != "" && capability != "" {
-			policies[name] = models.AuthPolicy{Instance: instance, Capability: capability}
+			context := mappingNode(plugin, words.Runtime.Plugin.Context)
+			policies[name] = models.AuthPolicy{Instance: instance, Capability: capability, ContextSecrets: sequenceValues(mappingNode(context, words.Runtime.Plugin.ContextSecrets))}
 		}
 	}
 }
@@ -553,6 +591,12 @@ func collectWAFPolicies(node *yaml.Node, words runtimeWords, policies map[string
 			rule.When = matcher
 			if mappingNode(then, words.WAF.Allow) != nil {
 				rule.Action.Allow = true
+			} else if plugin := mappingNode(then, words.WAF.Plugin); plugin != nil {
+				target := compilePlugin(plugin, words)
+				if target == nil {
+					return ErrInvalidDocument
+				}
+				rule.Action.Plugin = target
 			} else if d := mappingNode(then, words.WAF.Deny); d != nil {
 				action := &models.Deny{Status: 403, Code: "forbidden"}
 				if s := mappingNode(d, words.WAF.Status); s != nil {
@@ -1590,7 +1634,6 @@ func collectTLSProfiles(node *yaml.Node, words runtimeWords, profiles map[string
 					continue
 				}
 				certificate := models.TLSCertificate{}
-				certificate.Issuer, _ = fieldValue(item, words.TLSProfile.Issuer)
 				certificate.Cert, _ = fieldValue(item, words.TLSProfile.Cert)
 				certificate.Key, _ = fieldValue(item, words.TLSProfile.Key)
 				if domains := mappingNode(item, words.TLSProfile.Domains); domains != nil && domains.Kind == yaml.SequenceNode {
@@ -1655,6 +1698,13 @@ func collectObservability(current models.Observability, section string, node *ya
 			for _, item := range access.Content {
 				if item.Kind == yaml.ScalarNode && item.Value != "" {
 					current.Logging.Access = append(current.Logging.Access, item.Value)
+				}
+			}
+		}
+		if application := mappingNode(node, words.Logging.Application); application != nil && application.Kind == yaml.SequenceNode {
+			for _, item := range application.Content {
+				if item.Kind == yaml.ScalarNode && item.Value != "" {
+					current.Logging.Application = append(current.Logging.Application, item.Value)
 				}
 			}
 		}

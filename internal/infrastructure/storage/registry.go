@@ -29,6 +29,37 @@ func NewFilesystemStore(root string, layout models.RegistryLayout) FilesystemSto
 func (store FilesystemStore) Publish(site, source string) (models.Release, error) {
 	unlock := store.lock(site)
 	defer unlock()
+	fileUnlock, recovered, err := store.acquirePublishLock(site)
+	if err != nil {
+		return models.Release{}, err
+	}
+	defer fileUnlock()
+	release, err := store.publishLocked(site, source)
+	release.LockRecovered = recovered
+	return release, err
+}
+
+func (store FilesystemStore) PublishIfCurrent(site, source string, expected *string) (models.Release, *models.ReleaseRevisionConflict, error) {
+	unlock := store.lock(site)
+	defer unlock()
+	fileUnlock, recovered, err := store.acquirePublishLock(site)
+	if err != nil {
+		return models.Release{}, nil, err
+	}
+	defer fileUnlock()
+	current, err := store.pointer(site, store.layout.Current)
+	if err != nil {
+		return models.Release{LockRecovered: recovered}, nil, err
+	}
+	if conflict := compareReleaseRevision(expected, current.ID); conflict != nil {
+		return models.Release{LockRecovered: recovered}, conflict, nil
+	}
+	release, err := store.publishLocked(site, source)
+	release.LockRecovered = recovered
+	return release, nil, err
+}
+
+func (store FilesystemStore) publishLocked(site, source string) (models.Release, error) {
 	manifest, err := os.Lstat(filepath.Join(source, store.layout.Manifest))
 	if err != nil || !manifest.Mode().IsRegular() {
 		return models.Release{}, errors.New(store.layout.ManifestMissing)
@@ -74,6 +105,37 @@ func (store FilesystemStore) Publish(site, source string) (models.Release, error
 func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 	unlock := store.lock(site)
 	defer unlock()
+	fileUnlock, recovered, err := store.acquirePublishLock(site)
+	if err != nil {
+		return models.Release{}, err
+	}
+	defer fileUnlock()
+	release, err := store.rollbackLocked(site)
+	release.LockRecovered = recovered
+	return release, err
+}
+
+func (store FilesystemStore) RollbackIfCurrent(site string, expected *string) (models.Release, *models.ReleaseRevisionConflict, error) {
+	unlock := store.lock(site)
+	defer unlock()
+	fileUnlock, recovered, err := store.acquirePublishLock(site)
+	if err != nil {
+		return models.Release{}, nil, err
+	}
+	defer fileUnlock()
+	current, err := store.pointer(site, store.layout.Current)
+	if err != nil {
+		return models.Release{LockRecovered: recovered}, nil, err
+	}
+	if conflict := compareReleaseRevision(expected, current.ID); conflict != nil {
+		return models.Release{LockRecovered: recovered}, conflict, nil
+	}
+	release, err := store.rollbackLocked(site)
+	release.LockRecovered = recovered
+	return release, nil, err
+}
+
+func (store FilesystemStore) rollbackLocked(site string) (models.Release, error) {
 	siteRoot := filepath.Join(store.root, store.layout.Sites, site)
 	current, err := os.Readlink(filepath.Join(siteRoot, store.layout.Current))
 	if err != nil {
@@ -96,6 +158,17 @@ func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 		return models.Release{}, err
 	}
 	return models.Release{ID: filepath.Base(previous), PreviousID: filepath.Base(current)}, nil
+}
+
+func compareReleaseRevision(expected *string, current string) *models.ReleaseRevisionConflict {
+	if expected == nil && current == "" || expected != nil && *expected == current {
+		return nil
+	}
+	conflict := &models.ReleaseRevisionConflict{ExpectedRevision: expected}
+	if current != "" {
+		conflict.CurrentRevision = &current
+	}
+	return conflict
 }
 
 func (store FilesystemStore) Versions(site string) ([]models.Release, error) {
@@ -122,10 +195,14 @@ func (store FilesystemStore) Versions(site string) ([]models.Release, error) {
 }
 
 func (store FilesystemStore) Current(site string) (models.Release, error) {
+	unlock := store.lock(site)
+	defer unlock()
 	return store.pointer(site, store.layout.Current)
 }
 
 func (store FilesystemStore) Previous(site string) (models.Release, error) {
+	unlock := store.lock(site)
+	defer unlock()
 	return store.pointer(site, store.layout.Previous)
 }
 

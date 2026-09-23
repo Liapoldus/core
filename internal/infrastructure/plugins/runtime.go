@@ -285,14 +285,6 @@ func (r *Runtime) L4Dispatchers() map[string]*CapabilityClient {
 	return instances
 }
 
-func (r *Runtime) IdentityDispatchers() map[string]*CapabilityClient {
-	instances := make(map[string]*CapabilityClient, len(r.instances))
-	for name, instance := range r.instances {
-		instances[name] = instance.capability
-	}
-	return instances
-}
-
 func (r *Runtime) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil

@@ -1,6 +1,7 @@
 package models
 
 type LoggingConfig struct {
-	Format string
-	Access []string
+	Format      string
+	Access      []string
+	Application []string
 }

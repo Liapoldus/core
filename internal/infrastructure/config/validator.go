@@ -50,6 +50,9 @@ type contractFile struct {
 	AuthPolicies  string   `yaml:"authPolicies"`
 	DataProviders string   `yaml:"dataProviders"`
 	Plugins       string   `yaml:"plugins"`
+	AuthPolicy    struct {
+		Plugin string `yaml:"plugin"`
+	} `yaml:"authPolicy"`
 	Registry      struct {
 		Section string `yaml:"section"`
 		Path    string `yaml:"path"`
@@ -148,7 +151,6 @@ type runtimeWords struct {
 		Cert         string `yaml:"cert"`
 		Key          string `yaml:"key"`
 		Domains      string `yaml:"domains"`
-		Issuer       string `yaml:"issuer"`
 		Protocols    string `yaml:"protocols"`
 		ClientAuth   string `yaml:"clientAuth"`
 	} `yaml:"tlsProfile"`
@@ -159,8 +161,9 @@ type runtimeWords struct {
 		Optional string `yaml:"optional"`
 	} `yaml:"clientAuth"`
 	Logging struct {
-		Format string `yaml:"format"`
-		Access string `yaml:"access"`
+		Format      string `yaml:"format"`
+		Access      string `yaml:"access"`
+		Application string `yaml:"application"`
 	} `yaml:"logging"`
 	Metrics struct {
 		Prometheus string `yaml:"prometheus"`
@@ -219,6 +222,7 @@ type runtimeWords struct {
 		Rules       string `yaml:"rules"`
 		When        string `yaml:"when"`
 		Then        string `yaml:"then"`
+		Plugin      string `yaml:"plugin"`
 		Path        string `yaml:"path"`
 		Method      string `yaml:"method"`
 		SourceIP    string `yaml:"sourceIP"`

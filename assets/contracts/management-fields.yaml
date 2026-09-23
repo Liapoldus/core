@@ -15,9 +15,6 @@ paths:
   adminPages: admin/pages
   restart: restart
   logs: logs
-  tls: /api/tls
-  renew: renew
-  revoke: revoke
   operations: /api/operations
   audit: /api/audit
   metrics: /metrics
@@ -117,9 +114,11 @@ codes:
   idempotencyConflict: idempotency_conflict
   releaseInvalid: release_invalid
   registryUnavailable: registry_unavailable
+  publishInProgress: publish_in_progress
   noPreviousRelease: no_previous_release
   releaseRevisionConflict: release_revision_conflict
   mtlsRequired: mtls_required
+  pluginUnavailable: plugin_unavailable
 pagination:
   limitDefault: 50
   limitMax: 100

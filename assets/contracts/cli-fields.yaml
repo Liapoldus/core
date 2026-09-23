@@ -62,6 +62,7 @@ codes:
   siteSourceImmutable: site_source_immutable
   registryUnavailable: registry_unavailable
   releaseInvalid: release_invalid
+  publishInProgress: publish_in_progress
 exits:
   ok: 0
   internal: 1

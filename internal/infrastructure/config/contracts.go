@@ -86,6 +86,7 @@ type CLIWords struct {
 		SiteSourceImmutable    string `yaml:"siteSourceImmutable"`
 		RegistryUnavailable    string `yaml:"registryUnavailable"`
 		ReleaseInvalid         string `yaml:"releaseInvalid"`
+		PublishInProgress      string `yaml:"publishInProgress"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`
@@ -237,15 +238,24 @@ func LoadAccounts() (AccountWords, error) {
 }
 
 type registryFile struct {
-	DefaultRoot     string `yaml:"defaultRoot"`
-	Sites           string `yaml:"sites"`
-	Releases        string `yaml:"releases"`
-	Current         string `yaml:"current"`
-	Previous        string `yaml:"previous"`
-	StagePrefix     string `yaml:"stagePrefix"`
-	Manifest        string `yaml:"manifest"`
-	ManifestMissing string `yaml:"manifestMissing"`
-	UnsafeSource    string `yaml:"unsafeSource"`
+	DefaultRoot       string `yaml:"defaultRoot"`
+	Sites             string `yaml:"sites"`
+	Releases          string `yaml:"releases"`
+	Current           string `yaml:"current"`
+	Previous          string `yaml:"previous"`
+	StagePrefix       string `yaml:"stagePrefix"`
+	Manifest          string `yaml:"manifest"`
+	ManifestMissing   string `yaml:"manifestMissing"`
+	UnsafeSource      string `yaml:"unsafeSource"`
+	PublishLock       string `yaml:"publishLock"`
+	PublishLockLease  string `yaml:"publishLockLease"`
+	PublishLockFields struct {
+		PID       string `yaml:"pid"`
+		StartedAt string `yaml:"startedAt"`
+		Nonce     string `yaml:"nonce"`
+		Lease     string `yaml:"lease"`
+	} `yaml:"publishLockFields"`
+	PublishInProgress string `yaml:"publishInProgress"`
 }
 
 func loadRegistry() (models.RegistryLayout, error) {
@@ -258,15 +268,22 @@ func loadRegistry() (models.RegistryLayout, error) {
 		return models.RegistryLayout{}, err
 	}
 	return models.RegistryLayout{
-		DefaultRoot:     loaded.DefaultRoot,
-		Sites:           loaded.Sites,
-		Releases:        loaded.Releases,
-		Current:         loaded.Current,
-		Previous:        loaded.Previous,
-		StagePrefix:     loaded.StagePrefix,
-		Manifest:        loaded.Manifest,
-		ManifestMissing: loaded.ManifestMissing,
-		UnsafeSource:    loaded.UnsafeSource,
+		DefaultRoot:      loaded.DefaultRoot,
+		Sites:            loaded.Sites,
+		Releases:         loaded.Releases,
+		Current:          loaded.Current,
+		Previous:         loaded.Previous,
+		StagePrefix:      loaded.StagePrefix,
+		Manifest:         loaded.Manifest,
+		ManifestMissing:  loaded.ManifestMissing,
+		UnsafeSource:     loaded.UnsafeSource,
+		PublishLock:      loaded.PublishLock,
+		PublishLockLease: loaded.PublishLockLease,
+		PublishLockFields: models.RegistryLockFields{
+			PID: loaded.PublishLockFields.PID, StartedAt: loaded.PublishLockFields.StartedAt,
+			Nonce: loaded.PublishLockFields.Nonce, Lease: loaded.PublishLockFields.Lease,
+		},
+		PublishInProgress: loaded.PublishInProgress,
 	}, nil
 }
 
@@ -311,9 +328,11 @@ type ManagementWords struct {
 		IdempotencyConflict     string `yaml:"idempotencyConflict"`
 		ReleaseInvalid          string `yaml:"releaseInvalid"`
 		RegistryUnavailable     string `yaml:"registryUnavailable"`
+		PublishInProgress       string `yaml:"publishInProgress"`
 		NoPreviousRelease       string `yaml:"noPreviousRelease"`
 		ReleaseRevisionConflict string `yaml:"releaseRevisionConflict"`
 		MTLSRequired            string `yaml:"mtlsRequired"`
+		PluginUnavailable       string `yaml:"pluginUnavailable"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz        string `yaml:"healthz"`
@@ -469,9 +488,11 @@ type ObservabilityWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			ConfigReload  string `yaml:"configReload"`
-			ConfigUpdate  string `yaml:"configUpdate"`
-			SitePublished string `yaml:"sitePublished"`
+			ConfigReload         string `yaml:"configReload"`
+			ConfigUpdate         string `yaml:"configUpdate"`
+			SitePublished        string `yaml:"sitePublished"`
+			SiteRolledBack       string `yaml:"siteRolledBack"`
+			PublishLockRecovered string `yaml:"publishLockRecovered"`
 		} `yaml:"actions"`
 		Resources struct {
 			Gateway string `yaml:"gateway"`
@@ -525,11 +546,16 @@ type ObservabilityWords struct {
 		Formats struct {
 			JSON string `yaml:"json"`
 		} `yaml:"formats"`
-		AccessDefault []string `yaml:"accessDefault"`
-		AccessSinks   struct {
+		AccessDefault      []string `yaml:"accessDefault"`
+		ApplicationDefault []string `yaml:"applicationDefault"`
+		AccessSinks        struct {
 			Stdout string `yaml:"stdout"`
 			Stderr string `yaml:"stderr"`
 		} `yaml:"accessSinks"`
+		ApplicationSinks struct {
+			Stdout string `yaml:"stdout"`
+			Stderr string `yaml:"stderr"`
+		} `yaml:"applicationSinks"`
 		AccessFields struct {
 			RequestIDHeader string `yaml:"requestIDHeader"`
 			Timestamp       string `yaml:"timestamp"`
