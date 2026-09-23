@@ -108,4 +108,34 @@ describe("registry CLI golden vectors", () => {
     expect(output.previousRevision).toBeNull();
     expect(await readlink(join(registry, "sites", "blog", "current"))).toContain(output.revision);
   });
+
+  it("reports null current and previous revisions before the first publish", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-empty-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const configPath = join(workspace, "gateway.yaml");
+    const config = [
+      "registry:",
+      `  path: ${registry}`,
+      "sites:",
+      "  blog:",
+      "    source: { type: release, slug: blog }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: blog }",
+    ].join("\n");
+    await writeFile(configPath, config, "utf8");
+
+    for (const pointer of ["current", "previous"] as const) {
+      const result = await runGateway(["--output", "json", "--config", configPath, "site", pointer, "blog"]);
+      const output = JSON.parse(result.stdout) as { revision?: string | null };
+      expect(result.exitCode).toBe(0);
+      expect(output.revision).toBeNull();
+    }
+    await expect(stat(join(registry, "sites", "blog"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });
