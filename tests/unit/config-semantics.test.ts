@@ -22,6 +22,22 @@ async function writeSiteRoot(directory: string, manifest: string): Promise<void>
 }
 
 describe("gateway config semantic validation", () => {
+  it("rejects a WAF challenge whose provider is not declared", async () => {
+    const config = await createConfig(
+      "listeners: {}\n" +
+        "wafPolicies:\n" +
+        "  protect:\n" +
+        "    rules:\n" +
+        "      - when: { path: { prefix: /private } }\n" +
+        "        then: { challenge: { provider: missing } }\n",
+    );
+
+    const result = await runGateway(["--output", "json", "config", "validate", config]);
+
+    expect(result.exitCode).toBe(3);
+    expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
+  });
+
   it("rejects a remote management listener without a TLS profile", async () => {
     const config = await createConfig(
       "registry:\n  path: ./registry\n" +
