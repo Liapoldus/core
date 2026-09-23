@@ -30,6 +30,12 @@ metrics, gzip, SPA fallback, rewrite captures и route/plugin actions.
 handshake, TCP+UDP на одном порту и настоящий HTTP/3 запрос. См. коммиты
 `0aaaa97`, `4b6f1b4`, `a1d966c` и QUIC-limit пункт ниже.
 
+Полный Vitest-прогон после обновления protocol однажды исчерпал temp-диск:
+test helper оставлял по одному 22–25 MiB Gateway binary на Vitest worker.
+Теперь `tests/support/gateway.ts` удаляет созданный им каталог в `afterAll`;
+отдельный TS-тест проверяет этот lifecycle, повторный `make check` прошёл без
+накопления артефактов.
+
 Verification was done against build `/tmp/liapoldus-gateway` with fixture
 `/var/folders/qk/694xx2l56_l01zmd37h82szh0000gn/T/opencode/audit/`
 (`gateway.yaml`, `www/` site + `site.yaml` manifest, batteries 1–4). Contract
@@ -478,7 +484,7 @@ TCP-loopback. Целевой контракт описан в
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 140 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 141 TS-тест,
   protocol: 15 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →

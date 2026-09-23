@@ -1,5 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp } from "node:fs/promises";
+import { afterAll } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -15,16 +16,32 @@ export interface GatewayResult {
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 const execFileAsync = promisify(execFile);
 let binary: Promise<string> | undefined;
+let binaryDirectory: string | undefined;
 
 async function gatewayBinary(): Promise<string> {
   binary ??= (async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-gateway-bin-"));
+    binaryDirectory = directory;
     const path = join(directory, "gateway");
     await execFileAsync("go", ["build", "-o", path, "./cmd/gateway"], { cwd: coreRoot });
     return path;
   })();
   return binary;
 }
+
+export function buildGatewayTestBinary(): Promise<string> {
+  return gatewayBinary();
+}
+
+export async function cleanupGatewayTestBinary(): Promise<void> {
+  const directory = binaryDirectory;
+  if (directory === undefined) return;
+  binaryDirectory = undefined;
+  binary = undefined;
+  await rm(directory, { recursive: true, force: true });
+}
+
+afterAll(cleanupGatewayTestBinary);
 
 export async function runGateway(
   args: readonly string[],
