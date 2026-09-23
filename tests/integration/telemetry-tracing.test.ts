@@ -79,6 +79,11 @@ describe("OTLP tracing and W3C parent-based sampling", () => {
       headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
     });
     expect(sampled.status).toBe(200);
+    const forwardedTraceContext = upstream.hits().headers[0]?.traceparent;
+    const forwardedParts = String(forwardedTraceContext).split("-");
+    expect(forwardedParts[1]).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+    expect(forwardedParts[2]).not.toBe("00f067aa0ba902b7");
+    expect(forwardedParts[3]).toBe("01");
     const exportDeadline = Date.now() + 10000;
     while (bodies.length === 0 && Date.now() < exportDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 50));
