@@ -16,12 +16,14 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
-    input: { frame: string; payloadHex: string };
+    input: { payloadHex: string };
     expected: { payloadEncoding: string };
   }>;
 };
 const tcpVector = vectors.vectors.find(({ id }) => id === "plugin-stream-tcp-bytes");
 if (!tcpVector) throw new Error("plugin-stream-tcp-bytes vector is missing");
+const tcpPluginVector = vectors.vectors.find(({ id }) => id === "tcp-plugin-protocol");
+if (!tcpPluginVector) throw new Error("tcp-plugin-protocol vector is missing");
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 
 async function waitTCP(address: string): Promise<void> {
@@ -87,7 +89,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     });
   }, 60_000);
 
-  it("uses one typed gRPC Stream lifecycle for a configured TCP connection", async () => {
+  it.each([tcpVector, tcpPluginVector])("uses a typed gRPC Stream for TCP raw-byte vector $id", async (vector) => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-l4-"));
     const binary = join(directory, "forms-plugin");
     await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
@@ -96,7 +98,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       "plugins:",
       "  forms:",
       `    binary: ${JSON.stringify(binary)}`,
-      "    capabilities: [tcp.echo]",
+      "    capabilities: [peer.session]",
       "    settings: {}",
       "listeners:",
       "  stream:",
@@ -104,13 +106,13 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       `    address: ${address}`,
       "    rules:",
       "      - then:",
-      "          plugin: { instance: forms, capability: tcp.echo }",
+      "          plugin: { instance: forms, capability: peer.session }",
     ].join("\n"));
     const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
     gateways.push(gateway);
     await waitTCP(address);
 
-    const payload = Buffer.from(tcpVector.input.payloadHex, "hex");
+    const payload = Buffer.from(vector.input.payloadHex, "hex");
     const response = await new Promise<Buffer>((resolve, reject) => {
       const socket = net.createConnection({ host: "127.0.0.1", port: Number(address.split(":").at(-1)) });
       const chunks: Buffer[] = [];
@@ -120,7 +122,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       socket.once("connect", () => socket.end(payload));
     });
 
-    expect(tcpVector.expected).toEqual({ payloadEncoding: "raw-bytes" });
+    expect(vector.expected.payloadEncoding).toBe("raw-bytes");
     expect(response).toEqual(Buffer.concat([Buffer.from("stream:"), payload]));
   }, 60_000);
 
