@@ -88,3 +88,27 @@ export async function startGateway(
     },
   };
 }
+
+export async function startGatewayWithOutput(
+  args: readonly string[],
+  environment: NodeJS.ProcessEnv = {},
+): Promise<{ process: ChildProcess; stdout: string; stderr: string; stop(): Promise<void> }> {
+  const executable = await gatewayBinary();
+  const process = spawn(executable, args, { cwd: coreRoot, env: { ...env, ...environment }, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  process.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+  process.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+  return {
+    process,
+    get stdout() { return stdout; },
+    get stderr() { return stderr; },
+    stop: () => {
+      if (process.exitCode !== null) return Promise.resolve();
+      return new Promise((resolve) => {
+        process.once("close", () => resolve());
+        process.kill("SIGTERM");
+      });
+    },
+  };
+}
