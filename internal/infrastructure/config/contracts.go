@@ -383,6 +383,7 @@ type ManagementWords struct {
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch    string `yaml:"ifMatch"`
+		RequestID  string `yaml:"requestId"`
 		Location   string `yaml:"location"`
 		RetryAfter string `yaml:"retryAfter"`
 	} `yaml:"headers"`

@@ -217,7 +217,8 @@ references are
   Management API rollback error and CLI `rollback-missing` are covered by
   child-process E2E; CLI publish/release response and directory-source rejection
   now have child-process coverage. CLI success idempotency and management
-  rollback idempotency/audit remain incomplete. `GET /api/sites` still returns
+  rollback idempotency/audit remain incomplete. A repeated publish now reuses
+  the original body and `X-Request-ID` as required by `sameResponse`. `GET /api/sites` still returns
   an empty list because the contract does not define the `state` mapping for an
   unpublished release; implementation awaits that decision. CLI publish does
   not yet accept `--idempotency-key`; implement after deciding whether the

@@ -96,6 +96,7 @@ type Operation struct {
 type idempotencyRecord struct {
 	Fingerprint string
 	Operation   Operation
+	RequestID   string
 	ExpiresAt   time.Time
 }
 
@@ -163,7 +164,7 @@ func (server *Server) Listen(ctx context.Context, address string) error {
 }
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
-	response.Header().Set("X-Request-ID", requestID)
+	response.Header().Set(server.Management.Headers.RequestID, requestID)
 	if request.URL.Path == "/healthz" {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
@@ -523,10 +524,11 @@ func (server *Server) handleSitePublish(response http.ResponseWriter, request *h
 			server.writeCatalogProblem(response, server.Management.Codes.IdempotencyConflict, requestID)
 			return
 		} else {
+			response.Header().Set(server.Management.Headers.RequestID, previous.RequestID)
 			writeJSON(response, http.StatusCreated, map[string]any{
 				server.Management.JSON.OperationID: previous.Operation.ID,
 				server.Management.JSON.State:       previous.Operation.State,
-				server.Management.JSON.RequestID:   requestID,
+				server.Management.JSON.RequestID:   previous.RequestID,
 			})
 			return
 		}
@@ -543,7 +545,7 @@ func (server *Server) handleSitePublish(response http.ResponseWriter, request *h
 	if server.idempotency == nil {
 		server.idempotency = make(map[string]idempotencyRecord)
 	}
-	server.idempotency[cacheKey] = idempotencyRecord{Fingerprint: fingerprint, Operation: operation, ExpiresAt: operation.CreatedAt.Add(window)}
+	server.idempotency[cacheKey] = idempotencyRecord{Fingerprint: fingerprint, Operation: operation, RequestID: requestID, ExpiresAt: operation.CreatedAt.Add(window)}
 	if server.operations == nil {
 		server.operations = make(map[string]Operation)
 	}

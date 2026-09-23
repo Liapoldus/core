@@ -72,6 +72,7 @@ json:
   cursor: cursor
 headers:
   ifMatch: If-Match
+  requestId: X-Request-ID
   location: Location
   retryAfter: Retry-After
 contentTypes:
