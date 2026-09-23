@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +10,7 @@ import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/
 const token = "directory-manifest-reload-test-token";
 const environment = { LIAPOLDUS_TEST_MANAGEMENT_TOKEN: token };
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
+const directories: string[] = [];
 const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{ id: string; input: { directorySiteYamlChanged: boolean; reload: boolean }; expected: { manifestReparsed: boolean; activeSnapshotChanged: boolean } }>;
 };
@@ -18,12 +19,14 @@ if (!vector) throw new Error("directory-manifest-reload vector is missing");
 
 afterEach(async () => {
   for (const gateway of gateways.splice(0)) await gateway.stop();
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
 describe("directory site manifest reload", () => {
   it("reparses a changed site.yaml into the active runtime snapshot", async () => {
     expect(vector.input).toEqual({ directorySiteYamlChanged: true, reload: true });
     const root = await mkdtemp(join(tmpdir(), "liapoldus-directory-manifest-reload-"));
+    directories.push(root);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, "index.html"), "directory manifest fixture", "utf8");
     const manifestPath = join(root, "site.yaml");
