@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Liapoldus/pluginprotocol/pluginv1"
-	"github.com/Liapoldus/pluginprotocol/transport"
-	"google.golang.org/grpc"
+	"io"
 	"os"
 	"sync/atomic"
 	"time"
 
+	"github.com/Liapoldus/pluginprotocol/pluginv1"
+	"github.com/Liapoldus/pluginprotocol/transport"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -137,13 +139,51 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 }
 
 func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage]) error {
+	opened := false
 	for {
 		message, err := stream.Recv()
 		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
-		if err := stream.Send(message); err != nil {
-			return err
+		switch body := message.GetBody().(type) {
+		case *pluginv1.StreamMessage_Open:
+			if opened || body.Open.GetConnectionId() == "" || !json.Valid(body.Open.GetContextJson()) {
+				return status.Error(codes.InvalidArgument, "invalid stream open")
+			}
+			if body.Open.GetTransport() != pluginv1.StreamTransport_STREAM_TRANSPORT_TCP && body.Open.GetTransport() != pluginv1.StreamTransport_STREAM_TRANSPORT_UDP {
+				return status.Error(codes.InvalidArgument, "invalid stream transport")
+			}
+			opened = true
+		case *pluginv1.StreamMessage_Data:
+			if !opened || body.Data.GetDirection() != pluginv1.StreamDirection_STREAM_DIRECTION_REQUEST {
+				return status.Error(codes.InvalidArgument, "invalid stream data")
+			}
+			response := append([]byte("stream:"), body.Data.GetPayload()...)
+			if err := stream.Send(&pluginv1.StreamMessage{
+				Capability: message.GetCapability(),
+				Body: &pluginv1.StreamMessage_Data{Data: &pluginv1.StreamData{
+					Payload:   response,
+					Direction: pluginv1.StreamDirection_STREAM_DIRECTION_RESPONSE,
+				}},
+			}); err != nil {
+				return err
+			}
+		case *pluginv1.StreamMessage_Close:
+			if !opened {
+				return status.Error(codes.InvalidArgument, "stream closed before open")
+			}
+			if err := stream.Send(&pluginv1.StreamMessage{
+				Capability: message.GetCapability(),
+				Body:       &pluginv1.StreamMessage_Close{Close: body.Close},
+			}); err != nil {
+				return err
+			}
+			return nil
+		default:
+			return status.Error(codes.InvalidArgument, "unsupported stream message")
 		}
 	}
 }

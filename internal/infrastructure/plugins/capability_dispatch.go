@@ -94,26 +94,6 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 	return response, nil
 }
 
-func (c *CapabilityClient) L4(ctx context.Context, capability string, request L4Request) (L4Response, error) {
-	if err := c.validateCapability(capability); err != nil {
-		return L4Response{}, err
-	}
-	if request.Transport != "tcp" && request.Transport != "udp" {
-		return L4Response{}, errors.New("plugin l4 transport is invalid")
-	}
-	if request.Direction != "request" && request.Direction != "response" {
-		return L4Response{}, errors.New("plugin l4 direction is invalid")
-	}
-	if strings.TrimSpace(request.Connection) == "" {
-		return L4Response{}, errors.New("plugin l4 connection id is required")
-	}
-	var response L4Response
-	if err := c.callJSON(ctx, capability, request, &response, nil); err != nil {
-		return L4Response{}, err
-	}
-	return response, nil
-}
-
 func (c *CapabilityClient) DispatchIdentity(ctx context.Context, request IdentityRequest) (IdentityAction, error) {
 	if err := c.validateCapability(request.Capability); err != nil {
 		return IdentityAction{}, err

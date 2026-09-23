@@ -37,8 +37,14 @@ type HTTPCapabilityDispatcher interface {
 	HTTP(context.Context, string, plugins.HTTPRequest) (plugins.HTTPResponse, error)
 }
 
-type L4CapabilityDispatcher interface {
+type L4CapabilityDispatcher interface{}
+
+type L4UnaryCapabilityDispatcher interface {
 	L4(context.Context, string, plugins.L4Request) (plugins.L4Response, error)
+}
+
+type L4StreamCapabilityDispatcher interface {
+	OpenL4Stream(context.Context, string, plugins.L4StreamContext) (plugins.L4Session, error)
 }
 
 // IdentityCapabilityDispatcher is the narrow HTTP boundary for auth policies.
@@ -223,11 +229,50 @@ func relayTCP(parent context.Context, client net.Conn, rules []models.Route, ups
 }
 
 func relayTCPPlugin(ctx context.Context, client net.Conn, plugin l4RoutePlugin, connectionID string) {
+	if dispatcher, ok := plugin.dispatcher.(L4StreamCapabilityDispatcher); ok {
+		stream, err := dispatcher.OpenL4Stream(ctx, plugin.capability, plugins.L4StreamContext{
+			Transport: "tcp", Connection: connectionID,
+			Source: client.RemoteAddr().String(), Destination: client.LocalAddr().String(),
+		})
+		if err != nil {
+			return
+		}
+		defer stream.Close()
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = client.Close()
+			case <-done:
+			}
+		}()
+		buffer := make([]byte, 32*1024)
+		for {
+			n, readErr := client.Read(buffer)
+			if n > 0 {
+				result, dispatchErr := stream.Exchange(append([]byte(nil), buffer[:n]...))
+				if dispatchErr != nil || result.Drop {
+					return
+				}
+				if _, writeErr := client.Write(result.Payload); writeErr != nil {
+					return
+				}
+			}
+			if readErr != nil {
+				return
+			}
+		}
+	}
+	dispatcher, ok := plugin.dispatcher.(L4UnaryCapabilityDispatcher)
+	if !ok {
+		return
+	}
 	buffer := make([]byte, 32*1024)
 	for {
 		n, err := client.Read(buffer)
 		if n > 0 {
-			result, dispatchErr := plugin.dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: "request", Connection: connectionID, Payload: append([]byte(nil), buffer[:n]...)})
+			result, dispatchErr := dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: "request", Connection: connectionID, Payload: append([]byte(nil), buffer[:n]...)})
 			if dispatchErr != nil || result.Drop {
 				return
 			}
@@ -272,8 +317,9 @@ func serveUDP(parent context.Context, listener models.Listener, upstreams map[st
 }
 
 func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, target string, payload []byte, idle time.Duration, plugin l4RoutePlugin) {
+	connectionID := fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1))
 	if plugin.dispatcher != nil && target == "" {
-		result, err := plugin.dispatcher.L4(parent, plugin.capability, plugins.L4Request{Transport: "udp", Direction: "request", Connection: fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1)), Payload: payload})
+		result, err := dispatchUDPPlugin(parent, public, source, plugin, connectionID, payload)
 		if err == nil && !result.Drop {
 			_, _ = public.WriteToUDP(result.Payload, source)
 		}
@@ -289,7 +335,7 @@ func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, 
 	}
 	defer upstream.Close()
 	if plugin.dispatcher != nil {
-		result, err := plugin.dispatcher.L4(parent, plugin.capability, plugins.L4Request{Transport: "udp", Direction: "request", Connection: fmt.Sprintf("c-%d", atomic.AddUint64(&connectionSequence, 1)), Payload: payload})
+		result, err := dispatchUDPPlugin(parent, public, source, plugin, connectionID, payload)
 		if err != nil || result.Drop {
 			return
 		}
@@ -310,6 +356,32 @@ func relayUDP(parent context.Context, public *net.UDPConn, source *net.UDPAddr, 
 	case <-parent.Done():
 	default:
 	}
+}
+
+func dispatchUDPPlugin(parent context.Context, public *net.UDPConn, source *net.UDPAddr, plugin l4RoutePlugin, connectionID string, payload []byte) (plugins.L4Response, error) {
+	if dispatcher, ok := plugin.dispatcher.(L4StreamCapabilityDispatcher); ok {
+		stream, err := dispatcher.OpenL4Stream(parent, plugin.capability, plugins.L4StreamContext{
+			Transport: "udp", Connection: connectionID,
+			Source: source.String(), Destination: public.LocalAddr().String(),
+		})
+		if err != nil {
+			return plugins.L4Response{}, err
+		}
+		response, exchangeErr := stream.Exchange(payload)
+		closeErr := stream.Close()
+		if exchangeErr != nil {
+			return plugins.L4Response{}, exchangeErr
+		}
+		if closeErr != nil {
+			return plugins.L4Response{}, closeErr
+		}
+		return response, nil
+	}
+	dispatcher, ok := plugin.dispatcher.(L4UnaryCapabilityDispatcher)
+	if !ok {
+		return plugins.L4Response{}, plugins.ErrProtocolViolation
+	}
+	return dispatcher.L4(parent, plugin.capability, plugins.L4Request{Transport: "udp", Direction: "request", Connection: connectionID, Payload: payload})
 }
 
 type l4RoutePlugin struct {
@@ -392,11 +464,15 @@ func relayTCPDirection(ctx context.Context, source net.Conn, target net.Conn, pl
 		if n > 0 {
 			payload := append([]byte(nil), buffer[:n]...)
 			if plugin.dispatcher != nil {
-				result, dispatchErr := plugin.dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: direction, Connection: connectionID, Payload: payload})
-				if dispatchErr != nil || result.Drop {
+				if dispatcher, ok := plugin.dispatcher.(L4UnaryCapabilityDispatcher); ok {
+					result, dispatchErr := dispatcher.L4(ctx, plugin.capability, plugins.L4Request{Transport: "tcp", Direction: direction, Connection: connectionID, Payload: payload})
+					if dispatchErr != nil || result.Drop {
+						return
+					}
+					payload = result.Payload
+				} else {
 					return
 				}
-				payload = result.Payload
 			}
 			if _, writeErr := target.Write(payload); writeErr != nil {
 				return

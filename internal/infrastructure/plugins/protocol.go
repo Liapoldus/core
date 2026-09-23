@@ -11,6 +11,12 @@ import (
 	"github.com/Liapoldus/pluginprotocol/transport"
 )
 
+type ProtocolStream interface {
+	Send(*pluginv1.StreamMessage) error
+	Recv() (*pluginv1.StreamMessage, error)
+	CloseSend() error
+}
+
 var (
 	ErrProtocolViolation             = errors.New("plugin protocol violation")
 	ErrPluginUnavailable             = errors.New("plugin unavailable")
@@ -138,6 +144,13 @@ func (c *Client) CallJSONWithGrants(ctx context.Context, capability string, payl
 		return nil, ErrPluginUnavailable
 	}
 	return response.GetPayload(), nil
+}
+
+func (c *Client) OpenStream(ctx context.Context) (ProtocolStream, error) {
+	c.mu.RLock()
+	client := c.client
+	c.mu.RUnlock()
+	return client.Stream(ctx)
 }
 
 func (c *Client) withDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
