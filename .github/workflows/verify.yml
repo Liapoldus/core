@@ -13,21 +13,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: core
+      - uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/pluginprotocol
+          path: pluginprotocol
       - uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version-file: core/go.mod
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: tests/package-lock.json
+          cache-dependency-path: core/tests/package-lock.json
       - name: Build Gateway
         run: make build
+        working-directory: core
       - name: Run TypeScript test suite
         run: npm --prefix tests ci && make test
+        working-directory: core
       - name: Go race and shutdown acceptance
         run: make test-race
+        working-directory: core
       - name: Docker smoke
         run: make docker-smoke
+        working-directory: core
       - name: Enforce architecture
         run: make arch-lint
+        working-directory: core
