@@ -65,7 +65,16 @@ describe("Gateway scoped plugin secret grants", () => {
     const response = await request(address, "/submit", { method: "POST", body: "hello" });
 
     expect(response.status).toBe(200);
-    expect(JSON.parse(response.text)).toEqual({ redeemed: true, secretInCallJSON: false });
+    expect(JSON.parse(response.text)).toEqual({
+      redeemed: true,
+      wrongPurposeDenied: true,
+      outOfScopeDenied: true,
+      secretInCallJSON: false,
+    });
     expect(response.text).not.toContain("fixture-secret-material");
+
+    const repeated = await request(address, "/submit", { method: "POST", body: "hello again" });
+    expect(JSON.parse(repeated.text)).toEqual({ redeemed: false, expiredHandleDenied: true, secretInCallJSON: false });
+    expect(repeated.text).not.toContain("fixture-secret-material");
   }, 60_000);
 });
