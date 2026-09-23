@@ -55,17 +55,32 @@ describe("persistent audit JSONL", () => {
     const authorization = { Authorization: `Bearer ${token}` };
     const before = await request(managementAddress, "/api/status", { headers: authorization });
     const { revision } = JSON.parse(before.text) as { revision: string };
+    const update = await request(managementAddress, "/api/config", {
+      method: "PUT",
+      headers: { ...authorization, "If-Match": revision, "Content-Type": "application/json" },
+      body: JSON.stringify({ yaml: `${config}\n# audited configuration update\n` }),
+    });
+    const afterUpdate = await request(managementAddress, "/api/status", { headers: authorization });
+    const updatedRevision = JSON.parse(afterUpdate.text) as { revision: string };
     const reload = await request(managementAddress, "/api/reload", {
       method: "POST",
-      headers: { ...authorization, "If-Match": revision },
+      headers: { ...authorization, "If-Match": updatedRevision.revision },
     });
     const auditResponse = await request(managementAddress, "/api/audit", { headers: authorization });
     const audit = JSON.parse(auditResponse.text) as {
       items: Array<{ actor: string; action: string; resource: string; result: string; requestId: string }>;
     };
 
+    expect(update.status).toBe(202);
     expect(reload.status).toBe(202);
     expect(auditResponse.status).toBe(200);
+    expect(audit.items).toContainEqual(expect.objectContaining({
+      actor: "static-token",
+      action: "config.update",
+      resource: "gateway",
+      result: "succeeded",
+      requestId: update.headers.get("x-request-id"),
+    }));
     expect(audit.items).toContainEqual(expect.objectContaining({
       actor: "static-token",
       action: "config.reload",
