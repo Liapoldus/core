@@ -62,7 +62,7 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 		}
 	}
 	if request.GetCapability() == "forms.memory" {
-		memoryBlock = make([]byte, 128<<20)
+		memoryBlock = make([]byte, 257<<20)
 		for index := 0; index < len(memoryBlock); index += 4096 {
 			memoryBlock[index] = 1
 		}
