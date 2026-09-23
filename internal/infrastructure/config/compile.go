@@ -386,6 +386,16 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 		if err != nil || timeout <= 0 {
 			return nil, ErrInvalidDocument
 		}
+		startTimeoutText := words.Plugin.DefaultStartTimeout
+		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
+			if configured, ok := fieldValue(limits, words.Plugin.StartTimeout); ok {
+				startTimeoutText = configured
+			}
+		}
+		startTimeout, err := time.ParseDuration(startTimeoutText)
+		if err != nil || startTimeout <= 0 {
+			return nil, ErrInvalidDocument
+		}
 		memoryText := words.Plugin.DefaultMemory
 		if limits := mappingNode(body, words.Plugin.Limits); limits != nil {
 			if configured, ok := fieldValue(limits, words.Plugin.Memory); ok {
@@ -453,6 +463,7 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 			),
 			Settings:               settings,
 			Timeout:                timeout,
+			StartTimeout:           startTimeout,
 			MemoryLimitBytes:       memoryLimitBytes,
 			MemoryProbeInterval:    memoryProbeInterval,
 			MaxConcurrentCalls:     maxConcurrentCalls,

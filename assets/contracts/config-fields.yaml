@@ -270,6 +270,8 @@ runtime:
     defaultCalls: 100
     timeout: timeout
     defaultTimeout: 5s
+    startTimeout: startTimeout
+    defaultStartTimeout: 10s
     memory: memory
     defaultMemory: 256MiB
     defaultMemoryProbeInterval: 1s

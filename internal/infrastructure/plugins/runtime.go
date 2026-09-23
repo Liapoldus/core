@@ -86,7 +86,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		client, err := NewClient(endpoint, instance.Timeout)
+		client, err := NewClient(endpoint, instance.Timeout, instance.StartTimeout)
 		if err != nil {
 			brokerServer.Stop()
 			_ = grantListener.Close()

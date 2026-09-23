@@ -282,6 +282,8 @@ type runtimeWords struct {
 		DefaultCalls                  int    `yaml:"defaultCalls"`
 		Timeout                       string `yaml:"timeout"`
 		DefaultTimeout                string `yaml:"defaultTimeout"`
+		StartTimeout                  string `yaml:"startTimeout"`
+		DefaultStartTimeout           string `yaml:"defaultStartTimeout"`
 		Memory                        string `yaml:"memory"`
 		DefaultMemory                 string `yaml:"defaultMemory"`
 		DefaultMemoryProbeInterval    string `yaml:"defaultMemoryProbeInterval"`

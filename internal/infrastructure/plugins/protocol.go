@@ -33,22 +33,28 @@ type pluginResourceExhausted struct{}
 func (pluginResourceExhausted) Error() string { return ErrPluginUnavailable.Error() }
 
 type Client struct {
-	mu       sync.RWMutex
-	client   *transport.Client
-	deadline time.Duration
+	mu            sync.RWMutex
+	client        *transport.Client
+	deadline      time.Duration
+	startTimeout  time.Duration
+	startDeadline time.Time
 }
 
-func NewClient(endpoint string, deadline time.Duration) (*Client, error) {
+func NewClient(endpoint string, deadline, startTimeout time.Duration) (*Client, error) {
 	if deadline <= 0 {
 		deadline = 5 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	if startTimeout <= 0 {
+		startTimeout = deadline
+	}
+	startDeadline := time.Now().Add(startTimeout)
+	ctx, cancel := context.WithDeadline(context.Background(), startDeadline)
 	defer cancel()
 	client, err := transport.DialContext(ctx, endpoint)
 	if err != nil {
 		return nil, ErrPluginUnavailable
 	}
-	return &Client{client: client, deadline: deadline}, nil
+	return &Client{client: client, deadline: deadline, startTimeout: startTimeout, startDeadline: startDeadline}, nil
 }
 
 func (c *Client) Close() error {
@@ -80,7 +86,7 @@ func (c *Client) Shutdown(ctx context.Context) error {
 }
 
 func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error) {
-	ctx, cancel := c.withDeadline(ctx)
+	ctx, cancel := context.WithDeadline(ctx, c.startDeadline)
 	defer cancel()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -95,7 +101,7 @@ func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error
 }
 
 func (c *Client) Reconnect(ctx context.Context, endpoint string, config []byte, expectedName string, capabilities []string) error {
-	ctx, cancel := c.withDeadline(ctx)
+	ctx, cancel := context.WithTimeout(ctx, c.startTimeout)
 	defer cancel()
 	replacement, err := transport.DialContext(ctx, endpoint)
 	if err != nil {

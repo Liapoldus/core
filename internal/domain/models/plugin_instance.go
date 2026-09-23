@@ -10,6 +10,7 @@ type PluginInstance struct {
 	SecretGrants           []PluginSecretGrant
 	Settings               []byte
 	Timeout                time.Duration
+	StartTimeout           time.Duration
 	MemoryLimitBytes       uint64
 	MemoryProbeInterval    time.Duration
 	MaxConcurrentCalls     int

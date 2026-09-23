@@ -4,7 +4,7 @@
     {"id":"config-invalid","input":{"yaml":"listeners:\n  web:\n    type: http\n    address: ':80'\n    unknown: true"},"expected":{"status":422,"code":"unknown_field","path":"listeners.web.unknown","activeSnapshotChanged":false}},
     {"id":"publish-idempotent","input":{"method":"POST","path":"/api/sites/blog/publish","body":{"source":"/incoming/blog","idempotencyKey":"1234567890abcdef"}},"expected":{"firstStatus":201,"repeatStatus":201,"sameResponse":true,"currentChanged":true,"auditAction":"site_published"}},
     {"id":"rollback-missing","input":{"command":"gateway rollback blog","previous":null},"expected":{"exit":5,"code":"no_previous_release","currentChanged":false}},
-    {"id":"plugin-startup-order","input":{"plugin":"forms"},"expected":{"calls":["manifest","health","config.schema","config.apply"],"timeout":"10s","readyAfter":{"applied":true}}},
+    {"id":"plugin-startup-order","input":{"plugin":"forms"},"expected":{"calls":["manifest","health","config.schema","config.apply"],"startTimeout":"10s","callTimeout":"5s","readyAfter":{"applied":true}}},
     {"id":"rate-limit","input":{"bucket":{"requests":1,"per":"1m","burst":1},"requests":2},"expected":{"secondStatus":429,"code":"rate_limited","headers":{"Retry-After":"60"}}},
     {"id":"spa-fallback","input":{"method":"GET","accept":"text/html","path":"/dashboard","spa":true},"expected":{"status":200,"file":"index.html"}},
     {"id":"spa-asset-miss","input":{"method":"GET","accept":"*/*","path":"/missing.js","spa":true},"expected":{"status":404,"code":"route_not_found"}},

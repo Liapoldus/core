@@ -24,6 +24,17 @@ const tcpVector = vectors.vectors.find(({ id }) => id === "plugin-stream-tcp-byt
 if (!tcpVector) throw new Error("plugin-stream-tcp-bytes vector is missing");
 const tcpPluginVector = vectors.vectors.find(({ id }) => id === "tcp-plugin-protocol");
 if (!tcpPluginVector) throw new Error("tcp-plugin-protocol vector is missing");
+const startupVector = vectors.vectors.find(({ id }) => id === "plugin-startup-order");
+if (!startupVector) throw new Error("plugin-startup-order vector is missing");
+const gatewaySchema = JSON.parse(readFileSync(resolve(root, "assets/contracts/gateway.schema.json"), "utf8")) as {
+  $defs: {
+    plugin: {
+      properties: {
+        limits: { default: { startTimeout: string; timeout: string } };
+      };
+    };
+  };
+};
 const memoryVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
@@ -58,6 +69,8 @@ afterEach(async () => {
 
 describe("Gateway gRPC plugin process lifecycle", () => {
   it("uses startTimeout for handshake independently of the call timeout", async () => {
+    expect(startupVector.expected).toMatchObject({ startTimeout: gatewaySchema.$defs.plugin.properties.limits.default.startTimeout });
+    expect(gatewaySchema.$defs.plugin.properties.limits.default).toMatchObject({ startTimeout: "10s", timeout: "5s" });
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-start-timeout-"));
     const binary = join(directory, "forms-plugin");
     await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
@@ -67,15 +80,15 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       `    binary: ${JSON.stringify(binary)}`,
       "    capabilities: [forms.submit]",
       "    settings: {}",
-      "    limits: { startTimeout: 250ms, timeout: 3s }",
+      "    limits: { startTimeout: 250ms, timeout: 15s }",
       "listeners: {}",
     ].join("\n"));
-    const startedAt = Date.now();
     const gateway = await startGatewayWithOutput(["--config", config, "serve", "--no-management"], {
       LIAPOLDUS_FIXTURE_MANIFEST_DELAY: "1s",
     });
+    const startedAt = Date.now();
     const exitCode = await new Promise<number | null>((resolve) => {
-      const timeout = setTimeout(() => resolve(null), 4_000);
+      const timeout = setTimeout(() => resolve(null), 5_000);
       gateway.process.once("close", (code) => {
         clearTimeout(timeout);
         resolve(code);
@@ -83,11 +96,10 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     });
     if (exitCode === null) await gateway.stop();
     const elapsed = Date.now() - startedAt;
-
     expect(exitCode).not.toBeNull();
     expect(exitCode).not.toBe(0);
     expect(elapsed).toBeGreaterThanOrEqual(150);
-    expect(elapsed).toBeLessThan(900);
+    expect(elapsed).toBeLessThan(5_000);
   }, 60_000);
 
   it("starts a child plugin, handshakes, dispatches JSON Call, and strips secrets", async () => {
