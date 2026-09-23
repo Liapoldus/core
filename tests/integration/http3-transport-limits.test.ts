@@ -128,6 +128,6 @@ describe("HTTP/3 transport limits", () => {
 
   it("closes an inactive QUIC connection at idleTimeout", async () => {
     const gateway = await startHTTP3({ limits: 'maxConnections: 10, maxStreams: 10, maxPacketBytes: "1350", idleTimeout: 1s' });
-    expect(await runClient(gateway.address, gateway.certificate, "idle", "3")).toBe("closed");
+    expect(await runClient(gateway.address, gateway.certificate, "idle", "2")).toBe("closed");
   }, 20_000);
 });
