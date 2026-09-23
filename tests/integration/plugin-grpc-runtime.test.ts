@@ -102,6 +102,42 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     expect(elapsed).toBeLessThan(5_000);
   }, 60_000);
 
+  it("rejects startup when the plugin manifest omits a configured capability", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-capability-mismatch-"));
+    const binary = join(directory, "forms-plugin");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const address = await freeAddress();
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    capabilities: [forms.submit]",
+      "    settings: {}",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${address}`,
+      "    routes: []",
+    ].join("\n"));
+    const gateway = await startGatewayWithOutput(["--config", config, "serve", "--no-management"], {
+      LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES: "forms.other",
+    });
+    gateways.push(gateway);
+    const exitCode = await new Promise<number | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 3_000);
+      gateway.process.once("close", (code) => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+    });
+    if (exitCode === null) await gateway.stop();
+
+    expect(exitCode).not.toBeNull();
+    expect(exitCode).not.toBe(0);
+    expect(gateway.stdout).not.toContain("forms.other");
+    expect(gateway.stderr).not.toContain("forms.other");
+  }, 60_000);
+
   it("starts a child plugin, handshakes, dispatches JSON Call, and strips secrets", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-"));
     const binary = join(directory, "forms-plugin");
