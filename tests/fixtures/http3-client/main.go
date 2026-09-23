@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 
@@ -30,5 +31,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer response.Body.Close()
+	if _, err := io.Copy(io.Discard, response.Body); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	fmt.Printf("%d %d", response.ProtoMajor, response.StatusCode)
 }
