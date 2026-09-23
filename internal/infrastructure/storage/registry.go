@@ -143,8 +143,27 @@ func (store FilesystemStore) pointer(site, pointerName string) (models.Release, 
 	if cleanTarget != filepath.Join(store.layout.Releases, revision) {
 		return models.Release{}, fs.ErrInvalid
 	}
-	if _, err = os.Stat(filepath.Join(siteRoot, cleanTarget)); err != nil {
+	siteInfo, err := os.Lstat(siteRoot)
+	if err != nil {
 		return models.Release{}, err
+	}
+	if siteInfo.Mode()&os.ModeSymlink != 0 || !siteInfo.IsDir() {
+		return models.Release{}, fs.ErrInvalid
+	}
+	releasesRoot := filepath.Join(siteRoot, store.layout.Releases)
+	releasesInfo, err := os.Lstat(releasesRoot)
+	if err != nil {
+		return models.Release{}, err
+	}
+	if releasesInfo.Mode()&os.ModeSymlink != 0 || !releasesInfo.IsDir() {
+		return models.Release{}, fs.ErrInvalid
+	}
+	releaseInfo, err := os.Lstat(filepath.Join(siteRoot, cleanTarget))
+	if err != nil {
+		return models.Release{}, err
+	}
+	if releaseInfo.Mode()&os.ModeSymlink != 0 || !releaseInfo.IsDir() {
+		return models.Release{}, fs.ErrInvalid
 	}
 	return models.Release{ID: revision}, nil
 }

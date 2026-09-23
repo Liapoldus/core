@@ -228,7 +228,9 @@ references are
   `null` before first publish; `site versions` output shape is not specified
   beyond listing retained revisions, so that command remains pending contract
   clarification. Child-process CLI E2E verifies third publish retains exactly
-  current/previous and removes the oldest release.
+  current/previous and removes the oldest release. Pointer inspection rejects
+  symlinked site/release directories and targets outside the direct releases
+  directory; E2E confirms the external path is not exposed.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON
