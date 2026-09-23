@@ -24,6 +24,15 @@ const tcpVector = vectors.vectors.find(({ id }) => id === "plugin-stream-tcp-byt
 if (!tcpVector) throw new Error("plugin-stream-tcp-bytes vector is missing");
 const tcpPluginVector = vectors.vectors.find(({ id }) => id === "tcp-plugin-protocol");
 if (!tcpPluginVector) throw new Error("tcp-plugin-protocol vector is missing");
+const memoryVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
+  vectors: Array<{
+    id: string;
+    input: { rss: string; limit: string };
+    expected: { processTerminated: boolean; status: number; code: string };
+  }>;
+};
+const memoryVector = memoryVectors.vectors.find(({ id }) => id === "plugin-memory-limit");
+if (!memoryVector) throw new Error("plugin-memory-limit vector is missing");
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 
 async function waitTCP(address: string): Promise<void> {
@@ -247,7 +256,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       "    env:",
       `      - ${JSON.stringify(`LIAPOLDUS_FIXTURE_START_MARKER=${marker}`)}`,
       "    capabilities: [forms.memory]",
-      "    limits: { memory: 64MiB }",
+      `    limits: { memory: ${memoryVector.input.limit} }`,
       "    settings: {}",
       "    restart: { enabled: true, backoff: 100ms, maxBackoff: 500ms }",
       "listeners:",
@@ -264,8 +273,10 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     await waitReady(address);
 
     const response = await request(address, "/memory");
-    expect(response.status).toBe(503);
-    expect(JSON.parse(response.text).code).toBe("resource_exhausted");
+    expect(memoryVector.input).toEqual({ rss: "257MiB", limit: "256MiB" });
+    expect(response.status).toBe(memoryVector.expected.status);
+    expect(JSON.parse(response.text).code).toBe(memoryVector.expected.code);
+    expect(memoryVector.expected.processTerminated).toBe(true);
 
     let startCount = 0;
     for (let attempt = 0; attempt < 100; attempt += 1) {
