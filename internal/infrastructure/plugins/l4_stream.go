@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -35,14 +34,6 @@ type L4Stream struct {
 	finishOnce sync.Once
 }
 
-type l4OpenContext struct {
-	Kind        string `json:"kind"`
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	SNI         string `json:"sni,omitempty"`
-	ALPN        string `json:"alpn,omitempty"`
-}
-
 func (c *CapabilityClient) OpenL4Stream(ctx context.Context, capability string, request L4StreamContext) (L4Session, error) {
 	if err := c.validateCapability(capability); err != nil {
 		return nil, err
@@ -64,13 +55,7 @@ func (c *CapabilityClient) OpenL4Stream(ctx context.Context, capability string, 
 		<-c.active
 		return nil, c.classifyStreamError(ctx, err)
 	}
-	openContext, err := json.Marshal(l4OpenContext{
-		Kind:        request.Transport,
-		Source:      request.Source,
-		Destination: request.Destination,
-		SNI:         request.SNI,
-		ALPN:        request.ALPN,
-	})
+	openContext, err := protocoltransport.EncodeStreamOpenContext(transportKind, request.Source, request.Destination, request.SNI, request.ALPN)
 	if err != nil {
 		cancel()
 		<-c.active
