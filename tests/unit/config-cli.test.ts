@@ -1,6 +1,22 @@
+import { readFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createConfig } from "../support/fixture.js";
 import { jsonOutput, runGateway } from "../support/gateway.js";
+
+const cliDiscoveryVector = (() => {
+  const source = readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8");
+  const contract = JSON.parse(source) as {
+    vectors: Array<{
+      id: string;
+      input: { env?: Record<string, string>; files?: string[] };
+      expected: { configPath?: string; source?: string };
+    }>;
+  };
+  const vector = contract.vectors.find(({ id }) => id === "cli-config-discovery");
+  if (!vector) throw new Error("cli-config-discovery golden vector is missing");
+  return vector;
+})();
 
 describe("gateway config CLI", () => {
   it("uses --config before every other discovery source", async () => {
@@ -17,6 +33,24 @@ describe("gateway config CLI", () => {
       command: "config path",
       path: config,
       source: "flag",
+    });
+  });
+
+  it("reports the environment variable as the selected config source", async () => {
+    const vector = cliDiscoveryVector;
+    const config = await createConfig("registry:\n  path: ./registry\n");
+    const environmentVariable = Object.keys(vector.input.env ?? {})[0];
+    const expectedFile = basename(vector.expected.configPath ?? "");
+    if (!environmentVariable || !expectedFile) throw new Error("cli-config-discovery vector is incomplete");
+    const configDirectory = dirname(config);
+    const result = await runGateway(["--output", "json", "config", "path"], {
+      [environmentVariable]: configDirectory,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(jsonOutput(result)).toMatchObject({
+      path: join(configDirectory, expectedFile),
+      source: vector.expected.source,
     });
   });
 
