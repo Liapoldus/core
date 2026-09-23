@@ -77,6 +77,7 @@ runtime:
   listener:
     type: type
     address: address
+    tls: tls
     routes: routes
     rules: rules
     limits: limits
