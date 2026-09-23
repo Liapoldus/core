@@ -657,6 +657,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			return
 		}
 		requested := path.Clean(request.URL.Path)
+		requested = localeSitePath(requested, site)
 		if requested == "/" {
 			requested = "/" + site.Index
 		}
@@ -1115,6 +1116,23 @@ func shouldSPAFallback(request *http.Request, site models.Site, requested string
 		return false
 	}
 	return true
+}
+
+func localeSitePath(requested string, site models.Site) string {
+	if site.DefaultLocale == "" || site.LocaleSeparator == "" {
+		return requested
+	}
+	localePath := strings.TrimPrefix(requested, site.LocaleSeparator)
+	locale := localePath
+	if prefix, _, separated := strings.Cut(localePath, site.LocaleSeparator); separated {
+		locale = prefix
+	}
+	for _, supported := range site.Locales {
+		if locale == supported {
+			return requested
+		}
+	}
+	return path.Join(site.LocaleSeparator, site.DefaultLocale, localePath)
 }
 
 func gzipHandler(next http.Handler) http.Handler {

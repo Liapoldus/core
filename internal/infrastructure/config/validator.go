@@ -111,6 +111,7 @@ type runtimeWords struct {
 		SPA              string `yaml:"spa"`
 		Locales          string `yaml:"locales"`
 		DefaultLocale    string `yaml:"defaultLocale"`
+		LocaleSeparator  string `yaml:"localeSeparator"`
 		Redirects        string `yaml:"redirects"`
 		Headers          string `yaml:"headers"`
 		Cache            string `yaml:"cache"`

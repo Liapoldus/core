@@ -1322,7 +1322,7 @@ func collectSites(node *yaml.Node, words runtimeWords, base, registryRoot string
 }
 
 func compileSite(node *yaml.Node, words runtimeWords, base, registryRoot string, layout models.RegistryLayout) (models.Site, error) {
-	site := models.Site{Index: words.Site.IndexDefault}
+	site := models.Site{Index: words.Site.IndexDefault, LocaleSeparator: words.Site.LocaleSeparator}
 	source := mappingNode(node, words.Site.Source)
 	if source == nil {
 		return site, nil

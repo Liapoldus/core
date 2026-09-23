@@ -94,6 +94,7 @@ runtime:
     spa: spa
     locales: locales
     defaultLocale: defaultLocale
+    localeSeparator: /
     redirects: redirects
     headers: headers
     deny: deny
