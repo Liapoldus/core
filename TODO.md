@@ -227,7 +227,8 @@ references are
   and `site previous` now read and validate the release pointers and return
   `null` before first publish; `site versions` output shape is not specified
   beyond listing retained revisions, so that command remains pending contract
-  clarification.
+  clarification. Child-process CLI E2E verifies third publish retains exactly
+  current/previous and removes the oldest release.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON
@@ -442,8 +443,9 @@ references are
   through the authenticated Management API; `publish-idempotent` is verified
   through a real child-process publish, retry, body/key conflict, serving and
   audit check; `rollback-missing` is verified via the documented CLI command;
-  `directory-source-publish` is verified via the CLI without registry mutation.
-  45 vectors remain.
+  `directory-source-publish` is verified via the CLI without registry mutation;
+  `release-retention` is verified by three real CLI publishes and pointer/file
+  inspection. 44 vectors remain.
 - [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
   defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
   while `security-runtime.json` describes listener `connections`,

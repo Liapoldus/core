@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readlink, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readlink, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGateway } from "../support/gateway.js";
@@ -137,5 +137,45 @@ describe("registry CLI golden vectors", () => {
       expect(output.revision).toBeNull();
     }
     await expect(stat(join(registry, "sites", "blog"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("retains only current and previous releases after three publishes", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-retention-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const configPath = join(workspace, "gateway.yaml");
+    const config = [
+      "registry:",
+      `  path: ${registry}`,
+      "sites:",
+      "  blog:",
+      "    source: { type: release, slug: blog }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: blog }",
+    ].join("\n");
+    await writeFile(configPath, config, "utf8");
+    const revisions: string[] = [];
+
+    for (const [index, body] of ["first\n", "second\n", "third\n"].entries()) {
+      const source = join(workspace, `source-${index}`);
+      await mkdir(source);
+      await writeFile(join(source, "site.yaml"), "slug: blog\n", "utf8");
+      await writeFile(join(source, "index.html"), body, "utf8");
+      const result = await runGateway(["--output", "json", "--config", configPath, "site", "publish", "blog", source]);
+      const output = JSON.parse(result.stdout) as { revision?: string };
+      expect(result.exitCode).toBe(0);
+      revisions.push(output.revision ?? "");
+    }
+
+    const siteRoot = join(registry, "sites", "blog");
+    expect(await readlink(join(siteRoot, "current"))).toContain(revisions[2]);
+    expect(await readlink(join(siteRoot, "previous"))).toContain(revisions[1]);
+    expect(await readdir(join(siteRoot, "releases"))).toEqual(expect.arrayContaining([revisions[1], revisions[2]]));
+    expect(await readdir(join(siteRoot, "releases"))).not.toContain(revisions[0]);
   });
 });
