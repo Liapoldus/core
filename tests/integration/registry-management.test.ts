@@ -75,6 +75,16 @@ describe("Management registry operations", () => {
       headers,
       body: JSON.stringify({ ...body, source: join(workspace, "different-source") }),
     });
+    const extraProperty = await request(managementAddress, "/api/sites/blog/publish", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...body, unexpected: true }),
+    });
+    const trailingValue = await request(managementAddress, "/api/sites/blog/publish", {
+      method: "POST",
+      headers,
+      body: `${JSON.stringify(body)} {}`,
+    });
     const served = await request(webAddress, "/");
     const auditResponse = await request(managementAddress, "/api/audit", { headers });
     const audit = JSON.parse(auditResponse.text) as { items: Array<{ action: string }> };
@@ -83,6 +93,8 @@ describe("Management registry operations", () => {
     expect(repeated.status).toBe(201);
     expect(repeatedResult.operationId).toBe(firstResult.operationId);
     expect(conflict.status).toBe(409);
+    expect(extraProperty.status).toBe(400);
+    expect(trailingValue.status).toBe(400);
     expect(served.status).toBe(200);
     expect(served.text).toBe("published release\n");
     expect(audit.items).toContainEqual(expect.objectContaining({ action: "site_published" }));
