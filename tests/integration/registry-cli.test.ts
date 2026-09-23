@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readlink, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readlink, readdir, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGateway } from "../support/gateway.js";
@@ -177,5 +177,46 @@ describe("registry CLI golden vectors", () => {
     expect(await readlink(join(siteRoot, "previous"))).toContain(revisions[1]);
     expect(await readdir(join(siteRoot, "releases"))).toEqual(expect.arrayContaining([revisions[1], revisions[2]]));
     expect(await readdir(join(siteRoot, "releases"))).not.toContain(revisions[0]);
+  });
+
+  it("rejects a release pointer that resolves through a symlink outside the registry", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-pointer-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const source = join(workspace, "source");
+    const outside = join(workspace, "outside");
+    await mkdir(source);
+    await mkdir(outside);
+    await writeFile(join(source, "site.yaml"), "slug: blog\n", "utf8");
+    await writeFile(join(source, "index.html"), "release\n", "utf8");
+    const configPath = join(workspace, "gateway.yaml");
+    const config = [
+      "registry:",
+      `  path: ${registry}`,
+      "sites:",
+      "  blog:",
+      "    source: { type: release, slug: blog }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: blog }",
+    ].join("\n");
+    await writeFile(configPath, config, "utf8");
+    const published = await runGateway(["--output", "json", "--config", configPath, "site", "publish", "blog", source]);
+    expect(published.exitCode).toBe(0);
+
+    const siteRoot = join(registry, "sites", "blog");
+    await unlink(join(siteRoot, "current"));
+    await symlink(join("releases", "escape"), join(siteRoot, "current"));
+    await symlink(outside, join(siteRoot, "releases", "escape"));
+    const inspected = await runGateway(["--output", "json", "--config", configPath, "site", "current", "blog"]);
+    const output = JSON.parse(inspected.stdout) as { problem?: { code?: string } };
+
+    expect(inspected.exitCode).toBe(7);
+    expect(output.problem?.code).toBe("registry_unavailable");
+    expect(inspected.stdout).not.toContain(outside);
   });
 });
