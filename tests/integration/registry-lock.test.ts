@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { startGateway } from "../support/gateway.js";
 import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/http.js";
 
@@ -11,6 +14,8 @@ const token = "registry-lock-test-token";
 const environment = { LIAPOLDUS_TEST_MANAGEMENT_TOKEN: token };
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 const directories: string[] = [];
+const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
+const execFileAsync = promisify(execFile);
 
 const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{ id: string; expected: Record<string, unknown> }>;
@@ -65,6 +70,29 @@ async function publish(managementAddress: string, source: string, idempotencyKey
   });
 }
 
+async function holdFilesystemLock(binary: string, path: string): Promise<{ process: ChildProcessWithoutNullStreams; stop(): Promise<void> }> {
+  const child = spawn(binary, [path], { cwd: coreRoot });
+  const lines = createInterface({ input: child.stdout });
+  await new Promise<void>((resolveReady, reject) => {
+    const timeout = setTimeout(() => reject(new Error("lock fixture did not become ready")), 10000);
+    lines.once("line", (line) => {
+      clearTimeout(timeout);
+      if (line !== "ready") reject(new Error("lock fixture returned an unexpected status"));
+      else resolveReady();
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => reject(new Error(`lock fixture exited (${code})`)));
+    child.stderr.on("data", (data) => reject(new Error(String(data))));
+  });
+  return {
+    process: child,
+    stop: () => new Promise<void>((resolveClose) => {
+      child.once("close", () => resolveClose());
+      child.kill("SIGTERM");
+    }),
+  };
+}
+
 describe("filesystem registry publish locks", () => {
   it("rejects a live lock without changing current or previous releases", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-lock-active-"));
@@ -105,4 +133,26 @@ describe("filesystem registry publish locks", () => {
     expect(await readlink(join(fixture.registry, "sites", "blog", "current"))).toContain(JSON.parse(response.text).result.revision as string);
     expect(audit.items.some((item) => item.action === expectedVector("publish-lock-recovery").auditAction)).toBe(true);
   });
+
+  it("rejects a lock held by another process and publishes once it is released", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-lock-process-"));
+    directories.push(workspace);
+    const fixture = await startRegistryGateway(workspace);
+    await mkdir(dirname(fixture.lockPath), { recursive: true });
+    const lockHolder = join(workspace, "registry-lock-holder");
+    await execFileAsync("go", ["build", "-o", lockHolder, "./tests/fixtures/registry-lock-holder"], { cwd: coreRoot });
+    const holder = await holdFilesystemLock(lockHolder, fixture.lockPath);
+
+    const rejected = await publish(fixture.managementAddress, fixture.source, "process-lock-key");
+    expect(rejected.status).toBe(expectedVector("publish-lock-active").status);
+    expect(rejected.text).toContain(expectedVector("publish-lock-active").code as string);
+    await expect(readlink(join(fixture.registry, "sites", "blog", "current"))).rejects.toMatchObject({ code: "ENOENT" });
+
+    await holder.stop();
+    const published = await publish(fixture.managementAddress, fixture.source, "process-lock-key");
+    expect(published.status).toBe(201);
+    expect(await readlink(join(fixture.registry, "sites", "blog", "current"))).toContain(
+      (JSON.parse(published.text) as { result: { revision: string } }).result.revision,
+    );
+  }, 30000);
 });

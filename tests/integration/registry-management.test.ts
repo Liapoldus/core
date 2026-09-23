@@ -57,7 +57,7 @@ describe("Management registry operations", () => {
     await waitReady(webAddress);
 
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    const body = { source, idempotencyKey: "1234567890abcdef" };
+    const body = { source, idempotencyKey: "1234567890abcdef", expectedCurrentRevision: null };
     const published = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
       headers,
@@ -68,8 +68,8 @@ describe("Management registry operations", () => {
       headers,
       body: JSON.stringify(body),
     });
-    const firstResult = JSON.parse(published.text) as { operationId: string };
-    const repeatedResult = JSON.parse(repeated.text) as { operationId: string };
+    const firstResult = JSON.parse(published.text) as { operationId: string; result: { revision: string } };
+    const repeatedResult = JSON.parse(repeated.text) as { operationId: string; result: { revision: string } };
     const conflict = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
       headers,
@@ -84,12 +84,13 @@ describe("Management registry operations", () => {
     const secondPublish = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
       headers,
-      body: JSON.stringify({ source: nextSources[0], idempotencyKey: "2234567890abcdef" }),
+      body: JSON.stringify({ source: nextSources[0], idempotencyKey: "2234567890abcdef", expectedCurrentRevision: firstResult.result.revision }),
     });
+    const secondRevision = JSON.parse(secondPublish.text) as { operationId: string; result: { revision: string } };
     const thirdPublish = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
       headers,
-      body: JSON.stringify({ source: nextSources[1], idempotencyKey: "3234567890abcdef" }),
+      body: JSON.stringify({ source: nextSources[1], idempotencyKey: "3234567890abcdef", expectedCurrentRevision: secondRevision.result.revision }),
     });
     const extraProperty = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
@@ -106,8 +107,7 @@ describe("Management registry operations", () => {
     const audit = JSON.parse(auditResponse.text) as { items: Array<{ action: string }> };
     const releasesRoot = join(registry, "sites", "blog");
     const releases = await readdir(join(releasesRoot, "releases"));
-    const secondRevision = JSON.parse(secondPublish.text) as { operationId: string };
-    const thirdRevision = JSON.parse(thirdPublish.text) as { operationId: string };
+    const thirdRevision = JSON.parse(thirdPublish.text) as { operationId: string; result: { revision: string } };
 
     expect(published.status).toBe(201);
     expect(repeated.status).toBe(201);
@@ -121,11 +121,11 @@ describe("Management registry operations", () => {
     expect(thirdPublish.status).toBe(201);
     expect(served.status).toBe(200);
     expect(served.text).toBe("third release\n");
-    expect(await readlink(join(releasesRoot, "current"))).toContain(thirdRevision.operationId);
-    expect(await readlink(join(releasesRoot, "previous"))).toContain(secondRevision.operationId);
-    expect(releases).toContain(thirdRevision.operationId);
-    expect(releases).toContain(secondRevision.operationId);
-    expect(releases).not.toContain(firstResult.operationId);
+    expect(await readlink(join(releasesRoot, "current"))).toContain(thirdRevision.result.revision);
+    expect(await readlink(join(releasesRoot, "previous"))).toContain(secondRevision.result.revision);
+    expect(releases).toContain(thirdRevision.result.revision);
+    expect(releases).toContain(secondRevision.result.revision);
+    expect(releases).not.toContain(firstResult.result.revision);
     expect(audit.items.filter((item) => item.action === "site_published")).toHaveLength(3);
     expect(auditResponse.text).not.toContain(source);
   });
@@ -159,7 +159,7 @@ describe("Management registry operations", () => {
     const response = await request(managementAddress, "/api/sites/docs/publish", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ source: workspace, idempotencyKey: "1234567890abcdef" }),
+      body: JSON.stringify({ source: workspace, idempotencyKey: "1234567890abcdef", expectedCurrentRevision: null }),
     });
 
     expect(response.status).toBe(409);
@@ -195,7 +195,7 @@ describe("Management registry operations", () => {
     const response = await request(managementAddress, "/api/sites/blog/rollback", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ idempotencyKey: "1234567890abcdef" }),
+      body: JSON.stringify({ idempotencyKey: "1234567890abcdef", expectedCurrentRevision: null }),
     });
 
     expect(response.status).toBe(404);

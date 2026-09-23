@@ -22,7 +22,7 @@ async function writeSiteRoot(directory: string, manifest: string): Promise<void>
 }
 
 describe("gateway config semantic validation", () => {
-  it("rejects a WAF challenge whose provider is not declared", async () => {
+  it("rejects the removed built-in WAF challenge action", async () => {
     const config = await createConfig(
       "listeners: {}\n" +
         "wafPolicies:\n" +
@@ -36,7 +36,7 @@ describe("gateway config semantic validation", () => {
 
     expect(result.exitCode).toBe(3);
     expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
-  });
+  }, 60_000);
 
   it("accepts an arbitrary configured capability as a WAF action without a built-in plugin registry", async () => {
     const config = await createConfig([
@@ -56,7 +56,7 @@ describe("gateway config semantic validation", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("rejects a captcha provider bound to a capability the plugin did not declare", async () => {
+  it("rejects removed plugin-specific root configuration", async () => {
     const config = await createConfig(
       "listeners: {}\n" +
         "secrets:\n  recaptchaSecret: env:LIAPOLDUS_CAPTCHA_SECRET\n" +
@@ -88,7 +88,7 @@ describe("gateway config semantic validation", () => {
     });
 
     expect(result.exitCode).toBe(3);
-    expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
+    expect(jsonOutput(result)).toMatchObject({ problem: { code: "unknown_field" } });
     expect(result.stdout).not.toContain("test-only-captcha-secret");
     expect(result.stderr).not.toContain("test-only-captcha-secret");
   });

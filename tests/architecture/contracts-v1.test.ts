@@ -20,8 +20,8 @@ describe("versioned Gateway contracts", () => {
   it("contains the complete v1 golden-vector catalog", async () => {
     const document = JSON.parse(await readFile(join(root, "contracts", "v1", "golden-vectors.json"), "utf8")) as { version: string; vectors: Array<{ id: string; input: unknown; expected: unknown }> };
     expect(document.version).toBe("1.0.0");
-    expect(document.vectors).toHaveLength(50);
-    expect(new Set(document.vectors.map((vector) => vector.id)).size).toBe(50);
+    expect(document.vectors).toHaveLength(49);
+    expect(new Set(document.vectors.map((vector) => vector.id)).size).toBe(49);
     for (const vector of document.vectors) {
       expect(vector.input, vector.id).toBeDefined();
       expect(vector.expected, vector.id).toBeDefined();

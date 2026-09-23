@@ -30,8 +30,15 @@ var memoryBlock []byte
 type httpRequest struct {
 	Method  string            `json:"method"`
 	Path    string            `json:"path"`
+	Query   string            `json:"query"`
 	Headers map[string]string `json:"headers"`
 	Body    []byte            `json:"body"`
+	Context map[string]string `json:"context"`
+	WAF     *struct {
+		Headers     map[string][]string `json:"headers"`
+		Query       map[string][]string `json:"query"`
+		RequestSize uint64              `json:"requestSize"`
+	} `json:"waf"`
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
@@ -131,6 +138,25 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 	var input httpRequest
 	if err := json.Unmarshal(request.GetPayload(), &input); err != nil {
 		return &pluginv1.CallResponse{Code: "invalid_request"}, nil
+	}
+	if input.WAF != nil {
+		_, authPresent := input.Headers["Authorization"]
+		_, cookiePresent := input.Headers["Cookie"]
+		response, _ := json.Marshal(struct {
+			Continue bool `json:"continue"`
+			Response struct {
+				Status  int               `json:"status"`
+				Headers map[string]string `json:"headers"`
+				Cookies []string          `json:"cookies"`
+				Body    []byte            `json:"body"`
+			} `json:"response"`
+		}{Continue: false, Response: struct {
+			Status  int               `json:"status"`
+			Headers map[string]string `json:"headers"`
+			Cookies []string          `json:"cookies"`
+			Body    []byte            `json:"body"`
+		}{Status: 403, Headers: map[string]string{"X-Policy-Decision": "plugin", "X-Credentials-Forwarded": fmt.Sprintf("%t", authPresent || cookiePresent)}, Body: []byte("request denied by configured capability")}})
+		return &pluginv1.CallResponse{Payload: response}, nil
 	}
 	_, authPresent := input.Headers["Authorization"]
 	_, cookiePresent := input.Headers["Cookie"]

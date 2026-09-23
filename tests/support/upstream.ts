@@ -15,7 +15,7 @@ export interface UpstreamProbe {
   stop: () => Promise<void>;
 }
 
-export async function startUpstream(): Promise<UpstreamProbe> {
+export async function startUpstream(responseDelayMs = 0): Promise<UpstreamProbe> {
   const requests: UpstreamHits = {
     requests: 0,
     paths: [],
@@ -32,7 +32,8 @@ export async function startUpstream(): Promise<UpstreamProbe> {
     request.on("end", () => {
       requests.bodies.push(Buffer.concat(chunks).toString("utf8"));
       response.writeHead(200, { "content-type": "text/plain", "x-upstream": "liapoldus-echo" });
-      response.end("upstream");
+      if (responseDelayMs > 0) setTimeout(() => response.end("upstream"), responseDelayMs);
+      else response.end("upstream");
     });
   });
 

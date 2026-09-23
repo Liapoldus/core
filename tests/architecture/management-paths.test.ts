@@ -20,7 +20,6 @@ describe("Management API route contract", () => {
       "/api/config/validate",
       "/api/config/reload",
       "/api/reload",
-      "/api/tls/",
       "/api/audit",
       "/metrics",
       "/api/plugins/admin-surfaces",
@@ -29,7 +28,7 @@ describe("Management API route contract", () => {
     ];
     const contractFields = [
       "healthz:", "status:", "listeners:", "upstreams:", "sites:", "plugins:", "operations:",
-      "config:", "configValidate:", "configReload:", "reload:", "tls:", "audit:", "metrics:",
+      "config:", "configValidate:", "configReload:", "reload:", "audit:", "metrics:",
       "adminSurfaces:", "adminPages:",
     ];
 

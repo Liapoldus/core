@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readlink, readdir, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { pid } from "node:process";
 import { join } from "node:path";
 import { runGateway } from "../support/gateway.js";
 import { freeAddress } from "../support/http.js";
@@ -71,6 +72,33 @@ describe("registry CLI golden vectors", () => {
     expect(result.exitCode).toBe(4);
     expect(output.problem?.code).toBe("site_source_immutable");
     await expect(stat(join(registry, "sites", "docs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("maps an active publish lock to the documented conflict exit and preserves pointers", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-lock-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const siteRoot = join(registry, "sites", "blog");
+    const source = join(workspace, "source");
+    await mkdir(siteRoot, { recursive: true });
+    await mkdir(source);
+    await writeFile(join(source, "site.yaml"), "slug: blog\n", "utf8");
+    await writeFile(join(source, "index.html"), "release body\n", "utf8");
+    await writeFile(join(siteRoot, ".publish.lock"), JSON.stringify({ pid, startedAt: new Date().toISOString(), nonce: "active" }), { mode: 0o600 });
+    const configPath = join(workspace, "gateway.yaml");
+    await writeFile(configPath, [
+      "registry:", `  path: ${registry}`,
+      "sites:", "  blog:", "    source: { type: release, slug: blog }",
+      "listeners:", "  web:", "    type: http", `    address: ${await freeAddress()}`,
+      "    routes:", "      - when: { path: { prefix: / } }", "        then: { site: blog }",
+    ].join("\n"), "utf8");
+
+    const result = await runGateway(["--output", "json", "--config", configPath, "site", "publish", "blog", source]);
+    const output = JSON.parse(result.stdout) as { problem?: { code?: string } };
+
+    expect(result.exitCode).toBe(4);
+    expect(output.problem?.code).toBe("publish_in_progress");
+    await expect(readlink(join(siteRoot, "current"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("publishes a release source and returns its resulting revision", async () => {

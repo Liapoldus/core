@@ -19,7 +19,7 @@ afterEach(async () => {
 
 describe("configured access logging", () => {
   it("writes structured request records and redacts query and header secrets", async () => {
-    const upstream = await startUpstream();
+    const upstream = await startUpstream(200);
     upstreams.push(upstream);
     const webAddress = await freeAddress();
     const managementAddress = await freeAddress();
@@ -36,6 +36,7 @@ describe("configured access logging", () => {
     await waitReady(webAddress);
 
     const requestId = "access-log-request-42";
+    const requestStartedAt = Date.now();
     const response = await request(webAddress, "/private?token=query-secret", {
       method: "POST",
       headers: {
@@ -45,6 +46,7 @@ describe("configured access logging", () => {
       },
       body: "request-body",
     });
+    const elapsedSeconds = (Date.now() - requestStartedAt) / 1000;
     expect(response.status).toBe(200);
     await gateway.stop();
 
@@ -66,11 +68,13 @@ describe("configured access logging", () => {
     expect(Number(record?.bytes)).toBeGreaterThan(0);
     expect(typeof record?.host).toBe("string");
     expect(Date.parse(String(record?.timestamp))).not.toBeNaN();
-    expect(Number(record?.duration)).toBeGreaterThanOrEqual(0);
+    expect(Number(record?.duration)).toBeGreaterThanOrEqual(0.1);
+    expect(Number(record?.duration)).toBeLessThan(10);
+    expect(Number(record?.duration)).toBeLessThanOrEqual(elapsedSeconds);
     expect(gateway.stderr).not.toContain("query-secret");
     expect(gateway.stderr).not.toContain("header-secret");
     expect(gateway.stderr).not.toContain("cookie-secret");
-  });
+  }, 20_000);
 
   it("generates and returns a request ID when the caller did not provide one", async () => {
     const upstream = await startUpstream();
