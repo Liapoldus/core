@@ -17,7 +17,7 @@ const servers: Array<Handle> = [];
 const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
-    input: { bucket?: { requests: number; per: string; burst: number }; cors?: { origins: string[]; methods: string[] }; method?: string; origin?: string; requestMethod?: string };
+    input: { bucket?: { requests: number; per: string; burst: number }; cors?: { origins: string[]; methods: string[] }; dataProvider?: string; method?: string; onError?: string; origin?: string; requestMethod?: string };
     expected: { code?: string; secondStatus?: number; status: number; terminalCalled?: boolean; headers?: Record<string, string> };
   }>;
 };
@@ -339,15 +339,16 @@ describe("WAF header and query matchers", () => {
 
 describe("WAF GeoIP provider failures", () => {
   it("fails closed when a referenced MMDB provider cannot be opened", async () => {
+    const expected = vector("geo-provider-failure-deny");
     const upstream = await startUpstream();
     servers.push(upstream);
     const address = await freeAddress();
     const configPath = await writeGatewayConfig([
       `dataProviders:`,
-      `  geo: { type: mmdb, path: /missing/GeoLite2-City.mmdb, onError: deny }`,
+      `  ${expected.input.dataProvider}: { type: mmdb, path: /missing/GeoLite2-City.mmdb, onError: ${expected.input.onError} }`,
       `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
       `wafPolicies:`, `  geo:`, `    rules:`,
-      `      - when: { geo: { provider: geo, country: { exact: US } }, path: { prefix: /api } }`,
+      `      - when: { geo: { provider: ${expected.input.dataProvider}, country: { exact: US } }, path: { prefix: /api } }`,
       `        then: { deny: { status: 451 } }`,
       `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
       `    routes:`, `      - when: { path: { prefix: /api } }`,
@@ -358,7 +359,9 @@ describe("WAF GeoIP provider failures", () => {
     await waitReady(address);
 
     const response = await request(address, "/api/private");
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(expected.expected.status);
+    expect(response.headers.get("content-type")).toContain("application/problem+json");
+    expect(JSON.parse(response.text).code).toBe(expected.expected.code);
     expect(upstream.hits().paths).toEqual([]);
   });
 
