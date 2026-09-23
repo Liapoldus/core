@@ -48,6 +48,15 @@ type IdentityCapabilityDispatcher interface {
 
 var connectionSequence uint64
 
+const netHTTPReadLimitSlack = 4 * 1024
+
+func netHTTPMaxHeaderBytes(configured int) int {
+	if configured <= netHTTPReadLimitSlack {
+		return 1
+	}
+	return configured - netHTTPReadLimitSlack
+}
+
 func Serve(parent context.Context, listeners []models.Listener, sites map[string]models.Site, upstreams map[string]models.Upstream, profiles map[string]models.TLSProfile, drainTimeout time.Duration, metrics ...*observability.Registry) error {
 	return ServeWithCapabilities(parent, listeners, sites, upstreams, profiles, drainTimeout, nil, metrics...)
 }
@@ -701,7 +710,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 	if metrics != nil {
 		handler = instrumentHTTP(handler, metrics, listener.Address)
 	}
-	server := &http.Server{Addr: listener.Address, Handler: handler}
+	server := &http.Server{Addr: listener.Address, Handler: handler, MaxHeaderBytes: netHTTPMaxHeaderBytes(listener.Limits.HeaderBytes)}
 	var tlsConfig *tls.Config
 	var quicServer *http3.Server
 	if listener.TLSProfile != "" {

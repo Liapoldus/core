@@ -810,12 +810,24 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 			return nil, err
 		}
 		listener.Limits.BodyBytes = bodyBytes
+		headerBytes, err := parseByteCount(words.Listener.HeaderBytesDefault, words.WAF.SizeUnits)
+		if err != nil || headerBytes > uint64(^uint(0)>>1) {
+			return nil, ErrInvalidDocument
+		}
+		listener.Limits.HeaderBytes = int(headerBytes)
 		if limits := mappingNode(body, words.Listener.Limits); limits != nil {
 			if configured, exists := fieldValue(limits, words.Listener.BodyBytes); exists {
 				listener.Limits.BodyBytes, err = parseByteCount(configured, words.WAF.SizeUnits)
 				if err != nil || listener.Limits.BodyBytes > uint64(^uint64(0)>>1) {
 					return nil, ErrInvalidDocument
 				}
+			}
+			if configured, exists := fieldValue(limits, words.Listener.HeaderBytes); exists {
+				headerBytes, err = parseByteCount(configured, words.WAF.SizeUnits)
+				if err != nil || headerBytes > uint64(^uint(0)>>1) {
+					return nil, ErrInvalidDocument
+				}
+				listener.Limits.HeaderBytes = int(headerBytes)
 			}
 		}
 		routeField := words.Listener.Routes

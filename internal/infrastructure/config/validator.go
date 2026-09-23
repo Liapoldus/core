@@ -90,15 +90,17 @@ type runtimeWords struct {
 		Tracing     string `yaml:"tracing"`
 	} `yaml:"section"`
 	Listener struct {
-		Type             string
-		Address          string
-		TLSProfile       string `yaml:"tls"`
-		Routes           string
-		Rules            string
-		Limits           string            `yaml:"limits"`
-		BodyBytes        string            `yaml:"bodyBytes"`
-		BodyBytesDefault string            `yaml:"bodyBytesDefault"`
-		SizeUnits        map[string]uint64 `yaml:"sizeUnits"`
+		Type               string
+		Address            string
+		TLSProfile         string `yaml:"tls"`
+		Routes             string
+		Rules              string
+		Limits             string            `yaml:"limits"`
+		BodyBytes          string            `yaml:"bodyBytes"`
+		BodyBytesDefault   string            `yaml:"bodyBytesDefault"`
+		HeaderBytes        string            `yaml:"headerBytes"`
+		HeaderBytesDefault string            `yaml:"headerBytesDefault"`
+		SizeUnits          map[string]uint64 `yaml:"sizeUnits"`
 	}
 	Site struct {
 		Source           string `yaml:"source"`

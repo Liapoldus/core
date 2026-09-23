@@ -83,6 +83,8 @@ runtime:
     limits: limits
     bodyBytes: bodyBytes
     bodyBytesDefault: 10MiB
+    headerBytes: headerBytes
+    headerBytesDefault: 32KiB
   site:
     source: source
     type: type
