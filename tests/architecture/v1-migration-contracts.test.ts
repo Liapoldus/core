@@ -14,9 +14,11 @@ describe("Gateway v1 migration contracts", () => {
     expect(plugin.properties.endpoint.properties.tls.required).toEqual(
       expect.arrayContaining(["serverName", "ca", "clientCertificate", "clientKey"]),
     );
-    expect(plugin.allOf.some((condition: { if?: { properties?: { mode?: { const?: string } } }; then?: { required?: string[] } }) =>
-      condition.if?.properties?.mode?.const === "remote" && condition.then?.required?.includes("endpoint"),
-    )).toBe(true);
+    const remoteCondition = plugin.allOf.find((condition: { if?: { required?: string[]; properties?: { mode?: { const?: string } } }; then?: { required?: string[] } }) =>
+      condition.if?.properties?.mode?.const === "remote",
+    );
+    expect(remoteCondition?.if?.required).toContain("mode");
+    expect(remoteCondition?.then?.required).toContain("endpoint");
   });
 
   it("allows incoming cookies only as an explicit capability context allow-list", async () => {
