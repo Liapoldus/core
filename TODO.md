@@ -31,8 +31,9 @@ runtime использует каталог `registry` рядом с актив�
 версионируется в `assets/contracts/registry-fields.yaml`. Actor общего
 `management.staticToken` записывается как `static-token`; service account — по
 ID. Успешные и неуспешные `config.reload` и `config.update` записываются вместе
-с request ID и digest до/после; истёкшие файлы удаляются при чтении. Остальные
-mutating Management API операции ещё нужно подключить к audit. E2E regression
+с request ID и digest до/после; истёкшие файлы удаляются при чтении. Успешная
+публикация записывает action `site_published` без source path. Остаётся добавить
+audit для rollback и остальных mutating Management API операций. E2E regression
 проверяет append, restart, retention и отсутствие credential в ответе в
 `tests/integration/audit-persistence.test.ts`.
 
@@ -205,6 +206,14 @@ references are
   path resolves relative to the configuration file directory, mirrors the
   site-root rule of directory sources. Publish rewrites `previous`/`current`
   atomically and a failed publish leaves both pointers unchanged.
+- Management publish E2E is backed by the filesystem registry and now matches
+  `PublishRequest.additionalProperties: false`: unknown JSON properties and
+  trailing JSON values return 400. Idempotency entries are bounded by pruning
+  expired records on new publish requests. Persistence across Gateway restart
+  remains an explicit product decision; the docs specify a 24 h retry window
+  but not restart behavior. Rollback response shape also conflicts between the
+  OpenAPI `Publication` schema and generic operation-reference wording in
+  `gateway/api/operations.md`; do not choose one until clarified.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON
@@ -415,7 +424,10 @@ references are
 
 - [ ] Execute all 50 current documentation golden vectors semantically against
   runtime on macOS/Linux. `http3-bind` is now exercised end-to-end, including
-  TLS, shared TCP/UDP port and an HTTP/3 request; 49 vectors remain.
+  TLS, shared TCP/UDP port and an HTTP/3 request; `audit-retention` is verified
+  through the authenticated Management API; `publish-idempotent` is verified
+  through a real child-process publish, retry, body/key conflict, serving and
+  audit check. 47 vectors remain.
 - [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
   defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
   while `security-runtime.json` describes listener `connections`,
@@ -508,8 +520,9 @@ TCP-loopback. Целевой контракт описан в
   `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. HTTP/3 проходит реальный child-process
   запрос через QUIC. `grpcurl list/describe` проверен вручную.
-  Остаются scoped grant enforcement, аудит остальных mutating Management API
-  операций и семантический прогон всех Gateway vectors.
+  Остаются scoped grant enforcement, durable idempotency storage (decision
+  requested), аудит rollback/остальных mutating Management API операций и
+  семантический прогон 47 Gateway vectors.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
   опрашивается раз в секунду и после capability Call; breach останавливает
   plugin, возвращает HTTP `503 resource_exhausted`, а при включённом restart

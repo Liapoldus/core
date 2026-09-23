@@ -34,6 +34,7 @@ json:
   digest: digest
   valid: valid
   source: source
+  idempotencyKey: idempotencyKey
   id: id
   replyTo: replyTo
   status: status
@@ -104,6 +105,11 @@ idempotency:
   window: 24h
   key: X-Idempotency-Key
   replyTo: Reply-To
+codes:
+  siteSourceImmutable: site_source_immutable
+  idempotencyConflict: idempotency_conflict
+  releaseInvalid: release_invalid
+  registryUnavailable: registry_unavailable
 pagination:
   limitDefault: 50
   limitMax: 100

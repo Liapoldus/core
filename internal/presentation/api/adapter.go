@@ -10,6 +10,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -17,11 +23,6 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
-	"net/http"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Server struct {
@@ -31,7 +32,8 @@ type Server struct {
 	Revision        string
 	Digest          string
 	mu              sync.RWMutex
-	idempotency     map[string]Operation
+	idempotency     map[string]idempotencyRecord
+	publishMu       sync.Mutex
 	operations      map[string]Operation
 	AdminSurfaces   []AdminSurface
 	AdminDispatcher *plugins.Dispatcher
@@ -51,7 +53,11 @@ type Server struct {
 	Metrics      *observability.Registry
 	Audit        *application.AuditService
 	AuditWords   config.ObservabilityWords
+	Management   config.ManagementWords
+	Errors       config.ErrorCatalog
+	SiteSources  map[string]models.Site
 	TLSConfig    *tls.Config
+	contractOnce sync.Once
 }
 
 // UpdateRuntimeRevision atomically updates the management snapshot metadata
@@ -85,7 +91,19 @@ type Operation struct {
 	Result    any       `json:"result,omitempty"`
 }
 
+type idempotencyRecord struct {
+	Fingerprint string
+	Operation   Operation
+	ExpiresAt   time.Time
+}
+
 func (server *Server) Handler() http.Handler {
+	server.contractOnce.Do(func() {
+		if server.Management.Paths.Sites != "" {
+			return
+		}
+		server.Management, _ = config.LoadManagement()
+	})
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		wrapped := &metricResponseWriter{ResponseWriter: response}
 		server.handle(wrapped, request)
@@ -217,9 +235,9 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.Unlock()
 		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
 		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
-	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/publish") && request.Method == http.MethodPost:
-		server.handleSitePublish(response, request, path, requestID)
-	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/rollback") && request.Method == http.MethodPost:
+	case strings.HasPrefix(path, server.Management.Paths.Sites+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Publish) && request.Method == http.MethodPost:
+		server.handleSitePublish(response, request, path, actor, requestID)
+	case strings.HasPrefix(path, server.Management.Paths.Sites+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Rollback) && request.Method == http.MethodPost:
 		server.handleSiteRollback(response, request, path, requestID)
 	case path == "/api/config/validate" && request.Method == http.MethodPost:
 		var input struct {
@@ -418,52 +436,152 @@ func (server *Server) handleTLSOperation(response http.ResponseWriter, request *
 	writeJSON(response, http.StatusAccepted, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
 }
 
-func (server *Server) handleSitePublish(response http.ResponseWriter, request *http.Request, path, requestID string) {
-	if server.PublishSite == nil {
-		writeProblem(response, http.StatusServiceUnavailable, "plugin_unavailable", "registry publisher is unavailable", requestID)
-		return
-	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 4 || parts[0] != "api" || parts[1] != "sites" || parts[2] == "" {
+func (server *Server) handleSitePublish(response http.ResponseWriter, request *http.Request, path, actor, requestID string) {
+	sitePrefix := server.Management.Paths.Sites + "/"
+	siteSuffix := "/" + server.Management.Paths.Publish
+	if !strings.HasPrefix(path, sitePrefix) || !strings.HasSuffix(path, siteSuffix) {
 		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
 		return
 	}
-	var input struct {
-		Source         string `json:"source"`
-		IdempotencyKey string `json:"idempotencyKey"`
+	site := strings.TrimSuffix(strings.TrimPrefix(path, sitePrefix), siteSuffix)
+	if site == "" || strings.Contains(site, "/") {
+		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+		return
 	}
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.Source == "" || len(input.IdempotencyKey) < 16 {
+	if server.SiteSources != nil {
+		definition, exists := server.SiteSources[site]
+		if !exists {
+			writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+			return
+		}
+		if definition.Source != models.SourceRelease {
+			server.writeCatalogProblem(response, server.Management.Codes.SiteSourceImmutable, requestID)
+			return
+		}
+	}
+	if server.PublishSite == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	var input struct {
+		Source         string
+		IdempotencyKey string
+	}
+	var fields map[string]json.RawMessage
+	decoder := json.NewDecoder(request.Body)
+	decodeErr := decoder.Decode(&fields)
+	if decodeErr == nil {
+		for key := range fields {
+			if key != server.Management.JSON.Source && key != server.Management.JSON.IdempotencyKey {
+				decodeErr = fmt.Errorf("unexpected publish request property")
+				break
+			}
+		}
+	}
+	if decodeErr == nil {
+		var trailing json.RawMessage
+		if trailingErr := decoder.Decode(&trailing); trailingErr != io.EOF {
+			decodeErr = fmt.Errorf("unexpected trailing publish request data")
+		}
+	}
+	if decodeErr == nil {
+		decodeErr = json.Unmarshal(fields[server.Management.JSON.Source], &input.Source)
+	}
+	if decodeErr == nil {
+		decodeErr = json.Unmarshal(fields[server.Management.JSON.IdempotencyKey], &input.IdempotencyKey)
+	}
+	if decodeErr != nil || input.Source == "" || len(input.IdempotencyKey) < server.Management.Idempotency.KeyMin || len(input.IdempotencyKey) > server.Management.Idempotency.KeyChars || !ascii(input.IdempotencyKey) {
 		writeProblem(response, http.StatusBadRequest, "invalid_input", "source and idempotencyKey are required", requestID)
 		return
 	}
-	cacheKey := parts[2] + "|" + input.IdempotencyKey
-	server.mu.RLock()
+	window, windowErr := time.ParseDuration(server.Management.Idempotency.Window)
+	if windowErr != nil || window <= 0 {
+		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management idempotency contract is invalid", requestID)
+		return
+	}
+	cacheKey := idempotencyKey(site, actor, input.IdempotencyKey)
+	fingerprint := publishFingerprint(input.Source)
+	server.publishMu.Lock()
+	defer server.publishMu.Unlock()
+	now := time.Now().UTC()
+	server.mu.Lock()
+	for key, record := range server.idempotency {
+		if !now.Before(record.ExpiresAt) {
+			delete(server.idempotency, key)
+		}
+	}
 	previous, cached := server.idempotency[cacheKey]
-	server.mu.RUnlock()
+	server.mu.Unlock()
 	if cached {
-		writeJSON(response, http.StatusCreated, map[string]any{"operationId": previous.ID, "state": previous.State, "requestId": requestID})
-		return
+		if previous.Fingerprint != fingerprint {
+			server.writeCatalogProblem(response, server.Management.Codes.IdempotencyConflict, requestID)
+			return
+		} else {
+			writeJSON(response, http.StatusCreated, map[string]any{
+				server.Management.JSON.OperationID: previous.Operation.ID,
+				server.Management.JSON.State:       previous.Operation.State,
+				server.Management.JSON.RequestID:   requestID,
+			})
+			return
+		}
 	}
-	operation, err := server.PublishSite(request.Context(), parts[2], input.Source, input.IdempotencyKey)
+	digestBefore := server.runtimeDigest()
+	operation, err := server.PublishSite(request.Context(), site, input.Source, input.IdempotencyKey)
 	if err != nil {
-		writeProblem(response, http.StatusUnprocessableEntity, "publish_failed", err.Error(), requestID)
+		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SitePublished, site, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
+		server.writeCatalogProblem(response, server.Management.Codes.ReleaseInvalid, requestID)
 		return
 	}
+	operation.CreatedAt = now
 	server.mu.Lock()
 	if server.idempotency == nil {
-		server.idempotency = make(map[string]Operation)
+		server.idempotency = make(map[string]idempotencyRecord)
 	}
-	if previous, exists := server.idempotency[cacheKey]; exists {
-		operation = previous
-	} else {
-		server.idempotency[cacheKey] = operation
-	}
+	server.idempotency[cacheKey] = idempotencyRecord{Fingerprint: fingerprint, Operation: operation, ExpiresAt: operation.CreatedAt.Add(window)}
 	if server.operations == nil {
 		server.operations = make(map[string]Operation)
 	}
 	server.operations[operation.ID] = operation
 	server.mu.Unlock()
-	writeJSON(response, http.StatusCreated, map[string]any{"operationId": operation.ID, "state": operation.State, "requestId": requestID})
+	server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SitePublished, site, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, server.runtimeDigest())
+	writeJSON(response, http.StatusCreated, map[string]any{
+		server.Management.JSON.OperationID: operation.ID,
+		server.Management.JSON.State:       operation.State,
+		server.Management.JSON.RequestID:   requestID,
+	})
+}
+
+func idempotencyKey(site, actor, key string) string {
+	value, _ := json.Marshal(struct {
+		Site  string
+		Actor string
+		Key   string
+	}{Site: site, Actor: actor, Key: key})
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
+}
+
+func publishFingerprint(source string) string {
+	value, _ := json.Marshal(struct {
+		Source string
+	}{Source: source})
+	digest := sha256.Sum256(value)
+	return hex.EncodeToString(digest[:])
+}
+
+func (server *Server) runtimeDigest() string {
+	server.mu.RLock()
+	defer server.mu.RUnlock()
+	return server.Digest
+}
+
+func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, requestID string) {
+	problem, exists := server.Errors.Lookup(code)
+	if !exists {
+		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management error contract is invalid", requestID)
+		return
+	}
+	writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
 }
 
 func (server *Server) handleSiteRollback(response http.ResponseWriter, request *http.Request, path, requestID string) {

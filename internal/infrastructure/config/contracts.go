@@ -281,6 +281,12 @@ func loadCLI() (CLIWords, error) {
 }
 
 type ManagementWords struct {
+	Codes struct {
+		SiteSourceImmutable string `yaml:"siteSourceImmutable"`
+		IdempotencyConflict string `yaml:"idempotencyConflict"`
+		ReleaseInvalid      string `yaml:"releaseInvalid"`
+		RegistryUnavailable string `yaml:"registryUnavailable"`
+	} `yaml:"codes"`
 	Paths struct {
 		Healthz        string `yaml:"healthz"`
 		Status         string `yaml:"status"`
@@ -319,6 +325,7 @@ type ManagementWords struct {
 		Digest            string `yaml:"digest"`
 		Valid             string `yaml:"valid"`
 		Source            string `yaml:"source"`
+		IdempotencyKey    string `yaml:"idempotencyKey"`
 		ID                string `yaml:"id"`
 		ReplyTo           string `yaml:"replyTo"`
 		Status            string `yaml:"status"`
@@ -428,8 +435,9 @@ type ObservabilityWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			ConfigReload string `yaml:"configReload"`
-			ConfigUpdate string `yaml:"configUpdate"`
+			ConfigReload  string `yaml:"configReload"`
+			ConfigUpdate  string `yaml:"configUpdate"`
+			SitePublished string `yaml:"sitePublished"`
 		} `yaml:"actions"`
 		Resources struct {
 			Gateway string `yaml:"gateway"`

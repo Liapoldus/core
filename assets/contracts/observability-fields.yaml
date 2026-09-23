@@ -9,6 +9,7 @@ audit:
   actions:
     configReload: config.reload
     configUpdate: config.update
+    sitePublished: site_published
   resources:
     gateway: gateway
   results:

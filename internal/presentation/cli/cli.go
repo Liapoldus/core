@@ -356,7 +356,27 @@ func serve(options options) int {
 		return words.Exits.Internal
 	}
 	auditService := &application.AuditService{Store: auditStore, RetentionDays: observabilityWords.Audit.RetentionDays}
-	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, Audit: auditService, AuditWords: observabilityWords, ValidateConfig: config.ValidateYAML}
+	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, Audit: auditService, AuditWords: observabilityWords, Management: managementWords, Errors: errorCatalog, SiteSources: graph.Sites, ValidateConfig: config.ValidateYAML}
+	registryLayout, layoutErr := config.LoadRegistryLayout()
+	if layoutErr != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	registryService := application.RegistryService{Store: storage.NewFilesystemStore(graph.RegistryRoot, registryLayout)}
+	management.PublishSite = func(_ context.Context, site, source, _ string) (api.Operation, error) {
+		release, publishErr := registryService.Publish(site, source)
+		if publishErr != nil {
+			return api.Operation{}, publishErr
+		}
+		return api.Operation{ID: release.ID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil
+	}
+	management.RollbackSite = func(_ context.Context, site, _ string) (api.Operation, error) {
+		release, rollbackErr := registryService.Rollback(site)
+		if rollbackErr != nil {
+			return api.Operation{}, rollbackErr
+		}
+		return api.Operation{ID: release.ID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil
+	}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
 		if !ok {
