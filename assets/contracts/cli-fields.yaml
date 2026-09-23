@@ -11,6 +11,7 @@ subcommands:
   explain: explain
   diff: diff
 site:
+  publish: publish
   rollback: rollback
 flags:
   output: --output
@@ -56,6 +57,7 @@ codes:
   siteInvalid: site_invalid
   siteSourceImmutable: site_source_immutable
   registryUnavailable: registry_unavailable
+  releaseInvalid: release_invalid
 exits:
   ok: 0
   internal: 1
@@ -88,6 +90,8 @@ json:
   index: index
   site: site
   revision: revision
+  previousRevision: previousRevision
+  requestId: requestId
   listeners: listeners
   routes: routes
   sites: sites
@@ -110,6 +114,10 @@ display:
   accountsRotate: accounts rotate
   accountsRevoke: accounts revoke
   siteRollback: site rollback
+  sitePublish: site publish
+identifiers:
+  requestPrefix: req_
+  requestBytes: 8
 explain:
   listener: "listener %s %s %s"
   route: "route %s %d -> site %s"

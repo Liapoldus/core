@@ -43,6 +43,7 @@ type CLIWords struct {
 		Diff     string `yaml:"diff"`
 	} `yaml:"subcommands"`
 	Site struct {
+		Publish  string `yaml:"publish"`
 		Rollback string `yaml:"rollback"`
 	} `yaml:"site"`
 	Flags struct {
@@ -80,6 +81,7 @@ type CLIWords struct {
 		SiteInvalid            string `yaml:"siteInvalid"`
 		SiteSourceImmutable    string `yaml:"siteSourceImmutable"`
 		RegistryUnavailable    string `yaml:"registryUnavailable"`
+		ReleaseInvalid         string `yaml:"releaseInvalid"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`
@@ -99,33 +101,35 @@ type CLIWords struct {
 		System               string `yaml:"system"`
 	} `yaml:"sources"`
 	JSON struct {
-		OK        string `yaml:"ok"`
-		Command   string `yaml:"command"`
-		Path      string `yaml:"path"`
-		Source    string `yaml:"source"`
-		Valid     string `yaml:"valid"`
-		Document  string `yaml:"document"`
-		Problem   string `yaml:"problem"`
-		Code      string `yaml:"code"`
-		Detail    string `yaml:"detail"`
-		Report    string `yaml:"report"`
-		Name      string `yaml:"name"`
-		Type      string `yaml:"type"`
-		Address   string `yaml:"address"`
-		Index     string `yaml:"index"`
-		Site      string `yaml:"site"`
-		Listeners string `yaml:"listeners"`
-		Routes    string `yaml:"routes"`
-		Sites     string `yaml:"sites"`
-		Issues    string `yaml:"issues"`
-		Kind      string `yaml:"kind"`
-		Listener  string `yaml:"listener"`
-		Revision  string `yaml:"revision"`
-		Diff      string `yaml:"diff"`
-		Added     string `yaml:"added"`
-		Removed   string `yaml:"removed"`
-		Changed   string `yaml:"changed"`
-		Section   string `yaml:"section"`
+		OK               string `yaml:"ok"`
+		Command          string `yaml:"command"`
+		Path             string `yaml:"path"`
+		Source           string `yaml:"source"`
+		Valid            string `yaml:"valid"`
+		Document         string `yaml:"document"`
+		Problem          string `yaml:"problem"`
+		Code             string `yaml:"code"`
+		Detail           string `yaml:"detail"`
+		Report           string `yaml:"report"`
+		Name             string `yaml:"name"`
+		Type             string `yaml:"type"`
+		Address          string `yaml:"address"`
+		Index            string `yaml:"index"`
+		Site             string `yaml:"site"`
+		Listeners        string `yaml:"listeners"`
+		Routes           string `yaml:"routes"`
+		Sites            string `yaml:"sites"`
+		Issues           string `yaml:"issues"`
+		Kind             string `yaml:"kind"`
+		Listener         string `yaml:"listener"`
+		Revision         string `yaml:"revision"`
+		PreviousRevision string `yaml:"previousRevision"`
+		RequestID        string `yaml:"requestId"`
+		Diff             string `yaml:"diff"`
+		Added            string `yaml:"added"`
+		Removed          string `yaml:"removed"`
+		Changed          string `yaml:"changed"`
+		Section          string `yaml:"section"`
 	} `yaml:"json"`
 	Display struct {
 		Path           string `yaml:"path"`
@@ -137,8 +141,13 @@ type CLIWords struct {
 		AccountsCreate string `yaml:"accountsCreate"`
 		AccountsRotate string `yaml:"accountsRotate"`
 		AccountsRevoke string `yaml:"accountsRevoke"`
+		SitePublish    string `yaml:"sitePublish"`
 		SiteRollback   string `yaml:"siteRollback"`
 	} `yaml:"display"`
+	Identifiers struct {
+		RequestPrefix string `yaml:"requestPrefix"`
+		RequestBytes  int    `yaml:"requestBytes"`
+	} `yaml:"identifiers"`
 	Explain struct {
 		Listener string `yaml:"listener"`
 		Route    string `yaml:"route"`

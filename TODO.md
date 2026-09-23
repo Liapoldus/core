@@ -215,8 +215,13 @@ references are
   OpenAPI `Publication` schema and generic operation-reference wording in
   `gateway/api/operations.md`; do not choose one until clarified. The
   Management API rollback error and CLI `rollback-missing` are covered by
-  child-process E2E; CLI success output/idempotency and management rollback
-  idempotency/audit remain incomplete.
+  child-process E2E; CLI publish/release response and directory-source rejection
+  now have child-process coverage. CLI success idempotency and management
+  rollback idempotency/audit remain incomplete. `GET /api/sites` still returns
+  an empty list because the contract does not define the `state` mapping for an
+  unpublished release; implementation awaits that decision. CLI publish does
+  not yet accept `--idempotency-key`; implement after deciding whether the
+  documented 24 h deduplication must survive process restart.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON
@@ -430,8 +435,9 @@ references are
   TLS, shared TCP/UDP port and an HTTP/3 request; `audit-retention` is verified
   through the authenticated Management API; `publish-idempotent` is verified
   through a real child-process publish, retry, body/key conflict, serving and
-  audit check; `rollback-missing` is verified via the documented CLI command.
-  46 vectors remain.
+  audit check; `rollback-missing` is verified via the documented CLI command;
+  `directory-source-publish` is verified via the CLI without registry mutation.
+  45 vectors remain.
 - [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
   defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
   while `security-runtime.json` describes listener `connections`,

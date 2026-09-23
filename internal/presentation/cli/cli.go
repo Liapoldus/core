@@ -3,6 +3,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -232,7 +234,14 @@ func run(options options) int {
 }
 
 func site(options options) int {
-	if len(options.command) != 3 || options.command[1] != words.Site.Rollback {
+	if len(options.command) < 3 {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
+		return words.Exits.Arguments
+	}
+	operation := options.command[1]
+	publish := operation == words.Site.Publish && len(options.command) == 4
+	rollback := operation == words.Site.Rollback && len(options.command) == 3
+	if !publish && !rollback {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments
 	}
@@ -253,23 +262,53 @@ func site(options options) int {
 	if definition.Source != models.SourceRelease {
 		return registryCLIFailure(options.output, words.Exits.Conflict, words.Codes.SiteSourceImmutable)
 	}
+	requestID, err := cliRequestID()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	layout, err := config.LoadRegistryLayout()
 	if err != nil {
 		return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
 	}
 	registry := application.RegistryService{Store: storage.NewFilesystemStore(graph.RegistryRoot, layout)}
-	release, err := registry.Rollback(slug)
+	var release models.Release
+	if publish {
+		release, err = registry.Publish(slug, options.command[3])
+	} else {
+		release, err = registry.Rollback(slug)
+	}
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
+		if rollback && errors.Is(err, fs.ErrNotExist) {
 			return registryCLIFailure(options.output, words.Exits.NotFound, words.Codes.NoPreviousRelease)
+		}
+		if publish {
+			return registryCLIFailure(options.output, words.Exits.Validation, words.Codes.ReleaseInvalid)
 		}
 		return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
 	}
+	previousRevision := any(release.PreviousID)
+	if len(release.PreviousID) == 0 {
+		previousRevision = nil
+	}
+	displayCommand := words.Display.SiteRollback
+	if publish {
+		displayCommand = words.Display.SitePublish
+	}
 	writeSuccess(options.output, map[string]any{
-		words.JSON.OK: true, words.JSON.Command: words.Display.SiteRollback,
+		words.JSON.OK: true, words.JSON.Command: displayCommand,
 		words.JSON.Site: slug, words.JSON.Revision: release.ID,
+		words.JSON.PreviousRevision: previousRevision, words.JSON.RequestID: requestID,
 	})
 	return words.Exits.OK
+}
+
+func cliRequestID() (string, error) {
+	identifier := make([]byte, words.Identifiers.RequestBytes)
+	if _, err := rand.Read(identifier); err != nil {
+		return "", err
+	}
+	return words.Identifiers.RequestPrefix + hex.EncodeToString(identifier), nil
 }
 
 func registryCLIFailure(output string, exitCode int, code string) int {

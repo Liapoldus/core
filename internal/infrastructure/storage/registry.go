@@ -56,10 +56,19 @@ func (store FilesystemStore) Publish(site, source string) (models.Release, error
 			return models.Release{}, err
 		}
 	}
+	currentPointer := filepath.Join(siteRoot, store.layout.Current)
+	previous, previousErr := os.Readlink(currentPointer)
+	if previousErr != nil && !errors.Is(previousErr, fs.ErrNotExist) {
+		return models.Release{}, previousErr
+	}
 	if err = store.switchPointers(siteRoot, filepath.Join(store.layout.Releases, id)); err != nil {
 		return models.Release{}, err
 	}
-	return models.Release{ID: id}, nil
+	release := models.Release{ID: id}
+	if previousErr == nil {
+		release.PreviousID = filepath.Base(previous)
+	}
+	return release, nil
 }
 
 func (store FilesystemStore) Rollback(site string) (models.Release, error) {
@@ -86,7 +95,7 @@ func (store FilesystemStore) Rollback(site string) (models.Release, error) {
 	if err = store.replacePointer(siteRoot, store.layout.Current, previous); err != nil {
 		return models.Release{}, err
 	}
-	return models.Release{ID: filepath.Base(previous)}, nil
+	return models.Release{ID: filepath.Base(previous), PreviousID: filepath.Base(current)}, nil
 }
 
 func (store FilesystemStore) Versions(site string) ([]models.Release, error) {

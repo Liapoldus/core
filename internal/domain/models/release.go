@@ -1,5 +1,6 @@
 package models
 
 type Release struct {
-	ID string
+	ID         string
+	PreviousID string `json:"-"`
 }
