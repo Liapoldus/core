@@ -64,5 +64,8 @@ describe("HTTP header size limit", () => {
     const response = await sendOversizedHeader(listener, vector.input.headerBytes);
 
     expect(response.status).toBe(vector.expected.status);
+    const [, rawBody = ""] = response.response.split("\r\n\r\n", 2);
+    expect(response.response.toLowerCase()).toContain("content-type: application/problem+json");
+    expect(JSON.parse(rawBody)).toMatchObject({ code: vector.expected.code });
   });
 });
