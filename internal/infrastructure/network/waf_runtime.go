@@ -22,6 +22,7 @@ type WAFRuntime struct {
 	bodyTooLarge            models.Problem
 	pluginResourceExhausted models.Problem
 	pluginTimeout           models.Problem
+	routeNotFound           models.Problem
 	problemContentType      string
 }
 
@@ -52,6 +53,14 @@ func (runtime *WAFRuntime) SetPluginTimeoutProblem(problem models.Problem) {
 
 func (runtime *WAFRuntime) PluginTimeoutProblem() models.Problem {
 	return runtime.pluginTimeout
+}
+
+func (runtime *WAFRuntime) SetRouteNotFoundProblem(problem models.Problem) {
+	runtime.routeNotFound = problem
+}
+
+func (runtime *WAFRuntime) RouteNotFoundProblem() models.Problem {
+	return runtime.routeNotFound
 }
 
 func (runtime *WAFRuntime) Replace(graph models.CompiledGraph, lookup interfaces.GeoLookup) {

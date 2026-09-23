@@ -305,11 +305,12 @@ func loadCLI() (CLIWords, error) {
 
 type ManagementWords struct {
 	Codes struct {
-		SiteSourceImmutable string `yaml:"siteSourceImmutable"`
-		IdempotencyConflict string `yaml:"idempotencyConflict"`
-		ReleaseInvalid      string `yaml:"releaseInvalid"`
-		RegistryUnavailable string `yaml:"registryUnavailable"`
-		NoPreviousRelease   string `yaml:"noPreviousRelease"`
+		RouteNotFound           string `yaml:"routeNotFound"`
+		SiteSourceImmutable     string `yaml:"siteSourceImmutable"`
+		IdempotencyConflict     string `yaml:"idempotencyConflict"`
+		ReleaseInvalid          string `yaml:"releaseInvalid"`
+		RegistryUnavailable     string `yaml:"registryUnavailable"`
+		NoPreviousRelease       string `yaml:"noPreviousRelease"`
 		ReleaseRevisionConflict string `yaml:"releaseRevisionConflict"`
 	} `yaml:"codes"`
 	Paths struct {

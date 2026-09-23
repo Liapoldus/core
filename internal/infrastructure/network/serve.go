@@ -439,7 +439,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		index, route, found := matchedRoute(request, activeListener.Routes)
 		if !found {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		if route.Headers != nil {
@@ -644,7 +644,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		site, exists := generation.graph.Sites[route.Site]
 		if !exists || site.Source != models.SourceDirectory && site.Source != models.SourceRelease {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		if redirect, found := siteRedirect(request.URL.Path, site.Redirects); found {
@@ -653,7 +653,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		responseWriter := responseWriterWithActions(writer, site.Headers, route.Headers)
 		if request.URL.Path == "" || strings.Contains(request.URL.Path, "/..") {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		requested := path.Clean(request.URL.Path)
@@ -662,7 +662,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		candidate := filepath.Join(site.Root, filepath.FromSlash(strings.TrimPrefix(requested, "/")))
 		if !isWithin(site.Root, candidate) {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		info, err := os.Stat(candidate)
@@ -673,20 +673,20 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 		}
 		if err != nil {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		if info.IsDir() {
 			candidate = filepath.Join(candidate, site.Index)
 			indexInfo, err := os.Stat(candidate)
 			if err != nil || indexInfo.IsDir() {
-				http.NotFound(writer, request)
+				writeNotFound(writer, request, wafRuntime)
 				return
 			}
 			info = indexInfo
 		}
 		if !isWithin(site.Root, candidate) || info.IsDir() {
-			http.NotFound(writer, request)
+			writeNotFound(writer, request, wafRuntime)
 			return
 		}
 		etag := fmt.Sprintf(`"lpg-r1-%x-%x"`, info.Size(), info.ModTime().UnixNano())
@@ -792,6 +792,19 @@ func writePluginProblem(writer http.ResponseWriter, request *http.Request, runti
 	writer.WriteHeader(problem.Status)
 	_ = json.NewEncoder(writer).Encode(problem)
 	return true
+}
+
+func writeNotFound(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime) {
+	problem := runtime.RouteNotFoundProblem()
+	if problem.Status == 0 {
+		http.NotFound(writer, request)
+		return
+	}
+	problem.Instance = request.URL.Path
+	problem.RequestID = request.Header.Get("X-Request-ID")
+	writer.Header().Set("Content-Type", runtime.ProblemContentType())
+	writer.WriteHeader(problem.Status)
+	_ = json.NewEncoder(writer).Encode(problem)
 }
 
 func evaluateWAF(policy models.WAFPolicy, request models.WAFRequest, provider interfaces.GeoLookup, providerProblem models.Problem) (models.WAFAction, bool) {

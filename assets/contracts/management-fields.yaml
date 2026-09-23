@@ -112,6 +112,7 @@ idempotency:
   key: X-Idempotency-Key
   replyTo: Reply-To
 codes:
+  routeNotFound: route_not_found
   siteSourceImmutable: site_source_immutable
   idempotencyConflict: idempotency_conflict
   releaseInvalid: release_invalid
