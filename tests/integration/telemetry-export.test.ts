@@ -40,7 +40,7 @@ afterEach(async () => {
   }
 });
 
-async function startTelemetryGateway(endpoint: string, captureOutput = false): Promise<{
+async function startTelemetryGateway(endpoint: string, captureOutput = false, applicationSink?: string): Promise<{
   webAddress: string;
   managementAddress: string;
   output?: { stdout: string; stderr: string };
@@ -49,14 +49,16 @@ async function startTelemetryGateway(endpoint: string, captureOutput = false): P
   upstreams.push(upstream);
   const webAddress = await freeAddress();
   const managementAddress = await freeAddress();
-  const config = await writeGatewayConfig([
+  const configLines = [
     "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
     "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
     "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
     "management:", `  listener: { address: ${managementAddress} }`,
     "  staticToken: env:LIAPOLDUS_TEST_TELEMETRY_TOKEN",
     "metrics:", "  prometheus: true", `  otlp: { endpoint: ${endpoint}, interval: 100ms }`,
-  ].join("\n"));
+  ];
+  if (applicationSink !== undefined) configLines.push("logging:", `  application: [${applicationSink}]`);
+  const config = await writeGatewayConfig(configLines.join("\n"));
   const gateway = captureOutput
     ? await startGatewayWithOutput(["--config", config, "serve"], environment)
     : await startGateway(["--config", config, "serve"], environment);
@@ -96,6 +98,35 @@ describe("telemetry exporter isolation", () => {
     expect(output?.stderr).toContain("OpenTelemetry metrics export failed");
     expect(output?.stderr).not.toContain(unavailableOTLPAddress);
   });
+
+  it("routes exporter warnings to configured application sinks without logging the endpoint", async () => {
+    const unavailableOTLPAddress = await freeAddress();
+    const { webAddress, managementAddress, output } = await startTelemetryGateway(`http://${unavailableOTLPAddress}/v1/metrics`, true, "stdout");
+
+    const response = await request(webAddress, "/configured-logging");
+    expect(response.status).toBe(200);
+
+    let metrics = "";
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const scrape = await request(managementAddress, "/metrics", {
+        headers: { Authorization: `Bearer ${gatewayToken}` },
+      });
+      metrics = scrape.text;
+      if (metrics.includes("liapoldus_otel_export_failures_total")) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+    }
+
+    expect(metrics).toMatch(/liapoldus_otel_export_failures_total\{exporter="otlp"\} [1-9]/);
+    const outputDeadline = Date.now() + 1000;
+    while (!output?.stdout.includes("OpenTelemetry metrics export failed") && Date.now() < outputDeadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+    }
+    expect(output?.stdout).toContain("OpenTelemetry metrics export failed");
+    expect(output?.stdout).not.toContain(unavailableOTLPAddress);
+    expect(output?.stderr).not.toContain("OpenTelemetry metrics export failed");
+    expect(output?.stderr).not.toContain(unavailableOTLPAddress);
+  }, 20_000);
 
   it("sends Prometheus runtime measurements as OTLP/HTTP protobuf metrics", async () => {
     const bodies: Buffer[] = [];
