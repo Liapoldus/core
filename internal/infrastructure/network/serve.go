@@ -565,8 +565,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				}
 				if action.Limit != "" {
 					if retry, limited := generation.limiters[listener.Address].Allow(action.Limit, request); limited {
-						writer.Header().Set("Retry-After", strconv.Itoa(retry))
-						writer.WriteHeader(http.StatusTooManyRequests)
+						writeRateLimited(writer, request, wafRuntime, retry)
 						return
 					}
 				}
@@ -574,8 +573,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		}
 		if route.RateLimit != "" {
 			if retry, limited := generation.limiters[listener.Address].Allow(route.RateLimit, request); limited {
-				writer.Header().Set("Retry-After", strconv.Itoa(retry))
-				writer.WriteHeader(http.StatusTooManyRequests)
+				writeRateLimited(writer, request, wafRuntime, retry)
 				return
 			}
 		}
@@ -799,6 +797,22 @@ func writeNotFound(writer http.ResponseWriter, request *http.Request, runtime *W
 	problem := runtime.RouteNotFoundProblem()
 	if problem.Status == 0 {
 		http.NotFound(writer, request)
+		return
+	}
+	problem.Instance = request.URL.Path
+	problem.RequestID = request.Header.Get("X-Request-ID")
+	writer.Header().Set("Content-Type", runtime.ProblemContentType())
+	writer.WriteHeader(problem.Status)
+	_ = json.NewEncoder(writer).Encode(problem)
+}
+
+func writeRateLimited(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime, retry int) {
+	if header := runtime.RetryAfterHeader(); header != "" {
+		writer.Header().Set(header, strconv.Itoa(retry))
+	}
+	problem := runtime.RateLimitedProblem()
+	if problem.Status == 0 {
+		writer.WriteHeader(http.StatusTooManyRequests)
 		return
 	}
 	problem.Instance = request.URL.Path

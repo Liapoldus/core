@@ -23,6 +23,8 @@ type WAFRuntime struct {
 	pluginResourceExhausted models.Problem
 	pluginTimeout           models.Problem
 	routeNotFound           models.Problem
+	rateLimited             models.Problem
+	retryAfterHeader        string
 	problemContentType      string
 }
 
@@ -61,6 +63,19 @@ func (runtime *WAFRuntime) SetRouteNotFoundProblem(problem models.Problem) {
 
 func (runtime *WAFRuntime) RouteNotFoundProblem() models.Problem {
 	return runtime.routeNotFound
+}
+
+func (runtime *WAFRuntime) SetRateLimitedProblem(problem models.Problem, retryAfterHeader string) {
+	runtime.rateLimited = problem
+	runtime.retryAfterHeader = retryAfterHeader
+}
+
+func (runtime *WAFRuntime) RateLimitedProblem() models.Problem {
+	return runtime.rateLimited
+}
+
+func (runtime *WAFRuntime) RetryAfterHeader() string {
+	return runtime.retryAfterHeader
 }
 
 func (runtime *WAFRuntime) Replace(graph models.CompiledGraph, lookup interfaces.GeoLookup) {

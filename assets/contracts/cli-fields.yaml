@@ -56,6 +56,7 @@ codes:
   bodyTooLarge: body_too_large
   resourceExhausted: resource_exhausted
   pluginTimeout: plugin_timeout
+  rateLimited: rate_limited
   siteInvalid: site_invalid
   siteSourceImmutable: site_source_immutable
   registryUnavailable: registry_unavailable

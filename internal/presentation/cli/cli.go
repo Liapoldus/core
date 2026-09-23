@@ -495,12 +495,18 @@ func serve(options options) int {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	rateLimitedProblem, exists := errorCatalog.Lookup(words.Codes.RateLimited)
+	if !exists {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
 	defer func() { dataProviders.Close() }()
 	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, bodyTooLargeProblem, managementWords.ContentTypes.Problem)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
 	wafRuntime.SetPluginTimeoutProblem(pluginTimeoutProblem)
 	wafRuntime.SetRouteNotFoundProblem(routeNotFoundProblem)
+	wafRuntime.SetRateLimitedProblem(rateLimitedProblem, managementWords.Headers.RetryAfter)
 	auditStore, auditErr := storage.NewFilesystemAuditStore(graph.RegistryRoot, observabilityWords.Audit.Directory, observabilityWords.Audit.Extension, observabilityWords.Audit.DateLayout)
 	if auditErr != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)

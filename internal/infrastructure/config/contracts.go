@@ -80,6 +80,7 @@ type CLIWords struct {
 		BodyTooLarge           string `yaml:"bodyTooLarge"`
 		ResourceExhausted      string `yaml:"resourceExhausted"`
 		PluginTimeout          string `yaml:"pluginTimeout"`
+		RateLimited            string `yaml:"rateLimited"`
 		SiteInvalid            string `yaml:"siteInvalid"`
 		SiteSourceImmutable    string `yaml:"siteSourceImmutable"`
 		RegistryUnavailable    string `yaml:"registryUnavailable"`
