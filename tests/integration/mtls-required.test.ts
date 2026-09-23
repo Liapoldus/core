@@ -78,6 +78,8 @@ describe("mTLS required golden vector", () => {
     const clientCertificate = join(directory, "client.crt");
     const clientKey = join(directory, "client.key");
     const clientCSR = join(directory, "client.csr");
+    const untrustedCertificate = join(directory, "untrusted-client.crt");
+    const untrustedKey = join(directory, "untrusted-client.key");
     const certificateBase = ["req", "-newkey", "rsa:2048", "-nodes", "-days", "1"];
     await execFileAsync("openssl", [
       "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -108,6 +110,12 @@ describe("mTLS required golden vector", () => {
       "x509", "-req", "-days", "1", "-in", clientCSR,
       "-CA", caCertificate, "-CAkey", caKey, "-CAcreateserial", "-copy_extensions", "copy",
       "-out", clientCertificate,
+    ]);
+    await execFileAsync("openssl", [
+      "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+      "-subj", "/CN=Untrusted Liapoldus client",
+      "-addext", "extendedKeyUsage=clientAuth",
+      "-keyout", untrustedKey, "-out", untrustedCertificate,
     ]);
 
     const address = await freeAddress();
@@ -159,5 +167,6 @@ describe("mTLS required golden vector", () => {
     const missingManagementCertificateResponse = await requestTLS(managementAddress, caCertificate, undefined, "/api/status");
     expect(missingManagementCertificateResponse.status).toBe(vector.expected.status);
     expect(JSON.parse(missingManagementCertificateResponse.body)).toMatchObject({ code: vector.expected.code });
+    await expect(requestTLS(address, caCertificate, { certificate: untrustedCertificate, key: untrustedKey })).rejects.toBeDefined();
   }, 60_000);
 });
