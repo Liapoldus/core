@@ -1,13 +1,24 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { startGateway } from "../support/gateway.js";
 import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/http.js";
 
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 afterEach(async () => Promise.all(gateways.splice(0).map((gateway) => gateway.stop())));
+
+const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
+  vectors: Array<{ id: string; input: { accept?: string; path?: string }; expected: { status: number; code?: string; file?: string } }>;
+};
+
+function vector(id: string) {
+  const match = gatewayVectors.vectors.find((candidate) => candidate.id === id);
+  if (match === undefined) throw new Error(`missing gateway golden vector ${id}`);
+  return match;
+}
 
 async function startSite(manifest: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "liapoldus-runtime-v1-"));
@@ -27,9 +38,19 @@ async function startSite(manifest: string): Promise<string> {
 describe("HTTP runtime v1", () => {
   it("uses index.html for an extensionless HTML navigation when SPA is enabled", async () => {
     const address = await startSite("slug: web\nindex: index.html\nspa: true\n");
-    const response = await request(address, "/dashboard");
-    expect(response.status).toBe(200);
+    const expected = vector("spa-fallback");
+    const response = await request(address, expected.input.path!, { headers: { accept: expected.input.accept! } });
+    expect(response.status).toBe(expected.expected.status);
     expect(response.text).toBe("shell");
+  });
+
+  it("returns the contracted problem for a missing SPA asset", async () => {
+    const expected = vector("spa-asset-miss");
+    const address = await startSite("slug: web\nindex: index.html\nspa: true\n");
+    const response = await request(address, expected.input.path!, { headers: { accept: expected.input.accept! } });
+    expect(response.status).toBe(expected.expected.status);
+    expect(response.headers.get("content-type")).toContain("application/problem+json");
+    expect(JSON.parse(response.text).code).toBe(expected.expected.code);
   });
 
   it("only allows GET and HEAD on health endpoints", async () => {
