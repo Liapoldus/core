@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/models"
 	accountstore "github.com/Liapoldus/core/internal/infrastructure/accounts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
@@ -93,6 +95,9 @@ func run(options options) int {
 	}
 	if options.command[0] == words.Commands.Accounts {
 		return accounts(options)
+	}
+	if options.command[0] == words.Commands.Site {
+		return site(options)
 	}
 	if len(options.command) < 2 || options.command[0] != words.Commands.Config {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
@@ -224,6 +229,62 @@ func run(options options) int {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.UnknownConfigCommand)
 		return words.Exits.Arguments
 	}
+}
+
+func site(options options) int {
+	if len(options.command) != 3 || options.command[1] != words.Site.Rollback {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
+		return words.Exits.Arguments
+	}
+	path, _, err := discoverConfig(options)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
+		return words.Exits.Arguments
+	}
+	graph, err := config.CompileGateway(path)
+	if err != nil {
+		return configValidationFailure(options.output, err)
+	}
+	slug := options.command[2]
+	definition, exists := graph.Sites[slug]
+	if !exists {
+		return registryCLIFailure(options.output, words.Exits.NotFound, words.Codes.SiteInvalid)
+	}
+	if definition.Source != models.SourceRelease {
+		return registryCLIFailure(options.output, words.Exits.Conflict, words.Codes.SiteSourceImmutable)
+	}
+	layout, err := config.LoadRegistryLayout()
+	if err != nil {
+		return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
+	}
+	registry := application.RegistryService{Store: storage.NewFilesystemStore(graph.RegistryRoot, layout)}
+	release, err := registry.Rollback(slug)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return registryCLIFailure(options.output, words.Exits.NotFound, words.Codes.NoPreviousRelease)
+		}
+		return registryCLIFailure(options.output, words.Exits.Unavailable, words.Codes.RegistryUnavailable)
+	}
+	writeSuccess(options.output, map[string]any{
+		words.JSON.OK: true, words.JSON.Command: words.Display.SiteRollback,
+		words.JSON.Site: slug, words.JSON.Revision: release.ID,
+	})
+	return words.Exits.OK
+}
+
+func registryCLIFailure(output string, exitCode int, code string) int {
+	catalog, err := config.LoadErrorCatalog()
+	if err != nil {
+		writeFailure(output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	problem, exists := catalog.Lookup(code)
+	if !exists {
+		writeFailure(output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	writeFailure(output, exitCode, problem.Code, problem.Detail)
+	return exitCode
 }
 
 func accounts(options options) int {

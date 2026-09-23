@@ -2,6 +2,7 @@ commands:
   serve: serve
   config: config
   accounts: accounts
+  site: site
 subcommands:
   path: path
   validate: validate
@@ -9,6 +10,8 @@ subcommands:
   format: format
   explain: explain
   diff: diff
+site:
+  rollback: rollback
 flags:
   output: --output
   config: --config
@@ -50,6 +53,9 @@ codes:
   bodyTooLarge: body_too_large
   resourceExhausted: resource_exhausted
   pluginTimeout: plugin_timeout
+  siteInvalid: site_invalid
+  siteSourceImmutable: site_source_immutable
+  registryUnavailable: registry_unavailable
 exits:
   ok: 0
   internal: 1
@@ -81,6 +87,7 @@ json:
   address: address
   index: index
   site: site
+  revision: revision
   listeners: listeners
   routes: routes
   sites: sites
@@ -102,6 +109,7 @@ display:
   accountsCreate: accounts create
   accountsRotate: accounts rotate
   accountsRevoke: accounts revoke
+  siteRollback: site rollback
 explain:
   listener: "listener %s %s %s"
   route: "route %s %d -> site %s"

@@ -32,6 +32,7 @@ type CLIWords struct {
 		Serve    string `yaml:"serve"`
 		Config   string `yaml:"config"`
 		Accounts string `yaml:"accounts"`
+		Site     string `yaml:"site"`
 	} `yaml:"commands"`
 	Subcommands struct {
 		Path     string `yaml:"path"`
@@ -41,6 +42,9 @@ type CLIWords struct {
 		Explain  string `yaml:"explain"`
 		Diff     string `yaml:"diff"`
 	} `yaml:"subcommands"`
+	Site struct {
+		Rollback string `yaml:"rollback"`
+	} `yaml:"site"`
 	Flags struct {
 		Output       string `yaml:"output"`
 		Config       string `yaml:"config"`
@@ -73,6 +77,9 @@ type CLIWords struct {
 		BodyTooLarge           string `yaml:"bodyTooLarge"`
 		ResourceExhausted      string `yaml:"resourceExhausted"`
 		PluginTimeout          string `yaml:"pluginTimeout"`
+		SiteInvalid            string `yaml:"siteInvalid"`
+		SiteSourceImmutable    string `yaml:"siteSourceImmutable"`
+		RegistryUnavailable    string `yaml:"registryUnavailable"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`
@@ -113,6 +120,7 @@ type CLIWords struct {
 		Issues    string `yaml:"issues"`
 		Kind      string `yaml:"kind"`
 		Listener  string `yaml:"listener"`
+		Revision  string `yaml:"revision"`
 		Diff      string `yaml:"diff"`
 		Added     string `yaml:"added"`
 		Removed   string `yaml:"removed"`
@@ -129,6 +137,7 @@ type CLIWords struct {
 		AccountsCreate string `yaml:"accountsCreate"`
 		AccountsRotate string `yaml:"accountsRotate"`
 		AccountsRevoke string `yaml:"accountsRevoke"`
+		SiteRollback   string `yaml:"siteRollback"`
 	} `yaml:"display"`
 	Explain struct {
 		Listener string `yaml:"listener"`
