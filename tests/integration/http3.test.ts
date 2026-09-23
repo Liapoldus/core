@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
+import dgram from "node:dgram";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,8 +41,23 @@ function waitForTLS(address: string, process: ChildProcess): Promise<void> {
   });
 }
 
+function expectUDPPortInUse(address: string): Promise<void> {
+  const [host, port] = address.split(":");
+  return new Promise((resolve, reject) => {
+    const socket = dgram.createSocket("udp4");
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") resolve();
+      else reject(error);
+    });
+    socket.bind(Number(port), host, () => {
+      socket.close();
+      reject(new Error("Gateway did not bind the UDP port for HTTP/3"));
+    });
+  });
+}
+
 describe("HTTP/3 listener", () => {
-  it("applies the configured TLS profile on an h3 listener", async () => {
+  it("binds TCP and UDP on the same address for an h3 TLS listener", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-http3-"));
     const cert = join(directory, "server.crt");
     const key = join(directory, "server.key");
@@ -69,5 +85,6 @@ describe("HTTP/3 listener", () => {
     gateways.push(gateway);
 
     await waitForTLS(address, gateway.process);
+    await expectUDPPortInUse(address);
   });
 });
