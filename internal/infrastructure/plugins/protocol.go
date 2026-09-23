@@ -113,6 +113,10 @@ func (c *Client) Reconnect(ctx context.Context, endpoint string, config []byte, 
 }
 
 func (c *Client) CallJSON(ctx context.Context, capability string, payload []byte) ([]byte, error) {
+	return c.CallJSONWithGrants(ctx, capability, payload, nil)
+}
+
+func (c *Client) CallJSONWithGrants(ctx context.Context, capability string, payload []byte, grants []*pluginv1.ActiveGrant) ([]byte, error) {
 	if !json.Valid(payload) {
 		return nil, ErrProtocolViolation
 	}
@@ -120,7 +124,7 @@ func (c *Client) CallJSON(ctx context.Context, capability string, payload []byte
 	defer cancel()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	response, err := c.client.Call(ctx, capability, payload)
+	response, err := c.client.CallWithGrants(ctx, capability, payload, grants)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, context.DeadlineExceeded

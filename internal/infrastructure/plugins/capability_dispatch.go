@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+
+	"github.com/Liapoldus/pluginprotocol/pluginv1"
 )
 
 // HTTPRequest is the bounded HTTP context sent to an HTTP capability. The
@@ -19,6 +21,7 @@ type HTTPRequest struct {
 	Body       []byte            `json:"body,omitempty"`
 	RequestID  string            `json:"requestId"`
 	RemoteAddr string            `json:"remoteAddr,omitempty"`
+	GrantNames []string          `json:"-"`
 }
 
 type HTTPResponse struct {
@@ -44,6 +47,7 @@ type L4Response struct {
 
 type CapabilityClient struct {
 	client      *Client
+	grantBroker *grantBroker
 	allowed     map[string]struct{}
 	active      chan struct{}
 	rssLimit    uint64
@@ -81,7 +85,7 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 		return HTTPResponse{}, errors.New("plugin http request is invalid")
 	}
 	var response HTTPResponse
-	if err := c.callJSON(ctx, capability, request, &response); err != nil {
+	if err := c.callJSON(ctx, capability, request, &response, request.GrantNames); err != nil {
 		return HTTPResponse{}, err
 	}
 	if response.Status < 100 || response.Status > 599 {
@@ -104,7 +108,7 @@ func (c *CapabilityClient) L4(ctx context.Context, capability string, request L4
 		return L4Response{}, errors.New("plugin l4 connection id is required")
 	}
 	var response L4Response
-	if err := c.callJSON(ctx, capability, request, &response); err != nil {
+	if err := c.callJSON(ctx, capability, request, &response, nil); err != nil {
 		return L4Response{}, err
 	}
 	return response, nil
@@ -118,7 +122,7 @@ func (c *CapabilityClient) DispatchIdentity(ctx context.Context, request Identit
 		return IdentityAction{}, errors.New("identity request is invalid")
 	}
 	var response IdentityAction
-	if err := c.callJSON(ctx, request.Capability, request, &response); err != nil {
+	if err := c.callJSON(ctx, request.Capability, request, &response, nil); err != nil {
 		return IdentityAction{}, err
 	}
 	if response.Status < 100 || response.Status > 599 {
@@ -127,7 +131,7 @@ func (c *CapabilityClient) DispatchIdentity(ctx context.Context, request Identit
 	return response, nil
 }
 
-func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any) error {
+func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any, grantNames []string) error {
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("marshal plugin request: %w", err)
@@ -140,7 +144,19 @@ func (c *CapabilityClient) callJSON(ctx context.Context, capability string, requ
 	case <-callContext.Done():
 		return callContext.Err()
 	}
-	result, err := c.client.CallJSON(callContext, capability, payload)
+	var activeGrants []*pluginv1.ActiveGrant
+	var handles []string
+	if len(grantNames) > 0 {
+		if c.grantBroker == nil {
+			return ErrProtocolViolation
+		}
+		activeGrants, handles, err = c.grantBroker.issue(capability, grantNames)
+		if err != nil {
+			return err
+		}
+		defer c.grantBroker.revoke(handles)
+	}
+	result, err := c.client.CallJSONWithGrants(callContext, capability, payload, activeGrants)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(callContext.Err(), context.DeadlineExceeded) {
 			return ErrPluginTimeout

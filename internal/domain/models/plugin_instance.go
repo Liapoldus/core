@@ -7,6 +7,7 @@ type PluginInstance struct {
 	Args                   []string
 	Env                    []string
 	Capabilities           []string
+	SecretGrants           []PluginSecretGrant
 	Settings               []byte
 	Timeout                time.Duration
 	MemoryLimitBytes       uint64

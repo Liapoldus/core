@@ -440,7 +440,7 @@ func serve(options options) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	pluginRuntime, err := plugins.StartRuntime(ctx, graph.Plugins)
+	pluginRuntime, err := plugins.StartRuntime(ctx, graph.Plugins, graph.Secrets)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable

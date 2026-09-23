@@ -638,7 +638,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				}
 				headers[name] = values[0]
 			}
-			pluginResponse, err := dispatcher.HTTP(request.Context(), route.Plugin.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr})
+			pluginResponse, err := dispatcher.HTTP(request.Context(), route.Plugin.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr, GrantNames: route.Plugin.ContextSecrets})
 			if err != nil {
 				if writePluginProblem(writer, request, wafRuntime, err) {
 					return

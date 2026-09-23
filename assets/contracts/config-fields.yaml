@@ -257,6 +257,14 @@ runtime:
     env: env
     capabilities: capabilities
     settings: settings
+    grants: grants
+    secretGrants: secrets
+    grantName: name
+    grantPurpose: purpose
+    grantDomains: domains
+    wildcardDomainPrefix: "*."
+    context: context
+    contextSecrets: secrets
     limits: limits
     calls: calls
     defaultCalls: 100

@@ -20,6 +20,8 @@ var ErrPluginStartup = errors.New("plugin startup failed")
 type runningInstance struct {
 	name             string
 	endpoint         string
+	grantServer      *transport.GrantServer
+	grantListener    net.Listener
 	client           *Client
 	capability       *CapabilityClient
 	model            models.PluginInstance
@@ -35,7 +37,7 @@ type Runtime struct {
 	watchCancel context.CancelFunc
 }
 
-func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance) (*Runtime, error) {
+func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, secrets map[string]models.Secret) (*Runtime, error) {
 	processContext, cancel := context.WithCancel(context.Background())
 	watchContext, watchCancel := context.WithCancel(ctx)
 	runtime := &Runtime{supervisor: NewSupervisor(), instances: make(map[string]runningInstance, len(configured)), cancel: cancel, watchCancel: watchCancel}
@@ -51,8 +53,18 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		env, err := pluginEnvironment(instance.Env, endpoint)
+		grantListener, err := net.Listen("tcp", net.JoinHostPort(netip.AddrFrom4([4]byte{127, 0, 0, 1}).String(), strconv.Itoa(0)))
 		if err != nil {
+			_ = runtime.Stop(context.Background())
+			return nil, ErrPluginStartup
+		}
+		broker := newGrantBroker(instance.SecretGrants, secrets)
+		brokerServer := transport.NewGrantBrokerServer(broker)
+		go func() { _ = brokerServer.Serve(grantListener) }()
+		env, err := pluginEnvironment(instance.Env, endpoint, grantListener.Addr().String())
+		if err != nil {
+			brokerServer.Stop()
+			_ = grantListener.Close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
@@ -69,17 +81,23 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}
 		done, err := runtime.supervisor.StartWithExit(processContext, spec)
 		if err != nil {
+			brokerServer.Stop()
+			_ = grantListener.Close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
 		client, err := NewClient(endpoint, instance.Timeout)
 		if err != nil {
+			brokerServer.Stop()
+			_ = grantListener.Close()
 			_ = runtime.supervisor.Stop(name)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
 		handshake, err := client.Handshake(ctx, instance.Settings)
 		if err != nil || handshake.Manifest.GetName() != name || !manifestIncludes(handshake.Manifest.GetCapabilities(), instance.Capabilities) {
+			brokerServer.Stop()
+			_ = grantListener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
 			_ = runtime.Stop(context.Background())
@@ -87,18 +105,21 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}
 		capability, err := NewCapabilityClient(client, instance.MaxConcurrentCalls, instance.Capabilities...)
 		if err != nil {
+			brokerServer.Stop()
+			_ = grantListener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
 		resourceExceeded := &atomic.Bool{}
+		capability.grantBroker = broker
 		capability.setRSSLimit(instance.MemoryLimitBytes, func() (uint64, error) {
 			return runtime.supervisor.ResidentMemory(name)
 		}, func() {
 			_ = runtime.supervisor.Stop(name)
 		}, resourceExceeded)
-		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
@@ -222,16 +243,17 @@ func reserveLoopbackEndpoint() (string, error) {
 	return endpoint, nil
 }
 
-func pluginEnvironment(configured []string, endpoint string) ([]string, error) {
-	result := make([]string, 0, len(configured)+1)
+func pluginEnvironment(configured []string, endpoint, grantEndpoint string) ([]string, error) {
+	result := make([]string, 0, len(configured)+2)
 	for _, value := range configured {
 		key, _, hasValue := strings.Cut(value, "=")
-		if hasValue && key == transport.EndpointEnvironment {
+		if hasValue && (key == transport.EndpointEnvironment || key == transport.GrantBrokerEndpointEnvironment) {
 			return nil, ErrPluginStartup
 		}
 		result = append(result, value)
 	}
-	return append(result, transport.EndpointEnvironment+"="+endpoint), nil
+	result = append(result, transport.EndpointEnvironment+"="+endpoint)
+	return append(result, transport.GrantBrokerEndpointEnvironment+"="+grantEndpoint), nil
 }
 
 func manifestIncludes(advertised, configured []string) bool {
@@ -288,6 +310,12 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		}
 		if err := r.supervisor.Stop(name); err != nil && !errors.Is(err, ErrPluginNotRunning) {
 			failures = append(failures, ErrPluginUnavailable)
+		}
+		if instance.grantServer != nil {
+			instance.grantServer.Stop()
+		}
+		if instance.grantListener != nil {
+			_ = instance.grantListener.Close()
 		}
 	}
 	if r.cancel != nil {

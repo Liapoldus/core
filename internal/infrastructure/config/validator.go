@@ -269,6 +269,14 @@ type runtimeWords struct {
 		Env                           string `yaml:"env"`
 		Capabilities                  string `yaml:"capabilities"`
 		Settings                      string `yaml:"settings"`
+		Grants                        string `yaml:"grants"`
+		SecretGrants                  string `yaml:"secretGrants"`
+		GrantName                     string `yaml:"grantName"`
+		GrantPurpose                  string `yaml:"grantPurpose"`
+		GrantDomains                  string `yaml:"grantDomains"`
+		WildcardDomainPrefix          string `yaml:"wildcardDomainPrefix"`
+		Context                       string `yaml:"context"`
+		ContextSecrets                string `yaml:"contextSecrets"`
 		Limits                        string `yaml:"limits"`
 		Calls                         string `yaml:"calls"`
 		DefaultCalls                  int    `yaml:"defaultCalls"`

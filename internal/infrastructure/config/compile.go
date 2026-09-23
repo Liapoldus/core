@@ -266,6 +266,9 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 	for name, value := range compiled.secrets {
 		graph.Secrets[name] = models.Secret{Value: value}
 	}
+	if err := validatePluginGrantReferences(graph); err != nil {
+		return models.CompiledGraph{}, err
+	}
 	for policyName, policy := range graph.WAFPolicies {
 		for index := range policy.Rules {
 			rule := &policy.Rules[index]
@@ -287,6 +290,63 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		graph.WAFPolicies[policyName] = policy
 	}
 	return graph, nil
+}
+
+func validatePluginGrantReferences(graph models.CompiledGraph) error {
+	for _, instance := range graph.Plugins {
+		seen := make(map[string]struct{}, len(instance.SecretGrants))
+		for _, grant := range instance.SecretGrants {
+			if grant.Name == "" || grant.Purpose == "" {
+				return ErrInvalidDocument
+			}
+			if _, exists := graph.Secrets[grant.Name]; !exists {
+				return ErrInvalidDocument
+			}
+			if _, exists := seen[grant.Name]; exists {
+				return ErrInvalidDocument
+			}
+			seen[grant.Name] = struct{}{}
+			domains := make(map[string]struct{}, len(grant.Domains))
+			for _, domain := range grant.Domains {
+				if strings.TrimSpace(domain) == "" || (strings.Contains(domain, grant.WildcardDomainPrefix) && !strings.HasPrefix(domain, grant.WildcardDomainPrefix)) {
+					return ErrInvalidDocument
+				}
+				if grant.WildcardDomainPrefix != "" && strings.HasPrefix(domain, grant.WildcardDomainPrefix) && strings.TrimPrefix(domain, grant.WildcardDomainPrefix) == "" {
+					return ErrInvalidDocument
+				}
+				if _, exists := domains[domain]; exists {
+					return ErrInvalidDocument
+				}
+				domains[domain] = struct{}{}
+			}
+		}
+	}
+	for _, listener := range graph.Listeners {
+		for _, routes := range [][]models.Route{listener.Routes, listener.Rules} {
+			for _, route := range routes {
+				if route.Plugin == nil || len(route.Plugin.ContextSecrets) == 0 {
+					continue
+				}
+				if !listener.IsHTTP {
+					return ErrInvalidDocument
+				}
+				instance, exists := graph.Plugins[route.Plugin.Instance]
+				if !exists {
+					return ErrInvalidDocument
+				}
+				allowed := make(map[string]struct{}, len(instance.SecretGrants))
+				for _, grant := range instance.SecretGrants {
+					allowed[grant.Name] = struct{}{}
+				}
+				for _, name := range route.Plugin.ContextSecrets {
+					if _, exists := allowed[name]; !exists {
+						return ErrInvalidDocument
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (map[string]models.PluginInstance, error) {
@@ -383,10 +443,14 @@ func collectPluginInstances(node *yaml.Node, words runtimeWords, base string) (m
 			return nil, ErrInvalidDocument
 		}
 		instance := models.PluginInstance{
-			Binary:                 binary,
-			Args:                   sequenceValues(mappingNode(body, words.Plugin.Args)),
-			Env:                    sequenceValues(mappingNode(body, words.Plugin.Env)),
-			Capabilities:           sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
+			Binary:       binary,
+			Args:         sequenceValues(mappingNode(body, words.Plugin.Args)),
+			Env:          sequenceValues(mappingNode(body, words.Plugin.Env)),
+			Capabilities: sequenceValues(mappingNode(body, words.Plugin.Capabilities)),
+			SecretGrants: collectPluginSecretGrants(
+				mappingNode(mappingNode(body, words.Plugin.Grants), words.Plugin.SecretGrants),
+				words.Plugin.GrantName, words.Plugin.GrantPurpose, words.Plugin.GrantDomains, words.Plugin.WildcardDomainPrefix,
+			),
 			Settings:               settings,
 			Timeout:                timeout,
 			MemoryLimitBytes:       memoryLimitBytes,
@@ -412,6 +476,23 @@ func sequenceValues(node *yaml.Node) []string {
 		values = append(values, item.Value)
 	}
 	return values
+}
+
+func collectPluginSecretGrants(node *yaml.Node, nameField, purposeField, domainsField, wildcardPrefix string) []models.PluginSecretGrant {
+	if node == nil || node.Kind != yaml.SequenceNode {
+		return nil
+	}
+	grants := make([]models.PluginSecretGrant, 0, len(node.Content))
+	for _, item := range node.Content {
+		name, _ := fieldValue(item, nameField)
+		purpose, _ := fieldValue(item, purposeField)
+		grants = append(grants, models.PluginSecretGrant{
+			Name: name, Purpose: purpose,
+			Domains:              sequenceValues(mappingNode(item, domainsField)),
+			WildcardDomainPrefix: wildcardPrefix,
+		})
+	}
+	return grants
 }
 
 func collectAuthPolicies(node *yaml.Node, policies map[string]models.AuthPolicy) {
@@ -1110,7 +1191,8 @@ func compilePlugin(node *yaml.Node, words runtimeWords) *models.PluginTarget {
 	if instance == "" || capability == "" {
 		return nil
 	}
-	return &models.PluginTarget{Instance: instance, Capability: capability}
+	context := mappingNode(node, words.Plugin.Context)
+	return &models.PluginTarget{Instance: instance, Capability: capability, ContextSecrets: sequenceValues(mappingNode(context, words.Plugin.ContextSecrets))}
 }
 
 func compileProxyTarget(node *yaml.Node, words runtimeWords) *models.ProxyTarget {
