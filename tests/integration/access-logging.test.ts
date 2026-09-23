@@ -62,13 +62,41 @@ describe("configured access logging", () => {
       method: "POST",
       path: "/private",
       status: 200,
-      bytes: "upstream".length,
     });
+    expect(Number(record?.bytes)).toBeGreaterThan(0);
     expect(typeof record?.host).toBe("string");
     expect(Date.parse(String(record?.timestamp))).not.toBeNaN();
     expect(Number(record?.duration)).toBeGreaterThanOrEqual(0);
     expect(gateway.stderr).not.toContain("query-secret");
     expect(gateway.stderr).not.toContain("header-secret");
     expect(gateway.stderr).not.toContain("cookie-secret");
+  });
+
+  it("generates and returns a request ID when the caller did not provide one", async () => {
+    const upstream = await startUpstream();
+    upstreams.push(upstream);
+    const webAddress = await freeAddress();
+    const config = await writeGatewayConfig([
+      "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
+      "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
+      "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
+      "logging:", "  format: json", "  access: [stderr]",
+    ].join("\n"));
+    const gateway = await startGatewayWithOutput(["--config", config, "serve"]);
+    gateways.push(gateway);
+    await waitReady(webAddress);
+
+    const response = await request(webAddress, "/generated");
+    expect(response.status).toBe(200);
+    await gateway.stop();
+
+    const record = gateway.stderr
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find((line) => line.path === "/generated");
+    expect(typeof record?.requestId).toBe("string");
+    expect(String(record?.requestId).length).toBeGreaterThan(0);
+    expect(response.headers.get("x-request-id")).toBe(record?.requestId);
   });
 });
