@@ -97,11 +97,10 @@ type CLIWords struct {
 		Unavailable   int `yaml:"unavailable"`
 	} `yaml:"exits"`
 	Sources struct {
-		Flag                 string `yaml:"flag"`
-		Environment          string `yaml:"environment"`
-		FlagDirectory        string `yaml:"flagDirectory"`
-		EnvironmentDirectory string `yaml:"environmentDirectory"`
-		System               string `yaml:"system"`
+		Flag          string `yaml:"flag"`
+		Environment   string `yaml:"environment"`
+		FlagDirectory string `yaml:"flagDirectory"`
+		System        string `yaml:"system"`
 	} `yaml:"sources"`
 	JSON struct {
 		OK               string `yaml:"ok"`
@@ -345,54 +344,54 @@ type ManagementWords struct {
 		Delete string `yaml:"delete"`
 	} `yaml:"methods"`
 	JSON struct {
-		RequestID         string `yaml:"requestId"`
-		OperationID       string `yaml:"operationId"`
-		State             string `yaml:"state"`
-		Items             string `yaml:"items"`
-		NextCursor        string `yaml:"nextCursor"`
-		YAML              string `yaml:"yaml"`
-		Revision          string `yaml:"revision"`
-		Digest            string `yaml:"digest"`
-		Valid             string `yaml:"valid"`
-		Source            string `yaml:"source"`
-		IdempotencyKey    string `yaml:"idempotencyKey"`
+		RequestID               string `yaml:"requestId"`
+		OperationID             string `yaml:"operationId"`
+		State                   string `yaml:"state"`
+		Items                   string `yaml:"items"`
+		NextCursor              string `yaml:"nextCursor"`
+		YAML                    string `yaml:"yaml"`
+		Revision                string `yaml:"revision"`
+		Digest                  string `yaml:"digest"`
+		Valid                   string `yaml:"valid"`
+		Source                  string `yaml:"source"`
+		IdempotencyKey          string `yaml:"idempotencyKey"`
 		ExpectedCurrentRevision string `yaml:"expectedCurrentRevision"`
-		ExpectedRevision  string `yaml:"expectedRevision"`
-		ID                string `yaml:"id"`
-		ReplyTo           string `yaml:"replyTo"`
-		Status            string `yaml:"status"`
-		Slug              string `yaml:"slug"`
-		Route             string `yaml:"route"`
-		Root              string `yaml:"root"`
-		CurrentRevision   string `yaml:"currentRevision"`
-		PreviousRevision  string `yaml:"previousRevision"`
-		CreatedAt         string `yaml:"createdAt"`
-		StartedAt         string `yaml:"startedAt"`
-		FinishedAt        string `yaml:"finishedAt"`
-		Result            string `yaml:"result"`
-		Problem           string `yaml:"problem"`
-		Timestamp         string `yaml:"timestamp"`
-		Actor             string `yaml:"actor"`
-		Action            string `yaml:"action"`
-		Resource          string `yaml:"resource"`
-		DigestBefore      string `yaml:"digestBefore"`
-		DigestAfter       string `yaml:"digestAfter"`
-		Name              string `yaml:"name"`
-		Type              string `yaml:"type"`
-		Address           string `yaml:"address"`
-		ActiveConnections string `yaml:"activeConnections"`
-		Healthy           string `yaml:"healthy"`
-		Capabilities      string `yaml:"capabilities"`
-		Limits            string `yaml:"limits"`
-		Health            string `yaml:"health"`
-		Profile           string `yaml:"profile"`
-		Domain            string `yaml:"domain"`
-		Serial            string `yaml:"serial"`
-		NotAfter          string `yaml:"notAfter"`
-		Validity          string `yaml:"validity"`
-		Diagnostics       string `yaml:"diagnostics"`
-		Limit             string `yaml:"limit"`
-		Cursor            string `yaml:"cursor"`
+		ExpectedRevision        string `yaml:"expectedRevision"`
+		ID                      string `yaml:"id"`
+		ReplyTo                 string `yaml:"replyTo"`
+		Status                  string `yaml:"status"`
+		Slug                    string `yaml:"slug"`
+		Route                   string `yaml:"route"`
+		Root                    string `yaml:"root"`
+		CurrentRevision         string `yaml:"currentRevision"`
+		PreviousRevision        string `yaml:"previousRevision"`
+		CreatedAt               string `yaml:"createdAt"`
+		StartedAt               string `yaml:"startedAt"`
+		FinishedAt              string `yaml:"finishedAt"`
+		Result                  string `yaml:"result"`
+		Problem                 string `yaml:"problem"`
+		Timestamp               string `yaml:"timestamp"`
+		Actor                   string `yaml:"actor"`
+		Action                  string `yaml:"action"`
+		Resource                string `yaml:"resource"`
+		DigestBefore            string `yaml:"digestBefore"`
+		DigestAfter             string `yaml:"digestAfter"`
+		Name                    string `yaml:"name"`
+		Type                    string `yaml:"type"`
+		Address                 string `yaml:"address"`
+		ActiveConnections       string `yaml:"activeConnections"`
+		Healthy                 string `yaml:"healthy"`
+		Capabilities            string `yaml:"capabilities"`
+		Limits                  string `yaml:"limits"`
+		Health                  string `yaml:"health"`
+		Profile                 string `yaml:"profile"`
+		Domain                  string `yaml:"domain"`
+		Serial                  string `yaml:"serial"`
+		NotAfter                string `yaml:"notAfter"`
+		Validity                string `yaml:"validity"`
+		Diagnostics             string `yaml:"diagnostics"`
+		Limit                   string `yaml:"limit"`
+		Cursor                  string `yaml:"cursor"`
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch    string `yaml:"ifMatch"`

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -520,19 +521,73 @@ func serve(options options) int {
 		return words.Exits.Internal
 	}
 	registryService := application.RegistryService{Store: storage.NewFilesystemStore(graph.RegistryRoot, registryLayout)}
-	management.PublishSite = func(_ context.Context, site, source, _ string) (api.Operation, error) {
-		release, publishErr := registryService.Publish(site, source)
-		if publishErr != nil {
-			return api.Operation{}, publishErr
+	management.ListSites = func(_ context.Context) ([]any, error) {
+		slugs := make([]string, 0, len(graph.Sites))
+		for slug := range graph.Sites {
+			slugs = append(slugs, slug)
 		}
-		return api.Operation{ID: release.ID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil
+		sort.Strings(slugs)
+		items := make([]any, 0, len(slugs))
+		for _, slug := range slugs {
+			definition := graph.Sites[slug]
+			var currentRevision, previousRevision any
+			state := managementWords.Statuses.Ready
+			if definition.Source == models.SourceRelease {
+				current, currentErr := registryService.Current(slug)
+				previous, previousErr := registryService.Previous(slug)
+				if currentErr != nil || previousErr != nil {
+					state = managementWords.Statuses.Invalid
+				}
+				if current.ID != "" {
+					currentRevision = current.ID
+				}
+				if previous.ID != "" {
+					previousRevision = previous.ID
+				}
+			}
+			var releaseSlug any
+			if definition.Source == models.SourceRelease {
+				releaseSlug = slug
+			}
+			items = append(items, map[string]any{
+				managementWords.JSON.Name:             slug,
+				managementWords.JSON.Source:           definition.Source,
+				managementWords.JSON.Slug:             releaseSlug,
+				managementWords.JSON.Root:             nil,
+				managementWords.JSON.CurrentRevision:  currentRevision,
+				managementWords.JSON.PreviousRevision: previousRevision,
+				managementWords.JSON.State:            state,
+			})
+		}
+		return items, nil
 	}
-	management.RollbackSite = func(_ context.Context, site, _ string) (api.Operation, error) {
-		release, rollbackErr := registryService.Rollback(site)
-		if rollbackErr != nil {
-			return api.Operation{}, rollbackErr
+	management.PublishSite = func(_ context.Context, site, source, _ string, expected *string) (api.Operation, *models.ReleaseRevisionConflict, error) {
+		operationID, operationIDErr := cliRequestID()
+		if operationIDErr != nil {
+			return api.Operation{}, nil, operationIDErr
 		}
-		return api.Operation{ID: release.ID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil
+		release, conflict, publishErr := registryService.PublishIfCurrent(site, source, expected)
+		if conflict != nil {
+			return api.Operation{}, conflict, nil
+		}
+		if publishErr != nil {
+			return api.Operation{}, nil, publishErr
+		}
+		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil, nil
+	}
+	management.RollbackSite = func(_ context.Context, site, _ string, expected *string) (api.Operation, *models.ReleaseRevisionConflict, error) {
+		operationID, operationIDErr := cliRequestID()
+		if operationIDErr != nil {
+			return api.Operation{}, nil, operationIDErr
+		}
+		release, conflict, rollbackErr := registryService.RollbackIfCurrent(site, expected)
+		if conflict != nil {
+			return api.Operation{}, conflict, nil
+		}
+		if rollbackErr != nil {
+			return api.Operation{}, nil, rollbackErr
+		}
+		return api.Operation{ID: operationID, State: managementWords.Statuses.Succeeded, Result: map[string]string{managementWords.JSON.Revision: release.ID}}, nil, nil
 	}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
@@ -628,7 +683,7 @@ func discoverConfig(options options) (string, string, error) {
 	}
 	if directory := os.Getenv(words.Environment.ConfigDir); directory != "" {
 		path, err := absoluteExistingFile(filepath.Join(directory, words.Paths.FileName))
-		return path, words.Sources.EnvironmentDirectory, err
+		return path, words.Environment.ConfigDir, err
 	}
 	path, err := absoluteExistingFile(words.Paths.DefaultConfig)
 	return path, words.Sources.System, err

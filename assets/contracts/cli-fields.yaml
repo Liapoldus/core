@@ -74,7 +74,6 @@ sources:
   flag: flag
   environment: environment
   flagDirectory: flag-directory
-  environmentDirectory: environment-directory
   system: system
 json:
   ok: ok
