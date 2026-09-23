@@ -87,10 +87,17 @@ runtime:
     headerBytesDefault: 32KiB
     quicField: quic
     quic:
+      maxConnections: maxConnections
+      maxConnectionsDefault: "10000"
+      maxStreams: maxStreams
+      maxStreamsDefault: "100"
       maxPacketBytes: maxPacketBytes
       maxPacketBytesDefault: "1350"
       maxPacketBytesMinimum: "1200"
       maxPacketBytesMaximum: "1452"
+      idleTimeout: idleTimeout
+      idleTimeoutDefault: 30s
+      durationUnits: { d: 24h }
   site:
     source: source
     type: type

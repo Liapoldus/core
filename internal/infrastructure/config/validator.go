@@ -102,10 +102,17 @@ type runtimeWords struct {
 		HeaderBytesDefault string `yaml:"headerBytesDefault"`
 		QUICField          string `yaml:"quicField"`
 		QUIC               struct {
-			MaxPacketBytes        string `yaml:"maxPacketBytes"`
-			MaxPacketBytesDefault string `yaml:"maxPacketBytesDefault"`
-			MaxPacketBytesMinimum string `yaml:"maxPacketBytesMinimum"`
-			MaxPacketBytesMaximum string `yaml:"maxPacketBytesMaximum"`
+			MaxConnections        string            `yaml:"maxConnections"`
+			MaxConnectionsDefault string            `yaml:"maxConnectionsDefault"`
+			MaxStreams            string            `yaml:"maxStreams"`
+			MaxStreamsDefault     string            `yaml:"maxStreamsDefault"`
+			MaxPacketBytes        string            `yaml:"maxPacketBytes"`
+			MaxPacketBytesDefault string            `yaml:"maxPacketBytesDefault"`
+			MaxPacketBytesMinimum string            `yaml:"maxPacketBytesMinimum"`
+			MaxPacketBytesMaximum string            `yaml:"maxPacketBytesMaximum"`
+			IdleTimeout           string            `yaml:"idleTimeout"`
+			IdleTimeoutDefault    string            `yaml:"idleTimeoutDefault"`
+			DurationUnits         map[string]string `yaml:"durationUnits"`
 		} `yaml:"quic"`
 		SizeUnits map[string]uint64 `yaml:"sizeUnits"`
 	}

@@ -1,6 +1,6 @@
 version: 3
 workdir: .
-exclude: [tests, "**/*_test.go"]
+exclude: [tests, third_party/**, "**/*_test.go"]
 allow:
   depOnAnyVendor: false
   deepScan: true
@@ -40,6 +40,7 @@ vendors:
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
+  quic: { in: [github.com/quic-go/quic-go] }
   quicHTTP3: { in: [github.com/quic-go/quic-go/http3] }
 commonComponents: [domainModels]
 commonVendors: []
@@ -63,7 +64,7 @@ deps:
     mayDependOn: [domainModels]
   infrastructureNetwork:
     mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
-    canUse: [quicHTTP3, otelPropagation]
+    canUse: [quic, quicHTTP3, otelPropagation]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt, maxminddb]

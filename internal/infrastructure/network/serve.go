@@ -752,12 +752,16 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 		server.TLSConfig = tcpTLSConfig
 		if slices.Contains(tlsConfig.NextProtos, http3.NextProtoH3) {
 			quicServer = &http3.Server{
-				Addr:      listener.Address,
-				Handler:   handler,
-				TLSConfig: http3.ConfigureTLSConfig(tlsConfig.Clone()),
+				Addr:        listener.Address,
+				Handler:     handler,
+				TLSConfig:   http3.ConfigureTLSConfig(tlsConfig.Clone()),
+				IdleTimeout: listener.Limits.QUIC.IdleTimeout,
 				QUICConfig: &quic.Config{
-					MaxPacketSize: uint16(listener.Limits.QUIC.MaxPacketBytes),
+					MaxPacketSize:      uint16(listener.Limits.QUIC.MaxPacketBytes),
+					MaxIncomingStreams: listener.Limits.QUIC.MaxStreams,
+					MaxIdleTimeout:     listener.Limits.QUIC.IdleTimeout,
 				},
+				ConnContext: quicConnectionLimit(listener.Limits.QUIC.MaxConnections),
 			}
 		}
 	}

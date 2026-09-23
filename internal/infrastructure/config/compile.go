@@ -815,10 +815,23 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 			return nil, ErrInvalidDocument
 		}
 		listener.Limits.HeaderBytes = int(headerBytes)
+		listener.Limits.QUIC.MaxConnections, err = strconv.ParseInt(words.Listener.QUIC.MaxConnectionsDefault, 10, 64)
+		if err != nil || listener.Limits.QUIC.MaxConnections < 1 {
+			return nil, ErrInvalidDocument
+		}
+		listener.Limits.QUIC.MaxStreams, err = strconv.ParseInt(words.Listener.QUIC.MaxStreamsDefault, 10, 64)
+		if err != nil || listener.Limits.QUIC.MaxStreams < 1 {
+			return nil, ErrInvalidDocument
+		}
 		listener.Limits.QUIC.MaxPacketBytes, err = parseByteCount(words.Listener.QUIC.MaxPacketBytesDefault, words.WAF.SizeUnits)
 		if err != nil {
 			return nil, ErrInvalidDocument
 		}
+		idleTimeout, err := parseContractDuration(words.Listener.QUIC.IdleTimeoutDefault, words.Listener.QUIC.DurationUnits)
+		if err != nil || idleTimeout <= 0 {
+			return nil, ErrInvalidDocument
+		}
+		listener.Limits.QUIC.IdleTimeout = idleTimeout
 		if limits := mappingNode(body, words.Listener.Limits); limits != nil {
 			if configured, exists := fieldValue(limits, words.Listener.BodyBytes); exists {
 				listener.Limits.BodyBytes, err = parseByteCount(configured, words.WAF.SizeUnits)
@@ -834,11 +847,29 @@ func collectListeners(node *yaml.Node, words runtimeWords) ([]models.Listener, e
 				listener.Limits.HeaderBytes = int(headerBytes)
 			}
 			if quicLimits := mappingNode(limits, words.Listener.QUICField); quicLimits != nil {
+				if configured, exists := fieldValue(quicLimits, words.Listener.QUIC.MaxConnections); exists {
+					listener.Limits.QUIC.MaxConnections, err = strconv.ParseInt(configured, 10, 64)
+					if err != nil || listener.Limits.QUIC.MaxConnections < 1 {
+						return nil, ErrInvalidDocument
+					}
+				}
+				if configured, exists := fieldValue(quicLimits, words.Listener.QUIC.MaxStreams); exists {
+					listener.Limits.QUIC.MaxStreams, err = strconv.ParseInt(configured, 10, 64)
+					if err != nil || listener.Limits.QUIC.MaxStreams < 1 {
+						return nil, ErrInvalidDocument
+					}
+				}
 				if configured, exists := fieldValue(quicLimits, words.Listener.QUIC.MaxPacketBytes); exists {
 					listener.Limits.QUIC.MaxPacketBytes, err = parseByteCount(configured, words.WAF.SizeUnits)
 					minimum, minimumErr := parseByteCount(words.Listener.QUIC.MaxPacketBytesMinimum, words.WAF.SizeUnits)
 					maximum, maximumErr := parseByteCount(words.Listener.QUIC.MaxPacketBytesMaximum, words.WAF.SizeUnits)
 					if err != nil || minimumErr != nil || maximumErr != nil || listener.Limits.QUIC.MaxPacketBytes < minimum || listener.Limits.QUIC.MaxPacketBytes > maximum {
+						return nil, ErrInvalidDocument
+					}
+				}
+				if configured, exists := fieldValue(quicLimits, words.Listener.QUIC.IdleTimeout); exists {
+					listener.Limits.QUIC.IdleTimeout, err = parseContractDuration(configured, words.Listener.QUIC.DurationUnits)
+					if err != nil || listener.Limits.QUIC.IdleTimeout <= 0 {
 						return nil, ErrInvalidDocument
 					}
 				}
@@ -901,6 +932,16 @@ func parseByteCount(value string, units map[string]uint64) (uint64, error) {
 		return 0, ErrInvalidDocument
 	}
 	return parsed * multiplier, nil
+}
+
+func parseContractDuration(value string, units map[string]string) (time.Duration, error) {
+	for suffix, replacement := range units {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix) + replacement
+			break
+		}
+	}
+	return time.ParseDuration(value)
 }
 
 func collectRoutes(node *yaml.Node, words runtimeWords) ([]models.Route, error) {
