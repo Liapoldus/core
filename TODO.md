@@ -386,6 +386,12 @@ references are
 
 - [ ] Execute all 50 current documentation golden vectors semantically against
   runtime on macOS/Linux.
+- [ ] Resolve `plugin-startup-order` timeout mismatch before marking the vector
+  conformant: `contracts/v1/golden-vectors.json` expects `10s`,
+  `gateway/architecture/protocol.md` names `startTimeout`, but
+  `public/spec/gateway.schema.json` and `assets/contracts/config-fields.yaml`
+  expose no separate field; core currently reuses `limits.timeout` for
+  handshake and Calls. Await a user decision on a separate startup timeout.
 - [X] Pass race, malformed-input, shutdown/recovery and no-secret regression
   suites on the current CI host.
 - [X] Build and smoke-test the Docker image; ensure GitHub Actions reports all
