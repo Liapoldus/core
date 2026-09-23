@@ -29,6 +29,7 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	quic "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 )
 
@@ -754,6 +755,9 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 				Addr:      listener.Address,
 				Handler:   handler,
 				TLSConfig: http3.ConfigureTLSConfig(tlsConfig.Clone()),
+				QUICConfig: &quic.Config{
+					MaxPacketSize: uint16(listener.Limits.QUIC.MaxPacketBytes),
+				},
 			}
 		}
 	}

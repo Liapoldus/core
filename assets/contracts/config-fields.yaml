@@ -85,6 +85,12 @@ runtime:
     bodyBytesDefault: 10MiB
     headerBytes: headerBytes
     headerBytesDefault: 32KiB
+    quicField: quic
+    quic:
+      maxPacketBytes: maxPacketBytes
+      maxPacketBytesDefault: "1350"
+      maxPacketBytesMinimum: "1200"
+      maxPacketBytesMaximum: "1452"
   site:
     source: source
     type: type

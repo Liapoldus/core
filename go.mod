@@ -8,6 +8,8 @@ require github.com/Liapoldus/pluginprotocol v1.1.0
 
 replace github.com/Liapoldus/pluginprotocol => ../pluginprotocol
 
+replace github.com/quic-go/quic-go => ./third_party/quic-go
+
 require (
 	github.com/oschwald/maxminddb-golang/v2 v2.6.0
 	github.com/prometheus/client_golang v1.24.1
