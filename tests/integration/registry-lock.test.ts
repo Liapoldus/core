@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -77,11 +77,13 @@ describe("filesystem registry publish locks", () => {
 
     const ownerPid = gateways.at(-1)?.process.pid;
     expect(ownerPid).toBeDefined();
-    await writeFile(fixture.lockPath, JSON.stringify({ pid: ownerPid, startedAt: new Date().toISOString(), nonce: "active-lock" }), { mode: 0o600 });
+    const activeLock = JSON.stringify({ pid: ownerPid, startedAt: new Date().toISOString(), nonce: "active-lock" });
+    await writeFile(fixture.lockPath, activeLock, { mode: 0o600 });
     const response = await publish(fixture.managementAddress, fixture.source, "active-conflict-key", revision);
 
     expect(response.status).toBe(expectedVector("publish-lock-active").status);
     expect(response.text).toContain(expectedVector("publish-lock-active").code as string);
+    expect(await readFile(fixture.lockPath, "utf8")).toBe(activeLock);
     expect(await readlink(join(fixture.registry, "sites", "blog", "current"))).toBe(currentPointer);
     await expect(readlink(join(fixture.registry, "sites", "blog", "previous"))).rejects.toMatchObject({ code: "ENOENT" });
   });
