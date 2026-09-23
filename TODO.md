@@ -446,8 +446,10 @@ references are
   through a real child-process publish, retry, body/key conflict, serving and
   audit check; `rollback-missing` is verified via the documented CLI command;
   `directory-source-publish` is verified via the CLI without registry mutation;
-  `release-retention` is verified by three real CLI publishes and pointer/file
-  inspection. 44 vectors remain.
+  `release-retention` is verified by three real child-process Management API
+  publishes, current/previous pointers, removal of the oldest release, and
+  exactly three `site_published` audit records. CLI release retention is also
+  independently covered. 44 vectors remain.
 - [ ] Apply configured `listener.limits.quic` to the HTTP/3 runtime. The schema
   defines `maxConnections`, `maxStreams`, `maxPacketBytes` and `idleTimeout`,
   while `security-runtime.json` describes listener `connections`,

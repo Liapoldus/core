@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGateway } from "../support/gateway.js";
@@ -75,6 +75,22 @@ describe("Management registry operations", () => {
       headers,
       body: JSON.stringify({ ...body, source: join(workspace, "different-source") }),
     });
+    const nextSources = ["second", "third"].map((name) => join(workspace, name));
+    for (const [index, nextSource] of nextSources.entries()) {
+      await mkdir(nextSource);
+      await writeFile(join(nextSource, "site.yaml"), "index: index.html\n", "utf8");
+      await writeFile(join(nextSource, "index.html"), `${index === 0 ? "second" : "third"} release\n`, "utf8");
+    }
+    const secondPublish = await request(managementAddress, "/api/sites/blog/publish", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ source: nextSources[0], idempotencyKey: "2234567890abcdef" }),
+    });
+    const thirdPublish = await request(managementAddress, "/api/sites/blog/publish", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ source: nextSources[1], idempotencyKey: "3234567890abcdef" }),
+    });
     const extraProperty = await request(managementAddress, "/api/sites/blog/publish", {
       method: "POST",
       headers,
@@ -88,6 +104,10 @@ describe("Management registry operations", () => {
     const served = await request(webAddress, "/");
     const auditResponse = await request(managementAddress, "/api/audit", { headers });
     const audit = JSON.parse(auditResponse.text) as { items: Array<{ action: string }> };
+    const releasesRoot = join(registry, "sites", "blog");
+    const releases = await readdir(join(releasesRoot, "releases"));
+    const secondRevision = JSON.parse(secondPublish.text) as { operationId: string };
+    const thirdRevision = JSON.parse(thirdPublish.text) as { operationId: string };
 
     expect(published.status).toBe(201);
     expect(repeated.status).toBe(201);
@@ -97,9 +117,16 @@ describe("Management registry operations", () => {
     expect(conflict.status).toBe(409);
     expect(extraProperty.status).toBe(400);
     expect(trailingValue.status).toBe(400);
+    expect(secondPublish.status).toBe(201);
+    expect(thirdPublish.status).toBe(201);
     expect(served.status).toBe(200);
-    expect(served.text).toBe("published release\n");
-    expect(audit.items).toContainEqual(expect.objectContaining({ action: "site_published" }));
+    expect(served.text).toBe("third release\n");
+    expect(await readlink(join(releasesRoot, "current"))).toContain(thirdRevision.operationId);
+    expect(await readlink(join(releasesRoot, "previous"))).toContain(secondRevision.operationId);
+    expect(releases).toContain(thirdRevision.operationId);
+    expect(releases).toContain(secondRevision.operationId);
+    expect(releases).not.toContain(firstResult.operationId);
+    expect(audit.items.filter((item) => item.action === "site_published")).toHaveLength(3);
     expect(auditResponse.text).not.toContain(source);
   });
 

@@ -177,6 +177,14 @@ describe("registry CLI golden vectors", () => {
     expect(await readlink(join(siteRoot, "previous"))).toContain(revisions[1]);
     expect(await readdir(join(siteRoot, "releases"))).toEqual(expect.arrayContaining([revisions[1], revisions[2]]));
     expect(await readdir(join(siteRoot, "releases"))).not.toContain(revisions[0]);
+
+    const rollback = await runGateway(["--output", "json", "--config", configPath, "site", "rollback", "blog"]);
+    const rollbackResult = JSON.parse(rollback.stdout) as { site?: string; revision?: string; previousRevision?: string; requestId?: string };
+    expect(rollback.exitCode).toBe(0);
+    expect(rollbackResult).toMatchObject({ site: "blog", revision: revisions[1], previousRevision: revisions[2] });
+    expect(rollbackResult.requestId).toMatch(/^req_[a-zA-Z0-9]+$/);
+    expect(await readlink(join(siteRoot, "current"))).toContain(revisions[1]);
+    expect(await readlink(join(siteRoot, "previous"))).toContain(revisions[2]);
   });
 
   it("rejects a release pointer that resolves through a symlink outside the registry", async () => {
