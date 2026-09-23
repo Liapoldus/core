@@ -165,16 +165,12 @@ func (server *Server) Listen(ctx context.Context, address string) error {
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
-	if request.URL.Path == "/healthz" {
+	if request.URL.Path == server.Management.Paths.Healthz {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "requestId": requestID})
-		return
-	}
-	if request.Method != http.MethodGet && request.URL.Path == "/healthz" {
-		writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", requestID)
 		return
 	}
 	actor, authorized := server.authenticate(request.Header.Get("Authorization"))
@@ -184,19 +180,19 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	switch {
-	case path == "/api/status" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Status && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": server.Listeners, "upstreams": server.Upstreams, "plugins": server.Plugins, "requestId": requestID})
-	case path == "/api/listeners" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Listeners && request.Method == http.MethodGet:
 		server.writePage(response, server.Listeners, request, requestID)
-	case path == "/api/upstreams" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Upstreams && request.Method == http.MethodGet:
 		server.writePage(response, server.Upstreams, request, requestID)
-	case path == "/api/sites" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Sites && request.Method == http.MethodGet:
 		server.writePage(response, server.Sites, request, requestID)
-	case path == "/api/plugins" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
 		server.writePage(response, server.Plugins, request, requestID)
-	case path == "/api/operations" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Operations && request.Method == http.MethodGet:
 		server.mu.RLock()
 		items := make([]Operation, 0, len(server.operations))
 		for _, operation := range server.operations {
@@ -204,11 +200,11 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		}
 		server.mu.RUnlock()
 		server.writePage(response, items, request, requestID)
-	case path == "/api/config" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Config && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "yaml": redact(server.Config), "requestId": requestID})
-	case path == "/api/config" && request.Method == http.MethodPut:
+	case path == server.Management.Paths.Config && request.Method == http.MethodPut:
 		server.mu.RLock()
 		digestBefore := server.Digest
 		currentRevision := server.Revision
@@ -246,7 +242,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleSitePublish(response, request, path, actor, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.Sites+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Rollback) && request.Method == http.MethodPost:
 		server.handleSiteRollback(response, request, path, requestID)
-	case path == "/api/config/validate" && request.Method == http.MethodPost:
+	case path == server.Management.Paths.ConfigValidate && request.Method == http.MethodPost:
 		var input struct {
 			YAML string `json:"yaml"`
 		}
@@ -258,7 +254,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			}
 		}
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "valid": true, "requestId": requestID})
-	case (path == "/api/config/reload" || path == "/api/reload") && request.Method == http.MethodPost:
+	case (path == server.Management.Paths.ConfigReload || path == server.Management.Paths.Reload) && request.Method == http.MethodPost:
 		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
 			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
 			return
@@ -286,9 +282,9 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.Unlock()
 		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigReload, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
 		writeJSON(response, 202, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
-	case strings.HasPrefix(path, "/api/tls/") && (strings.HasSuffix(path, "/renew") || strings.HasSuffix(path, "/revoke")) && request.Method == http.MethodPost:
+	case strings.HasPrefix(path, server.Management.Paths.TLS+"/") && (strings.HasSuffix(path, "/"+server.Management.Paths.Renew) || strings.HasSuffix(path, "/"+server.Management.Paths.Revoke)) && request.Method == http.MethodPost:
 		server.handleTLSOperation(response, request, path, requestID)
-	case path == "/api/audit" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
 			server.writePage(response, []models.AuditRecord{}, request, requestID)
 			return
@@ -299,7 +295,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			return
 		}
 		server.writePage(response, items, request, requestID)
-	case path == "/metrics" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.Metrics && request.Method == http.MethodGet:
 		if server.Metrics != nil {
 			server.Metrics.Handler().ServeHTTP(response, request)
 			return
@@ -307,20 +303,23 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		response.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintln(response, "# HELP liapoldus_management_requests_total Management API requests")
 		_, _ = fmt.Fprintln(response, "# TYPE liapoldus_management_requests_total counter")
-	case path == "/api/plugins/admin-surfaces" && request.Method == http.MethodGet:
+	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
 		server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
-	case strings.HasPrefix(path, "/api/plugins/") && strings.Contains(path, "/admin/pages/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
+	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
 		server.handlePluginAdmin(response, request, path, requestID)
-	case strings.HasPrefix(path, "/api/plugins/") && strings.HasSuffix(path, "/restart") && request.Method == http.MethodPost:
+	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost:
 		if server.RestartPlugin == nil {
 			writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
 			return
 		}
-		parts := strings.Split(strings.Trim(path, "/"), "/")
-		instance := parts[2]
+		instance := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.Plugins+"/"), "/"+server.Management.Paths.Restart)
+		if len(instance) == 0 || strings.Contains(instance, "/") {
+			writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
+			return
+		}
 		op, err := server.RestartPlugin(request.Context(), instance)
 		if err != nil {
 			writeProblem(response, 422, "operation_failed", err.Error(), requestID)
@@ -333,8 +332,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.operations[op.ID] = op
 		server.mu.Unlock()
 		writeJSON(response, 202, map[string]any{"operationId": op.ID, "requestId": requestID})
-	case strings.HasPrefix(path, "/api/operations/") && request.Method == http.MethodGet:
-		id := strings.TrimPrefix(path, "/api/operations/")
+	case strings.HasPrefix(path, server.Management.Paths.Operations+"/") && request.Method == http.MethodGet:
+		id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
 		server.mu.RLock()
 		operation, ok := server.operations[id]
 		server.mu.RUnlock()
@@ -409,8 +408,9 @@ func sliceValues(values any) []any {
 }
 
 func (server *Server) handleTLSOperation(response http.ResponseWriter, request *http.Request, path, requestID string) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 4 || parts[0] != "api" || parts[1] != "tls" || parts[2] == "" {
+	resource := strings.TrimPrefix(path, server.Management.Paths.TLS+"/")
+	parts := strings.Split(resource, "/")
+	if len(parts) != 2 || parts[0] == "" || (parts[1] != server.Management.Paths.Renew && parts[1] != server.Management.Paths.Revoke) {
 		writeProblem(response, http.StatusNotFound, "not_found", "TLS issuer resource not found", requestID)
 		return
 	}
@@ -420,7 +420,7 @@ func (server *Server) handleTLSOperation(response http.ResponseWriter, request *
 		return
 	}
 	var operation func(context.Context, string, string) (Operation, error)
-	if parts[3] == "renew" {
+	if parts[1] == server.Management.Paths.Renew {
 		operation = server.RenewTLS
 	} else {
 		operation = server.RevokeTLS
@@ -429,7 +429,7 @@ func (server *Server) handleTLSOperation(response http.ResponseWriter, request *
 		writeProblem(response, http.StatusNotImplemented, "not_implemented", "TLS issuer operation is unavailable", requestID)
 		return
 	}
-	op, err := operation(request.Context(), parts[2], idempotencyKey)
+	op, err := operation(request.Context(), parts[0], idempotencyKey)
 	if err != nil {
 		writeProblem(response, http.StatusUnprocessableEntity, "tls_operation_failed", err.Error(), requestID)
 		return
@@ -597,13 +597,19 @@ func (server *Server) handleSiteRollback(response http.ResponseWriter, request *
 		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 		return
 	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) != 4 || parts[0] != "api" || parts[1] != "sites" || parts[2] == "" {
+	sitePrefix := server.Management.Paths.Sites + "/"
+	siteSuffix := "/" + server.Management.Paths.Rollback
+	if !strings.HasPrefix(path, sitePrefix) || !strings.HasSuffix(path, siteSuffix) {
+		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
+		return
+	}
+	site := strings.TrimSuffix(strings.TrimPrefix(path, sitePrefix), siteSuffix)
+	if site == "" || strings.Contains(site, "/") {
 		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
 		return
 	}
 	if server.SiteSources != nil {
-		definition, exists := server.SiteSources[parts[2]]
+		definition, exists := server.SiteSources[site]
 		if !exists {
 			writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
 			return
@@ -613,7 +619,7 @@ func (server *Server) handleSiteRollback(response http.ResponseWriter, request *
 			return
 		}
 	}
-	operation, err := server.RollbackSite(request.Context(), parts[2], request.Header.Get("Idempotency-Key"))
+	operation, err := server.RollbackSite(request.Context(), site, request.Header.Get("Idempotency-Key"))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			server.writeCatalogProblem(response, server.Management.Codes.NoPreviousRelease, requestID)
@@ -645,15 +651,23 @@ func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *h
 		writeProblem(response, 503, "plugin_unavailable", "plugin admin surface is unavailable", requestID)
 		return
 	}
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) < 6 {
+	instanceAndRoute := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
+	instance, route, found := strings.Cut(instanceAndRoute, "/")
+	pagePrefix := server.Management.Paths.AdminPages + "/"
+	if !found || instance == "" || !strings.HasPrefix(route, pagePrefix) {
 		writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
 		return
 	}
-	instance, page := parts[2], parts[5]
+	pageAndAction := strings.TrimPrefix(route, pagePrefix)
+	parts := strings.Split(pageAndAction, "/")
+	if len(parts) > 2 || parts[0] == "" || (len(parts) == 2 && parts[1] == "") {
+		writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
+		return
+	}
+	page := parts[0]
 	action := ""
-	if len(parts) == 7 {
-		action = parts[6]
+	if len(parts) == 2 {
+		action = parts[1]
 	}
 	var input json.RawMessage
 	if request.Method == http.MethodPost {

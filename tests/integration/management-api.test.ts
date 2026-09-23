@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 
 describe("Management API v1", () => {
   it("exposes the documented control-plane resources", () => {
-    const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
-    for (const route of ["/healthz", "/api/status", "/api/config", "/api/config/validate", "/api/operations/", "/api/audit"]) {
-      expect(source).toContain(route);
+    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
+    for (const route of ["/healthz", "/api/status", "/api/config", "/api/config/validate", "/api/operations", "/api/audit"]) {
+      expect(contract).toContain(route);
     }
   });
 
@@ -20,7 +20,8 @@ describe("Management API v1", () => {
 
   it("exposes guarded configuration lifecycle endpoints", () => {
     const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
-    expect(source).toContain("/api/config/reload");
+    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
+    expect(contract).toContain("/api/config/reload");
     expect(source).toContain("If-Match");
     expect(source).toContain("conflict");
   });

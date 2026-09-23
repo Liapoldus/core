@@ -310,12 +310,14 @@ type ManagementWords struct {
 		ReleaseInvalid      string `yaml:"releaseInvalid"`
 		RegistryUnavailable string `yaml:"registryUnavailable"`
 		NoPreviousRelease   string `yaml:"noPreviousRelease"`
+		ReleaseRevisionConflict string `yaml:"releaseRevisionConflict"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz        string `yaml:"healthz"`
 		Status         string `yaml:"status"`
 		Config         string `yaml:"config"`
 		ConfigValidate string `yaml:"configValidate"`
+		ConfigReload   string `yaml:"configReload"`
 		Reload         string `yaml:"reload"`
 		Sites          string `yaml:"sites"`
 		Publish        string `yaml:"publish"`
@@ -323,6 +325,8 @@ type ManagementWords struct {
 		Listeners      string `yaml:"listeners"`
 		Upstreams      string `yaml:"upstreams"`
 		Plugins        string `yaml:"plugins"`
+		AdminSurfaces  string `yaml:"adminSurfaces"`
+		AdminPages     string `yaml:"adminPages"`
 		Restart        string `yaml:"restart"`
 		Logs           string `yaml:"logs"`
 		TLS            string `yaml:"tls"`
@@ -350,6 +354,8 @@ type ManagementWords struct {
 		Valid             string `yaml:"valid"`
 		Source            string `yaml:"source"`
 		IdempotencyKey    string `yaml:"idempotencyKey"`
+		ExpectedCurrentRevision string `yaml:"expectedCurrentRevision"`
+		ExpectedRevision  string `yaml:"expectedRevision"`
 		ID                string `yaml:"id"`
 		ReplyTo           string `yaml:"replyTo"`
 		Status            string `yaml:"status"`

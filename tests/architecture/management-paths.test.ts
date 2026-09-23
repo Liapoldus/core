@@ -7,6 +7,7 @@ const root = join(process.cwd(), "..");
 describe("Management API route contract", () => {
   it("keeps endpoint paths in contract assets, not Go adapters", async () => {
     const source = await readFile(join(root, "internal/presentation/api/adapter.go"), "utf8");
+    const contract = await readFile(join(root, "assets/contracts/management-fields.yaml"), "utf8");
     const paths = [
       "/healthz",
       "/api/status",
@@ -26,7 +27,13 @@ describe("Management API route contract", () => {
       "/api/plugins/",
       "/admin/pages/",
     ];
+    const contractFields = [
+      "healthz:", "status:", "listeners:", "upstreams:", "sites:", "plugins:", "operations:",
+      "config:", "configValidate:", "configReload:", "reload:", "tls:", "audit:", "metrics:",
+      "adminSurfaces:", "adminPages:",
+    ];
 
+    for (const field of contractFields) expect(contract).toContain(field);
     for (const path of paths) {
       expect(source, path).not.toContain(`"${path}"`);
     }

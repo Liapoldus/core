@@ -230,7 +230,9 @@ references are
   clarification. Child-process CLI E2E verifies third publish retains exactly
   current/previous and removes the oldest release. Pointer inspection rejects
   symlinked site/release directories and targets outside the direct releases
-  directory; E2E confirms the external path is not exposed.
+  directory; E2E confirms the external path is not exposed. Fixed Management
+  API endpoint paths are now loaded from `management-fields.yaml`; a TS
+  architecture test prevents reintroducing those URL literals in the adapter.
 - Snapshot persistence decision: the runtime snapshot store gained a
   filesystem adapter (`FilesystemSnapshotStore`) that mirrors the in-memory
   store's prepared/active/drained contract. Snapshots are serialized as JSON

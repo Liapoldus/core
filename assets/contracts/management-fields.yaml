@@ -3,6 +3,7 @@ paths:
   status: /api/status
   config: /api/config
   configValidate: /api/config/validate
+  configReload: /api/config/reload
   reload: /api/reload
   sites: /api/sites
   publish: publish
@@ -10,6 +11,8 @@ paths:
   listeners: /api/listeners
   upstreams: /api/upstreams
   plugins: /api/plugins
+  adminSurfaces: /api/plugins/admin-surfaces
+  adminPages: admin/pages
   restart: restart
   logs: logs
   tls: /api/tls
@@ -35,6 +38,8 @@ json:
   valid: valid
   source: source
   idempotencyKey: idempotencyKey
+  expectedCurrentRevision: expectedCurrentRevision
+  expectedRevision: expectedRevision
   id: id
   replyTo: replyTo
   status: status
@@ -112,6 +117,7 @@ codes:
   releaseInvalid: release_invalid
   registryUnavailable: registry_unavailable
   noPreviousRelease: no_previous_release
+  releaseRevisionConflict: release_revision_conflict
 pagination:
   limitDefault: 50
   limitMax: 100
