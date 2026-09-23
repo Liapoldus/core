@@ -38,6 +38,24 @@ describe("gateway config semantic validation", () => {
     expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
   });
 
+  it("accepts an arbitrary configured capability as a WAF action without a built-in plugin registry", async () => {
+    const config = await createConfig([
+      "listeners: {}",
+      "plugins:",
+      "  policy:",
+      '    binary: "./policy-plugin"',
+      "    capabilities: [edge.policy]",
+      "    settings: {}",
+      "wafPolicies:",
+      "  protect:",
+      "    rules:",
+      "      - when: { path: { prefix: /private } }",
+      "        then: { plugin: { instance: policy, capability: edge.policy } }",
+    ].join("\n"));
+    const result = await runGateway(["--output", "json", "config", "validate", config]);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("rejects a captcha provider bound to a capability the plugin did not declare", async () => {
     const config = await createConfig(
       "listeners: {}\n" +
