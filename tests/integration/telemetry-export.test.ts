@@ -1,0 +1,77 @@
+import { readFileSync } from "node:fs";
+import type { ChildProcess } from "node:child_process";
+import { afterEach, describe, expect, it } from "vitest";
+import { startGateway } from "../support/gateway.js";
+import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/http.js";
+import { startUpstream } from "../support/upstream.js";
+import { resolve } from "node:path";
+
+const gatewayToken = "telemetry-export-test-token";
+const environment = { LIAPOLDUS_TEST_TELEMETRY_TOKEN: gatewayToken };
+const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
+const upstreams: Array<{ stop(): Promise<void> }> = [];
+
+const telemetryVectors = (() => {
+  const source = readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8");
+  const contract = JSON.parse(source) as {
+    vectors: Array<{
+      id: string;
+      input: { otlp?: string };
+      expected: { trafficStatus: number; exporterFailureLogged: boolean };
+    }>;
+  };
+  return ["telemetry-export-failure", "metrics-exporter-isolation"].map((id) => {
+    const vector = contract.vectors.find((candidate) => candidate.id === id);
+    if (!vector) throw new Error(`${id} golden vector is missing`);
+    return vector;
+  });
+})();
+
+afterEach(async () => {
+  for (const gateway of gateways.splice(0)) {
+    if (!gateway.process.killed) gateway.process.kill("SIGTERM");
+    await gateway.stop();
+  }
+  for (const upstream of upstreams.splice(0)) await upstream.stop();
+});
+
+describe("telemetry exporter isolation", () => {
+  it("keeps HTTP traffic healthy and records unavailable OTLP metrics exports", async () => {
+    const upstream = await startUpstream();
+    upstreams.push(upstream);
+    const webAddress = await freeAddress();
+    const managementAddress = await freeAddress();
+    const unavailableOTLPAddress = await freeAddress();
+    const config = await writeGatewayConfig([
+      "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
+      "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
+      "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
+      "management:", `  listener: { address: ${managementAddress} }`,
+      "  staticToken: env:LIAPOLDUS_TEST_TELEMETRY_TOKEN",
+      "metrics:", "  prometheus: true", `  otlp: { endpoint: http://${unavailableOTLPAddress}/v1/metrics, interval: 100ms }`,
+    ].join("\n"));
+    const gateway = await startGateway(["--config", config, "serve"], environment);
+    gateways.push(gateway);
+    await waitReady(webAddress);
+    await waitReady(managementAddress);
+
+    const response = await request(webAddress, "/health");
+    expect(response.status).toBe(telemetryVectors[0].expected.trafficStatus);
+    expect(response.status).toBe(telemetryVectors[1].expected.trafficStatus);
+
+    let metrics = "";
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const scrape = await request(managementAddress, "/metrics", {
+        headers: { Authorization: `Bearer ${gatewayToken}` },
+      });
+      metrics = scrape.text;
+      if (metrics.includes("liapoldus_otel_export_failures_total")) break;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50));
+    }
+
+    expect(metrics).toContain("liapoldus_otel_export_failures_total");
+    expect(metrics).toMatch(/liapoldus_otel_export_failures_total\{exporter="otlp"\} [1-9]/);
+    expect(telemetryVectors.every(({ expected }) => expected.exporterFailureLogged)).toBe(true);
+  });
+});
