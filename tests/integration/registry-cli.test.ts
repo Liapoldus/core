@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGateway } from "../support/gateway.js";
@@ -38,5 +38,38 @@ describe("registry CLI golden vectors", () => {
 
     expect(result.exitCode).toBe(5);
     expect(output.problem?.code).toBe("no_previous_release");
+  });
+
+  it("rejects CLI publish for a directory source without changing registry state", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-directory-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const source = join(workspace, "source");
+    await mkdir(source);
+    await writeFile(join(source, "site.yaml"), "slug: docs\n", "utf8");
+    await writeFile(join(source, "index.html"), "docs\n", "utf8");
+    const configPath = join(workspace, "gateway.yaml");
+    const config = [
+      "registry:",
+      `  path: ${registry}`,
+      "sites:",
+      "  docs:",
+      `    source: { type: directory, root: ${source} }`,
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: docs }",
+    ].join("\n");
+    await writeFile(configPath, config, "utf8");
+
+    const result = await runGateway(["--output", "json", "--config", configPath, "site", "publish", "docs", source]);
+    const output = JSON.parse(result.stdout) as { problem?: { code?: string } };
+
+    expect(result.exitCode).toBe(4);
+    expect(output.problem?.code).toBe("site_source_immutable");
+    await expect(stat(join(registry, "sites", "docs"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
