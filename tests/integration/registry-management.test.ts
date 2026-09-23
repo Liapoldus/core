@@ -92,6 +92,8 @@ describe("Management registry operations", () => {
     expect(published.status).toBe(201);
     expect(repeated.status).toBe(201);
     expect(repeatedResult.operationId).toBe(firstResult.operationId);
+    expect(repeated.text).toBe(published.text);
+    expect(repeated.headers.get("x-request-id")).toBe(published.headers.get("x-request-id"));
     expect(conflict.status).toBe(409);
     expect(extraProperty.status).toBe(400);
     expect(trailingValue.status).toBe(400);
