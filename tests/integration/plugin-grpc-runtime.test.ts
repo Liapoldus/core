@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import net from "node:net";
 import { mkdtemp, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,6 +13,15 @@ import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("../..", import.meta.url));
+const vectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
+  vectors: Array<{
+    id: string;
+    input: { frame: string; payloadHex: string };
+    expected: { payloadEncoding: string };
+  }>;
+};
+const tcpVector = vectors.vectors.find(({ id }) => id === "plugin-stream-tcp-bytes");
+if (!tcpVector) throw new Error("plugin-stream-tcp-bytes vector is missing");
 const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 
 async function waitTCP(address: string): Promise<void> {
@@ -100,16 +110,19 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     gateways.push(gateway);
     await waitTCP(address);
 
-    const response = await new Promise<string>((resolve, reject) => {
+    const payload = Buffer.from(tcpVector.input.payloadHex, "hex");
+    const response = await new Promise<Buffer>((resolve, reject) => {
       const socket = net.createConnection({ host: "127.0.0.1", port: Number(address.split(":").at(-1)) });
-      let body = "";
+      const chunks: Buffer[] = [];
       socket.once("error", reject);
-      socket.on("data", (chunk) => { body += chunk.toString(); });
-      socket.once("end", () => resolve(body));
-      socket.once("connect", () => socket.end("hello"));
+      socket.on("data", (chunk: Buffer) => { chunks.push(Buffer.from(chunk)); });
+      socket.once("end", () => resolve(Buffer.concat(chunks)));
+      socket.once("connect", () => socket.end(payload));
     });
 
-    expect(response).toBe("plugin:hello");
+    expect(tcpVector.input.frame).toBe("STREAM_DATA");
+    expect(tcpVector.expected).toEqual({ payloadEncoding: "raw-bytes" });
+    expect(response).toEqual(Buffer.concat([Buffer.from("plugin:"), payload]));
   }, 60_000);
 
   it("limits concurrent capability calls to the configured per-plugin bound", async () => {
