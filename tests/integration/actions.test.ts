@@ -17,7 +17,7 @@ const servers: Array<Handle> = [];
 const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
-    input: { bucket?: { requests: number; per: string; burst: number }; cors?: { origins: string[]; methods: string[] }; dataProvider?: string; method?: string; onError?: string; origin?: string; requestMethod?: string };
+    input: { action?: { limit?: string }; bucket?: { requests: number; per: string; burst: number } | string; cors?: { origins: string[]; methods: string[] }; dataProvider?: string; method?: string; onError?: string; origin?: string; requestMethod?: string };
     expected: { code?: string; secondStatus?: number; status: number; terminalCalled?: boolean; headers?: Record<string, string> };
   }>;
 };
@@ -166,15 +166,18 @@ describe("CORS preflight matching", () => {
 describe("WAF policy limit action", () => {
   it("uses the named token bucket and stops before proxying on exhaustion", async () => {
     const expected = vector("rate-limit");
-    const bucket = expected.input.bucket!;
+    const wafExpected = vector("waf-limit");
+    const bucket = expected.input.bucket as { requests: number; per: string; burst: number };
+    const limitName = wafExpected.input.action?.limit;
+    if (!limitName) throw new Error("waf-limit vector has no limit action");
     const upstream = await startUpstream();
     servers.push(upstream);
     const address = await freeAddress();
     const configPath = await writeGatewayConfig([
       `upstreams:`, `  api:`, `    targets:`, `      - address: ${upstream.address}`,
-      `rateLimits:`, `  api: { key: source-ip, requests: ${bucket.requests}, per: ${bucket.per}, burst: ${bucket.burst} }`,
+      `rateLimits:`, `  ${limitName}: { key: source-ip, requests: ${bucket.requests}, per: ${bucket.per}, burst: ${bucket.burst} }`,
       `wafPolicies:`, `  public:`, `    rules:`,
-      `      - when: { path: { prefix: /api } }`, `        then: { limit: api }`,
+      `      - when: { path: { prefix: /api } }`, `        then: { limit: ${limitName} }`,
       `listeners:`, `  web:`, `    type: http`, `    address: ${address}`,
       `    routes:`, `      - when: { path: { prefix: /api } }`,
       `        then: { proxy: api, waf: public }`,
@@ -187,9 +190,11 @@ describe("WAF policy limit action", () => {
     const second = await request(address, "/api/second");
     expect(first.status, first.text).toBe(200);
     expect(second.status).toBe(expected.expected.secondStatus);
+    expect(second.status).toBe(wafExpected.expected.status);
     expect(second.headers.get("retry-after")).toBe(expected.expected.headers?.["Retry-After"]);
     expect(second.headers.get("content-type")).toContain("application/problem+json");
     expect(JSON.parse(second.text).code).toBe(expected.expected.code);
+    expect(JSON.parse(second.text).code).toBe(wafExpected.expected.code);
     expect(upstream.hits().paths).toEqual(["/api/first"]);
   });
 });
