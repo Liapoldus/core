@@ -21,6 +21,7 @@ type Registry struct {
 	ExportFailures  *prometheus.CounterVec
 	registry        *prometheus.Registry
 	accessLogger    *AccessLogger
+	tracing         *TracingRuntime
 }
 
 type RegistryContract struct {
@@ -86,6 +87,19 @@ func (r *Registry) EnsureRequestID(response http.ResponseWriter, request *http.R
 		return ""
 	}
 	return r.accessLogger.EnsureRequestID(response, request)
+}
+
+func (r *Registry) SetTracingRuntime(runtime *TracingRuntime) {
+	if r != nil {
+		r.tracing = runtime
+	}
+}
+
+func (r *Registry) StartHTTPTrace(request *http.Request, listener string) (*http.Request, func(int)) {
+	if r == nil {
+		return request, func(int) {}
+	}
+	return r.tracing.StartHTTP(request, listener)
 }
 
 type JSONLogger struct {

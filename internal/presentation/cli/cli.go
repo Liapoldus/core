@@ -509,6 +509,51 @@ func serve(options options) int {
 		Duration:        accessFields.Duration,
 		Bytes:           accessFields.Bytes,
 	}))
+	if graph.Observability.Tracing.OTLP != nil {
+		tracingWords := observabilityWords.Tracing
+		sampling := graph.Observability.Tracing.Sampling
+		if sampling == "" {
+			sampling = tracingWords.SamplingParentBased
+		}
+		tracing, tracingErr := observability.NewTracingRuntime(
+			graph.Observability.Tracing.OTLP.Endpoint,
+			sampling,
+			observability.TraceContract{
+				SamplingParentBased:                 tracingWords.SamplingParentBased,
+				SamplingAlwaysOn:                    tracingWords.SamplingAlwaysOn,
+				SamplingAlwaysOff:                   tracingWords.SamplingAlwaysOff,
+				InitializationTimeout:               tracingWords.InitializationTimeout,
+				InvalidSamplingMessage:              tracingWords.InvalidSamplingMessage,
+				InvalidInitializationTimeoutMessage: tracingWords.InvalidInitializationTimeoutMessage,
+				ScopeName:                           tracingWords.ScopeName,
+				ServiceName:                         tracingWords.ServiceName,
+				ServiceNameAttribute:                tracingWords.ServiceNameAttribute,
+				SpanName:                            tracingWords.SpanName,
+				ExporterName:                        tracingWords.ExporterName,
+				ExporterLabel:                       metricsWords.Labels.Exporter,
+				ExportFailureMessage:                tracingWords.ExportFailureMessage,
+				MethodAttribute:                     tracingWords.Attributes.Method,
+				ListenerAttribute:                   tracingWords.Attributes.Listener,
+				StatusAttribute:                     tracingWords.Attributes.Status,
+			},
+			observabilityWords.Redaction,
+			metrics,
+		)
+		if tracingErr != nil {
+			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Validation
+		}
+		metrics.SetTracingRuntime(tracing)
+		defer func() {
+			shutdownTimeout, timeoutErr := time.ParseDuration(tracingWords.ShutdownTimeout)
+			if timeoutErr != nil || shutdownTimeout <= 0 {
+				return
+			}
+			shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+			_ = tracing.Shutdown(shutdownContext)
+		}()
+	}
 	if graph.Observability.Metrics.OTLP != nil {
 		interval := graph.Observability.Metrics.OTLP.Interval
 		if interval == "" {

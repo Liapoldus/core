@@ -543,7 +543,24 @@ type ObservabilityWords struct {
 		} `yaml:"accessFields"`
 	} `yaml:"logging"`
 	Tracing struct {
-		SamplingParentBased string `yaml:"samplingParentBased"`
+		SamplingParentBased                 string `yaml:"samplingParentBased"`
+		SamplingAlwaysOn                    string `yaml:"samplingAlwaysOn"`
+		SamplingAlwaysOff                   string `yaml:"samplingAlwaysOff"`
+		InitializationTimeout               string `yaml:"initializationTimeout"`
+		ShutdownTimeout                     string `yaml:"shutdownTimeout"`
+		InvalidSamplingMessage              string `yaml:"invalidSamplingMessage"`
+		InvalidInitializationTimeoutMessage string `yaml:"invalidInitializationTimeoutMessage"`
+		ScopeName                           string `yaml:"scopeName"`
+		ServiceName                         string `yaml:"serviceName"`
+		ServiceNameAttribute                string `yaml:"serviceNameAttribute"`
+		SpanName                            string `yaml:"spanName"`
+		ExporterName                        string `yaml:"exporterName"`
+		ExportFailureMessage                string `yaml:"exportFailureMessage"`
+		Attributes                          struct {
+			Method   string `yaml:"method"`
+			Listener string `yaml:"listener"`
+			Status   string `yaml:"status"`
+		} `yaml:"attributes"`
 	} `yaml:"tracing"`
 	Redaction []string `yaml:"redaction"`
 }

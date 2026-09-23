@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel/propagation"
+
 	"github.com/Liapoldus/core/internal/domain/models"
 )
 
@@ -114,6 +116,7 @@ func (pool *proxyUpstream) RoundTrip(request *http.Request) (*http.Response, err
 		target := pool.next(request)
 		out := request.Clone(request.Context())
 		out.Header = request.Header.Clone()
+		propagation.TraceContext{}.Inject(out.Context(), propagation.HeaderCarrier(out.Header))
 		if out.Body != nil && out.GetBody != nil {
 			body, err := out.GetBody()
 			if err != nil {

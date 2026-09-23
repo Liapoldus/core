@@ -71,6 +71,22 @@ logging:
     bytes: bytes
 tracing:
   samplingParentBased: parent-based
+  samplingAlwaysOn: always-on
+  samplingAlwaysOff: always-off
+  initializationTimeout: 5s
+  shutdownTimeout: 5s
+  invalidSamplingMessage: invalid tracing sampling mode
+  invalidInitializationTimeoutMessage: invalid tracing initialization timeout
+  scopeName: liapoldus.gateway
+  serviceName: liapoldus.gateway
+  serviceNameAttribute: service.name
+  spanName: liapoldus.http.server
+  exporterName: otlp-traces
+  exportFailureMessage: OpenTelemetry traces export failed
+  attributes:
+    method: http.request.method
+    listener: liapoldus.listener
+    status: http.response.status_code
 redaction:
   - secret
   - cookie

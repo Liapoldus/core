@@ -31,6 +31,11 @@ vendors:
   otelInstrumentation: { in: [go.opentelemetry.io/otel/sdk/instrumentation] }
   otelMetricData: { in: [go.opentelemetry.io/otel/sdk/metric/metricdata] }
   otelResource: { in: [go.opentelemetry.io/otel/sdk/resource] }
+  otelTraceAPI: { in: [go.opentelemetry.io/otel/trace] }
+  otelTraceExporter: { in: [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp] }
+  otelTraceSDK: { in: [go.opentelemetry.io/otel/sdk/trace] }
+  otelPropagation: { in: [go.opentelemetry.io/otel/propagation] }
+  otelCodes: { in: [go.opentelemetry.io/otel/codes] }
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
   maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
@@ -58,7 +63,7 @@ deps:
     mayDependOn: [domainModels]
   infrastructureNetwork:
     mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
-    canUse: [quicHTTP3]
+    canUse: [quicHTTP3, otelPropagation]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt, maxminddb]
@@ -69,7 +74,7 @@ deps:
     canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource]
+    canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource, otelTraceAPI, otelTraceExporter, otelTraceSDK, otelPropagation, otelCodes]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
     canUse: [bcrypt]

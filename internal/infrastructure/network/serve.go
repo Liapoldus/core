@@ -1087,14 +1087,16 @@ func (w *metricsResponseWriter) Flush() {
 func instrumentHTTP(next http.Handler, metrics *observability.Registry, listener string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := metrics.EnsureRequestID(w, r)
+		request, finishTrace := metrics.StartHTTPTrace(r, listener)
 		started := time.Now()
 		wrapped := &metricsResponseWriter{ResponseWriter: w}
-		next.ServeHTTP(wrapped, r)
+		next.ServeHTTP(wrapped, request)
 		duration := time.Since(started)
 		status := wrapped.status
 		if status == 0 {
 			status = http.StatusOK
 		}
+		finishTrace(status)
 		metrics.ObserveHTTP(listener, r.URL.Path, "", r.Method, fmt.Sprintf("%d", status), duration)
 		metrics.WriteAccess(observability.AccessRecord{
 			RequestID: requestID,
