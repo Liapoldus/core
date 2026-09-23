@@ -87,7 +87,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
     });
   }, 60_000);
 
-  it("uses generic gRPC Call for a configured TCP capability", async () => {
+  it("uses one typed gRPC Stream lifecycle for a configured TCP connection", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-l4-"));
     const binary = join(directory, "forms-plugin");
     await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
@@ -120,9 +120,8 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       socket.once("connect", () => socket.end(payload));
     });
 
-    expect(tcpVector.input.frame).toBe("STREAM_DATA");
     expect(tcpVector.expected).toEqual({ payloadEncoding: "raw-bytes" });
-    expect(response).toEqual(Buffer.concat([Buffer.from("plugin:"), payload]));
+    expect(response).toEqual(Buffer.concat([Buffer.from("stream:"), payload]));
   }, 60_000);
 
   it("limits concurrent capability calls to the configured per-plugin bound", async () => {
