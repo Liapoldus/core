@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createConfig } from "../support/fixture.js";
 import { jsonOutput, runGateway } from "../support/gateway.js";
 
-const cliDiscoveryVector = (() => {
+const cliPathVectors = (() => {
   const source = readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8");
   const contract = JSON.parse(source) as {
     vectors: Array<{
@@ -13,10 +13,14 @@ const cliDiscoveryVector = (() => {
       expected: { configPath?: string; source?: string };
     }>;
   };
-  const vector = contract.vectors.find(({ id }) => id === "cli-config-discovery");
-  if (!vector) throw new Error("cli-config-discovery golden vector is missing");
-  return vector;
+  return contract.vectors;
 })();
+
+function cliPathVector(id: string) {
+  const match = cliPathVectors.find((candidate) => candidate.id === id);
+  if (!match) throw new Error(`${id} golden vector is missing`);
+  return match;
+}
 
 describe("gateway config CLI", () => {
   it("uses --config before every other discovery source", async () => {
@@ -37,7 +41,7 @@ describe("gateway config CLI", () => {
   });
 
   it("reports the environment variable as the selected config source", async () => {
-    const vector = cliDiscoveryVector;
+    const vector = cliPathVector("cli-config-discovery");
     const config = await createConfig("registry:\n  path: ./registry\n");
     const environmentVariable = Object.keys(vector.input.env ?? {})[0];
     const expectedFile = basename(vector.expected.configPath ?? "");
@@ -67,13 +71,15 @@ describe("gateway config CLI", () => {
   });
 
   it("returns config_not_found with documented exit code when no source exists", async () => {
+    const vector = cliPathVector("cli-config-missing");
+    expect(vector.input.files).toEqual([]);
     const result = await runGateway(
       ["--output", "json", "config", "path"],
       { LIAPOLDUS_GATEWAY_CONFIG: "/does-not-exist/gateway.yaml", LIAPOLDUS_CONFIG_DIR: "/does-not-exist" },
     );
 
-    expect(result.exitCode).toBe(2);
-    expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_not_found" } });
+    expect(result.exitCode).toBe(vector.expected.exit);
+    expect(jsonOutput(result)).toMatchObject({ problem: { code: vector.expected.code } });
   });
 
   it("rejects unknown root fields as a validation error", async () => {
