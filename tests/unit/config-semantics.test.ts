@@ -38,6 +38,43 @@ describe("gateway config semantic validation", () => {
     expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
   });
 
+  it("rejects a captcha provider bound to a capability the plugin did not declare", async () => {
+    const config = await createConfig(
+      "listeners: {}\n" +
+        "secrets:\n  recaptchaSecret: env:LIAPOLDUS_CAPTCHA_SECRET\n" +
+        "plugins:\n" +
+        "  captcha:\n" +
+        "    binary: ./captcha\n" +
+        "    capabilities: [captcha.other]\n" +
+        "    settings: {}\n" +
+        "    grants:\n" +
+        "      secrets:\n" +
+        "        - name: recaptchaSecret\n" +
+        "          purpose: captcha.verify\n" +
+        "          domains: [www.google.com]\n" +
+        "captchaProviders:\n" +
+        "  public:\n" +
+        "    plugin: { instance: captcha, capability: captcha.verify }\n" +
+        "    verifyUrl: https://www.google.com/recaptcha/api/siteverify\n" +
+        "    secret: recaptchaSecret\n" +
+        "    allowedHosts: [www.google.com]\n" +
+        "wafPolicies:\n" +
+        "  protect:\n" +
+        "    rules:\n" +
+        "      - when: { path: { prefix: /private } }\n" +
+        "        then: { challenge: { provider: public } }\n",
+    );
+
+    const result = await runGateway(["--output", "json", "config", "validate", config], {
+      LIAPOLDUS_CAPTCHA_SECRET: "test-only-captcha-secret",
+    });
+
+    expect(result.exitCode).toBe(3);
+    expect(jsonOutput(result)).toMatchObject({ problem: { code: "config_invalid" } });
+    expect(result.stdout).not.toContain("test-only-captcha-secret");
+    expect(result.stderr).not.toContain("test-only-captcha-secret");
+  });
+
   it("rejects a remote management listener without a TLS profile", async () => {
     const config = await createConfig(
       "registry:\n  path: ./registry\n" +
