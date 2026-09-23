@@ -76,6 +76,7 @@ describe("Gateway WAF captcha challenge", () => {
     });
     gateways.push(gateway);
     await waitReady(address);
+    const upstreamRequestsBeforeChallenge = upstream.hits().requests;
 
     const response = await request(address, "/private/resource");
 
@@ -85,6 +86,21 @@ describe("Gateway WAF captcha challenge", () => {
     expect(typeof problem.challengeToken).toBe("string");
     expect((problem.challengeToken as string).length).toBeGreaterThan(16);
     expect(response.text).not.toContain("test-only-captcha-secret");
-    expect(upstream.hits().requests).toBe(0);
+    expect(upstream.hits().requests).toBe(upstreamRequestsBeforeChallenge);
+
+    const verification = await request(address, "/.well-known/liapoldus/challenge/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeToken: problem.challengeToken, responseToken: "fixture-response" }),
+    });
+    expect(verification.status).toBe(204);
+    const setCookie = verification.headers.get("set-cookie");
+    expect(setCookie).toContain("_lpgw_challenge=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    const cookie = setCookie?.split(";", 1)[0];
+    const cleared = await request(address, "/private/resource", { headers: { Cookie: cookie ?? "" } });
+    expect(cleared.status).toBe(200);
+    expect(upstream.hits().requests).toBe(upstreamRequestsBeforeChallenge + 1);
   }, 60_000);
 });
