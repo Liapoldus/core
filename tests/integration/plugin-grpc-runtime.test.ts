@@ -112,6 +112,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       "  forms:",
       `    binary: ${JSON.stringify(binary)}`,
       "    capabilities: [forms.submit]",
+      "    env: [LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES=forms.other]",
       "    settings: {}",
       "listeners:",
       "  web:",
@@ -119,9 +120,7 @@ describe("Gateway gRPC plugin process lifecycle", () => {
       `    address: ${address}`,
       "    routes: []",
     ].join("\n"));
-    const gateway = await startGatewayWithOutput(["--config", config, "serve", "--no-management"], {
-      LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES: "forms.other",
-    });
+    const gateway = await startGatewayWithOutput(["--config", config, "serve", "--no-management"]);
     gateways.push(gateway);
     const exitCode = await new Promise<number | null>((resolve) => {
       const timeout = setTimeout(() => resolve(null), 3_000);

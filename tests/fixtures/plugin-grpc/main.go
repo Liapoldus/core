@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -41,7 +42,11 @@ func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.M
 		}
 		time.Sleep(wait)
 	}
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "forms.slow", "peer.session", "tcp.echo"}}, nil
+	capabilities := []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "forms.slow", "peer.session", "tcp.echo"}
+	if configured := os.Getenv("LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES"); configured != "" {
+		capabilities = strings.Split(configured, ",")
+	}
+	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: capabilities}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
