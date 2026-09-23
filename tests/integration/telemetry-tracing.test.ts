@@ -140,7 +140,7 @@ describe("OTLP tracing and W3C parent-based sampling", () => {
     expect(unsampled.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 6000));
     expect(bodies).toHaveLength(exportsAfterSampledParent);
-  });
+  }, 30000);
 
   it("honors explicit always-on and always-off sampling modes", async () => {
     const alwaysOn = await startTracingFixture("always-on");
@@ -162,5 +162,5 @@ describe("OTLP tracing and W3C parent-based sampling", () => {
     expect(sampledParent.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 6000));
     expect(alwaysOff.bodies).toHaveLength(0);
-  });
+  }, 30000);
 });
