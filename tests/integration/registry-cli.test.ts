@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readlink, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGateway } from "../support/gateway.js";
@@ -71,5 +71,41 @@ describe("registry CLI golden vectors", () => {
     expect(result.exitCode).toBe(4);
     expect(output.problem?.code).toBe("site_source_immutable");
     await expect(stat(join(registry, "sites", "docs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("publishes a release source and returns its resulting revision", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "liapoldus-registry-cli-publish-"));
+    directories.push(workspace);
+    const registry = join(workspace, "registry");
+    const source = join(workspace, "source");
+    await mkdir(source);
+    await writeFile(join(source, "site.yaml"), "slug: blog\n", "utf8");
+    await writeFile(join(source, "index.html"), "release body\n", "utf8");
+    const configPath = join(workspace, "gateway.yaml");
+    const config = [
+      "registry:",
+      `  path: ${registry}`,
+      "sites:",
+      "  blog:",
+      "    source: { type: release, slug: blog }",
+      "listeners:",
+      "  web:",
+      "    type: http",
+      `    address: ${await freeAddress()}`,
+      "    routes:",
+      "      - when: { path: { prefix: / } }",
+      "        then: { site: blog }",
+    ].join("\n");
+    await writeFile(configPath, config, "utf8");
+
+    const result = await runGateway(["--output", "json", "--config", configPath, "site", "publish", "blog", source]);
+    const output = JSON.parse(result.stdout) as { site?: string; revision?: string; requestId?: string; previousRevision?: string | null };
+
+    expect(result.exitCode).toBe(0);
+    expect(output.site).toBe("blog");
+    expect(output.revision).toBeTruthy();
+    expect(output.requestId).toMatch(/^req_[a-zA-Z0-9]+$/);
+    expect(output.previousRevision).toBeNull();
+    expect(await readlink(join(registry, "sites", "blog", "current"))).toContain(output.revision);
   });
 });
