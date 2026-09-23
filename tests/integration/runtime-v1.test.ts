@@ -11,7 +11,11 @@ const gateways: Array<{ process: ChildProcess; stop(): Promise<void> }> = [];
 afterEach(async () => Promise.all(gateways.splice(0).map((gateway) => gateway.stop())));
 
 const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
-  vectors: Array<{ id: string; input: { accept?: string; path?: string }; expected: { status: number; code?: string; file?: string } }>;
+  vectors: Array<{
+    id: string;
+    input: { accept?: string; etag?: string; ifNoneMatch?: string; path?: string; range?: string; size?: number };
+    expected: { bodyBytes?: number; code?: string; file?: string; headers?: Record<string, string>; status: number };
+  }>;
 };
 
 function vector(id: string) {
@@ -79,15 +83,29 @@ describe("HTTP runtime v1", () => {
     expect(second.text).toBe("");
   });
 
+  it("satisfies the static-etag-not-modified golden vector", async () => {
+    const expected = vector("static-etag-not-modified");
+    const address = await startSite("slug: web\nindex: index.html\n");
+    const first = await request(address, "/assets/app.js");
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    expect(expected.input.ifNoneMatch).toBe(expected.input.etag);
+    const notModified = await request(address, "/assets/app.js", { headers: { "if-none-match": etag! } });
+    expect(notModified.status).toBe(expected.expected.status);
+    expect(notModified.text).toBe("");
+  });
+
   it("serves a satisfiable byte range and rejects an unsatisfiable range", async () => {
     const address = await startSite("slug: web\nindex: index.html\n");
-    const partial = await request(address, "/assets/app.js", { headers: { range: "bytes=0-3" } });
-    expect(partial.status).toBe(206);
-    expect(partial.text).toBe("0123");
-    expect(partial.headers.get("content-range")).toBe("bytes 0-3/10");
-    const invalid = await request(address, "/assets/app.js", { headers: { range: "bytes=20-30" } });
-    expect(invalid.status).toBe(416);
-    expect(invalid.headers.get("content-range")).toBe("bytes */10");
+    const satisfiable = vector("static-range-single");
+    const partial = await request(address, "/assets/app.js", { headers: { range: satisfiable.input.range! } });
+    expect(partial.status).toBe(satisfiable.expected.status);
+    expect(Buffer.byteLength(partial.text)).toBe(satisfiable.expected.bodyBytes);
+    expect(partial.headers.get("content-range")).toBe(satisfiable.expected.headers?.["Content-Range"]);
+    const unsatisfiable = vector("static-range-unsatisfiable");
+    const invalid = await request(address, "/assets/app.js", { headers: { range: unsatisfiable.input.range! } });
+    expect(invalid.status).toBe(unsatisfiable.expected.status);
+    expect(invalid.headers.get("content-range")).toBe(unsatisfiable.expected.headers?.["Content-Range"]);
   });
 
   it("emits configured static cache policy", async () => {
