@@ -13,8 +13,8 @@ afterEach(async () => Promise.all(gateways.splice(0).map((gateway) => gateway.st
 const gatewayVectors = JSON.parse(readFileSync(resolve(import.meta.dirname, "../../contracts/v1/golden-vectors.json"), "utf8")) as {
   vectors: Array<{
     id: string;
-    input: { accept?: string; etag?: string; ifNoneMatch?: string; path?: string; range?: string; size?: number };
-    expected: { bodyBytes?: number; code?: string; file?: string; headers?: Record<string, string>; status: number };
+    input: { accept?: string; acceptLanguage?: string; defaultLocale?: string; etag?: string; ifNoneMatch?: string; locales?: string[]; path?: string; range?: string; size?: number };
+    expected: { bodyBytes?: number; code?: string; file?: string; headers?: Record<string, string>; redirect?: boolean; releasePath?: string; status: number; varyAcceptLanguage?: boolean };
   }>;
 };
 
@@ -39,6 +39,21 @@ async function startSite(manifest: string): Promise<string> {
   return address;
 }
 
+async function startLocaleSite(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), "liapoldus-runtime-locale-"));
+  for (const locale of ["ru", "en"]) {
+    await mkdir(join(root, locale), { recursive: true });
+    await writeFile(join(root, locale, "about"), `${locale} page`, "utf8");
+  }
+  await writeFile(join(root, "site.yaml"), "slug: web\nlocales: [ru, en]\ndefaultLocale: ru\n", "utf8");
+  const address = await freeAddress();
+  const config = await writeGatewayConfig(["sites:", `  web: { source: { type: directory, root: ${root} } }`, "listeners:", "  public:", "    type: http", `    address: ${address}`, "    routes:", "      - when: { path: { prefix: / } }", "        then: { site: web }"].join("\n"));
+  const gateway = await startGateway(["--config", config, "serve", "--no-management"]);
+  gateways.push(gateway);
+  await waitReady(address);
+  return address;
+}
+
 describe("HTTP runtime v1", () => {
   it("uses index.html for an extensionless HTML navigation when SPA is enabled", async () => {
     const address = await startSite("slug: web\nindex: index.html\nspa: true\n");
@@ -55,6 +70,24 @@ describe("HTTP runtime v1", () => {
     expect(response.status).toBe(expected.expected.status);
     expect(response.headers.get("content-type")).toContain("application/problem+json");
     expect(JSON.parse(response.text).code).toBe(expected.expected.code);
+  });
+
+  it("preserves an explicit declared locale prefix", async () => {
+    const expected = vector("locale-prefixed");
+    const address = await startLocaleSite();
+    const response = await request(address, expected.input.path!);
+    expect(response.status).toBe(expected.expected.status);
+    expect(response.text).toBe("ru page");
+  });
+
+  it("maps unprefixed paths to the default locale without redirect or language negotiation", async () => {
+    const expected = vector("locale-unprefixed");
+    const address = await startLocaleSite();
+    const response = await request(address, expected.input.path!, { headers: { "accept-language": expected.input.acceptLanguage! } });
+    expect(response.status).toBe(200);
+    expect(response.text).toBe("ru page");
+    expect(Boolean(response.headers.get("location"))).toBe(expected.expected.redirect);
+    expect(response.headers.get("vary")?.toLowerCase().includes("accept-language") ?? false).toBe(expected.expected.varyAcceptLanguage);
   });
 
   it("only allows GET and HEAD on health endpoints", async () => {
