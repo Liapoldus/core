@@ -2,6 +2,21 @@ audit:
   directory: audit
   extension: .jsonl
   retentionDays: 90
+  dateLayout: "2006-01-02"
+  actors:
+    anonymous: anonymous
+    staticToken: static-token
+  actions:
+    configReload: config.reload
+    configUpdate: config.update
+  resources:
+    gateway: gateway
+  results:
+    succeeded: succeeded
+    failed: failed
+  storageUnavailable:
+    code: audit_unavailable
+    detail: audit storage is unavailable
 operations:
   retention: 24h
   directory: operations

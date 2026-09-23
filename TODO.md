@@ -24,6 +24,18 @@ metrics, gzip, SPA fallback, rewrite captures и route/plugin actions.
 против runtime; сейчас проверяются manifest/checksums, структура и уникальность
 векторов, а runtime-сценарии покрываются отдельными integration suites.
 
+Audit JSONL реализован для config reload: записи переживают перезапуск Gateway,
+`/api/audit` читает их из `${registry.path}/audit/YYYY-MM-DD.jsonl`, применяет
+90-дневный retention и не сериализует credential. Если `registry.path` не задан,
+runtime использует каталог `registry` рядом с активным config; это значение
+версионируется в `assets/contracts/registry-fields.yaml`. Actor общего
+`management.staticToken` записывается как `static-token`; service account — по
+ID. Успешные и неуспешные `config.reload` и `config.update` записываются вместе
+с request ID и digest до/после; истёкшие файлы удаляются при чтении. Остальные
+mutating Management API операции ещё нужно подключить к audit. E2E regression
+проверяет append, restart, retention и отсутствие credential в ответе в
+`tests/integration/audit-persistence.test.ts`.
+
 Повторная проверка 2026-09-23 обнаружила, что TLS-профиль listener терялся:
 в `assets/contracts/config-fields.yaml` отсутствовало runtime-сопоставление
 `tls`. Маппинг восстановлен; новый child-process E2E подтверждает TLS
@@ -484,14 +496,15 @@ TCP-loopback. Целевой контракт описан в
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 141 TS-тест,
+  На 2026-09-23 все перечисленные проверки проходят; core: 142 TS-теста,
   protocol: 15 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →
   `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. HTTP/3 проходит реальный child-process
   запрос через QUIC. `grpcurl list/describe` проверен вручную.
-  Остаются scoped grant enforcement и семантический прогон всех Gateway vectors.
+  Остаются scoped grant enforcement, аудит остальных mutating Management API
+  операций и семантический прогон всех Gateway vectors.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS
   опрашивается раз в секунду и после capability Call; breach останавливает
   plugin, возвращает HTTP `503 resource_exhausted`, а при включённом restart

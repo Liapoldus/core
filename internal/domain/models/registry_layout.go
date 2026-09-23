@@ -1,6 +1,7 @@
 package models
 
 type RegistryLayout struct {
+	DefaultRoot     string
 	Sites           string
 	Releases        string
 	Current         string

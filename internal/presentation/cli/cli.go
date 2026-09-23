@@ -14,12 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Liapoldus/core/internal/application"
 	accountstore "github.com/Liapoldus/core/internal/infrastructure/accounts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/network"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
+	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
 
@@ -308,6 +310,11 @@ func serve(options options) int {
 		identityCapabilities[name] = capability
 	}
 	metrics := observability.NewRegistry()
+	observabilityWords, wordsErr := config.LoadObservability()
+	if wordsErr != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	managementWords, wordsErr := config.LoadManagement()
 	if wordsErr != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -343,7 +350,13 @@ func serve(options options) int {
 	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, bodyTooLargeProblem, managementWords.ContentTypes.Problem)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
 	wafRuntime.SetPluginTimeoutProblem(pluginTimeoutProblem)
-	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, ValidateConfig: config.ValidateYAML}
+	auditStore, auditErr := storage.NewFilesystemAuditStore(graph.RegistryRoot, observabilityWords.Audit.Directory, observabilityWords.Audit.Extension, observabilityWords.Audit.DateLayout)
+	if auditErr != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	auditService := &application.AuditService{Store: auditStore, RetentionDays: observabilityWords.Audit.RetentionDays}
+	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, Audit: auditService, AuditWords: observabilityWords, ValidateConfig: config.ValidateYAML}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]
 		if !ok {

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startGateway } from "../support/gateway.js";
@@ -66,6 +66,18 @@ describe("persistent audit JSONL", () => {
       method: "POST",
       headers: { ...authorization, "If-Match": updatedRevision.revision },
     });
+    const expiredTimestamp = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+    const expiredDate = expiredTimestamp.toISOString().slice(0, 10);
+    const expiredFile = join(registry, "audit", `${expiredDate}.jsonl`);
+    await mkdir(join(registry, "audit"), { recursive: true });
+    await writeFile(expiredFile, `${JSON.stringify({
+      timestamp: expiredTimestamp.toISOString(),
+      actor: "expired-test-record",
+      action: "expired",
+      resource: "gateway",
+      result: "succeeded",
+      requestId: "expired-test-record",
+    })}\n`, "utf8");
     const auditResponse = await request(managementAddress, "/api/audit", { headers: authorization });
     const audit = JSON.parse(auditResponse.text) as {
       items: Array<{ actor: string; action: string; resource: string; result: string; requestId: string }>;
@@ -74,6 +86,8 @@ describe("persistent audit JSONL", () => {
     expect(update.status).toBe(202);
     expect(reload.status).toBe(202);
     expect(auditResponse.status).toBe(200);
+    expect(auditResponse.text).not.toContain("expired-test-record");
+    await expect(stat(expiredFile)).rejects.toThrow();
     expect(audit.items).toContainEqual(expect.objectContaining({
       actor: "static-token",
       action: "config.update",

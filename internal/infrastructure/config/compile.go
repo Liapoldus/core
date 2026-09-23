@@ -208,6 +208,10 @@ func buildCompiled(path string, loaded contractFile, compiled *graph) (models.Co
 		return models.CompiledGraph{}, err
 	}
 	registryRoot := collectRegistryRoot(compiled.documents, loaded, base)
+	if registryRoot == "" {
+		registryRoot = filepath.Join(base, layout.DefaultRoot)
+	}
+	graph.RegistryRoot = registryRoot
 	for _, document := range compiled.documents {
 		for index := 0; index < len(document.Content); index += 2 {
 			key, node := document.Content[index], document.Content[index+1]

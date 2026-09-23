@@ -2,6 +2,7 @@ package models
 
 type CompiledGraph struct {
 	Revision      Revision
+	RegistryRoot  string
 	Listeners     []Listener
 	Sites         map[string]Site
 	Secrets       map[string]Secret

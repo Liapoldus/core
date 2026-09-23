@@ -213,6 +213,7 @@ func LoadAccounts() (AccountWords, error) {
 }
 
 type registryFile struct {
+	DefaultRoot     string `yaml:"defaultRoot"`
 	Sites           string `yaml:"sites"`
 	Releases        string `yaml:"releases"`
 	Current         string `yaml:"current"`
@@ -233,6 +234,7 @@ func loadRegistry() (models.RegistryLayout, error) {
 		return models.RegistryLayout{}, err
 	}
 	return models.RegistryLayout{
+		DefaultRoot:     loaded.DefaultRoot,
 		Sites:           loaded.Sites,
 		Releases:        loaded.Releases,
 		Current:         loaded.Current,
@@ -420,6 +422,26 @@ type ObservabilityWords struct {
 		Directory     string `yaml:"directory"`
 		Extension     string `yaml:"extension"`
 		RetentionDays int    `yaml:"retentionDays"`
+		DateLayout    string `yaml:"dateLayout"`
+		Actors        struct {
+			Anonymous   string `yaml:"anonymous"`
+			StaticToken string `yaml:"staticToken"`
+		} `yaml:"actors"`
+		Actions struct {
+			ConfigReload string `yaml:"configReload"`
+			ConfigUpdate string `yaml:"configUpdate"`
+		} `yaml:"actions"`
+		Resources struct {
+			Gateway string `yaml:"gateway"`
+		} `yaml:"resources"`
+		Results struct {
+			Succeeded string `yaml:"succeeded"`
+			Failed    string `yaml:"failed"`
+		} `yaml:"results"`
+		StorageUnavailable struct {
+			Code   string `yaml:"code"`
+			Detail string `yaml:"detail"`
+		} `yaml:"storageUnavailable"`
 	} `yaml:"audit"`
 	Operations struct {
 		Retention string `yaml:"retention"`

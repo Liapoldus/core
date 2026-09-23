@@ -10,7 +10,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
+	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
@@ -30,7 +33,6 @@ type Server struct {
 	mu              sync.RWMutex
 	idempotency     map[string]Operation
 	operations      map[string]Operation
-	audit           []Audit
 	AdminSurfaces   []AdminSurface
 	AdminDispatcher *plugins.Dispatcher
 	Listeners       []any
@@ -47,6 +49,8 @@ type Server struct {
 	PublishSite  func(context.Context, string, string, string) (Operation, error)
 	RollbackSite func(context.Context, string, string) (Operation, error)
 	Metrics      *observability.Registry
+	Audit        *application.AuditService
+	AuditWords   config.ObservabilityWords
 	TLSConfig    *tls.Config
 }
 
@@ -79,14 +83,6 @@ type Operation struct {
 	State     string    `json:"state"`
 	CreatedAt time.Time `json:"createdAt"`
 	Result    any       `json:"result,omitempty"`
-}
-type Audit struct {
-	Timestamp time.Time `json:"timestamp"`
-	Actor     string    `json:"actor"`
-	Action    string    `json:"action"`
-	Resource  string    `json:"resource"`
-	Result    string    `json:"result"`
-	RequestID string    `json:"requestId"`
 }
 
 func (server *Server) Handler() http.Handler {
@@ -156,7 +152,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", requestID)
 		return
 	}
-	if !server.authorized(request.Header.Get("Authorization")) {
+	actor, authorized := server.authenticate(request.Header.Get("Authorization"))
+	if !authorized {
 		writeProblem(response, 401, "unauthorized", "management authentication required", requestID)
 		return
 	}
@@ -187,19 +184,26 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "yaml": redact(server.Config), "requestId": requestID})
 	case path == "/api/config" && request.Method == http.MethodPut:
+		server.mu.RLock()
+		digestBefore := server.Digest
+		currentRevision := server.Revision
+		server.mu.RUnlock()
 		var input struct {
 			YAML string `json:"yaml"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
 			writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
 			return
 		}
-		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
+		if expected := request.Header.Get("If-Match"); expected != "" && expected != currentRevision {
+			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
 			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
 			return
 		}
 		if server.ValidateConfig != nil {
 			if err := server.ValidateConfig(input.YAML); err != nil {
+				server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
 				writeProblem(response, 422, "config_invalid", err.Error(), requestID)
 				return
 			}
@@ -209,7 +213,9 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.Revision = randomID()
 		digest := sha256.Sum256([]byte(input.YAML))
 		server.Digest = hex.EncodeToString(digest[:])
+		digestAfter := server.Digest
 		server.mu.Unlock()
+		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
 		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/sites/") && strings.HasSuffix(path, "/publish") && request.Method == http.MethodPost:
 		server.handleSitePublish(response, request, path, requestID)
@@ -236,8 +242,13 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			writeProblem(response, 501, "not_implemented", "configuration reload is unavailable", requestID)
 			return
 		}
-		op, err := server.ReloadConfig(request.Context(), server.Revision)
+		server.mu.RLock()
+		digestBefore := server.Digest
+		revision := server.Revision
+		server.mu.RUnlock()
+		op, err := server.ReloadConfig(request.Context(), revision)
 		if err != nil {
+			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigReload, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
 			writeProblem(response, 422, "config_invalid", err.Error(), requestID)
 			return
 		}
@@ -246,14 +257,22 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			server.operations = make(map[string]Operation)
 		}
 		server.operations[op.ID] = op
+		digestAfter := server.Digest
 		server.mu.Unlock()
+		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigReload, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
 		writeJSON(response, 202, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
 	case strings.HasPrefix(path, "/api/tls/") && (strings.HasSuffix(path, "/renew") || strings.HasSuffix(path, "/revoke")) && request.Method == http.MethodPost:
 		server.handleTLSOperation(response, request, path, requestID)
 	case path == "/api/audit" && request.Method == http.MethodGet:
-		server.mu.RLock()
-		items := append([]Audit(nil), server.audit...)
-		server.mu.RUnlock()
+		if server.Audit == nil {
+			server.writePage(response, []models.AuditRecord{}, request, requestID)
+			return
+		}
+		items, err := server.Audit.Records(request.Context())
+		if err != nil {
+			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			return
+		}
 		server.writePage(response, items, request, requestID)
 	case path == "/metrics" && request.Method == http.MethodGet:
 		if server.Metrics != nil {
@@ -353,7 +372,7 @@ func sliceValues(values any) []any {
 			result[i] = typed[i]
 		}
 		return result
-	case []Audit:
+	case []models.AuditRecord:
 		result := make([]any, len(typed))
 		for i := range typed {
 			result[i] = typed[i]
@@ -525,23 +544,42 @@ func randomID() string {
 	}
 	return hex.EncodeToString(bytes)
 }
-func (server *Server) authorized(value string) bool {
+func (server *Server) authenticate(value string) (string, bool) {
 	if server.Token == "" && len(server.ServiceAccounts) == 0 {
-		return true
+		return server.AuditWords.Audit.Actors.Anonymous, true
 	}
 	if !strings.HasPrefix(value, "Bearer ") {
-		return false
+		return "", false
 	}
 	key := strings.TrimPrefix(value, "Bearer ")
 	if server.Token != "" && key == server.Token {
-		return true
+		return server.AuditWords.Audit.Actors.StaticToken, true
 	}
 	for _, account := range server.ServiceAccounts {
 		if bcrypt.CompareHashAndPassword([]byte(account.KeyHash), []byte(key)) == nil {
-			return true
+			return account.ID, true
 		}
 	}
-	return false
+	return "", false
+}
+
+func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) {
+	if server.Audit == nil || action == "" || actor == "" {
+		return
+	}
+	record := models.AuditRecord{
+		Timestamp:    time.Now().UTC(),
+		Actor:        actor,
+		Action:       action,
+		Resource:     resource,
+		Result:       result,
+		RequestID:    requestID,
+		DigestBefore: digestBefore,
+		DigestAfter:  digestAfter,
+	}
+	if server.Audit.Record(ctx, record) == nil && server.Metrics != nil {
+		server.Metrics.ObserveAudit(action, result)
+	}
 }
 func redact(value string) string {
 	lines := strings.Split(value, "\n")
