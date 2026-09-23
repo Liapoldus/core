@@ -12,7 +12,8 @@ describe("Management API v1", () => {
 
   it("documents secret-safe and request-correlated responses", () => {
     const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
-    expect(source).toContain("X-Request-ID");
+    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
+    expect(contract).toContain("requestId: X-Request-ID");
     expect(source).toContain("application/problem+json");
     expect(source).toContain("***");
   });
