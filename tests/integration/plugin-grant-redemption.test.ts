@@ -67,6 +67,7 @@ describe("Gateway scoped plugin secret grants", () => {
     expect(response.status).toBe(200);
     expect(JSON.parse(response.text)).toEqual({
       redeemed: true,
+      wrongCapabilityDenied: true,
       wrongPurposeDenied: true,
       outOfScopeDenied: true,
       expiredHandleDenied: false,
@@ -77,6 +78,7 @@ describe("Gateway scoped plugin secret grants", () => {
     const repeated = await request(address, "/submit", { method: "POST", body: "hello again" });
     expect(JSON.parse(repeated.text)).toEqual({
       redeemed: false,
+      wrongCapabilityDenied: false,
       wrongPurposeDenied: false,
       outOfScopeDenied: false,
       expiredHandleDenied: true,
