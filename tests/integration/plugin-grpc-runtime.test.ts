@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
-import { startGateway } from "../support/gateway.js";
+import { startGateway, startGatewayWithOutput } from "../support/gateway.js";
 import { freeAddress, request, waitReady, writeGatewayConfig } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
@@ -57,6 +57,39 @@ afterEach(async () => {
 });
 
 describe("Gateway gRPC plugin process lifecycle", () => {
+  it("uses startTimeout for handshake independently of the call timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-start-timeout-"));
+    const binary = join(directory, "forms-plugin");
+    await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/plugin-grpc"], { cwd: root });
+    const config = await writeGatewayConfig([
+      "plugins:",
+      "  forms:",
+      `    binary: ${JSON.stringify(binary)}`,
+      "    capabilities: [forms.submit]",
+      "    settings: {}",
+      "    limits: { startTimeout: 250ms, timeout: 3s }",
+      "listeners: {}",
+    ].join("\n"));
+    const startedAt = Date.now();
+    const gateway = await startGatewayWithOutput(["--config", config, "serve", "--no-management"], {
+      LIAPOLDUS_FIXTURE_MANIFEST_DELAY: "1s",
+    });
+    const exitCode = await new Promise<number | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 4_000);
+      gateway.process.once("close", (code) => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+    });
+    if (exitCode === null) await gateway.stop();
+    const elapsed = Date.now() - startedAt;
+
+    expect(exitCode).not.toBeNull();
+    expect(exitCode).not.toBe(0);
+    expect(elapsed).toBeGreaterThanOrEqual(150);
+    expect(elapsed).toBeLessThan(900);
+  }, 60_000);
+
   it("starts a child plugin, handshakes, dispatches JSON Call, and strips secrets", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-grpc-plugin-"));
     const binary = join(directory, "forms-plugin");

@@ -34,6 +34,13 @@ type httpRequest struct {
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
+	if delay := os.Getenv("LIAPOLDUS_FIXTURE_MANIFEST_DELAY"); delay != "" {
+		wait, err := time.ParseDuration(delay)
+		if err != nil {
+			return nil, err
+		}
+		time.Sleep(wait)
+	}
 	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "forms.slow", "peer.session", "tcp.echo"}}, nil
 }
 
