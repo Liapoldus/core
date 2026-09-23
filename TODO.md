@@ -464,7 +464,7 @@ TCP-loopback. Целевой контракт описан в
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
   На 2026-09-23 все перечисленные проверки проходят; core: 139 TS-тестов,
-  protocol: 11 TS-тестов. Реальный core child-process acceptance покрывает
+  protocol: 12 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
   call concurrency, deadline → `504 plugin_timeout`, RSS breach →
   `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
