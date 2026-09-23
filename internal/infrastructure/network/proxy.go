@@ -3,6 +3,7 @@ package network
 import (
 	"errors"
 	"hash/fnv"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -95,7 +96,13 @@ func (pool *proxyUpstream) director(request *http.Request) {
 		proto = "https"
 	}
 	request.Header.Set("X-Forwarded-Proto", proto)
-	if port := hostPort(request.Host); port != "" {
+	port := hostPort(request.Host)
+	if port == "" {
+		if localAddress, ok := request.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+			_, port, _ = net.SplitHostPort(localAddress.String())
+		}
+	}
+	if port != "" {
 		request.Header.Set("X-Forwarded-Port", port)
 	}
 	if pool.hostMode == models.ProxyHostValue && pool.hostValue != "" {
