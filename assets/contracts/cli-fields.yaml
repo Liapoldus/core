@@ -49,6 +49,7 @@ codes:
   wafProviderUnavailable: waf_provider_unavailable
   bodyTooLarge: body_too_large
   resourceExhausted: resource_exhausted
+  pluginTimeout: plugin_timeout
 exits:
   ok: 0
   internal: 1

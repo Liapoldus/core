@@ -142,6 +142,9 @@ func (c *CapabilityClient) callJSON(ctx context.Context, capability string, requ
 	}
 	result, err := c.client.CallJSON(callContext, capability, payload)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(callContext.Err(), context.DeadlineExceeded) {
+			return ErrPluginTimeout
+		}
 		if c.enforceRSSLimit() {
 			return ErrPluginResourceExhausted
 		}

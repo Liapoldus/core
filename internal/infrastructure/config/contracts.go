@@ -72,6 +72,7 @@ type CLIWords struct {
 		WAFProviderUnavailable string `yaml:"wafProviderUnavailable"`
 		BodyTooLarge           string `yaml:"bodyTooLarge"`
 		ResourceExhausted      string `yaml:"resourceExhausted"`
+		PluginTimeout          string `yaml:"pluginTimeout"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK            int `yaml:"ok"`

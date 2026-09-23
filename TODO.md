@@ -457,10 +457,11 @@ TCP-loopback. Целевой контракт описан в
 - [X] Настроить protocol CI matrix для macOS и Linux.
 - [X] Acceptance: `go vet ./...`, `go build ./...`, core `make check`,
   `go test -race ./...` и полный pluginprotocol TypeScript suite проходят.
-  На 2026-09-23 все перечисленные проверки проходят; core: 138 TS-тестов,
+  На 2026-09-23 все перечисленные проверки проходят; core: 139 TS-тестов,
   protocol: 11 TS-тестов. Реальный core child-process acceptance покрывает
   handshake/health, unary Call, HTTP/TCP dispatch, redaction и shutdown;
-  call concurrency и restart после child exit; bidi Stream покрыт protocol
+  call concurrency, deadline → `504 plugin_timeout`, RSS breach →
+  `503 resource_exhausted` и restart после child exit; bidi Stream покрыт protocol
   suite, но пока не Gateway fixture. `grpcurl list/describe` проверен вручную.
   Остаются scoped grant enforcement и семантический прогон всех Gateway vectors.
 - [X] Применять `limits.memory` как RSS limit процесса на macOS и Linux: RSS

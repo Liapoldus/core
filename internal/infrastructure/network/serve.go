@@ -521,7 +521,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 			action, err := dispatcher.DispatchIdentity(request.Context(), plugins.IdentityRequest{Instance: policy.Instance, Capability: policy.Capability, Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID")})
 			if err != nil {
-				if writePluginResourceProblem(writer, request, wafRuntime, err) {
+				if writePluginProblem(writer, request, wafRuntime, err) {
 					return
 				}
 				writer.WriteHeader(http.StatusBadGateway)
@@ -613,7 +613,7 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 			}
 			pluginResponse, err := dispatcher.HTTP(request.Context(), route.Plugin.Capability, plugins.HTTPRequest{Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers, Body: body, RequestID: request.Header.Get("X-Request-ID"), RemoteAddr: request.RemoteAddr})
 			if err != nil {
-				if writePluginResourceProblem(writer, request, wafRuntime, err) {
+				if writePluginProblem(writer, request, wafRuntime, err) {
 					return
 				}
 				writer.Header().Set("Content-Type", "application/problem+json")
@@ -735,11 +735,19 @@ func serveHTTP(parent context.Context, listener models.Listener, sites map[strin
 	}
 }
 
-func writePluginResourceProblem(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime, err error) bool {
-	if runtime == nil || !errors.Is(err, plugins.ErrPluginResourceExhausted) {
+func writePluginProblem(writer http.ResponseWriter, request *http.Request, runtime *WAFRuntime, err error) bool {
+	if runtime == nil {
 		return false
 	}
-	problem := runtime.PluginResourceProblem()
+	var problem models.Problem
+	switch {
+	case errors.Is(err, plugins.ErrPluginResourceExhausted):
+		problem = runtime.PluginResourceProblem()
+	case errors.Is(err, plugins.ErrPluginTimeout):
+		problem = runtime.PluginTimeoutProblem()
+	default:
+		return false
+	}
 	if problem.Status == 0 {
 		return false
 	}

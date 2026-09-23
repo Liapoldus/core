@@ -333,10 +333,16 @@ func serve(options options) int {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	pluginTimeoutProblem, exists := errorCatalog.Lookup(words.Codes.PluginTimeout)
+	if !exists {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	dataProviders := security.NewMMDBRegistry(graph.DataProviders)
 	defer func() { dataProviders.Close() }()
 	wafRuntime := network.NewWAFRuntime(graph, dataProviders.Lookup, providerProblem, bodyTooLargeProblem, managementWords.ContentTypes.Problem)
 	wafRuntime.SetPluginResourceProblem(resourceExhaustedProblem)
+	wafRuntime.SetPluginTimeoutProblem(pluginTimeoutProblem)
 	management := &api.Server{Token: resolveSecret(graph.Management.StaticToken), ServiceAccounts: graph.Management.ServiceAccounts, Revision: graph.Revision.Value, Digest: graph.Revision.Digest, Metrics: metrics, ValidateConfig: config.ValidateYAML}
 	if graph.Management.Listener.TLSProfile != "" {
 		profile, ok := graph.TLSProfiles[graph.Management.Listener.TLSProfile]

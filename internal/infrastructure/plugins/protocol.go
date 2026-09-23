@@ -15,7 +15,12 @@ var (
 	ErrProtocolViolation             = errors.New("plugin protocol violation")
 	ErrPluginUnavailable             = errors.New("plugin unavailable")
 	ErrPluginResourceExhausted error = pluginResourceExhausted{}
+	ErrPluginTimeout           error = pluginTimeout{}
 )
+
+type pluginTimeout struct{}
+
+func (pluginTimeout) Error() string { return ErrPluginUnavailable.Error() }
 
 type pluginResourceExhausted struct{}
 
@@ -117,6 +122,12 @@ func (c *Client) CallJSON(ctx context.Context, capability string, payload []byte
 	defer c.mu.RUnlock()
 	response, err := c.client.Call(ctx, capability, payload)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, context.DeadlineExceeded
+		}
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return nil, context.DeadlineExceeded
+		}
 		if errors.Is(err, transport.ErrProtocolViolation) {
 			return nil, ErrProtocolViolation
 		}
