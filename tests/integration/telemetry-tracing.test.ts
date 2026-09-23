@@ -36,6 +36,45 @@ async function waitListening(address: string): Promise<void> {
   throw new Error("gateway listener did not become ready");
 }
 
+async function startTracingFixture(sampling: string): Promise<{
+  webAddress: string;
+  bodies: Buffer[];
+  stop(): Promise<void>;
+}> {
+  const bodies: Buffer[] = [];
+  const collector = createServer((incoming, response) => {
+    const chunks: Buffer[] = [];
+    incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+    incoming.on("end", () => {
+      bodies.push(Buffer.concat(chunks));
+      response.writeHead(200);
+      response.end();
+    });
+  });
+  collectors.push(collector);
+  await new Promise<void>((resolve, reject) => {
+    collector.once("error", reject);
+    collector.listen(0, "127.0.0.1", resolve);
+  });
+  const collectorAddress = collector.address();
+  if (collectorAddress === null || typeof collectorAddress === "string") {
+    throw new Error("OTLP collector did not bind TCP");
+  }
+  const upstream = await startUpstream();
+  upstreams.push(upstream);
+  const webAddress = await freeAddress();
+  const config = await writeGatewayConfig([
+    "upstreams:", "  api:", "    targets:", `      - address: ${upstream.address}`,
+    "listeners:", "  web:", "    type: http", `    address: ${webAddress}`,
+    "    routes:", "      - when: { path: { prefix: / } }", "        then: { proxy: { upstream: api } }",
+    `tracing: { sampling: ${sampling}, otlp: { endpoint: http://127.0.0.1:${collectorAddress.port}/v1/traces } }`,
+  ].join("\n"));
+  const gateway = await startGateway(["--config", config, "serve"]);
+  gateways.push(gateway);
+  await waitListening(webAddress);
+  return { webAddress, bodies, stop: gateway.stop };
+}
+
 describe("OTLP tracing and W3C parent-based sampling", () => {
   it("exports spans for sampled parent context and drops unsampled parent context", async () => {
     const bodies: Buffer[] = [];
@@ -101,5 +140,27 @@ describe("OTLP tracing and W3C parent-based sampling", () => {
     expect(unsampled.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 6000));
     expect(bodies).toHaveLength(exportsAfterSampledParent);
+  });
+
+  it("honors explicit always-on and always-off sampling modes", async () => {
+    const alwaysOn = await startTracingFixture("always-on");
+    const unsampledParent = await request(alwaysOn.webAddress, "/always-on", {
+      headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00" },
+    });
+    expect(unsampledParent.status).toBe(200);
+    const exportDeadline = Date.now() + 10000;
+    while (alwaysOn.bodies.length === 0 && Date.now() < exportDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(alwaysOn.bodies.some((body) => body.byteLength > 0)).toBe(true);
+    await alwaysOn.stop();
+
+    const alwaysOff = await startTracingFixture("always-off");
+    const sampledParent = await request(alwaysOff.webAddress, "/always-off", {
+      headers: { traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+    });
+    expect(sampledParent.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+    expect(alwaysOff.bodies).toHaveLength(0);
   });
 });
