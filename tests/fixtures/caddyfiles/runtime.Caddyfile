@@ -1,0 +1,7 @@
+{
+	admin off
+}
+
+http://{{address}} {
+	respond "caddy-runtime-ok"
+}

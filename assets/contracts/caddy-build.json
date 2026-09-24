@@ -1,4 +1,10 @@
 {
+  "adapter": "caddyfile",
+  "diagnostics": {
+    "adapterUnavailable": "Встроенный Caddy config adapter недоступен.",
+    "runtimeAlreadyActive": "Встроенный Caddy runtime уже запущен.",
+    "runtimeNotActive": "Встроенный Caddy runtime не запущен."
+  },
   "requiredModules": [
     "http",
     "http.handlers.file_server",
