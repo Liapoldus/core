@@ -58,6 +58,45 @@ describe("embedded Caddy runtime", () => {
     }
   }, 90_000);
 
+  it("keeps the native Caddy Admin API disabled even when a Caddyfile requests a public bind", async () => {
+    const address = await freeAddress();
+    const adminAddress = await freeAddress();
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-admin-"));
+    const configPath = join(directory, "runtime.Caddyfile");
+    const fixture = `{
+  admin 0.0.0.0:${adminAddress.split(":").at(-1)}
+}
+
+http://${address} {
+  respond "runtime-ok"
+}
+`;
+    await writeFile(configPath, fixture, "utf8");
+
+    const child = spawn("go", ["run", "./tests/fixtures/caddy-runtime", configPath], {
+      cwd: coreRoot,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    try {
+      await waitForHTTP(address, child, () => stderr);
+      let adminReachable = false;
+      try {
+        const response = await fetch(`http://${adminAddress}/config/`);
+        adminReachable = true;
+        response.body?.cancel();
+      } catch {
+        adminReachable = false;
+      }
+      expect(adminReachable).toBe(false);
+    } finally {
+      child.kill("SIGTERM");
+      if (child.exitCode === null) await once(child, "exit");
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   it("replaces an adapted Caddyfile and keeps the active snapshot when a candidate is rejected", async () => {
     const address = await freeAddress();
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-reload-"));
