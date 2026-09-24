@@ -16,6 +16,7 @@ components:
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
   infrastructurePlugins: { in: internal/infrastructure/plugins }
+  infrastructureCaddy: { in: internal/infrastructure/caddy }
   infrastructureObservability: { in: internal/infrastructure/observability }
   presentationAPI: { in: internal/presentation/api }
   presentationCLI: { in: internal/presentation/cli }
@@ -42,6 +43,9 @@ vendors:
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
   quic: { in: [github.com/quic-go/quic-go] }
   quicHTTP3: { in: [github.com/quic-go/quic-go/http3] }
+  sqliteDriver: { in: [modernc.org/sqlite] }
+  caddy: { in: [github.com/caddyserver/caddy/v2, github.com/caddyserver/caddy/v2/modules/standard] }
+  caddyLayer4: { in: [github.com/mholt/caddy-l4] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -70,9 +74,13 @@ deps:
     canUse: [bcrypt, maxminddb]
   infrastructureStorage:
     mayDependOn: [domainModels, domainInterfaces]
+    canUse: [sqliteDriver]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
+  infrastructureCaddy:
+    mayDependOn: [domainModels, domainInterfaces]
+    canUse: [caddy, caddyLayer4]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource, otelTraceAPI, otelTraceExporter, otelTraceSDK, otelPropagation, otelCodes]
