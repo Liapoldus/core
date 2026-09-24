@@ -33,6 +33,15 @@ export function buildGatewayTestBinary(): Promise<string> {
   return gatewayBinary();
 }
 
+export function observeChildClose(child: ChildProcess): Promise<void> {
+  return new Promise((resolve) => child.once("close", () => resolve()));
+}
+
+export async function stopChildProcess(child: ChildProcess, closed: Promise<void>): Promise<void> {
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+  await closed;
+}
+
 export async function cleanupGatewayTestBinary(): Promise<void> {
   const directory = binaryDirectory;
   if (directory === undefined) return;
@@ -75,17 +84,10 @@ export async function startGateway(
 ): Promise<{ process: ChildProcess; stop(): Promise<void> }> {
   const executable = await gatewayBinary();
   const process = spawn(executable, args, { cwd: coreRoot, env: { ...env, ...environment }, stdio: "ignore" });
+  const closed = observeChildClose(process);
   return {
     process,
-    stop: () => {
-      if (process.exitCode !== null) {
-        return Promise.resolve();
-      }
-      return new Promise((resolve) => {
-        process.once("close", () => resolve());
-        process.kill("SIGTERM");
-      });
-    },
+    stop: () => stopChildProcess(process, closed),
   };
 }
 
