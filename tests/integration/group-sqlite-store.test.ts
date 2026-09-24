@@ -25,6 +25,15 @@ describe("durable group revision pointers", () => {
         missingRevisionRejected: true,
         reopenedCurrent: "revision-two",
         reopenedPrevious: "revision-one",
+        groupOrder: ["group-one", "group-two", "system"],
+        archivedGroupInactive: true,
+        archivedGroupHasTimestamp: true,
+        systemGroupArchiveRejected: true,
+        firstRevisionPage: ["revision-two"],
+        secondRevisionPage: ["revision-one"],
+        revisionCursorContinues: true,
+        revisionCursorEnds: true,
+        invalidRevisionLimitRejected: true,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

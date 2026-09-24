@@ -11,15 +11,24 @@ import (
 )
 
 type report struct {
-	FirstCurrent                        string `json:"firstCurrent"`
-	SecondCurrent                       string `json:"secondCurrent"`
-	SecondPrevious                      string `json:"secondPrevious"`
-	StaleCompareAndSwapRejected         bool   `json:"staleCompareAndSwapRejected"`
-	StaleCompareAndSwapUnchangedPointer bool   `json:"staleCompareAndSwapUnchangedPointers"`
-	CrossGroupRevisionRejected          bool   `json:"crossGroupRevisionRejected"`
-	MissingRevisionRejected             bool   `json:"missingRevisionRejected"`
-	ReopenedCurrent                     string `json:"reopenedCurrent"`
-	ReopenedPrevious                    string `json:"reopenedPrevious"`
+	FirstCurrent                        string   `json:"firstCurrent"`
+	SecondCurrent                       string   `json:"secondCurrent"`
+	SecondPrevious                      string   `json:"secondPrevious"`
+	StaleCompareAndSwapRejected         bool     `json:"staleCompareAndSwapRejected"`
+	StaleCompareAndSwapUnchangedPointer bool     `json:"staleCompareAndSwapUnchangedPointers"`
+	CrossGroupRevisionRejected          bool     `json:"crossGroupRevisionRejected"`
+	MissingRevisionRejected             bool     `json:"missingRevisionRejected"`
+	ReopenedCurrent                     string   `json:"reopenedCurrent"`
+	ReopenedPrevious                    string   `json:"reopenedPrevious"`
+	GroupOrder                          []string `json:"groupOrder"`
+	ArchivedGroupInactive               bool     `json:"archivedGroupInactive"`
+	ArchivedGroupHasTimestamp           bool     `json:"archivedGroupHasTimestamp"`
+	SystemGroupArchiveRejected          bool     `json:"systemGroupArchiveRejected"`
+	FirstRevisionPage                   []string `json:"firstRevisionPage"`
+	SecondRevisionPage                  []string `json:"secondRevisionPage"`
+	RevisionCursorContinues             bool     `json:"revisionCursorContinues"`
+	RevisionCursorEnds                  bool     `json:"revisionCursorEnds"`
+	InvalidRevisionLimitRejected        bool     `json:"invalidRevisionLimitRejected"`
 }
 
 func main() {
@@ -71,6 +80,36 @@ func main() {
 	}
 	_, crossGroupErr := store.AdvanceCurrent(ctx, "group-two", "revision-one", nil)
 	_, missingRevisionErr := store.AdvanceCurrent(ctx, "group-one", "missing-revision", second.CurrentRevisionID)
+	groups, err := store.ListGroups(ctx)
+	if err != nil {
+		panic(err)
+	}
+	groupOrder := make([]string, 0, len(groups.Items))
+	for _, group := range groups.Items {
+		groupOrder = append(groupOrder, group.ID)
+	}
+	archivedGroup, err := store.ArchiveGroup(ctx, "group-two")
+	if err != nil {
+		panic(err)
+	}
+	_, systemArchiveErr := store.ArchiveGroup(ctx, "system")
+	firstPage, err := store.ListRevisions(ctx, "group-one", "", 1)
+	if err != nil {
+		panic(err)
+	}
+	secondPage, err := store.ListRevisions(ctx, "group-one", *firstPage.NextCursor, 1)
+	if err != nil {
+		panic(err)
+	}
+	_, invalidLimitErr := store.ListRevisions(ctx, "group-one", "", 101)
+	firstRevisionIDs := make([]string, 0, len(firstPage.Items))
+	secondRevisionIDs := make([]string, 0, len(secondPage.Items))
+	for _, revision := range firstPage.Items {
+		firstRevisionIDs = append(firstRevisionIDs, revision.ID)
+	}
+	for _, revision := range secondPage.Items {
+		secondRevisionIDs = append(secondRevisionIDs, revision.ID)
+	}
 	if err := database.Close(); err != nil {
 		panic(err)
 	}
@@ -99,6 +138,11 @@ func main() {
 		StaleCompareAndSwapUnchangedPointer: *stale.CurrentRevisionID == *second.CurrentRevisionID && *stale.PreviousRevisionID == *second.PreviousRevisionID,
 		CrossGroupRevisionRejected:          crossGroupErr != nil, MissingRevisionRejected: missingRevisionErr != nil,
 		ReopenedCurrent: *reopened.CurrentRevisionID, ReopenedPrevious: *reopened.PreviousRevisionID,
+		GroupOrder: groupOrder, ArchivedGroupInactive: !archivedGroup.Active,
+		ArchivedGroupHasTimestamp: archivedGroup.ArchivedAt != nil, SystemGroupArchiveRejected: systemArchiveErr != nil,
+		FirstRevisionPage: firstRevisionIDs, SecondRevisionPage: secondRevisionIDs,
+		RevisionCursorContinues: firstPage.NextCursor != nil, RevisionCursorEnds: secondPage.NextCursor == nil,
+		InvalidRevisionLimitRejected: invalidLimitErr != nil,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(output); err != nil {
 		panic(err)
