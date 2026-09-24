@@ -1,0 +1,9 @@
+{
+  "requiredModules": [
+    "http",
+    "http.handlers.file_server",
+    "http.handlers.reverse_proxy",
+    "layer4",
+    "layer4.handlers.proxy"
+  ]
+}
