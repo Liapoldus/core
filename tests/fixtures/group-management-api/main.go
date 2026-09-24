@@ -24,15 +24,15 @@ type groupView struct {
 }
 
 type report struct {
-	ListStatus      int         `json:"listStatus"`
-	ListRequestID   bool        `json:"listRequestID"`
-	Groups          []groupView `json:"groups"`
-	GetStatus       int         `json:"getStatus"`
-	GetRequestID    bool        `json:"getRequestID"`
-	GetGroup        groupView   `json:"getGroup"`
-	MissingStatus   int         `json:"missingStatus"`
-	MissingProblem  problemView `json:"missingProblem"`
-	UnauthorizedStatus int      `json:"unauthorizedStatus"`
+	ListStatus         int         `json:"listStatus"`
+	ListRequestID      bool        `json:"listRequestID"`
+	Groups             []groupView `json:"groups"`
+	GetStatus          int         `json:"getStatus"`
+	GetRequestID       bool        `json:"getRequestID"`
+	GetGroup           groupView   `json:"getGroup"`
+	MissingStatus      int         `json:"missingStatus"`
+	MissingProblem     problemView `json:"missingProblem"`
+	UnauthorizedStatus int         `json:"unauthorizedStatus"`
 }
 
 type problemView struct {
@@ -118,8 +118,8 @@ func main() {
 	response := report{
 		ListStatus: list.Code, ListRequestID: groupList.RequestID != "", Groups: groupList.Items,
 		GetStatus: get.Code, GetRequestID: group.RequestID != "", GetGroup: group.groupView,
-		MissingStatus: missing.Code,
-		MissingProblem: problemView{Code: missingBody.Code, Status: missingBody.Status, RequestID: missingBody.RequestID != "", NoStoreDetail: missingBody.Detail != "The requested group does not exist."},
+		MissingStatus:      missing.Code,
+		MissingProblem:     problemView{Code: missingBody.Code, Status: missingBody.Status, RequestID: missingBody.RequestID != "", NoStoreDetail: missingBody.Detail != "The requested group does not exist."},
 		UnauthorizedStatus: unauthorized.Code,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {

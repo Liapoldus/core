@@ -333,30 +333,34 @@ type ManagementWords struct {
 		ReleaseRevisionConflict string `yaml:"releaseRevisionConflict"`
 		MTLSRequired            string `yaml:"mtlsRequired"`
 		PluginUnavailable       string `yaml:"pluginUnavailable"`
+		GroupNotFound           string `yaml:"groupNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
-		Healthz        string `yaml:"healthz"`
-		Status         string `yaml:"status"`
-		Config         string `yaml:"config"`
-		ConfigValidate string `yaml:"configValidate"`
-		ConfigReload   string `yaml:"configReload"`
-		Reload         string `yaml:"reload"`
-		Sites          string `yaml:"sites"`
-		Publish        string `yaml:"publish"`
-		Rollback       string `yaml:"rollback"`
-		Listeners      string `yaml:"listeners"`
-		Upstreams      string `yaml:"upstreams"`
-		Plugins        string `yaml:"plugins"`
-		AdminSurfaces  string `yaml:"adminSurfaces"`
-		AdminPages     string `yaml:"adminPages"`
-		Restart        string `yaml:"restart"`
-		Logs           string `yaml:"logs"`
-		TLS            string `yaml:"tls"`
-		Renew          string `yaml:"renew"`
-		Revoke         string `yaml:"revoke"`
-		Operations     string `yaml:"operations"`
-		Audit          string `yaml:"audit"`
-		Metrics        string `yaml:"metrics"`
+		Healthz          string `yaml:"healthz"`
+		Status           string `yaml:"status"`
+		Config           string `yaml:"config"`
+		ConfigValidate   string `yaml:"configValidate"`
+		ConfigReload     string `yaml:"configReload"`
+		Reload           string `yaml:"reload"`
+		Sites            string `yaml:"sites"`
+		Publish          string `yaml:"publish"`
+		Rollback         string `yaml:"rollback"`
+		Listeners        string `yaml:"listeners"`
+		Upstreams        string `yaml:"upstreams"`
+		Plugins          string `yaml:"plugins"`
+		AdminSurfaces    string `yaml:"adminSurfaces"`
+		AdminPages       string `yaml:"adminPages"`
+		Restart          string `yaml:"restart"`
+		Logs             string `yaml:"logs"`
+		TLS              string `yaml:"tls"`
+		Renew            string `yaml:"renew"`
+		Revoke           string `yaml:"revoke"`
+		Operations       string `yaml:"operations"`
+		Audit            string `yaml:"audit"`
+		Metrics          string `yaml:"metrics"`
+		Groups           string `yaml:"groups"`
+		GroupByID        string `yaml:"groupByID"`
+		GroupIDSeparator string `yaml:"groupIDSeparator"`
 	} `yaml:"paths"`
 	Methods struct {
 		Get    string `yaml:"get"`
@@ -413,6 +417,8 @@ type ManagementWords struct {
 		Diagnostics             string `yaml:"diagnostics"`
 		Limit                   string `yaml:"limit"`
 		Cursor                  string `yaml:"cursor"`
+		Kind                    string `yaml:"kind"`
+		Active                  string `yaml:"active"`
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch    string `yaml:"ifMatch"`
@@ -443,6 +449,7 @@ type ManagementWords struct {
 		Pending     string `yaml:"pending"`
 		Running     string `yaml:"running"`
 		Succeeded   string `yaml:"succeeded"`
+		Empty       string `yaml:"empty"`
 	} `yaml:"statuses"`
 	Idempotency struct {
 		LimitDefault int    `yaml:"limitDefault"`

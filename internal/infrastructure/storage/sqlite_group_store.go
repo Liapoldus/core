@@ -88,7 +88,7 @@ func (store *SQLiteGroupStore) CreateApplicationGroup(ctx context.Context, id st
 func (store *SQLiteGroupStore) GetGroup(ctx context.Context, id string) (models.Group, error) {
 	group, err := scanGroup(store.database.QueryRowContext(ctx, store.queries.SelectGroup, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return models.Group{}, errors.New(store.queries.GroupNotFound)
+		return models.Group{}, models.GroupNotFound{Message: store.queries.GroupNotFound}
 	}
 	return group, err
 }

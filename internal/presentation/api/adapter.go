@@ -28,29 +28,30 @@ import (
 )
 
 type Server struct {
-	Token           string
-	ServiceAccounts []models.ServiceAccount
-	Config          string
-	Revision        string
-	Digest          string
-	mu              sync.RWMutex
-	idempotency     map[string]idempotencyRecord
-	publishMu       sync.Mutex
-	operations      map[string]Operation
-	AdminSurfaces   []AdminSurface
-	AdminDispatcher *plugins.Dispatcher
-	Listeners       []any
-	Upstreams       []any
-	Plugins         []any
-	Sites           []any
-	ListSites       func(context.Context) ([]any, error)
-	RestartPlugin   func(context.Context, string) (Operation, error)
-	ValidateConfig  func(string) error
-	ReloadConfig    func(context.Context, string) (Operation, error)
+	Token                    string
+	ServiceAccounts          []models.ServiceAccount
+	Config                   string
+	Revision                 string
+	Digest                   string
+	mu                       sync.RWMutex
+	idempotency              map[string]idempotencyRecord
+	publishMu                sync.Mutex
+	operations               map[string]Operation
+	AdminSurfaces            []AdminSurface
+	AdminDispatcher          *plugins.Dispatcher
+	Listeners                []any
+	Upstreams                []any
+	Plugins                  []any
+	Sites                    []any
+	ListSites                func(context.Context) ([]any, error)
+	RestartPlugin            func(context.Context, string) (Operation, error)
+	ValidateConfig           func(string) error
+	ReloadConfig             func(context.Context, string) (Operation, error)
 	PublishSite              func(context.Context, string, string, string, *string) (Operation, *models.ReleaseRevisionConflict, error)
 	RollbackSite             func(context.Context, string, string, *string) (Operation, *models.ReleaseRevisionConflict, error)
 	Metrics                  *observability.Registry
 	Audit                    *application.AuditService
+	GroupService             application.GroupService
 	AuditWords               config.ObservabilityWords
 	Management               config.ManagementWords
 	Errors                   config.ErrorCatalog
@@ -215,6 +216,10 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		defer server.mu.RUnlock()
 		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": server.Listeners, "upstreams": server.Upstreams, "plugins": server.Plugins, "requestId": requestID})
+	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get:
+		server.handleGroupList(response, request, requestID)
+	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
+		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Listeners && request.Method == http.MethodGet:
 		server.writePage(response, server.Listeners, request, requestID)
 	case path == server.Management.Paths.Upstreams && request.Method == http.MethodGet:
@@ -382,6 +387,66 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		writeJSON(response, 200, map[string]any{"id": operation.ID, "state": operation.State, "createdAt": operation.CreatedAt, server.Management.JSON.Result: operation.Result, server.Management.JSON.RequestID: requestID})
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
+	}
+}
+
+func (server *Server) handleGroupList(response http.ResponseWriter, request *http.Request, requestID string) {
+	if server.GroupService.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	groups, err := server.GroupService.List(request.Context())
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	items := make([]map[string]any, 0, len(groups.Items))
+	for _, group := range groups.Items {
+		items = append(items, server.groupResponse(group))
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		server.Management.JSON.Items:     items,
+		server.Management.JSON.RequestID: requestID,
+	})
+}
+
+func (server *Server) handleGroupGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.GroupService.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	id := strings.TrimPrefix(path, server.Management.Paths.GroupByID)
+	if id == "" || strings.Contains(id, server.Management.Paths.GroupIDSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+		return
+	}
+	group, err := server.GroupService.Get(request.Context(), id)
+	if err != nil {
+		var notFound models.GroupNotFound
+		if errors.As(err, &notFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	result := server.groupResponse(group)
+	result[server.Management.JSON.RequestID] = requestID
+	writeJSON(response, http.StatusOK, result)
+}
+
+func (server *Server) groupResponse(group models.Group) map[string]any {
+	state := server.Management.Statuses.Ready
+	if group.CurrentRevisionID == nil {
+		state = server.Management.Statuses.Empty
+	}
+	return map[string]any{
+		server.Management.JSON.ID:               group.ID,
+		server.Management.JSON.Kind:             group.Kind,
+		server.Management.JSON.Active:           group.Active,
+		server.Management.JSON.CurrentRevision:  group.CurrentRevisionID,
+		server.Management.JSON.PreviousRevision: group.PreviousRevisionID,
+		server.Management.JSON.State:            state,
 	}
 }
 
