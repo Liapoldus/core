@@ -15,6 +15,15 @@ async function goFiles(path: string): Promise<string[]> {
   return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".go")).map((entry) => join(path, entry.name));
 }
 
+async function sourceFiles(path: string): Promise<string[]> {
+  const entries = await readdir(path, { withFileTypes: true });
+  const nested = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => sourceFiles(join(path, entry.name))));
+  return [
+    ...entries.filter((entry) => entry.isFile()).map((entry) => join(path, entry.name)),
+    ...nested.flat(),
+  ];
+}
+
 describe("Gateway architecture", () => {
   it("keeps the domain limited to models and interfaces", async () => {
     const domain = join(root, "internal", "domain");
@@ -55,5 +64,10 @@ describe("Gateway architecture", () => {
   it("keeps assets static and places its embed adapter outside assets", async () => {
     expect(await goFiles(join(root, "assets"))).toEqual([]);
     expect(await readFile(join(root, "contractassets.go"), "utf8")).toContain("go:embed assets/contracts");
+  });
+
+  it("keeps Go tests out of production packages", async () => {
+    const files = await sourceFiles(join(root, "internal"));
+    expect(files.filter((file) => file.endsWith("_test.go"))).toEqual([]);
   });
 });
