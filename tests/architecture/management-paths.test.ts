@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const root = join(process.cwd(), "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("Management API route contract", () => {
   it("keeps endpoint paths in contract assets, not Go adapters", async () => {
@@ -24,12 +25,14 @@ describe("Management API route contract", () => {
       "/metrics",
       "/api/plugins/admin-surfaces",
       "/api/plugins/",
+      "/api/groups",
+      "/api/groups/",
       "/admin/pages/",
     ];
     const contractFields = [
       "healthz:", "status:", "listeners:", "upstreams:", "sites:", "plugins:", "operations:",
       "config:", "configValidate:", "configReload:", "reload:", "audit:", "metrics:",
-      "adminSurfaces:", "adminPages:",
+      "adminSurfaces:", "adminPages:", "groups:", "groupByID:",
     ];
 
     for (const field of contractFields) expect(contract).toContain(field);

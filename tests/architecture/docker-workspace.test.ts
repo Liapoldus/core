@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const root = join(process.cwd(), "..");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("Docker workspace dependency contract", () => {
   it("builds with the v1 pluginprotocol sibling module in context", async () => {
