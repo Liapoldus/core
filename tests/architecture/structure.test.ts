@@ -37,6 +37,7 @@ describe("Gateway architecture", () => {
     expect(await directories(join(root, "internal", "application"))).toEqual([]);
     expect(await directories(join(root, "internal", "infrastructure"))).toEqual([
       "accounts",
+      "caddy",
       "config",
       "network",
       "observability",
