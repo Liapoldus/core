@@ -12,7 +12,7 @@ describe("SQLite schema compatibility", () => {
   it("rejects a database with a migration newer than this Gateway supports", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-sqlite-version-"));
     try {
-      const database = join(directory, "state", "gateway.db");
+      const database = join(directory, "gateway.db");
       const result = await execFileAsync(
         "go",
         ["run", "./tests/fixtures/sqlite-version-probe", database],
