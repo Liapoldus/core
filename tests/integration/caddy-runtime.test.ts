@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -144,6 +144,7 @@ http://${address} {
     const child = spawn(fixtureBinary.path, [initialPath], {
       cwd: coreRoot,
       stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, XDG_CONFIG_HOME: join(directory, "isolated-config") },
     });
     let output = "";
     let stderr = "";
@@ -152,11 +153,15 @@ http://${address} {
 
     try {
       await waitForHTTP(address, child, () => stderr);
+      const autosavePath = join(directory, "isolated-config", "caddy", "autosave.json");
+      const autosaveExists = async () => access(autosavePath).then(() => true, () => false);
+      expect(await autosaveExists()).toBe(false);
       const initialResponse = await fetch(`http://${address}/`);
       expect(await initialResponse.text()).toBe("initial");
 
       child.stdin?.write(`${replacementPath}\n`);
       await waitForOutput("replaced", child, () => output);
+      expect(await autosaveExists()).toBe(false);
       const replacementResponse = await fetch(`http://${address}/`);
       expect(await replacementResponse.text()).toBe("replacement");
 
