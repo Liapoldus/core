@@ -81,7 +81,20 @@ func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
 	if adapter == nil {
 		return nil, nil, errors.New(contract.Diagnostics.AdapterUnavailable)
 	}
-	return adapter.Adapt(source, nil)
+	configuration, warnings, err := adapter.Adapt(source, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var adapted caddycore.Config
+	if err := json.Unmarshal(configuration, &adapted); err != nil {
+		return nil, nil, err
+	}
+	adapted.Admin = &caddycore.AdminConfig{Disabled: true}
+	configuration, err = json.Marshal(adapted)
+	if err != nil {
+		return nil, nil, err
+	}
+	return configuration, warnings, nil
 }
 
 func (runtime *Runtime) Stop() error {
