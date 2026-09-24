@@ -17,6 +17,7 @@ const (
 	ErrorsJSON          = "errors.json"
 	SQLiteRuntime       = "sqlite-runtime.yaml"
 	SQLiteSchema        = "sqlite-schema.sql"
+	SQLiteGroupStore    = "sqlite-group-store.yaml"
 	CaddyBuild          = "caddy-build.json"
 )
 

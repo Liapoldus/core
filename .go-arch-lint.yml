@@ -74,8 +74,8 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt, maxminddb]
   infrastructureStorage:
-    mayDependOn: [domainModels, domainInterfaces]
-    canUse: [sqliteDriver]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
+    canUse: [sqliteDriver, yaml]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]

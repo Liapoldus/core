@@ -11,15 +11,15 @@ import (
 )
 
 type report struct {
-	FirstCurrent                       string `json:"firstCurrent"`
-	SecondCurrent                      string `json:"secondCurrent"`
-	SecondPrevious                     string `json:"secondPrevious"`
-	StaleCompareAndSwapRejected        bool   `json:"staleCompareAndSwapRejected"`
+	FirstCurrent                        string `json:"firstCurrent"`
+	SecondCurrent                       string `json:"secondCurrent"`
+	SecondPrevious                      string `json:"secondPrevious"`
+	StaleCompareAndSwapRejected         bool   `json:"staleCompareAndSwapRejected"`
 	StaleCompareAndSwapUnchangedPointer bool   `json:"staleCompareAndSwapUnchangedPointers"`
-	CrossGroupRevisionRejected         bool   `json:"crossGroupRevisionRejected"`
-	MissingRevisionRejected            bool   `json:"missingRevisionRejected"`
-	ReopenedCurrent                    string `json:"reopenedCurrent"`
-	ReopenedPrevious                   string `json:"reopenedPrevious"`
+	CrossGroupRevisionRejected          bool   `json:"crossGroupRevisionRejected"`
+	MissingRevisionRejected             bool   `json:"missingRevisionRejected"`
+	ReopenedCurrent                     string `json:"reopenedCurrent"`
+	ReopenedPrevious                    string `json:"reopenedPrevious"`
 }
 
 func main() {
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	store, err := storage.NewSQLiteGroupStore(database, config.LoadGroupStoreContract())
+	store, err := storage.NewSQLiteGroupStore(database)
 	if err != nil {
 		panic(err)
 	}
@@ -85,7 +85,7 @@ func main() {
 		panic(err)
 	}
 	defer database.Close()
-	store, err = storage.NewSQLiteGroupStore(database, config.LoadGroupStoreContract())
+	store, err = storage.NewSQLiteGroupStore(database)
 	if err != nil {
 		panic(err)
 	}
@@ -97,7 +97,7 @@ func main() {
 		FirstCurrent: *first.CurrentRevisionID, SecondCurrent: *second.CurrentRevisionID,
 		SecondPrevious: *second.PreviousRevisionID, StaleCompareAndSwapRejected: staleErr != nil,
 		StaleCompareAndSwapUnchangedPointer: *stale.CurrentRevisionID == *second.CurrentRevisionID && *stale.PreviousRevisionID == *second.PreviousRevisionID,
-		CrossGroupRevisionRejected: crossGroupErr != nil, MissingRevisionRejected: missingRevisionErr != nil,
+		CrossGroupRevisionRejected:          crossGroupErr != nil, MissingRevisionRejected: missingRevisionErr != nil,
 		ReopenedCurrent: *reopened.CurrentRevisionID, ReopenedPrevious: *reopened.PreviousRevisionID,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(output); err != nil {
