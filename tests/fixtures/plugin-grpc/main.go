@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Liapoldus/pluginprotocol"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	"github.com/Liapoldus/pluginprotocol/transport"
 	"google.golang.org/grpc"
@@ -57,7 +58,14 @@ func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.M
 	if name == "" {
 		name = "forms"
 	}
-	return &pluginv1.Manifest{Name: name, ProtocolVersion: "liapoldus.plugin.v1", Capabilities: capabilities}, nil
+	descriptors := make([]*pluginv1.CapabilityDescriptor, 0, len(capabilities))
+	for _, capability := range capabilities {
+		descriptors = append(descriptors, &pluginv1.CapabilityDescriptor{
+			Capability: capability,
+			Modes:      []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_CALL},
+		})
+	}
+	return &pluginv1.Manifest{Name: name, ProtocolVersion: pluginprotocol.ProtocolVersion, Capabilities: capabilities, CapabilityDescriptors: descriptors}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {

@@ -94,7 +94,7 @@ func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error
 	if err != nil {
 		return Handshake{}, ErrPluginUnavailable
 	}
-	if handshake.Manifest == nil {
+	if ValidateManifest(handshake.Manifest, nil) != nil {
 		return Handshake{}, ErrProtocolViolation
 	}
 	return Handshake{Manifest: handshake.Manifest}, nil
@@ -112,7 +112,7 @@ func (c *Client) Reconnect(ctx context.Context, endpoint string, config []byte, 
 		_ = replacement.Close()
 		return ErrPluginUnavailable
 	}
-	if handshake.Manifest == nil || handshake.Manifest.GetName() != expectedName || !manifestIncludes(handshake.Manifest.GetCapabilities(), capabilities) {
+	if ValidateManifest(handshake.Manifest, capabilities) != nil || handshake.Manifest.GetName() != expectedName {
 		_ = replacement.Close()
 		return ErrProtocolViolation
 	}

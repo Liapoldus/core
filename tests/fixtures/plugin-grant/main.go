@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Liapoldus/pluginprotocol"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	"github.com/Liapoldus/pluginprotocol/transport"
 	"google.golang.org/grpc"
@@ -21,7 +22,15 @@ type grantPlugin struct {
 var previousHandle string
 
 func (*grantPlugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	return &pluginv1.Manifest{Name: "forms", ProtocolVersion: "liapoldus.plugin.v1", Capabilities: []string{"forms.submit"}}, nil
+	return &pluginv1.Manifest{
+		Name:            "forms",
+		ProtocolVersion: pluginprotocol.ProtocolVersion,
+		Capabilities:    []string{"forms.submit"},
+		CapabilityDescriptors: []*pluginv1.CapabilityDescriptor{{
+			Capability: "forms.submit",
+			Modes:      []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_CALL},
+		}},
+	}, nil
 }
 
 func (*grantPlugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
