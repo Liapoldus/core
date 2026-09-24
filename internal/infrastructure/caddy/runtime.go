@@ -89,7 +89,11 @@ func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
 	if err := json.Unmarshal(configuration, &adapted); err != nil {
 		return nil, nil, err
 	}
-	adapted.Admin = &caddycore.AdminConfig{Disabled: true}
+	persistConfig := false
+	adapted.Admin = &caddycore.AdminConfig{
+		Disabled: true,
+		Config:   &caddycore.ConfigSettings{Persist: &persistConfig},
+	}
 	configuration, err = json.Marshal(adapted)
 	if err != nil {
 		return nil, nil, err
