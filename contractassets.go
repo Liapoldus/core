@@ -15,6 +15,7 @@ const (
 	ManagementFields    = "management-fields.yaml"
 	ObservabilityFields = "observability-fields.yaml"
 	ErrorsJSON          = "errors.json"
+	CaddyBuild          = "caddy-build.json"
 )
 
 //go:embed assets/contracts

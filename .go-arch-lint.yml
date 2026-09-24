@@ -46,6 +46,7 @@ vendors:
   sqliteDriver: { in: [modernc.org/sqlite] }
   caddy: { in: [github.com/caddyserver/caddy/v2, github.com/caddyserver/caddy/v2/modules/standard] }
   caddyLayer4: { in: [github.com/mholt/caddy-l4] }
+  caddyConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -79,8 +80,8 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
   infrastructureCaddy:
-    mayDependOn: [domainModels, domainInterfaces]
-    canUse: [caddy, caddyLayer4]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
+    canUse: [caddy, caddyLayer4, caddyConfig]
   infrastructureObservability:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource, otelTraceAPI, otelTraceExporter, otelTraceSDK, otelPropagation, otelCodes]
