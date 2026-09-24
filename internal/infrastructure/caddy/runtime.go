@@ -39,15 +39,7 @@ func StartCaddyfile(source []byte) (*Runtime, []caddyconfig.Warning, error) {
 		return nil, nil, errors.New(contract.Diagnostics.RuntimeAlreadyActive)
 	}
 
-	contract, err := loadBuildContract()
-	if err != nil {
-		return nil, nil, err
-	}
-	adapter := caddyconfig.GetAdapter(contract.Adapter)
-	if adapter == nil {
-		return nil, nil, errors.New(contract.Diagnostics.AdapterUnavailable)
-	}
-	configuration, warnings, err := adapter.Adapt(source, nil)
+	configuration, warnings, err := AdaptCaddyfile(source)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -59,10 +51,43 @@ func StartCaddyfile(source []byte) (*Runtime, []caddyconfig.Warning, error) {
 	return runtime, warnings, nil
 }
 
+func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, error) {
+	processRuntime.Lock()
+	defer processRuntime.Unlock()
+	if runtime == nil || processRuntime.active != runtime || !runtime.active {
+		contract, err := loadBuildContract()
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New(contract.Diagnostics.RuntimeNotActive)
+	}
+
+	configuration, warnings, err := AdaptCaddyfile(source)
+	if err != nil {
+		return nil, err
+	}
+	if err := caddycore.Load(configuration, true); err != nil {
+		return nil, err
+	}
+	return warnings, nil
+}
+
+func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
+	contract, err := loadBuildContract()
+	if err != nil {
+		return nil, nil, err
+	}
+	adapter := caddyconfig.GetAdapter(contract.Adapter)
+	if adapter == nil {
+		return nil, nil, errors.New(contract.Diagnostics.AdapterUnavailable)
+	}
+	return adapter.Adapt(source, nil)
+}
+
 func (runtime *Runtime) Stop() error {
 	processRuntime.Lock()
 	defer processRuntime.Unlock()
-	if processRuntime.active != runtime {
+	if runtime == nil || processRuntime.active != runtime || !runtime.active {
 		contract, err := loadBuildContract()
 		if err != nil {
 			return err
