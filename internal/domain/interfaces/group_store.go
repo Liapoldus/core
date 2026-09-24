@@ -9,8 +9,11 @@ import (
 type GroupStore interface {
 	CreateApplicationGroup(context.Context, string) (models.Group, error)
 	GetGroup(context.Context, string) (models.Group, error)
+	ListGroups(context.Context) (models.GroupList, error)
+	ArchiveGroup(context.Context, string) (models.Group, error)
 	CreateRevision(context.Context, models.GroupRevision) (models.GroupRevision, error)
 	GetRevision(context.Context, string, string) (models.GroupRevision, error)
+	ListRevisions(context.Context, string, string, int) (models.GroupRevisionList, error)
 	GetPointers(context.Context, string) (models.GroupPointers, error)
 	AdvanceCurrent(context.Context, string, string, *string) (models.GroupPointers, error)
 }
