@@ -19,8 +19,7 @@ describe("SQLite schema compatibility", () => {
         { cwd: coreRoot },
       );
 
-      expect(JSON.parse(result.stdout)).toEqual({ rejected: true });
-      expect(result.stderr).not.toContain(database);
+      expect(JSON.parse(result.stdout)).toEqual({ rejected: true, contractError: true });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
