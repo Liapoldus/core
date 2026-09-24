@@ -37,12 +37,16 @@ func main() {
 		return
 	}
 	database, err = storage.OpenSQLite(context.Background(), os.Args[1], storage.SQLiteOptions{
-		Driver:              contract.Driver,
-		ParentDirectoryMode: contract.ParentDirectoryMode,
-		DatabaseFileMode:    contract.DatabaseFileMode,
-		MaxOpenConnections:  contract.MaxOpenConnections,
-		MaxIdleConnections:  contract.MaxIdleConnections,
-		Pragmas:             contract.Pragmas,
+		Driver:                 contract.Driver,
+		ParentDirectoryMode:    contract.ParentDirectoryMode,
+		DatabaseFileMode:       contract.DatabaseFileMode,
+		MaxOpenConnections:     contract.MaxOpenConnections,
+		MaxIdleConnections:     contract.MaxIdleConnections,
+		SchemaVersion:          contract.SchemaVersion,
+		HasMigrationTableQuery: contract.HasMigrationTableQuery,
+		MigrationVersionQuery:  contract.MigrationVersionQuery,
+		SchemaVersionError:     contract.SchemaVersionError,
+		Pragmas:                contract.Pragmas,
 	}, contract.Schema)
 	if database != nil {
 		_ = database.Close()

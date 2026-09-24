@@ -15,6 +15,8 @@ const (
 	ManagementFields    = "management-fields.yaml"
 	ObservabilityFields = "observability-fields.yaml"
 	ErrorsJSON          = "errors.json"
+	SQLiteRuntime       = "sqlite-runtime.yaml"
+	SQLiteSchema        = "sqlite-schema.sql"
 	CaddyBuild          = "caddy-build.json"
 )
 
