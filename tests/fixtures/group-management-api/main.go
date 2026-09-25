@@ -1,6 +1,9 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"mime/multipart"
@@ -61,6 +64,8 @@ type report struct {
 	StaleRevisionStatus        int              `json:"staleRevisionStatus"`
 	StaleRevisionCode          string           `json:"staleRevisionCode"`
 	PointersAfterStale         *string          `json:"pointersAfterStale"`
+	UnsafeArtifactStatus       int              `json:"unsafeArtifactStatus"`
+	UnsafeArtifactCode         string           `json:"unsafeArtifactCode"`
 }
 
 type problemView struct {
@@ -160,6 +165,7 @@ func main() {
 	publish := performMultipart(handler)
 	publishRetry := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n")
 	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 201\n}\n")
+	unsafeArtifact := performMultipartWithArtifact(handler, "unsafe-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n", archive("frontends/ui/../escape.txt"))
 
 	var groupList struct {
 		Items     []groupView `json:"items"`
@@ -199,10 +205,10 @@ func main() {
 	if err := json.Unmarshal(publish.Body.Bytes(), &publishBody); err != nil {
 		panic(err)
 	}
-	var publishRetryBody, idempotencyConflictBody, invalidCaddyfileBody, staleRevisionBody map[string]any
+	var publishRetryBody, idempotencyConflictBody, invalidCaddyfileBody, staleRevisionBody, unsafeArtifactBody map[string]any
 	for response, destination := range map[*httptest.ResponseRecorder]*map[string]any{
 		publishRetry: &publishRetryBody, idempotencyConflict: &idempotencyConflictBody,
-		invalidCaddyfile: &invalidCaddyfileBody, staleRevision: &staleRevisionBody,
+		invalidCaddyfile: &invalidCaddyfileBody, staleRevision: &staleRevisionBody, unsafeArtifact: &unsafeArtifactBody,
 	} {
 		if err := json.Unmarshal(response.Body.Bytes(), destination); err != nil {
 			panic(err)
@@ -287,7 +293,8 @@ func main() {
 		InvalidCaddyfileStatus: invalidCaddyfile.Code, InvalidCaddyfileCode: stringField(invalidCaddyfileBody, "code"),
 		PointersAfterInvalid: pointersAfterInvalidBody.CurrentRevision,
 		StaleRevisionStatus:  staleRevision.Code, StaleRevisionCode: stringField(staleRevisionBody, "code"),
-		PointersAfterStale: pointersAfterStaleBody.CurrentRevision,
+		PointersAfterStale:   pointersAfterStaleBody.CurrentRevision,
+		UnsafeArtifactStatus: unsafeArtifact.Code, UnsafeArtifactCode: stringField(unsafeArtifactBody, "code"),
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
@@ -309,6 +316,10 @@ func performMultipart(handler http.Handler) *httptest.ResponseRecorder {
 }
 
 func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentRevision, caddyfile string) *httptest.ResponseRecorder {
+	return performMultipartWithArtifact(handler, idempotencyKey, expectedCurrentRevision, caddyfile, nil)
+}
+
+func performMultipartWithArtifact(handler http.Handler, idempotencyKey, expectedCurrentRevision, caddyfile string, artifact []byte) *httptest.ResponseRecorder {
 	var body strings.Builder
 	writer := multipart.NewWriter(&body)
 	metadata, err := json.Marshal(map[string]any{"idempotencyKey": idempotencyKey, "expectedCurrentRevision": nullableString(expectedCurrentRevision)})
@@ -335,6 +346,18 @@ func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentR
 	if _, err := caddyfilePart.Write([]byte(caddyfile)); err != nil {
 		panic(err)
 	}
+	if artifact != nil {
+		artifactPart, err := writer.CreatePart(map[string][]string{
+			"Content-Disposition": {"form-data; name=\"artifact\"; filename=\"site.tar.gz\""},
+			"Content-Type":        {"application/gzip"},
+		})
+		if err != nil {
+			panic(err)
+		}
+		if _, err := artifactPart.Write(artifact); err != nil {
+			panic(err)
+		}
+	}
 	if err := writer.Close(); err != nil {
 		panic(err)
 	}
@@ -344,6 +367,26 @@ func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentR
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func archive(path string) []byte {
+	var compressed bytes.Buffer
+	compressor := gzip.NewWriter(&compressed)
+	writer := tar.NewWriter(compressor)
+	contents := []byte("content")
+	if err := writer.WriteHeader(&tar.Header{Name: path, Mode: 0o600, Size: int64(len(contents)), Typeflag: tar.TypeReg}); err != nil {
+		panic(err)
+	}
+	if _, err := writer.Write(contents); err != nil {
+		panic(err)
+	}
+	if err := writer.Close(); err != nil {
+		panic(err)
+	}
+	if err := compressor.Close(); err != nil {
+		panic(err)
+	}
+	return compressed.Bytes()
 }
 
 type fixtureActivator struct{}

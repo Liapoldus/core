@@ -55,6 +55,8 @@ describe("group Management API reads", () => {
         staleRevisionStatus: expect.any(Number),
         staleRevisionCode: expect.any(String),
         pointersAfterStale: expect.any(String),
+        unsafeArtifactStatus: expect.any(Number),
+        unsafeArtifactCode: expect.any(String),
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
