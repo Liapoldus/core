@@ -16,8 +16,8 @@
   cursor pagination; response не раскрывает Caddyfile или пути артефактов.
 - `GET /api/groups/{id}/releases/{revisionId}` проверяет Caddyfile digest и
   читает файл только внутри immutable artifacts root; production `serve`
-  получает reader с bootstrap artifacts path. Детализация frontend manifest для
-  release с archive остаётся незавершённой до реализации publish.
+  получает reader с bootstrap artifacts path. Archive reader проверяет digest
+  исходного `.tar.gz` и строит frontend manifest из staged roots.
 - Production `serve` теперь подключает append-only SQLite audit store;
   успешный `group.create` и его audit row коммитятся в одной SQLite transaction;
   если audit insert падает, API возвращает 503 и группа не создаётся. Ошибочные
@@ -40,9 +40,14 @@
   повтор ключа с другим request digest отклоняется, а commit атомарно вставляет
   revision, переключает `previous/current`, обновляет operation и append-only
   audit. TS integration проверяет duplicate/conflict, commit и reopen SQLite.
-  Это только storage foundation: Management API publish, потоковая staging и
-  архивная валидация, Caddy snapshot composition/activation, rollback и startup
-  recovery ещё не подключены; endpoint не объявляется готовым.
+  Management API принимает multipart Caddyfile и необязательный `.tar.gz`;
+  Caddyfile адаптируется до reservation, archive извлекается в immutable
+  staging с digest и ограничениями пути/размера/количества/ratio. Небезопасная
+  запись проверяется TS integration и возвращает `422 artifact_invalid` до
+  activation. Публикация синхронизирует snapshot через Caddy activator и commit
+  обновляет current/previous. Полный positive archive conformance, уникальная
+  reservation для конкурентных CAS, rollback API и production crash-recovery
+  остаются незавершёнными; этот endpoint не объявляется готовым.
 - Проверки текущего operation-slice: focused TS integration passed; `go vet`,
   `go build`, macOS/Linux ARM64 builds и официальный Docker architecture lint
   passed. `make check` останавливается на одном заранее сохранённом group-publish
@@ -142,18 +147,20 @@
   validation, immutable staging, full-snapshot activation и rollback current/
   previous. Текущий вертикальный срез уже принимает Caddyfile-only multipart,
   проверяет Caddy adaptation, CAS/idempotency в SQLite, сохраняет revision и
-  operation, сериализует активацию и восстанавливает current composition при
-  старте. Он не завершён: наличие `artifact` пока отклоняется, а rollback/
-  activation API и integration conformance ещё не реализованы.
+  operation и активирует composed snapshot через Caddy activator. Архив
+  проверяется/стадируется, а current/previous переключаются в SQLite transaction;
+  unique in-flight CAS reservation, rollback API и crash recovery между
+  activation/commit ещё не доказаны production integration tests.
 - [x] TS integration фиксирует Caddyfile-only multipart
   `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
   Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
   SQLite; fixture проходит focused Vitest suite. Это не покрывает archive или
   production traffic activation.
-- [ ] TS integration red-test: reject traversal archive entry as
-  `422 artifact_invalid`; добавить positive safe `.tar.gz` digest/extraction,
+- [x] TS integration red-test: reject traversal archive entry as
+  `422 artifact_invalid` до activation. Добавить positive safe `.tar.gz`
+  digest/extraction,
   gzip integrity, duplicate/case-collision/NFC/path depth/length, byte, ratio и
-  entry limits до включения artifact в release API.
+  entry limit tests; текущий единственный архивный E2E проверяет traversal.
 - [x] TS integration red-test `operation-persistence.test.ts` требует, чтобы
   Operation, созданная существующим restart endpoint, переживала закрытие и
   повторное открытие SQLite, а неизвестный ID давал OpenAPI Problem 404; SQLite
@@ -167,6 +174,13 @@
 - [ ] Не обещать обратную генерацию Caddyfile из произвольного native Caddy JSON.
 
 ## Plugins, TLS и Constructor boundary
+
+- Plugin inventory CRUD/readiness foundation уже есть, но production runtime
+  dispatch, local process supervision и secure remote mTLS mode ещё не
+  реализованы. Текущая SQLite inventory не сохраняет executable/args/env,
+  restart/grant/limit policy и remote TLS identity references; gRPC dial ещё
+  insecure. Нужен отдельный test-first slice: contract + SQLite migration,
+  local lifecycle/restart и remote mTLS identity/revocation tests.
 
 - Имеется ограниченный, пока не подключённый к `serve` Caddy `call` slice:
   `StartCaddyfileWithPlugins`, per-config handshake и

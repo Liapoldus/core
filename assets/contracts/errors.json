@@ -20,6 +20,7 @@
     {"code":"runtime_digest_conflict","status":409,"title":"Runtime изменился","detail":"If-Match digest устарел; reconcile не выполнен."},
     {"code":"management_mtls_required","status":401,"title":"Требуется клиентский сертификат","detail":"Удалённый Management API требует валидную mTLS identity."},
     {"code":"management_bearer_required","status":401,"title":"Требуется service key","detail":"Management API требует действующий Bearer service key."},
+    {"code":"management_unavailable","status":503,"title":"Management API недоступен","detail":"Не удалось выполнить операцию с постоянным состоянием Management API."},
     {"code":"forbidden","status":403,"title":"Доступ запрещён","detail":"Для операции требуется platform-admin."},
     {"code":"plugin_unavailable","status":503,"title":"Плагин недоступен","detail":"Подключённый plugin instance не отвечает."},
     {"code":"plugin_tls_rejected","status":502,"title":"TLS плагина отклонён","detail":"Plugin peer не прошёл проверку TLS identity."},

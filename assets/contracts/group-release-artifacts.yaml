@@ -2,6 +2,9 @@ releaseDirectory: releases
 stagingDirectory: .staging
 caddyfileSuffix: .caddyfile
 temporarySuffix: .candidate
+artifactTemporarySuffix: .artifact
+artifactDirectorySuffix: .artifact
+sourceArchiveName: source.tar.gz
 fileMode: 384
 directoryMode: 448
 invalidContract: "The group-release artifact contract is invalid."

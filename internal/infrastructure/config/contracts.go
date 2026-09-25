@@ -113,16 +113,15 @@ func loadCLI() (CLIWords, error) {
 
 type ManagementWords struct {
 	Codes struct {
-		BearerRequired      string `yaml:"bearerRequired"`
-		RouteNotFound       string `yaml:"routeNotFound"`
-		IdempotencyConflict string `yaml:"idempotencyConflict"`
-		RegistryUnavailable string `yaml:"registryUnavailable"`
-		MTLSRequired        string `yaml:"mtlsRequired"`
-		PluginUnavailable   string `yaml:"pluginUnavailable"`
-		GroupNotFound       string `yaml:"groupNotFound"`
-		GroupAlreadyExists  string `yaml:"groupAlreadyExists"`
-		InvalidRequest      string `yaml:"invalidRequest"`
-		OperationNotFound   string `yaml:"operationNotFound"`
+		BearerRequired         string `yaml:"bearerRequired"`
+		ManagementUnavailable  string `yaml:"managementUnavailable"`
+		ManagementMTLSRequired string `yaml:"managementMTLSRequired"`
+		IdempotencyConflict    string `yaml:"idempotencyConflict"`
+		PluginUnavailable      string `yaml:"pluginUnavailable"`
+		GroupNotFound          string `yaml:"groupNotFound"`
+		GroupAlreadyExists     string `yaml:"groupAlreadyExists"`
+		InvalidRequest         string `yaml:"invalidRequest"`
+		OperationNotFound      string `yaml:"operationNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz          string `yaml:"healthz"`

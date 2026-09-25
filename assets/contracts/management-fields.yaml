@@ -114,9 +114,8 @@ statuses:
   recoveryRequired: recovery-required
 codes:
   bearerRequired: management_bearer_required
-  routeNotFound: route_not_found
-  registryUnavailable: registry_unavailable
-  mtlsRequired: mtls_required
+  managementUnavailable: management_unavailable
+  managementMTLSRequired: management_mtls_required
   pluginUnavailable: plugin_unavailable
   groupNotFound: group_not_found
   groupAlreadyExists: group_already_exists

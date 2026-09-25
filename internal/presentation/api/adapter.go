@@ -107,12 +107,12 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		return
 	}
 	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
-		server.writeCatalogProblem(response, server.Management.Codes.MTLSRequired, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementMTLSRequired, requestID)
 		return
 	}
 	actor, authorized, authErr := server.authenticate(request.Context(), request.Header.Get("Authorization"))
 	if authErr != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	if !authorized {
@@ -195,16 +195,16 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			return
 		}
 		if server.Operations.Store == nil {
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		op, err := server.RestartPlugin(request.Context(), instance)
 		if err != nil {
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		if op.ID == "" || op.Kind == "" || (op.State != server.Management.Statuses.Pending && op.State != server.Management.Statuses.Running) {
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		op.RequestID = requestID
@@ -214,7 +214,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			op.CreatedAt = time.Now().UTC()
 		}
 		if err := server.Operations.Create(request.Context(), op); err != nil {
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		writeJSON(response, http.StatusAccepted, map[string]any{
@@ -225,7 +225,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	case strings.HasPrefix(path, server.Management.Paths.Operations+"/") && request.Method == http.MethodGet:
 		id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
 		if server.Operations.Store == nil {
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		operation, err := server.Operations.Get(request.Context(), id)
@@ -235,7 +235,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 				writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
 				return
 			}
-			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
 		result := map[string]any{
@@ -256,12 +256,12 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 
 func (server *Server) handleGroupList(response http.ResponseWriter, request *http.Request, requestID string) {
 	if server.GroupService.Store == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	groups, err := server.GroupService.List(request.Context())
 	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	items := make([]map[string]any, 0, len(groups.Items))
@@ -310,7 +310,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	}
 	validID, err := regexp.MatchString(server.Management.Paths.GroupIDPattern, id)
 	if err != nil {
-		fail(server.Management.Codes.RegistryUnavailable)
+		fail(server.Management.Codes.ManagementUnavailable)
 		return
 	}
 	if !validID {
@@ -318,7 +318,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 		return
 	}
 	if server.GroupService.Store == nil {
-		fail(server.Management.Codes.RegistryUnavailable)
+		fail(server.Management.Codes.ManagementUnavailable)
 		return
 	}
 	auditRecord := models.AuditRecord{
@@ -340,7 +340,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 			fail(server.Management.Codes.GroupAlreadyExists)
 			return
 		}
-		fail(server.Management.Codes.RegistryUnavailable)
+		fail(server.Management.Codes.ManagementUnavailable)
 		return
 	}
 	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
@@ -351,7 +351,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 
 func (server *Server) handleGroupGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if server.GroupService.Store == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	id := strings.TrimPrefix(path, server.Management.Paths.GroupByID)
@@ -366,7 +366,7 @@ func (server *Server) handleGroupGet(response http.ResponseWriter, request *http
 			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
 			return
 		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	result := server.groupResponse(group)
@@ -376,7 +376,7 @@ func (server *Server) handleGroupGet(response http.ResponseWriter, request *http
 
 func (server *Server) handleGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if server.GroupService.Store == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	suffix := server.Management.Paths.GroupIDSeparator + server.Management.Paths.GroupReleases
@@ -406,7 +406,7 @@ func (server *Server) handleGroupReleases(response http.ResponseWriter, request 
 			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
 			return
 		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	items := make([]map[string]any, 0, len(page.Items))
@@ -429,7 +429,7 @@ func (server *Server) handleGroupReleases(response http.ResponseWriter, request 
 
 func (server *Server) handleGroupRelease(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if server.GroupService.Store == nil || server.GroupService.ContentReader == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	suffix := server.Management.Paths.GroupIDSeparator + server.Management.Paths.GroupReleases + server.Management.Paths.GroupIDSeparator
@@ -446,7 +446,7 @@ func (server *Server) handleGroupRelease(response http.ResponseWriter, request *
 			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
 			return
 		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	revision := detail.Revision
@@ -473,7 +473,7 @@ func (server *Server) handleGroupRelease(response http.ResponseWriter, request *
 
 func (server *Server) handleGroupPublish(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
 	if server.GroupReleases == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupReleases)
@@ -487,11 +487,20 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		return
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, server.GroupReleasePolicy.RequestLimitBytes)
-	metadata, caddyfile, err := readGroupReleaseMultipart(multipart.NewReader(request.Body, parameters["boundary"]), server.GroupReleasePolicy, server.Management)
+	metadata, caddyfile, artifact, err := readGroupReleaseMultipart(multipart.NewReader(request.Body, parameters["boundary"]), server.GroupReleasePolicy, server.Management)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
+			return
+		}
+		var archiveError models.GroupReleaseArchiveError
+		if errors.As(err, &archiveError) {
+			if archiveError.TooLarge {
+				server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
+				return
+			}
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactInvalidCode, requestID)
 			return
 		}
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
@@ -503,7 +512,7 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		IdempotencyScope:        server.GroupReleasePolicy.ScopePrefix + groupID + server.GroupReleasePolicy.ScopeSuffix,
 		ExpectedCurrentRevision: metadata.ExpectedCurrentRevision,
 		IdempotencyWindow:       server.GroupReleasePolicy.IdempotencyWindow,
-		Caddyfile:               caddyfile,
+		Caddyfile:               caddyfile, Artifact: artifact,
 	})
 	if err != nil {
 		var conflict models.GroupRevisionConflict
@@ -526,7 +535,16 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.CaddyAdaptFailedCode, requestID)
 			return
 		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		var archiveError models.GroupReleaseArchiveError
+		if errors.As(err, &archiveError) {
+			if archiveError.TooLarge {
+				server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
+				return
+			}
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactInvalidCode, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
 	state := operation.State
@@ -545,9 +563,9 @@ type groupReleaseMetadata struct {
 	ExpectedCurrentRevision *string
 }
 
-func readGroupReleaseMultipart(reader *multipart.Reader, policy models.GroupReleasePolicy, management config.ManagementWords) (groupReleaseMetadata, []byte, error) {
+func readGroupReleaseMultipart(reader *multipart.Reader, policy models.GroupReleasePolicy, management config.ManagementWords) (groupReleaseMetadata, []byte, []byte, error) {
 	var result groupReleaseMetadata
-	var metadataBytes, caddyfile []byte
+	var metadataBytes, caddyfile, artifact []byte
 	metadataSeen, caddyfileSeen := false, false
 	for {
 		part, err := reader.NextPart()
@@ -555,56 +573,75 @@ func readGroupReleaseMultipart(reader *multipart.Reader, policy models.GroupRele
 			break
 		}
 		if err != nil {
-			return result, nil, err
+			return result, nil, nil, err
 		}
 		contents, err := io.ReadAll(io.LimitReader(part, policy.RequestLimitBytes+1))
 		_ = part.Close()
 		if err != nil || int64(len(contents)) > policy.RequestLimitBytes {
-			return result, nil, errors.New(policy.InvalidConfiguration)
+			return result, nil, nil, errors.New(policy.InvalidConfiguration)
 		}
 		switch part.FormName() {
 		case policy.MetadataPart:
 			if metadataSeen {
-				return result, nil, errors.New(policy.InvalidConfiguration)
+				return result, nil, nil, errors.New(policy.InvalidConfiguration)
+			}
+			partType, _, typeErr := mime.ParseMediaType(part.Header.Get("Content-Type"))
+			if typeErr != nil || partType != policy.MetadataContentType {
+				return result, nil, nil, errors.New(policy.InvalidConfiguration)
 			}
 			metadataSeen = true
 			metadataBytes = contents
 		case policy.CaddyfilePart:
 			if caddyfileSeen || !utf8.Valid(contents) {
-				return result, nil, errors.New(policy.InvalidConfiguration)
+				return result, nil, nil, errors.New(policy.InvalidConfiguration)
+			}
+			partType, _, typeErr := mime.ParseMediaType(part.Header.Get("Content-Type"))
+			if typeErr != nil || partType != policy.CaddyfileContentType {
+				return result, nil, nil, errors.New(policy.InvalidConfiguration)
 			}
 			caddyfileSeen = true
 			caddyfile = contents
 		case policy.ArtifactPart:
-			return result, nil, errors.New(policy.InvalidConfiguration)
+			if artifact != nil {
+				return result, nil, nil, models.GroupReleaseArchiveError{Cause: errors.New(policy.InvalidConfiguration)}
+			}
+			partType, _, typeErr := mime.ParseMediaType(part.Header.Get("Content-Type"))
+			fileName := part.FileName()
+			if typeErr != nil || partType != policy.ArtifactContentType || !strings.HasSuffix(strings.ToLower(fileName), policy.ArtifactSuffix) || strings.ContainsAny(fileName, "/\\") {
+				return result, nil, nil, models.GroupReleaseArchiveError{Cause: errors.New(policy.InvalidConfiguration)}
+			}
+			if int64(len(contents)) > policy.CompressedArtifactLimitBytes {
+				return result, nil, nil, models.GroupReleaseArchiveError{Cause: errors.New(policy.InvalidConfiguration), TooLarge: true}
+			}
+			artifact = contents
 		default:
-			return result, nil, errors.New(policy.InvalidConfiguration)
+			return result, nil, nil, errors.New(policy.InvalidConfiguration)
 		}
 	}
 	if !metadataSeen || !caddyfileSeen || len(caddyfile) == 0 {
-		return result, nil, errors.New(policy.InvalidConfiguration)
+		return result, nil, nil, errors.New(policy.InvalidConfiguration)
 	}
 	fields := make(map[string]json.RawMessage)
 	if err := json.Unmarshal(metadataBytes, &fields); err != nil || len(fields) != 2 {
-		return result, nil, errors.New(policy.InvalidConfiguration)
+		return result, nil, nil, errors.New(policy.InvalidConfiguration)
 	}
 	keyJSON, hasKey := fields[policy.MetadataIdempotencyKeyField]
 	expectedJSON, hasExpected := fields[policy.MetadataExpectedRevisionField]
 	if !hasKey || !hasExpected || json.Unmarshal(keyJSON, &result.IdempotencyKey) != nil || len(result.IdempotencyKey) < management.Idempotency.KeyMin || len(result.IdempotencyKey) > management.Idempotency.KeyChars || !ascii(result.IdempotencyKey) {
-		return result, nil, errors.New(policy.InvalidConfiguration)
+		return result, nil, nil, errors.New(policy.InvalidConfiguration)
 	}
 	var expected *string
 	if err := json.Unmarshal(expectedJSON, &expected); err != nil {
-		return result, nil, errors.New(policy.InvalidConfiguration)
+		return result, nil, nil, errors.New(policy.InvalidConfiguration)
 	}
 	if expected != nil {
 		valid, err := regexp.MatchString(policy.RevisionIDPattern, *expected)
 		if err != nil || !valid {
-			return result, nil, errors.New(policy.InvalidConfiguration)
+			return result, nil, nil, errors.New(policy.InvalidConfiguration)
 		}
 		result.ExpectedCurrentRevision = expected
 	}
-	return result, caddyfile, nil
+	return result, caddyfile, artifact, nil
 }
 
 func (server *Server) groupResponse(group models.Group) map[string]any {

@@ -11,5 +11,6 @@ type GroupReleaseCommand struct {
 	ExpectedCurrentRevision *string
 	IdempotencyWindow       time.Duration
 	Caddyfile               []byte
+	Artifact                []byte
 	Now                     time.Time
 }
