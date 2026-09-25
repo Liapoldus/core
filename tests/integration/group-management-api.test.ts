@@ -22,19 +22,19 @@ describe("group Management API reads", () => {
         listStatus: 200,
         listRequestID: true,
         groups: [
-          { id: "application-a", kind: "application", active: true, currentRevision: "revision-a", previousRevision: null, state: "ready" },
+          { id: "application-a", kind: "application", active: true, currentRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previousRevision: null, state: "ready" },
           { id: "system", kind: "system", active: true, currentRevision: null, previousRevision: null, state: "empty" },
         ],
         getStatus: 200,
         getRequestID: true,
-        getGroup: { id: "application-a", kind: "application", active: true, currentRevision: "revision-a", previousRevision: null, state: "ready" },
+        getGroup: { id: "application-a", kind: "application", active: true, currentRevision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", previousRevision: null, state: "ready" },
         missingStatus: 404,
         missingProblem: { code: "group_not_found", status: 404, requestId: true, noStoreDetail: true },
         unauthorizedStatus: 401,
         releaseListStatus: 200,
         releaseListRequestID: true,
         releases: [
-          { id: "revision-a", groupId: "application-a", caddyfileDigest: "digest-a", artifactDigest: null, actor: "", createdAt: expect.any(String) },
+          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", artifactDigest: null, actor: "", createdAt: expect.any(String) },
         ],
         releasePathsHidden: true,
       });

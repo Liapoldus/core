@@ -140,6 +140,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
 		server.handleGroupCreate(response, request, requestID)
+	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
+		server.handleGroupReleases(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
 		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
@@ -306,6 +308,59 @@ func (server *Server) handleGroupGet(response http.ResponseWriter, request *http
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
 	writeJSON(response, http.StatusOK, result)
+}
+
+func (server *Server) handleGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.GroupService.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	suffix := server.Management.Paths.GroupIDSeparator + server.Management.Paths.GroupReleases
+	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), suffix)
+	if groupID == "" || strings.Contains(groupID, server.Management.Paths.GroupIDSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+		return
+	}
+	limit := 0
+	if rawLimit := request.URL.Query().Get(server.Management.JSON.Limit); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		limit = parsed
+	}
+	page, err := server.GroupService.ListRevisions(request.Context(), groupID, request.URL.Query().Get(server.Management.JSON.Cursor), limit)
+	if err != nil {
+		var notFound models.GroupNotFound
+		if errors.As(err, &notFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		var invalidPage models.GroupRevisionPageError
+		if errors.As(err, &invalidPage) {
+			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	items := make([]map[string]any, 0, len(page.Items))
+	for _, revision := range page.Items {
+		items = append(items, map[string]any{
+			server.Management.JSON.ID:              revision.ID,
+			server.Management.JSON.GroupID:         revision.GroupID,
+			server.Management.JSON.CaddyfileDigest: revision.CaddyfileDigest,
+			server.Management.JSON.ArtifactDigest:  revision.ArtifactDigest,
+			server.Management.JSON.CreatedAt:       revision.CreatedAt,
+			server.Management.JSON.Actor:           revision.Actor,
+		})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		server.Management.JSON.Items:      items,
+		server.Management.JSON.NextCursor: page.NextCursor,
+		server.Management.JSON.RequestID:  requestID,
+	})
 }
 
 func (server *Server) groupResponse(group models.Group) map[string]any {

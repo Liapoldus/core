@@ -71,11 +71,11 @@ func main() {
 		panic(err)
 	}
 	if _, err := store.CreateRevision(ctx, models.GroupRevision{
-		ID: "revision-a", GroupID: "application-a", CaddyfileDigest: "digest-a", CaddyfilePath: "revision-a.caddyfile",
+		ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", GroupID: "application-a", CaddyfileDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", CaddyfilePath: "revision-a.caddyfile",
 	}); err != nil {
 		panic(err)
 	}
-	if _, err := store.AdvanceCurrent(ctx, "application-a", "revision-a", nil); err != nil {
+	if _, err := store.AdvanceCurrent(ctx, "application-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil); err != nil {
 		panic(err)
 	}
 	management, err := config.LoadManagement()

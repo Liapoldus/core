@@ -144,6 +144,7 @@ type ManagementWords struct {
 		Audit            string `yaml:"audit"`
 		Groups           string `yaml:"groups"`
 		GroupByID        string `yaml:"groupByID"`
+		GroupReleases    string `yaml:"groupReleases"`
 		GroupIDSeparator string `yaml:"groupIDSeparator"`
 		GroupIDPattern   string `yaml:"groupIDPattern"`
 	} `yaml:"paths"`
@@ -166,6 +167,9 @@ type ManagementWords struct {
 		IdempotencyKey     string `yaml:"idempotencyKey"`
 		ExpectedRevision   string `yaml:"expectedRevision"`
 		ID                 string `yaml:"id"`
+		GroupID            string `yaml:"groupId"`
+		CaddyfileDigest    string `yaml:"caddyfileDigest"`
+		ArtifactDigest     string `yaml:"artifactDigest"`
 		ReplyTo            string `yaml:"replyTo"`
 		Status             string `yaml:"status"`
 		Slug               string `yaml:"slug"`

@@ -170,14 +170,14 @@ func (store *SQLiteGroupStore) ListRevisions(ctx context.Context, groupID string
 		limit = store.queries.DefaultRevisionLimit
 	}
 	if limit < 1 || limit > store.queries.MaximumRevisionLimit {
-		return models.GroupRevisionList{}, errors.New(store.queries.InvalidRevisionLimit)
+		return models.GroupRevisionList{}, models.GroupRevisionPageError{Message: store.queries.InvalidRevisionLimit}
 	}
 	var groupExists bool
 	if err := store.database.QueryRowContext(ctx, store.queries.SelectGroupExists, groupID).Scan(&groupExists); err != nil {
 		return models.GroupRevisionList{}, err
 	}
 	if !groupExists {
-		return models.GroupRevisionList{}, errors.New(store.queries.GroupNotFound)
+		return models.GroupRevisionList{}, models.GroupNotFound{Message: store.queries.GroupNotFound}
 	}
 	var rows *sql.Rows
 	var err error
@@ -187,7 +187,7 @@ func (store *SQLiteGroupStore) ListRevisions(ctx context.Context, groupID string
 	} else {
 		createdAt, revisionID, valid := decodeRevisionCursor(cursor, store.queries.CursorSeparator)
 		if !valid {
-			return models.GroupRevisionList{}, errors.New(store.queries.InvalidRevisionCursor)
+			return models.GroupRevisionList{}, models.GroupRevisionPageError{Message: store.queries.InvalidRevisionCursor}
 		}
 		rows, err = store.database.QueryContext(ctx, store.queries.SelectRevisionsAfterCursor, groupID, createdAt, createdAt, revisionID, queryLimit)
 	}

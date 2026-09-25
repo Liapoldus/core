@@ -12,6 +12,8 @@
 - `/api/groups` и `/api/groups/{id}` читают SQLite. `POST /api/groups` создаёт
   application group, проверяет опубликованные ID/idempotency constraints,
   возвращает `201`, `400 invalid_request` или `409 group_already_exists`.
+- `GET /api/groups/{id}/releases` выдаёт metadata-only summaries из SQLite с
+  cursor pagination; response не раскрывает Caddyfile или пути артефактов.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
