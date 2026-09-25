@@ -2,8 +2,8 @@ package plugins
 
 import "github.com/Liapoldus/pluginprotocol/pluginv1"
 
-func ManifestSupportsCall(manifest *pluginv1.Manifest, capability string) bool {
-	if manifest == nil || capability == "" {
+func ManifestSupportsMode(manifest *pluginv1.Manifest, capability string, requiredMode pluginv1.InvocationMode) bool {
+	if manifest == nil || capability == "" || !supportedInvocationMode(requiredMode) {
 		return false
 	}
 	for _, descriptor := range manifest.GetCapabilityDescriptors() {
@@ -11,11 +11,15 @@ func ManifestSupportsCall(manifest *pluginv1.Manifest, capability string) bool {
 			continue
 		}
 		for _, mode := range descriptor.GetModes() {
-			if mode == pluginv1.InvocationMode_INVOCATION_MODE_CALL {
+			if mode == requiredMode {
 				return true
 			}
 		}
 		return false
 	}
 	return false
+}
+
+func ManifestSupportsCall(manifest *pluginv1.Manifest, capability string) bool {
+	return ManifestSupportsMode(manifest, capability, pluginv1.InvocationMode_INVOCATION_MODE_CALL)
 }

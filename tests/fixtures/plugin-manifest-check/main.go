@@ -10,8 +10,10 @@ import (
 )
 
 type input struct {
-	Manifest  json.RawMessage `json:"manifest"`
-	Required  []string        `json:"required"`
+	Manifest   json.RawMessage `json:"manifest"`
+	Required   []string        `json:"required"`
+	Capability string          `json:"capability"`
+	Mode       string          `json:"mode"`
 }
 
 func main() {
@@ -24,7 +26,12 @@ func main() {
 		os.Exit(1)
 	}
 	err := plugins.ValidateManifest(&manifest, request.Required)
-	if err := json.NewEncoder(os.Stdout).Encode(map[string]bool{"valid": err == nil}); err != nil {
+	result := map[string]bool{"valid": err == nil}
+	if request.Mode != "" {
+		mode, ok := pluginv1.InvocationMode_value[request.Mode]
+		result["modeSupported"] = ok && plugins.ManifestSupportsMode(&manifest, request.Capability, pluginv1.InvocationMode(mode))
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		os.Exit(1)
 	}
 }
