@@ -4,7 +4,7 @@
 [Перепроектирование Gateway v1](https://liapoldus.github.io/gateway/architecture/v1-migration-roadmap).
 Здесь перечислены только незавершённые задачи core.
 
-## Актуальный прогресс — 25.09.2026
+## Актуальный прогресс — 26.09.2026
 
 - Production `serve` использует bootstrap + SQLite, а Management API защищён
   SQLite-backed Bearer verifier. Пути state/artifacts разрешаются относительно
@@ -31,9 +31,9 @@
 - `OperationStore` подключён через domain port, application service и SQLite
   adapter. Restart operation и `GET /api/operations/{operationId}` используют
   durable store; TS integration проверяет закрытие/повторное открытие SQLite,
-  неизвестный ID (`404`) и отсутствие opaque result/problem payloads. Lifecycle
-  transitions, recovery и audit operations остаются незавершёнными; это не
-  реализует group publish, чей acceptance-test остаётся pending.
+  неизвестный ID (`404`) и отсутствие opaque result/problem payloads. Group
+  publish/rollback используют durable operation lifecycle; generic restart
+  transitions, recovery и audit для остальных mutations остаются незавершёнными.
 - Добавлен SQLite foundation для group release coordination: durable journal,
   CAS проверки expected current revision, reservation для idempotency key с
   digest-only key storage, одинаковый запрос возвращает исходный operation,
@@ -44,15 +44,16 @@
   Caddyfile адаптируется до reservation, archive извлекается в immutable
   staging с digest и ограничениями пути/размера/количества/ratio. Небезопасная
   запись проверяется TS integration и возвращает `422 artifact_invalid` до
-  activation. Публикация синхронизирует snapshot через Caddy activator и commit
-  обновляет current/previous. Полный positive archive conformance, уникальная
-  reservation для конкурентных CAS, rollback API и production crash-recovery
-  остаются незавершёнными; этот endpoint не объявляется готовым.
-- Проверки текущего operation-slice: focused TS integration passed; `go vet`,
-  `go build`, macOS/Linux ARM64 builds и официальный Docker architecture lint
-  passed. `make check` останавливается на одном заранее сохранённом group-publish
-  red-test: валидный multipart пока получает `404` вместо ожидаемого `202`; прочие
-  29 TS-файлов / 49 тестов зелёные.
+  activation. Публикация синхронизирует snapshot через Caddy activator; rollback
+  активирует previous revision и после успеха атомарно меняет current/previous.
+  TS E2E проверяет safe archive frontend digest/manifest, traversal rejection,
+  rollback, idempotent retry и stale-current conflict. Не доказаны positive
+  conformance всех archive limits/collisions, сериализация concurrent same-CAS
+  reservations и production startup crash-recovery.
+- Текущий focused group suite: archive, rollback, release-store и Management API
+  tests проходят; также проходят `go vet ./...`, `go build ./...` и
+  `git diff --check`. Полный `make check`, кросс-сборки и Docker smoke ещё нужно
+  повторить после объединения параллельных изменений.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
@@ -84,19 +85,21 @@
   документационные требования к Gateway/Caddy/plugin readiness, access и
   application logs, metrics, traces и общей redaction policy остаются в v1
   roadmap и должны быть реализованы заново на новых runtime adapters.
-- Последняя проверка после cleanup: Vitest 25 files / 43 tests, architecture
-  lint без предупреждений, `go vet ./...`, `go build ./...` и
-  `git diff --check` прошли. Это не означает готовность Gateway v1.
+- Ранее после cleanup проходил Vitest 25 files / 43 tests; этот результат
+  исторический и не заменяет актуальный полный `make check`. Ни один из этих
+  срезов не означает готовность Gateway v1.
 
 ## Документальный контракт и тестовый фундамент
 
 - [x] Удалить недоступные legacy config/site/release handlers и связанные с
   ними неиспользуемые модели/контрактные поля. Целевые group release, plugin,
   TLS и Caddy Admin surfaces остаются незавершёнными задачами ниже.
-- [ ] Создать отдельные TypeScript unit/integration/E2E suites под tests для
+- [ ] Продолжать отдельные TypeScript unit/integration/E2E suites под tests для
   bootstrap rejection, SQLite, group multipart, native Caddyfile adaptation,
-  Caddy Admin checkpoint/drift/reconcile, direct Caddy-to-plugin dispatch и
-  recovery.
+  external-Caddy lifecycle, Caddy Admin checkpoint/drift/reconcile, direct
+  Caddy-to-plugin dispatch и crash recovery. Уже есть исполняемые tests для
+  Management auth/bootstrap rejection, group publish/archive/rollback,
+  Caddy-L4 TCP/UDP, HTTP Stream/WebSocket/SSE и external-Caddy restart/status.
 - [ ] Добавить TS red/green coverage до расширения целевого data/control-plane:
   multipart group publish/rollback, Caddy adapt/load and atomic snapshot,
   external Caddy process, plugin replica readiness/DispatchApply, Admin API
@@ -108,8 +111,8 @@
 ## Bootstrap, persistence и Management API
 
 - [ ] Завершить Management API semantics и storage для операций, audit,
-  idempotency и Caddy checkpoints; текущий bootstrap slice покрывает только
-  service-key verifier и группы.
+  idempotency и Caddy checkpoints; реализованы Bearer service-key verifier,
+  group/release operations и часть durable audit, но не все mutation families.
 - [ ] Расширить SQLite audit events на все management mutations и durable
   operation transitions; сейчас `group.create` success атомарен с audit row,
   а failed attempts записываются до ответа. Обеспечить такую же транзакционную
@@ -136,31 +139,39 @@
 
 - [ ] Собрать embedded Caddy и запускать compatible external custom Caddy binary
   как обязательные v1 variants; stock Caddy недопустим.
+- [x] External-Caddy runtime запускается из `serve` с закрытым локальным
+  control socket; focused E2E проверяет startup/restart/status. Embedded/external
+  parity, module/build identity и полная deployment conformance остаются открыты.
 - [ ] Зафиксировать Caddy/xcaddy/module versions, build identity/module
   manifest, supply-chain verification и общий parity matrix.
-- [ ] Встроить обязательный Caddy-L4 в оба variants и пройти TCP/UDP conformance
-  для macOS/Linux; провал блокирует v1, Go net/gnet fallback не разрешать.
-- [ ] Реализовать native Caddyfile validation/adaptation, system group и
-  стабильную composition application groups без Gateway route DSL.
+- [x] Caddy-L4 TCP/UDP plugin dispatch прошёл focused E2E; общий parity gate
+  embedded/external variants на macOS/Linux остаётся обязательным. Провал
+  блокирует v1, Go net/gnet fallback не разрешать.
+- [ ] Довести native Caddyfile validation/adaptation, system group и стабильную
+  composition application groups до production startup/recovery без Gateway
+  route DSL.
 - [ ] Довести multipart group release до полного v1: один безопасный `.tar.gz`,
   frontend roots, архивные limits/normalization/digests, plugin binding
   validation, immutable staging, full-snapshot activation и rollback current/
-  previous. Текущий вертикальный срез уже принимает Caddyfile-only multipart,
-  проверяет Caddy adaptation, CAS/idempotency в SQLite, сохраняет revision и
-  operation и активирует composed snapshot через Caddy activator. Архив
-  проверяется/стадируется, а current/previous переключаются в SQLite transaction;
-  unique in-flight CAS reservation, rollback API и crash recovery между
-  activation/commit ещё не доказаны production integration tests.
-- [x] TS integration фиксирует Caddyfile-only multipart
+  previous. Текущий вертикальный срез принимает multipart, проверяет Caddy
+  adaptation, CAS/idempotency в SQLite, сохраняет revision/operation и активирует
+  composed snapshot через Caddy activator. Archive staging/manifest, rollback API
+  и SQLite pointer swap реализованы и проверяются focused E2E. Не доказаны unique
+  in-flight CAS reservation и crash recovery между activation/commit.
+- [x] TS integration фиксирует multipart
   `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
   Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
-  SQLite; fixture проходит focused Vitest suite. Это не покрывает archive или
-  production traffic activation.
-- [x] TS integration red-test: reject traversal archive entry as
-  `422 artifact_invalid` до activation. Добавить positive safe `.tar.gz`
-  digest/extraction,
-  gzip integrity, duplicate/case-collision/NFC/path depth/length, byte, ratio и
-  entry limit tests; текущий единственный архивный E2E проверяет traversal.
+  SQLite; archive/rollback покрыты отдельными focused tests. Production traffic
+  activation остаётся за пределами API-fixture activator.
+- [x] TS integration red-tests проверяют traversal rejection `422
+  artifact_invalid` до activation и positive safe `.tar.gz` staging, archive
+  digest и frontend manifest digest.
+- [ ] Добавить archive vectors для gzip integrity, duplicate/case-collision/NFC,
+  path depth/length, compressed/uncompressed byte, ratio и entry limits.
+- [x] TS integration проверяет `POST /api/groups/{id}/rollback`: durable
+  operation, previous activation, CAS conflict, idempotent retry и атомарный swap
+  current/previous. Нет отдельного `current`/`previous` endpoint в контракте;
+  pointer metadata читается через Group API.
 - [x] TS integration red-test `operation-persistence.test.ts` требует, чтобы
   Operation, созданная существующим restart endpoint, переживала закрытие и
   повторное открытие SQLite, а неизвестный ID давал OpenAPI Problem 404; SQLite
@@ -179,16 +190,26 @@
   dispatch, local process supervision и secure remote mTLS mode ещё не
   реализованы. Текущая SQLite inventory не сохраняет executable/args/env,
   restart/grant/limit policy и remote TLS identity references; gRPC dial ещё
-  insecure. Нужен отдельный test-first slice: contract + SQLite migration,
-  local lifecycle/restart и remote mTLS identity/revocation tests.
+  insecure. До схемы и миграции заблокировано: `pluginprotocol` `launch.json`
+  задаёт только loopback endpoint/environment, а не `binary`, `args`, env
+  secret references, restart/timeout/resource fields; `remote-deployment.json`
+  требует отдельные identities и file references, но не задаёт допустимый
+  syntax/resolver/ownership для этих references. Документация
+  `gateway/configuration/secrets.md` прямо требует закрепить resolver contract
+  до реализации. Сначала normative docs/schema должны определить эти поля,
+  единицы/границы лимитов и secret-reference grammar; затем — TS red tests,
+  SQLite migration, local lifecycle/restart и remote mTLS identity/revocation.
+- HTTP `Stream` contract/handler фиксирует route concurrency, но отсутствуют
+  configurable per-instance shared concurrency, idle-timeout и max-duration
+  controls. Добавить их отдельным protocol/runtime contract + TS conformance;
+  unary timeout не использовать для долгоживущих streams.
 
-- Имеется ограниченный, пока не подключённый к `serve` Caddy `call` slice:
-  `StartCaddyfileWithPlugins`, per-config handshake и
-  `liapoldus_plugin <instance> <capability> call`. В этом slice реализованы
-  protocol-owned inbound cookie allow-list и атомарные typed cookie response
-  actions; production startup composition, snapshot generations и
-  remote-replica fan-out не подключены. Сохранить этот код при подключении
-  composition root и расширять по red TS тестам.
+- Caddy handler валидирует capability invocation modes `call`, `http-stream`,
+  `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,
+  WebSocket и SSE focused E2E проходят 3/3, TCP/UDP — отдельный Caddy-L4 E2E.
+  Route concurrency guard уже есть, но configurable per-instance shared limit,
+  idle-timeout и max-duration остаются TODO выше. Full serve dispatch generation,
+  local plugin launch/TLS settings и remote-replica fan-out ещё не подключены.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
   manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments
@@ -233,20 +254,20 @@
   macOS/Linux builds и подходящие Docker/Caddy variant smoke suites.
 - [ ] Добавить immutable dispatch generations и external-Caddy private Admin
   API/IPC synchronization; failure сохраняет прежний runtime generation.
-- [ ] Проверять все Caddyfile binding `instance/capability/mode` по
-  capability→modes descriptor из `pluginprotocol` Manifest до активации
-  revision. Закоммиченный Caddy adapter сейчас проверяет только `call`; эту
-  проверку нужно перенести/подключить в будущую публикацию и активацию group
-  revision, а остальные invocation modes пока не поддержаны.
-- [ ] Сделать golden vectors исполняемыми conformance-сценариями: текущая
-  architecture-проверка подтверждает только структуру и checksum списка, но не
-  поведение Gateway.
+- [ ] Подключить capability→modes descriptor из `pluginprotocol` Manifest к
+  group publish pre-activation validation; текущий Caddy handler знает mode
+  registry, но management/serve composition не валидирует весь published group
+  against live instance Manifest до activation.
+- [ ] Расширять исполняемые golden-vector conformance: сейчас два vectors
+  реально исполняются (bootstrap rejection и Management authentication); прочие
+  vectors пока проверяются только архитектурно/структурно.
 - [ ] Исправить release workflow: он требует минимум 9 файлов в
   `contracts/v1`, хотя manifest перечисляет 7 payload-файлов и каталог содержит
   8 файлов. Проверять соответствие package contents manifest, а не фиксированный
   порог.
-- [ ] Подключить прямой Caddy gRPC `Call`/`Stream` boundary, включая HTTP bidi,
-  WebSocket, SSE и L4; application/control plane не буферизует пользовательский
-  body.
+- [ ] Завершить прямой Caddy gRPC `Call`/`Stream` production composition:
+  HTTP bidi, WebSocket, SSE и L4 focused handler/E2E slices уже есть, но full
+  serve generation lifecycle, cancellation/backpressure/limits и deployment
+  parity остаются не закрыты end-to-end.
 - [ ] Не объявлять v1 готовым без полного cross-variant HTTP/TLS/ACME/L4/plugin/
   SQLite/recovery/security/admin-proxy conformance.
