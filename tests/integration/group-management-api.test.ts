@@ -43,6 +43,10 @@ describe("group Management API reads", () => {
         publish: expect.any(Object),
         publishRetryStatus: expect.any(Number),
         publishRetry: expect.any(Object),
+        operationAfterReopenStatus: expect.any(Number),
+        operationAfterReopen: expect.any(Object),
+        groupAfterReopenStatus: expect.any(Number),
+        currentAfterReopen: expect.any(String),
         idempotencyConflictStatus: expect.any(Number),
         idempotencyConflictCode: expect.any(String),
         invalidCaddyfileStatus: expect.any(Number),
@@ -127,6 +131,34 @@ describe("group Management API reads", () => {
       expect(report.publishRetry.operationId).toBe(report.publish.operationId);
       expect(report.idempotencyConflictStatus).toBe(409);
       expect(report.idempotencyConflictCode).toBe("idempotency_conflict");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("persists the accepted release operation and revision metadata across SQLite reopen", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-group-publish-reopen-"));
+    try {
+      const result = await execFileAsync(
+        "go",
+        ["run", "./tests/fixtures/group-management-api", join(directory, "gateway.db")],
+        { cwd: coreRoot },
+      );
+      const report = JSON.parse(result.stdout) as {
+        publishStatus: number;
+        operationAfterReopenStatus: number;
+        operationAfterReopen: { id?: string; kind?: string; state?: string };
+        groupAfterReopenStatus: number;
+        currentAfterReopen: string | null;
+      };
+
+      expect(report.publishStatus).toBe(202);
+      expect(report.operationAfterReopenStatus).toBe(200);
+      expect(report.operationAfterReopen.id).toBeTruthy();
+      expect(report.operationAfterReopen.kind).toBe("group.publish");
+      expect(report.operationAfterReopen.state).toMatch(/^(pending|running|succeeded|failed)$/);
+      expect(report.groupAfterReopenStatus).toBe(200);
+      expect(report.currentAfterReopen).not.toBeNull();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

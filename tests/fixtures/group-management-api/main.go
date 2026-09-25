@@ -28,33 +28,37 @@ type groupView struct {
 }
 
 type report struct {
-	ListStatus                int              `json:"listStatus"`
-	ListRequestID             bool             `json:"listRequestID"`
-	Groups                    []groupView      `json:"groups"`
-	GetStatus                 int              `json:"getStatus"`
-	GetRequestID              bool             `json:"getRequestID"`
-	GetGroup                  groupView        `json:"getGroup"`
-	MissingStatus             int              `json:"missingStatus"`
-	MissingProblem            problemView      `json:"missingProblem"`
-	UnauthorizedStatus        int              `json:"unauthorizedStatus"`
-	ReleaseListStatus         int              `json:"releaseListStatus"`
-	ReleaseListRequestID      bool             `json:"releaseListRequestID"`
-	Releases                  []map[string]any `json:"releases"`
-	ReleasePathsHidden        bool             `json:"releasePathsHidden"`
-	ReleaseDetailStatus       int              `json:"releaseDetailStatus"`
-	ReleaseDetailSafe         bool             `json:"releaseDetailSafe"`
-	PublishStatus             int              `json:"publishStatus"`
-	Publish                   map[string]any   `json:"publish"`
-	PublishRetryStatus        int              `json:"publishRetryStatus"`
-	PublishRetry              map[string]any   `json:"publishRetry"`
-	IdempotencyConflictStatus int              `json:"idempotencyConflictStatus"`
-	IdempotencyConflictCode   string           `json:"idempotencyConflictCode"`
-	InvalidCaddyfileStatus    int              `json:"invalidCaddyfileStatus"`
-	InvalidCaddyfileCode      string           `json:"invalidCaddyfileCode"`
-	PointersAfterInvalid      *string          `json:"pointersAfterInvalid"`
-	StaleRevisionStatus       int              `json:"staleRevisionStatus"`
-	StaleRevisionCode         string           `json:"staleRevisionCode"`
-	PointersAfterStale        *string          `json:"pointersAfterStale"`
+	ListStatus                 int              `json:"listStatus"`
+	ListRequestID              bool             `json:"listRequestID"`
+	Groups                     []groupView      `json:"groups"`
+	GetStatus                  int              `json:"getStatus"`
+	GetRequestID               bool             `json:"getRequestID"`
+	GetGroup                   groupView        `json:"getGroup"`
+	MissingStatus              int              `json:"missingStatus"`
+	MissingProblem             problemView      `json:"missingProblem"`
+	UnauthorizedStatus         int              `json:"unauthorizedStatus"`
+	ReleaseListStatus          int              `json:"releaseListStatus"`
+	ReleaseListRequestID       bool             `json:"releaseListRequestID"`
+	Releases                   []map[string]any `json:"releases"`
+	ReleasePathsHidden         bool             `json:"releasePathsHidden"`
+	ReleaseDetailStatus        int              `json:"releaseDetailStatus"`
+	ReleaseDetailSafe          bool             `json:"releaseDetailSafe"`
+	PublishStatus              int              `json:"publishStatus"`
+	Publish                    map[string]any   `json:"publish"`
+	PublishRetryStatus         int              `json:"publishRetryStatus"`
+	PublishRetry               map[string]any   `json:"publishRetry"`
+	OperationAfterReopenStatus int              `json:"operationAfterReopenStatus"`
+	OperationAfterReopen       map[string]any   `json:"operationAfterReopen"`
+	GroupAfterReopenStatus     int              `json:"groupAfterReopenStatus"`
+	CurrentAfterReopen         *string          `json:"currentAfterReopen"`
+	IdempotencyConflictStatus  int              `json:"idempotencyConflictStatus"`
+	IdempotencyConflictCode    string           `json:"idempotencyConflictCode"`
+	InvalidCaddyfileStatus     int              `json:"invalidCaddyfileStatus"`
+	InvalidCaddyfileCode       string           `json:"invalidCaddyfileCode"`
+	PointersAfterInvalid       *string          `json:"pointersAfterInvalid"`
+	StaleRevisionStatus        int              `json:"staleRevisionStatus"`
+	StaleRevisionCode          string           `json:"staleRevisionCode"`
+	PointersAfterStale         *string          `json:"pointersAfterStale"`
 }
 
 type problemView struct {
@@ -107,8 +111,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	operationStore, err := storage.NewSQLiteOperationStore(database)
+	if err != nil {
+		panic(err)
+	}
 	server := &api.Server{
 		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
+		Operations: application.OperationService{Store: operationStore},
 		GroupService: application.GroupService{
 			Store: store, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
 		},
@@ -184,6 +193,48 @@ func main() {
 	if err := json.Unmarshal(pointersAfterStale.Body.Bytes(), &pointersAfterStaleBody); err != nil {
 		panic(err)
 	}
+	operationID, _ := publishBody[management.JSON.OperationID].(string)
+	if err := database.Close(); err != nil {
+		panic(err)
+	}
+	reopenedDatabase, err := storage.OpenSQLite(ctx, os.Args[1], storage.SQLiteOptions{
+		Driver: sqliteContract.Driver, ParentDirectoryMode: sqliteContract.ParentDirectoryMode,
+		DatabaseFileMode: sqliteContract.DatabaseFileMode, MaxOpenConnections: sqliteContract.MaxOpenConnections,
+		MaxIdleConnections: sqliteContract.MaxIdleConnections, SchemaVersion: sqliteContract.SchemaVersion,
+		HasMigrationTableQuery: sqliteContract.HasMigrationTableQuery, MigrationVersionQuery: sqliteContract.MigrationVersionQuery,
+		SchemaVersionError: sqliteContract.SchemaVersionError, Pragmas: sqliteContract.Pragmas,
+	}, sqliteContract.Schema)
+	if err != nil {
+		panic(err)
+	}
+	defer reopenedDatabase.Close()
+	reopenedGroupStore, err := storage.NewSQLiteGroupStore(reopenedDatabase)
+	if err != nil {
+		panic(err)
+	}
+	reopenedOperationStore, err := storage.NewSQLiteOperationStore(reopenedDatabase)
+	if err != nil {
+		panic(err)
+	}
+	reopenedServer := &api.Server{
+		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
+		GroupService: application.GroupService{
+			Store: reopenedGroupStore, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
+		},
+		Operations: application.OperationService{Store: reopenedOperationStore},
+	}
+	operationAfterReopen := perform(reopenedServer.Handler(), http.MethodGet, management.Paths.Operations+"/"+operationID, true)
+	groupAfterReopen := perform(reopenedServer.Handler(), http.MethodGet, "/api/groups/application-a", true)
+	var operationAfterReopenBody map[string]any
+	if err := json.Unmarshal(operationAfterReopen.Body.Bytes(), &operationAfterReopenBody); err != nil {
+		panic(err)
+	}
+	var groupAfterReopenBody struct {
+		CurrentRevision *string `json:"currentRevision"`
+	}
+	if err := json.Unmarshal(groupAfterReopen.Body.Bytes(), &groupAfterReopenBody); err != nil {
+		panic(err)
+	}
 	releasePathsHidden := len(releaseListBody.Items) == 1
 	if releasePathsHidden {
 		_, caddyfilePath := releaseListBody.Items[0]["caddyfilePath"]
@@ -203,6 +254,8 @@ func main() {
 		PublishStatus:       publish.Code,
 		Publish:             publishBody,
 		PublishRetryStatus:  publishRetry.Code, PublishRetry: publishRetryBody,
+		OperationAfterReopenStatus: operationAfterReopen.Code, OperationAfterReopen: operationAfterReopenBody,
+		GroupAfterReopenStatus: groupAfterReopen.Code, CurrentAfterReopen: groupAfterReopenBody.CurrentRevision,
 		IdempotencyConflictStatus: idempotencyConflict.Code, IdempotencyConflictCode: stringField(idempotencyConflictBody, "code"),
 		InvalidCaddyfileStatus: invalidCaddyfile.Code, InvalidCaddyfileCode: stringField(invalidCaddyfileBody, "code"),
 		PointersAfterInvalid: pointersAfterInvalidBody.CurrentRevision,
