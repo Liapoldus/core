@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"sync/atomic"
 
 	"github.com/Liapoldus/pluginprotocol"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
@@ -17,6 +18,7 @@ import (
 type plugin struct {
 	pluginv1.UnimplementedPluginServiceServer
 	server *grpc.Server
+	streams atomic.Uint64
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
@@ -26,7 +28,7 @@ func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.M
 		Capabilities:    []string{"forms.submit", "peer.session"},
 		CapabilityDescriptors: []*pluginv1.CapabilityDescriptor{
 			{Capability: "forms.submit", Modes: []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_CALL}},
-			{Capability: "peer.session", Modes: []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_TCP}},
+			{Capability: "peer.session", Modes: []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_TCP, pluginv1.InvocationMode_INVOCATION_MODE_UDP}},
 		},
 	}, nil
 }
@@ -44,8 +46,10 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 	return &pluginv1.ShutdownResult{Closed: true}, nil
 }
 
-func (*plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage]) error {
+func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage]) error {
 	opened := false
+	transport := pluginv1.StreamTransport_STREAM_TRANSPORT_UNSPECIFIED
+	var streamNumber uint64
 	for {
 		message, err := stream.Recv()
 		if err != nil {
@@ -56,18 +60,24 @@ func (*plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pl
 		}
 		switch body := message.GetBody().(type) {
 		case *pluginv1.StreamMessage_Open:
-			if opened || body.Open.GetTransport() != pluginv1.StreamTransport_STREAM_TRANSPORT_TCP {
-				return fmt.Errorf("invalid TCP stream open")
+			if opened || (body.Open.GetTransport() != pluginv1.StreamTransport_STREAM_TRANSPORT_TCP && body.Open.GetTransport() != pluginv1.StreamTransport_STREAM_TRANSPORT_UDP) {
+				return fmt.Errorf("invalid L4 stream open")
 			}
 			opened = true
+			transport = body.Open.GetTransport()
+			streamNumber = p.streams.Add(1)
 		case *pluginv1.StreamMessage_Data:
 			if !opened || body.Data.GetDirection() != pluginv1.StreamDirection_STREAM_DIRECTION_REQUEST {
-				return fmt.Errorf("invalid TCP stream data")
+				return fmt.Errorf("invalid L4 stream data")
+			}
+			payload := append([]byte(nil), body.Data.GetPayload()...)
+			if transport == pluginv1.StreamTransport_STREAM_TRANSPORT_UDP {
+				payload = append([]byte{byte(streamNumber)}, payload...)
 			}
 			if err := stream.Send(&pluginv1.StreamMessage{
 				Capability: message.GetCapability(),
 				Body: &pluginv1.StreamMessage_Data{Data: &pluginv1.StreamData{
-					Payload:   append([]byte(nil), body.Data.GetPayload()...),
+					Payload:   payload,
 					Direction: pluginv1.StreamDirection_STREAM_DIRECTION_RESPONSE,
 				}},
 			}); err != nil {
@@ -75,14 +85,14 @@ func (*plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pl
 			}
 		case *pluginv1.StreamMessage_Close:
 			if !opened {
-				return fmt.Errorf("TCP stream closed before open")
+				return fmt.Errorf("L4 stream closed before open")
 			}
 			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_Close{Close: body.Close}}); err != nil {
 				return err
 			}
 			return nil
 		default:
-			return fmt.Errorf("unsupported TCP stream frame")
+			return fmt.Errorf("unsupported L4 stream frame")
 		}
 	}
 }
