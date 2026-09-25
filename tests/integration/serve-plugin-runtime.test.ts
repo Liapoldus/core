@@ -106,9 +106,22 @@ describe("serve plugin runtime composition", () => {
 
       const pluginList = await request(address, "/api/plugins", token);
       expect(pluginList.status).toBe(200);
-      expect(JSON.parse(pluginList.body).items).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: "serve-fixture", mode: "local" }),
+      const pluginListBody = JSON.parse(pluginList.body) as { items: Array<Record<string, unknown>> };
+      expect(pluginListBody.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: "serve-fixture",
+          mode: "local",
+          state: "configured",
+          revision: 1,
+          capabilities: expect.arrayContaining(["forms.submit", "admin.surface.get"]),
+          capabilityDescriptors: expect.arrayContaining([
+            expect.objectContaining({ capability: "forms.submit", modes: ["INVOCATION_MODE_CALL"] }),
+          ]),
+        }),
       ]));
+      expect(pluginList.body).not.toContain("127.0.0.1:45678");
+      expect(pluginList.body).not.toContain("fixture-private-value");
+      expect(pluginList.body).not.toContain("settings_json");
 
       const surfaces = await request(address, "/api/plugins/admin-surfaces", token);
       expect(surfaces.status).toBe(200);
