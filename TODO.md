@@ -21,6 +21,10 @@
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
+  Дополнительно удалены неиспользуемые domain-модели `Action`, `Capability`,
+  `ClientAuth`, `Revision`, `RegistryLockConflict`, пустой `ManagementStore`,
+  незадействованный filesystem `FilesystemAuditStore` и неисполняемая fixture
+  `plugin-grant`. Целевой backend аудита — SQLite; его реализация остаётся TODO.
   Удалены неиспользуемые route/proxy/WAF/Geo/telemetry domain модели и старые
   route/policy/resolver ports. Management contract больше не публикует config,
   site, listener/upstream или metrics endpoints. Удалены привязанные к ним
@@ -156,11 +160,16 @@
   API/IPC synchronization; failure сохраняет прежний runtime generation.
 - [ ] Проверять все Caddyfile binding `instance/capability/mode` по
   capability→modes descriptor из `pluginprotocol` Manifest до активации
-  revision; частичная проверка только `call` сейчас есть в uncommitted Caddy
-  adapter slice и должна быть подключена к реальной публикации/активации.
+  revision. Закоммиченный Caddy adapter сейчас проверяет только `call`; эту
+  проверку нужно перенести/подключить в будущую публикацию и активацию group
+  revision, а остальные invocation modes пока не поддержаны.
 - [ ] Сделать golden vectors исполняемыми conformance-сценариями: текущая
   architecture-проверка подтверждает только структуру и checksum списка, но не
   поведение Gateway.
+- [ ] Исправить release workflow: он требует минимум 9 файлов в
+  `contracts/v1`, хотя manifest перечисляет 7 payload-файлов и каталог содержит
+  8 файлов. Проверять соответствие package contents manifest, а не фиксированный
+  порог.
 - [ ] Подключить прямой Caddy gRPC `Call`/`Stream` boundary, включая HTTP bidi,
   WebSocket, SSE и L4; application/control plane не буферизует пользовательский
   body.

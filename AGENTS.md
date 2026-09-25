@@ -28,10 +28,12 @@ proxy user request/response bodies.
 - Use Go 1.24 or newer. `internal/domain` contains exactly `models/` and
   `interfaces/`: models, port interfaces, typed errors and validating
   constructors only. Each domain model, typed error or interface has its own
-  file. `internal/application`
-  is one flat package of use cases. Group adapters in
-  `infrastructure/config`, `network`, `security`, `storage`, `plugins` and
-  `observability`; keep presentation limited to `api` and `cli`.
+  file. `internal/application` is one flat package of use cases. Group
+  adapters by responsibility under `internal/infrastructure/`; the active
+  groups are `artifacts`, `caddy`, `config`, `plugins`, `security` and
+  `storage`. Do not recreate the deleted legacy `network` or
+  `observability` packages; user-traffic serving belongs to Caddy. Keep
+  presentation limited to `api` and `cli`.
   `cmd/gateway` is the composition root.
 - Use SQLite as the authoritative store for Gateway v1 control-plane metadata:
   groups/revisions/current/previous, plugin instances, service-key verifier
