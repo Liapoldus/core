@@ -117,7 +117,10 @@ describe("Caddy Liapoldus call handler", () => {
     }
   }, 120_000);
 
-  it("rejects an unsupported capability mode before activating Caddy", async () => {
+  it.each([
+    ["forms.submit", "http-stream"],
+    ["forms.missing", "call"],
+  ])("rejects undeclared capability/mode %s/%s before activating Caddy", async (capability, mode) => {
     const publicAddress = await freeAddress();
     const pluginAddress = await freeAddress();
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-plugin-mode-"));
@@ -128,7 +131,7 @@ describe("Caddy Liapoldus call handler", () => {
       buildFixture("plugin-grpc", pluginBinary),
       buildFixture("caddy-plugin", caddyBinary),
     ]);
-    await writeFile(configPath, `http://${publicAddress} {\n  liapoldus_plugin fixture forms.submit http-stream\n}\n`, "utf8");
+    await writeFile(configPath, `http://${publicAddress} {\n  liapoldus_plugin fixture ${capability} ${mode}\n}\n`, "utf8");
     const plugin = spawn(pluginBinary, [], {
       cwd: coreRoot,
       stdio: ["ignore", "ignore", "ignore"],
