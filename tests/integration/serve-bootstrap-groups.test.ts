@@ -123,6 +123,9 @@ describe("production serve bootstrap and SQLite group reads", () => {
         dataPlaneReadiness: { state: "not-ready", reason: "system-release-required" },
       });
 
+      const undocumentedOperationList = await request(address, "/api/operations", token);
+      expect(undocumentedOperationList.status).toBe(404);
+
       const list = await request(address, "/api/groups", token);
       expect(list.status).toBe(200);
       expect(JSON.parse(list.body)).toMatchObject({
