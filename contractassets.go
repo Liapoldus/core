@@ -20,6 +20,8 @@ const (
 	SQLiteAuditStore        = "sqlite-audit-store.yaml"
 	SQLiteOperationStore    = "sqlite-operation-store.yaml"
 	SQLiteGroupReleaseStore = "sqlite-group-release-store.yaml"
+	SQLitePluginInstances   = "sqlite-plugin-instances.yaml"
+	CaddyHTTPStream         = "caddy-http-stream.json"
 	GroupReleaseArtifacts   = "group-release-artifacts.yaml"
 	GroupReleaseWorkflow    = "group-release-workflow.yaml"
 	CaddyBuild              = "caddy-build.json"

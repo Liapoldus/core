@@ -22,9 +22,12 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
+	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/pluginprotocol/pluginv1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func serve(options options, runtime RuntimeBindings) int {
@@ -158,6 +161,21 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	pluginInventoryContract, err := config.LoadPluginInventoryContract()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	pluginRecords, err := storage.ListPluginInstances(context.Background(), database, pluginInventoryContract)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Unavailable
+	}
+	pluginInventory, err := presentPluginInventory(pluginRecords, pluginInventoryContract)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Validation
+	}
 	auditWords, err := config.LoadAudit()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -208,6 +226,7 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		CaddyVariant:    bootstrap.CaddyVariant,
 		CaddyBuildID:    runtimeBindings.CaddyBuildID,
 		CaddyModules:    runtimeBindings.CaddyModules,
+		Plugins:         pluginInventory,
 		DataPlaneState:  readiness,
 		DataPlaneReason: reason,
 	}
@@ -218,6 +237,36 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return words.Exits.Unavailable
 	}
 	return words.Exits.OK
+}
+
+func presentPluginInventory(records []storage.PluginInstanceRecord, contract config.PluginInventoryContract) ([]any, error) {
+	items := make([]any, 0, len(records))
+	for _, record := range records {
+		manifest := new(pluginv1.Manifest)
+		if err := protojson.Unmarshal(record.ManifestJSON, manifest); err != nil || plugins.ValidateManifest(manifest, nil) != nil || manifest.GetName() != record.ID {
+			return nil, errors.New(contract.Diagnostics.InvalidManifest)
+		}
+		descriptors := make([]map[string]any, 0, len(manifest.GetCapabilityDescriptors()))
+		for _, descriptor := range manifest.GetCapabilityDescriptors() {
+			modes := make([]string, 0, len(descriptor.GetModes()))
+			for _, mode := range descriptor.GetModes() {
+				modes = append(modes, mode.String())
+			}
+			descriptors = append(descriptors, map[string]any{
+				contract.JSON.DescriptorCapability: descriptor.GetCapability(),
+				contract.JSON.DescriptorModes:      modes,
+			})
+		}
+		items = append(items, map[string]any{
+			contract.JSON.ID:                    record.ID,
+			contract.JSON.Mode:                  record.Mode,
+			contract.JSON.State:                 record.State,
+			contract.JSON.Revision:              record.Revision,
+			contract.JSON.Capabilities:          manifest.GetCapabilities(),
+			contract.JSON.CapabilityDescriptors: descriptors,
+		})
+	}
+	return items, nil
 }
 
 func openBootstrapDatabase(ctx context.Context, path string) (*sql.DB, error) {

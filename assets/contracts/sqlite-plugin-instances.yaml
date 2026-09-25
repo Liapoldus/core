@@ -1,0 +1,23 @@
+selectInstances: "SELECT id, mode, state, revision, manifest_json FROM plugin_instances ORDER BY id"
+validModes:
+  - local
+  - remote
+validStates:
+  - configured
+  - starting
+  - ready
+  - degraded
+  - failed
+json:
+  id: id
+  mode: mode
+  state: state
+  revision: revision
+  capabilities: capabilities
+  capabilityDescriptors: capabilityDescriptors
+  descriptorCapability: capability
+  descriptorModes: modes
+diagnostics:
+  invalidContract: plugin inventory contract is invalid
+  invalidRecord: plugin instance record is invalid
+  invalidManifest: plugin instance manifest is invalid
