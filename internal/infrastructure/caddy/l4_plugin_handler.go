@@ -18,6 +18,7 @@ type l4PluginHandlerContract struct {
 	Directive       string `json:"directive"`
 	HandlerModule   string `json:"handlerModule"`
 	TCPMode         string `json:"tcpMode"`
+	UDPMode         string `json:"udpMode"`
 	ReadBufferBytes int    `json:"readBufferBytes"`
 	Diagnostics     struct {
 		InvalidDirective    string `json:"invalidDirective"`
@@ -30,11 +31,12 @@ type l4PluginHandlerContract struct {
 }
 
 type l4PluginHandler struct {
-	Instance   string `json:"instance,omitempty"`
-	Capability string `json:"capability,omitempty"`
-	Mode       string `json:"mode,omitempty"`
-	binding    pluginBinding
-	contract   l4PluginHandlerContract
+	Instance       string `json:"instance,omitempty"`
+	Capability     string `json:"capability,omitempty"`
+	Mode           string `json:"mode,omitempty"`
+	binding        pluginBinding
+	contract       l4PluginHandlerContract
+	invocationMode pluginv1.InvocationMode
 }
 
 func init() {
@@ -76,7 +78,13 @@ func (handler *l4PluginHandler) Provision(ctx caddycore.Context) error {
 		return err
 	}
 	handler.contract = contract
-	if handler.Mode != contract.TCPMode {
+	var requiredMode pluginv1.InvocationMode
+	switch handler.Mode {
+	case contract.TCPMode:
+		requiredMode = pluginv1.InvocationMode_INVOCATION_MODE_TCP
+	case contract.UDPMode:
+		requiredMode = pluginv1.InvocationMode_INVOCATION_MODE_UDP
+	default:
 		return errors.New(contract.Diagnostics.UnsupportedMode)
 	}
 	pluginContract, err := loadPluginHandlerContract()
@@ -95,20 +103,19 @@ func (handler *l4PluginHandler) Provision(ctx caddycore.Context) error {
 	if !ok || handler.Capability == "" {
 		return errors.New(contract.Diagnostics.BindingMissing)
 	}
-	if _, supported := binding.invocationModes[handler.Capability][pluginv1.InvocationMode_INVOCATION_MODE_TCP]; !supported {
+	if _, supported := binding.invocationModes[handler.Capability][requiredMode]; !supported {
 		return errors.New(contract.Diagnostics.UnsupportedMode)
 	}
 	handler.binding = binding
+	handler.invocationMode = requiredMode
 	return nil
 }
 
 func (handler *l4PluginHandler) Handle(connection *layer4.Connection, _ layer4.Handler) error {
-	session, err := handler.binding.client.OpenL4Stream(connection.Context, handler.Capability, plugins.L4StreamContext{
-		Transport:   handler.contract.TCPMode,
-		Connection:  uuid.NewString(),
-		Source:      connection.RemoteAddr().String(),
-		Destination: connection.LocalAddr().String(),
-	})
+	if handler.invocationMode == pluginv1.InvocationMode_INVOCATION_MODE_UDP {
+		return handler.handleUDP(connection)
+	}
+	session, err := handler.openL4Session(connection, handler.contract.TCPMode)
 	if err != nil {
 		return errors.New(handler.contract.Diagnostics.InstanceUnavailable)
 	}
@@ -138,6 +145,47 @@ func (handler *l4PluginHandler) Handle(connection *layer4.Connection, _ layer4.H
 	}
 }
 
+func (handler *l4PluginHandler) handleUDP(connection *layer4.Connection) error {
+	buffer := make([]byte, handler.contract.ReadBufferBytes)
+	for {
+		count, readErr := connection.Read(buffer)
+		if count > 0 || readErr == nil {
+			session, err := handler.openL4Session(connection, handler.contract.UDPMode)
+			if err != nil {
+				return errors.New(handler.contract.Diagnostics.InstanceUnavailable)
+			}
+			response, exchangeErr := session.Exchange(buffer[:count])
+			if exchangeErr != nil {
+				_ = session.Close()
+				return errors.New(handler.contract.Diagnostics.InstanceUnavailable)
+			}
+			if err := session.Close(); err != nil {
+				return errors.New(handler.contract.Diagnostics.InstanceUnavailable)
+			}
+			if !response.Drop {
+				if err := writeDatagram(connection, response.Payload); err != nil {
+					return err
+				}
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return nil
+			}
+			return readErr
+		}
+	}
+}
+
+func (handler *l4PluginHandler) openL4Session(connection *layer4.Connection, transport string) (plugins.L4Session, error) {
+	return handler.binding.client.OpenL4Stream(connection.Context, handler.Capability, plugins.L4StreamContext{
+		Transport:   transport,
+		Connection:  uuid.NewString(),
+		Source:      connection.RemoteAddr().String(),
+		Destination: connection.LocalAddr().String(),
+	})
+}
+
 func loadL4PluginHandlerContract() (l4PluginHandlerContract, error) {
 	contents, err := coreassets.Contract(coreassets.CaddyL4Plugin)
 	if err != nil {
@@ -160,6 +208,17 @@ func writeAll(writer io.Writer, contents []byte) error {
 			return io.ErrShortWrite
 		}
 		contents = contents[written:]
+	}
+	return nil
+}
+
+func writeDatagram(writer io.Writer, contents []byte) error {
+	written, err := writer.Write(contents)
+	if err != nil {
+		return err
+	}
+	if written != len(contents) {
+		return io.ErrShortWrite
 	}
 	return nil
 }

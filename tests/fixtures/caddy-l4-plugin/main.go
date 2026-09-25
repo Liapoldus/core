@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/Liapoldus/pluginprotocol"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
@@ -17,7 +17,7 @@ import (
 
 type plugin struct {
 	pluginv1.UnimplementedPluginServiceServer
-	server *grpc.Server
+	server  *grpc.Server
 	streams atomic.Uint64
 }
 

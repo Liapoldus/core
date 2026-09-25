@@ -2,13 +2,14 @@
   "directive": "liapoldus_plugin",
   "handlerModule": "layer4.handlers.liapoldus_plugin",
   "tcpMode": "tcp",
+  "udpMode": "udp",
   "readBufferBytes": 32768,
   "diagnostics": {
     "invalidDirective": "Некорректная директива Liapoldus L4 plugin.",
     "appUnavailable": "Plugin dispatch app для Caddy-L4 недоступен.",
     "appInvalid": "Plugin dispatch app имеет неподдерживаемую реализацию.",
     "bindingMissing": "Plugin instance отсутствует в Caddy dispatch snapshot.",
-    "unsupportedMode": "Caddy-L4 plugin handler поддерживает только TCP mode.",
-    "instanceUnavailable": "Plugin instance недоступен для TCP Stream."
+    "unsupportedMode": "Caddy-L4 plugin handler не поддерживает указанный invocation mode.",
+    "instanceUnavailable": "Plugin instance недоступен для L4 Stream."
   }
 }
