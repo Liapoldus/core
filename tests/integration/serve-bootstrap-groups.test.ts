@@ -160,6 +160,39 @@ describe("production serve bootstrap and SQLite group reads", () => {
 
       const listed = await request(address, "/api/groups", token);
       expect(JSON.parse(listed.body).items).toHaveLength(2);
+      const audit = await request(address, "/api/audit?limit=2", token);
+      expect(audit.status).toBe(200);
+      expect(JSON.parse(audit.body)).toMatchObject({
+        items: [
+          { actor: expect.any(String), action: "group.create", resource: "groups", result: "failed", requestId: expect.any(String) },
+          { actor: expect.any(String), action: "group.create", resource: "groups", result: "failed", requestId: expect.any(String) },
+        ],
+        nextCursor: expect.any(String),
+      });
+      const auditNextPage = await request(address, `/api/audit?limit=2&cursor=${encodeURIComponent(JSON.parse(audit.body).nextCursor)}`, token);
+      expect(auditNextPage.status).toBe(200);
+      expect(JSON.parse(auditNextPage.body)).toMatchObject({
+        items: [{ actor: expect.any(String), action: "group.create", resource: "groups", result: "succeeded", requestId: expect.any(String) }],
+        nextCursor: null,
+      });
+      const invalidAuditCursor = await request(address, "/api/audit?cursor=invalid", token);
+      expect(invalidAuditCursor.status).toBe(400);
+      expect(JSON.parse(invalidAuditCursor.body)).toMatchObject({ code: "invalid_request" });
+      const invalidAuditLimit = await request(address, "/api/audit?limit=101", token);
+      expect(invalidAuditLimit.status).toBe(400);
+      expect(JSON.parse(invalidAuditLimit.body)).toMatchObject({ code: "invalid_request" });
+
+      await gateway.stop();
+      gateway = undefined;
+      gateway = await startGateway(["--config", config, "serve"]);
+      await waitForManagement(address, gateway.process);
+      const auditAfterRestart = await request(address, "/api/audit?limit=2", token);
+      expect(auditAfterRestart.status).toBe(200);
+      expect(JSON.parse(auditAfterRestart.body)).toMatchObject({
+        items: JSON.parse(audit.body).items,
+        nextCursor: JSON.parse(audit.body).nextCursor,
+      });
+
       const databaseBytes = await readFile(database);
       expect(databaseBytes.byteLength).toBeGreaterThan(0);
       expect(databaseBytes.includes(Buffer.from(token))).toBe(false);
