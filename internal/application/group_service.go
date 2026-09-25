@@ -8,7 +8,8 @@ import (
 )
 
 type GroupService struct {
-	Store interfaces.GroupStore
+	Store         interfaces.GroupStore
+	ContentReader interfaces.GroupRevisionContentReader
 }
 
 func (service GroupService) List(ctx context.Context) (models.GroupList, error) {
@@ -25,4 +26,12 @@ func (service GroupService) Create(ctx context.Context, id string) (models.Group
 
 func (service GroupService) ListRevisions(ctx context.Context, groupID, cursor string, limit int) (models.GroupRevisionList, error) {
 	return service.Store.ListRevisions(ctx, groupID, cursor, limit)
+}
+
+func (service GroupService) GetRevisionDetail(ctx context.Context, groupID, revisionID string) (models.GroupRevisionDetail, error) {
+	revision, err := service.Store.GetRevision(ctx, groupID, revisionID)
+	if err != nil {
+		return models.GroupRevisionDetail{}, err
+	}
+	return service.ContentReader.Read(ctx, revision)
 }

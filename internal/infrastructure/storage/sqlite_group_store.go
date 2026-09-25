@@ -160,7 +160,7 @@ func (store *SQLiteGroupStore) CreateRevision(ctx context.Context, revision mode
 func (store *SQLiteGroupStore) GetRevision(ctx context.Context, groupID string, revisionID string) (models.GroupRevision, error) {
 	revision, err := scanRevision(store.database.QueryRowContext(ctx, store.queries.SelectRevision, groupID, revisionID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return models.GroupRevision{}, errors.New(store.queries.RevisionNotFound)
+		return models.GroupRevision{}, models.GroupRevisionNotFound{Message: store.queries.RevisionNotFound}
 	}
 	return revision, err
 }

@@ -168,8 +168,11 @@ type ManagementWords struct {
 		ExpectedRevision   string `yaml:"expectedRevision"`
 		ID                 string `yaml:"id"`
 		GroupID            string `yaml:"groupId"`
+		Caddyfile          string `yaml:"caddyfile"`
 		CaddyfileDigest    string `yaml:"caddyfileDigest"`
 		ArtifactDigest     string `yaml:"artifactDigest"`
+		Frontends          string `yaml:"frontends"`
+		Files              string `yaml:"files"`
 		ReplyTo            string `yaml:"replyTo"`
 		Status             string `yaml:"status"`
 		Slug               string `yaml:"slug"`

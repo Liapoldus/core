@@ -142,6 +142,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupCreate(response, request, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
 		server.handleGroupReleases(response, request, path, requestID)
+	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get:
+		server.handleGroupRelease(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
 		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
@@ -360,6 +362,50 @@ func (server *Server) handleGroupReleases(response http.ResponseWriter, request 
 		server.Management.JSON.Items:      items,
 		server.Management.JSON.NextCursor: page.NextCursor,
 		server.Management.JSON.RequestID:  requestID,
+	})
+}
+
+func (server *Server) handleGroupRelease(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	if server.GroupService.Store == nil || server.GroupService.ContentReader == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	suffix := server.Management.Paths.GroupIDSeparator + server.Management.Paths.GroupReleases + server.Management.Paths.GroupIDSeparator
+	resource := strings.TrimPrefix(path, server.Management.Paths.GroupByID)
+	groupID, revisionID, found := strings.Cut(resource, suffix)
+	if !found || groupID == "" || revisionID == "" || strings.Contains(revisionID, server.Management.Paths.GroupIDSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+		return
+	}
+	detail, err := server.GroupService.GetRevisionDetail(request.Context(), groupID, revisionID)
+	if err != nil {
+		var notFound models.GroupRevisionNotFound
+		if errors.As(err, &notFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	revision := detail.Revision
+	frontends := make([]map[string]any, 0, len(detail.Frontends))
+	for _, frontend := range detail.Frontends {
+		frontends = append(frontends, map[string]any{
+			server.Management.JSON.ID:     frontend.ID,
+			server.Management.JSON.Digest: frontend.Digest,
+			server.Management.JSON.Files:  frontend.Files,
+		})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		server.Management.JSON.ID:              revision.ID,
+		server.Management.JSON.GroupID:         revision.GroupID,
+		server.Management.JSON.Caddyfile:       detail.Caddyfile,
+		server.Management.JSON.CaddyfileDigest: revision.CaddyfileDigest,
+		server.Management.JSON.ArtifactDigest:  revision.ArtifactDigest,
+		server.Management.JSON.Frontends:       frontends,
+		server.Management.JSON.CreatedAt:       revision.CreatedAt,
+		server.Management.JSON.Actor:           revision.Actor,
+		server.Management.JSON.RequestID:       requestID,
 	})
 }
 

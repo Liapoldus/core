@@ -14,6 +14,7 @@ components:
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
   infrastructurePlugins: { in: internal/infrastructure/plugins }
+  infrastructureArtifacts: { in: internal/infrastructure/artifacts }
   infrastructureCaddy: { in: internal/infrastructure/caddy }
   presentationAPI: { in: internal/presentation/api }
   presentationCLI: { in: internal/presentation/cli }
@@ -57,11 +58,13 @@ deps:
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil]
+  infrastructureArtifacts:
+    mayDependOn: [domainModels, domainInterfaces]
   infrastructureCaddy:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructurePlugins]
     canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, googleUUID]
   presentationAPI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts]
     canUse: [bcrypt]
   presentationCLI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPI]

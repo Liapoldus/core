@@ -23,8 +23,11 @@ json:
   nextCursor: nextCursor
   id: id
   groupId: groupId
+  caddyfile: caddyfile
   caddyfileDigest: caddyfileDigest
   artifactDigest: artifactDigest
+  frontends: frontends
+  files: files
   idempotencyKey: idempotencyKey
   replyTo: replyTo
   status: status

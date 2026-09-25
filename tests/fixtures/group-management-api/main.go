@@ -10,6 +10,7 @@ import (
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -74,7 +75,7 @@ func main() {
 		panic(err)
 	}
 	if _, err := store.CreateRevision(ctx, models.GroupRevision{
-		ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", GroupID: "application-a", CaddyfileDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", CaddyfilePath: "revision-a.caddyfile",
+		ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", GroupID: "application-a", CaddyfileDigest: "687a79b127387ef55ac664491ab82b5665df6e3d9dc62e2b6062485e2da1c9c4", CaddyfilePath: "revision-a.caddyfile",
 	}); err != nil {
 		panic(err)
 	}
@@ -94,7 +95,9 @@ func main() {
 	}
 	server := &api.Server{
 		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
-		GroupService: application.GroupService{Store: store},
+		GroupService: application.GroupService{
+			Store: store, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
+		},
 	}
 	handler := server.Handler()
 	list := perform(handler, http.MethodGet, "/api/groups", true)
@@ -153,7 +156,7 @@ func main() {
 		ReleaseListStatus:  releaseList.Code, ReleaseListRequestID: releaseListBody.RequestID != "",
 		Releases: releaseListBody.Items, ReleasePathsHidden: releasePathsHidden,
 		ReleaseDetailStatus: releaseDetail.Code,
-		ReleaseDetailSafe: releaseDetailBody["caddyfile"] == "example.test { respond 200 }\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
+		ReleaseDetailSafe:   releaseDetailBody["caddyfile"] == "example.test { respond 200 }\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
