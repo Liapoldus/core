@@ -104,8 +104,8 @@
 
 ## Plugins, TLS и Constructor boundary
 
-- В рабочем дереве есть ограниченный, пока не подключённый к `serve` Caddy
-  `call` slice: `StartCaddyfileWithPlugins`, per-config handshake и
+- Имеется ограниченный, пока не подключённый к `serve` Caddy `call` slice:
+  `StartCaddyfileWithPlugins`, per-config handshake и
   `liapoldus_plugin <instance> <capability> call`. Он не завершает plugin
   runtime v1: cookie actions пока fail closed, startup composition и snapshot
   generations не подключены, remote-replica fan-out не реализован. Сохранить
