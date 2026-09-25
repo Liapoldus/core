@@ -1,0 +1,11 @@
+state:
+  path: ./state/gateway.db
+artifacts:
+  path: ./state/artifacts
+management:
+  listen: 127.0.0.1:9443
+  tls:
+    certificate: file:/run/secrets/management.crt
+    key: file:/run/secrets/management.key
+caddy:
+  variant: embedded
