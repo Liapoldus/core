@@ -66,6 +66,10 @@ type report struct {
 	PointersAfterStale         *string          `json:"pointersAfterStale"`
 	UnsafeArtifactStatus       int              `json:"unsafeArtifactStatus"`
 	UnsafeArtifactCode         string           `json:"unsafeArtifactCode"`
+	RollbackStatus             int              `json:"rollbackStatus"`
+	RollbackCode               string           `json:"rollbackCode"`
+	CurrentAfterRollback       *string          `json:"currentAfterRollback"`
+	PreviousAfterRollback      *string          `json:"previousAfterRollback"`
 }
 
 type problemView struct {
@@ -249,12 +253,30 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	reopenedReleaseStore, err := storage.NewSQLiteGroupReleaseStore(reopenedDatabase)
+	if err != nil {
+		panic(err)
+	}
+	reopenedArtifacts, err := artifacts.NewGroupReleaseArtifacts(filepath.Dir(os.Args[1]))
+	if err != nil {
+		panic(err)
+	}
+	reopenedReleasePolicy, err := config.LoadGroupRelease()
+	if err != nil {
+		panic(err)
+	}
 	reopenedServer := &api.Server{
 		Token: "fixture-management-token", Management: management, Errors: errorCatalog, AuditWords: auditWords,
 		GroupService: application.GroupService{
 			Store: reopenedGroupStore, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
 		},
 		Operations: application.OperationService{Store: reopenedOperationStore},
+		GroupReleases: &application.GroupReleaseService{
+			Store: reopenedGroupStore, Releases: reopenedReleaseStore,
+			ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
+			Artifacts:     reopenedArtifacts, Activator: fixtureActivator{}, Policy: reopenedReleasePolicy,
+		},
+		GroupReleasePolicy: reopenedReleasePolicy,
 	}
 	operationAfterReopen := perform(reopenedServer.Handler(), http.MethodGet, management.Paths.Operations+"/"+operationID, true)
 	groupAfterReopen := perform(reopenedServer.Handler(), http.MethodGet, "/api/groups/application-a", true)
@@ -266,6 +288,23 @@ func main() {
 		CurrentRevision *string `json:"currentRevision"`
 	}
 	if err := json.Unmarshal(groupAfterReopen.Body.Bytes(), &groupAfterReopenBody); err != nil {
+		panic(err)
+	}
+	rollback := performRollback(reopenedServer.Handler(), groupAfterReopenBody.CurrentRevision)
+	var rollbackBody map[string]any
+	if err := json.Unmarshal(rollback.Body.Bytes(), &rollbackBody); err != nil {
+		panic(err)
+	}
+	rollbackOperationID := stringField(rollbackBody, management.JSON.OperationID)
+	if rollbackOperationID != "" {
+		waitForOperation(reopenedOperationStore, rollbackOperationID)
+	}
+	groupAfterRollback := perform(reopenedServer.Handler(), http.MethodGet, "/api/groups/application-a", true)
+	var groupAfterRollbackBody struct {
+		CurrentRevision  *string `json:"currentRevision"`
+		PreviousRevision *string `json:"previousRevision"`
+	}
+	if err := json.Unmarshal(groupAfterRollback.Body.Bytes(), &groupAfterRollbackBody); err != nil {
 		panic(err)
 	}
 	releasePathsHidden := len(releaseListBody.Items) == 1
@@ -295,6 +334,9 @@ func main() {
 		StaleRevisionStatus:  staleRevision.Code, StaleRevisionCode: stringField(staleRevisionBody, "code"),
 		PointersAfterStale:   pointersAfterStaleBody.CurrentRevision,
 		UnsafeArtifactStatus: unsafeArtifact.Code, UnsafeArtifactCode: stringField(unsafeArtifactBody, "code"),
+		RollbackStatus: rollback.Code, RollbackCode: stringField(rollbackBody, "code"),
+		CurrentAfterRollback:  groupAfterRollbackBody.CurrentRevision,
+		PreviousAfterRollback: groupAfterRollbackBody.PreviousRevision,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
@@ -364,6 +406,21 @@ func performMultipartWithArtifact(handler http.Handler, idempotencyKey, expected
 	request := httptest.NewRequest(http.MethodPost, "/api/groups/application-a/releases", strings.NewReader(body.String()))
 	request.Header.Set("Authorization", "Bearer fixture-management-token")
 	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func performRollback(handler http.Handler, expectedCurrentRevision *string) *httptest.ResponseRecorder {
+	body, err := json.Marshal(map[string]any{
+		"idempotencyKey": "rollback-key-00001", "expectedCurrentRevision": expectedCurrentRevision,
+	})
+	if err != nil {
+		panic(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/groups/application-a/rollback", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer fixture-management-token")
+	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
