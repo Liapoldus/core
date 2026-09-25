@@ -34,7 +34,7 @@ describe("group Management API reads", () => {
         releaseListStatus: 200,
         releaseListRequestID: true,
         releases: [
-          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", artifactDigest: null, actor: "", createdAt: expect.any(String) },
+          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "687a79b127387ef55ac664491ab82b5665df6e3d9dc62e2b6062485e2da1c9c4", artifactDigest: null, actor: "", createdAt: expect.any(String) },
         ],
         releasePathsHidden: true,
         releaseDetailStatus: 200,
