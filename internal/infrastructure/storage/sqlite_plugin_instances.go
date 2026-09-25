@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-
-	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
 
 type PluginInstanceRecord struct {
@@ -17,11 +15,19 @@ type PluginInstanceRecord struct {
 	ManifestJSON []byte
 }
 
-func ListPluginInstances(ctx context.Context, database *sql.DB, contract config.PluginInventoryContract) ([]PluginInstanceRecord, error) {
-	if database == nil || contract.SelectInstances == "" {
-		return nil, errors.New(contract.Diagnostics.InvalidContract)
+type PluginInstanceQuery struct {
+	SelectInstances string
+	ValidModes      []string
+	ValidStates     []string
+	InvalidContract string
+	InvalidRecord   string
+}
+
+func ListPluginInstances(ctx context.Context, database *sql.DB, query PluginInstanceQuery) ([]PluginInstanceRecord, error) {
+	if database == nil || query.SelectInstances == "" {
+		return nil, errors.New(query.InvalidContract)
 	}
-	rows, err := database.QueryContext(ctx, contract.SelectInstances)
+	rows, err := database.QueryContext(ctx, query.SelectInstances)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +39,8 @@ func ListPluginInstances(ctx context.Context, database *sql.DB, contract config.
 		if err := rows.Scan(&instance.ID, &instance.Mode, &instance.State, &instance.Revision, &instance.ManifestJSON); err != nil {
 			return nil, err
 		}
-		if instance.ID == "" || instance.Revision < 1 || !contains(contract.ValidModes, instance.Mode) || !contains(contract.ValidStates, instance.State) || !json.Valid(instance.ManifestJSON) {
-			return nil, errors.New(contract.Diagnostics.InvalidRecord)
+		if instance.ID == "" || instance.Revision < 1 || !contains(query.ValidModes, instance.Mode) || !contains(query.ValidStates, instance.State) || !json.Valid(instance.ManifestJSON) {
+			return nil, errors.New(query.InvalidRecord)
 		}
 		instances = append(instances, instance)
 	}

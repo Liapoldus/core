@@ -21,14 +21,11 @@ import (
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
-	caddyadapter "github.com/Liapoldus/core/internal/infrastructure/caddy"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
-	"github.com/Liapoldus/pluginprotocol/pluginv1"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func serve(options options, runtime RuntimeBindings) int {
@@ -167,7 +164,13 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
-	pluginRecords, err := storage.ListPluginInstances(context.Background(), database, pluginInventoryContract)
+	pluginRecords, err := storage.ListPluginInstances(context.Background(), database, storage.PluginInstanceQuery{
+		SelectInstances: pluginInventoryContract.SelectInstances,
+		ValidModes:      pluginInventoryContract.ValidModes,
+		ValidStates:     pluginInventoryContract.ValidStates,
+		InvalidContract: pluginInventoryContract.Diagnostics.InvalidContract,
+		InvalidRecord:   pluginInventoryContract.Diagnostics.InvalidRecord,
+	})
 	if err != nil {
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable
@@ -253,19 +256,15 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 func presentPluginInventory(records []storage.PluginInstanceRecord, contract config.PluginInventoryContract) ([]any, error) {
 	items := make([]any, 0, len(records))
 	for _, record := range records {
-		manifest := new(pluginv1.Manifest)
-		if err := protojson.Unmarshal(record.ManifestJSON, manifest); err != nil || plugins.ValidateManifest(manifest, nil) != nil || manifest.GetName() != record.ID {
+		manifest, err := plugins.ParseManifestInventory(record.ID, record.ManifestJSON)
+		if err != nil {
 			return nil, errors.New(contract.Diagnostics.InvalidManifest)
 		}
-		descriptors := make([]map[string]any, 0, len(manifest.GetCapabilityDescriptors()))
-		for _, descriptor := range manifest.GetCapabilityDescriptors() {
-			modes := make([]string, 0, len(descriptor.GetModes()))
-			for _, mode := range descriptor.GetModes() {
-				modes = append(modes, mode.String())
-			}
+		descriptors := make([]map[string]any, 0, len(manifest.Descriptors))
+		for _, descriptor := range manifest.Descriptors {
 			descriptors = append(descriptors, map[string]any{
-				contract.JSON.DescriptorCapability: descriptor.GetCapability(),
-				contract.JSON.DescriptorModes:      modes,
+				contract.JSON.DescriptorCapability: descriptor.Capability,
+				contract.JSON.DescriptorModes:      descriptor.Modes,
 			})
 		}
 		items = append(items, map[string]any{
@@ -273,7 +272,7 @@ func presentPluginInventory(records []storage.PluginInstanceRecord, contract con
 			contract.JSON.Mode:                  record.Mode,
 			contract.JSON.State:                 record.State,
 			contract.JSON.Revision:              record.Revision,
-			contract.JSON.Capabilities:          manifest.GetCapabilities(),
+			contract.JSON.Capabilities:          manifest.Capabilities,
 			contract.JSON.CapabilityDescriptors: descriptors,
 		})
 	}
@@ -367,18 +366,15 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	var caddyRuntime CaddyRuntime
 	switch bootstrap.CaddyVariant {
 	case bootstrap.CaddyEmbeddedVariant:
-		if runtimeBindings.StartCaddyfile == nil {
+		if runtimeBindings.StartEmbeddedCaddy == nil {
 			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 		}
-		caddyRuntime, err = runtimeBindings.StartCaddyfile(caddyfile)
+		caddyRuntime, err = runtimeBindings.StartEmbeddedCaddy(caddyfile)
 	case bootstrap.CaddyExternalVariant:
-		if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" {
+		if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
 			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 		}
-		caddyRuntime, err = caddyadapter.StartExternal(context.Background(), caddyadapter.ExternalOptions{
-			Binary: bootstrap.CaddyBinary, ExpectedBuildID: bootstrap.CaddyExpectedBuildID,
-			StateDirectory: filepath.Dir(bootstrap.StatePath),
-		}, caddyfile)
+		caddyRuntime, err = runtimeBindings.StartExternalCaddy(bootstrap.CaddyBinary, bootstrap.CaddyExpectedBuildID, filepath.Dir(bootstrap.StatePath), caddyfile)
 	default:
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}

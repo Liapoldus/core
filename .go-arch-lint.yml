@@ -23,14 +23,17 @@ vendors:
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
-  protobuf: { in: [google.golang.org/protobuf/proto] }
+  protobuf: { in: [google.golang.org/protobuf/proto, google.golang.org/protobuf/encoding/protojson] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
   sqliteDriver: { in: [modernc.org/sqlite] }
   caddy: { in: [github.com/caddyserver/caddy/v2, github.com/caddyserver/caddy/v2/modules/standard] }
-  caddyLayer4: { in: [github.com/mholt/caddy-l4] }
   caddyConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig] }
   caddyHTTP: { in: [github.com/caddyserver/caddy/v2/modules/caddyhttp] }
   caddyHTTPConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile] }
+  caddyfile: { in: [github.com/caddyserver/caddy/v2/caddyconfig/caddyfile] }
+  caddyLayer4: { in: [github.com/mholt/caddy-l4, github.com/mholt/caddy-l4/layer4] }
+  textNormalization: { in: [golang.org/x/text/cases, golang.org/x/text/unicode/norm] }
+  websocket: { in: [github.com/coder/websocket] }
   googleUUID: { in: [github.com/google/uuid] }
 commonComponents: [domainModels]
 commonVendors: []
@@ -59,10 +62,11 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil]
   infrastructureArtifacts:
-    mayDependOn: [domainModels, domainInterfaces]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
+    canUse: [yaml, textNormalization]
   infrastructureCaddy:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructurePlugins]
-    canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, googleUUID]
+    canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, caddyfile, googleUUID, pluginprotocol, websocket]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts]
     canUse: [bcrypt]

@@ -31,9 +31,10 @@ func Execute(arguments []string) int {
 }
 
 type RuntimeBindings struct {
-	StartCaddyfile func([]byte) (CaddyRuntime, error)
-	CaddyBuildID   string
-	CaddyModules   []string
+	StartEmbeddedCaddy func([]byte) (CaddyRuntime, error)
+	StartExternalCaddy func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)
+	CaddyBuildID       string
+	CaddyModules       []string
 }
 
 type CaddyRuntime interface {
