@@ -31,6 +31,12 @@ describe("group Management API reads", () => {
         missingStatus: 404,
         missingProblem: { code: "group_not_found", status: 404, requestId: true, noStoreDetail: true },
         unauthorizedStatus: 401,
+        releaseListStatus: 200,
+        releaseListRequestID: true,
+        releases: [
+          { id: "revision-a", groupId: "application-a", caddyfileDigest: "digest-a", artifactDigest: null, actor: "", createdAt: expect.any(String) },
+        ],
+        releasePathsHidden: true,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
