@@ -1,154 +1,306 @@
-openapi: 3.1.1
+openapi: 3.1.0
 info:
-  title: Liapoldus Management API
+  title: Liapoldus Gateway Management API
   version: 1.0.0
-  description: Нормативный control-plane API Liapoldus. На loopback требует Bearer service key; вне loopback требует TLS, mTLS и Bearer service key.
+  description: >-
+    Control plane for Caddyfile group revisions, plugin instances, access,
+    operations and audit. Traffic configuration is native Caddyfile. Caddy
+    Admin is reachable only through authenticated Gateway pass-through.
 servers:
-  - url: http://127.0.0.1:9090
-  - url: https://management.example.com:9443
+  - url: https://gateway-management.example.internal
 security:
   - bearerAuth: []
-x-liapoldus-remote-security:
-  required:
-    - mtls
-    - bearerAuth
+x-liapoldus-security:
+  remoteAccess: private-network-or-vpn-only
+  webConstructorBackendRequired: [mtls, bearerAuth]
+  desktopAccess: ssh-port-forward-to-loopback
+  desktopTunnelRequired: [tlsServerVerification, bearerAuth]
+  loopbackRequired: [bearerAuth]
+  roleModel: platform-admin-only
+  humanUserAuthorization: Constructor-backend-only
+  perGatewayCredential: true
+  managementAndPluginTrustRootsMustDiffer: true
+x-liapoldus-caddy-admin-proxy:
+  pathPrefix: /api/caddy/
+  upstream: loopback-or-local-ipc-only
+  methods: [GET, POST, PUT, PATCH, DELETE]
+  mutationsRequireCheckpoint: true
+  auditExcludesBodiesAndSecrets: true
+  directExternalAdminAccess: forbidden
 paths:
   /healthz:
     get:
       operationId: health
       security: []
       responses:
-        '200': { description: Ready, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
-        '503': { $ref: '#/components/responses/Problem' }
+        '200': { description: Process health, content: { application/json: { schema: { $ref: '#/components/schemas/Health' } } } }
   /api/status:
     get:
       operationId: getStatus
-      responses: { '200': { description: Runtime status, content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } } }, '401': { $ref: '#/components/responses/Problem' } }
-  /api/config:
+      responses:
+        '200': { description: Runtime, Caddy build and drift state, content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } } }
+  /api/groups:
     get:
-      operationId: getConfig
-      responses: { '200': { description: Redacted configuration, content: { application/json: { schema: { $ref: '#/components/schemas/Config' } } } }, '401': { $ref: '#/components/responses/Problem' } }
+      operationId: listGroups
+      responses:
+        '200': { description: Groups and current/previous revision IDs, content: { application/json: { schema: { $ref: '#/components/schemas/GroupList' } } } }
+    post:
+      operationId: createGroup
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GroupCreate' } } } }
+      responses:
+        '201': { description: Created empty application group, content: { application/json: { schema: { $ref: '#/components/schemas/Group' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/groups/{groupId}:
+    get:
+      operationId: getGroup
+      parameters: [{ $ref: '#/components/parameters/GroupId' }]
+      responses:
+        '200': { description: Group metadata, content: { application/json: { schema: { $ref: '#/components/schemas/Group' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: archiveGroup
+      parameters: [{ $ref: '#/components/parameters/GroupId' }, { $ref: '#/components/parameters/IfMatchRuntimeDigest' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IdempotencyRequest' } } } }
+      responses:
+        '202': { description: Full snapshot without the group; history is retained, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/groups/{groupId}/activate:
+    post:
+      operationId: activateGroup
+      parameters: [{ $ref: '#/components/parameters/GroupId' }, { $ref: '#/components/parameters/IfMatchRuntimeDigest' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IdempotencyRequest' } } } }
+      responses:
+        '202': { description: Reactivation of current revision in full snapshot, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/groups/{groupId}/releases:
+    get:
+      operationId: listGroupReleases
+      parameters: [{ $ref: '#/components/parameters/GroupId' }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { description: Immutable revision metadata, content: { application/json: { schema: { $ref: '#/components/schemas/GroupRevisionList' } } } }
+    post:
+      operationId: publishGroupRelease
+      parameters: [{ $ref: '#/components/parameters/GroupId' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: '#/components/schemas/GroupReleaseMultipart' }
+            encoding:
+              metadata: { contentType: application/json }
+              caddyfile: { contentType: text/plain; charset=utf-8 }
+              artifact: { contentType: application/gzip }
+      responses:
+        '202': { description: Durable validation/activation operation, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '413': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /api/groups/{groupId}/releases/{revisionId}:
+    get:
+      operationId: getGroupRelease
+      parameters: [{ $ref: '#/components/parameters/GroupId' }, { $ref: '#/components/parameters/RevisionId' }]
+      responses:
+        '200': { description: Revision metadata, safe Caddyfile and frontend manifest, content: { application/json: { schema: { $ref: '#/components/schemas/GroupRevision' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /api/groups/{groupId}/rollback:
+    post:
+      operationId: rollbackGroup
+      parameters: [{ $ref: '#/components/parameters/GroupId' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RevisionMutation' } } } }
+      responses:
+        '202': { description: Atomic full-snapshot rollback, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/caddy/{path}:
+    parameters:
+      - { name: path, in: path, required: true, description: Remaining native Caddy Admin API path, schema: { type: string } }
+    get:
+      operationId: caddyAdminGet
+      description: Native read pass-through. Gateway does not interpret request or response payload.
+      responses:
+        default: { description: Native Caddy status, headers and body, subject to security redaction. }
+    post:
+      operationId: caddyAdminPost
+      description: Native mutation pass-through after durable checkpoint creation.
+      requestBody: { required: false, content: { application/json: { schema: {} } } }
+      responses:
+        default: { description: Native Caddy response; checkpoint and audit metadata are recorded. }
     put:
-      operationId: putConfig
-      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
-      requestBody: { required: true, content: { application/yaml: { schema: { type: string } } } }
-      responses: { '200': { description: Applied, content: { application/json: { schema: { $ref: '#/components/schemas/Revision' } } } }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
-  /api/config/validate:
-    post:
-      operationId: validateConfig
-      requestBody: { required: true, content: { application/yaml: { schema: { type: string } } } }
-      responses: { '200': { description: Valid, content: { application/json: { schema: { $ref: '#/components/schemas/Validation' } } } }, '422': { $ref: '#/components/responses/Problem' } }
-  /api/reload:
-    post:
-      operationId: reload
-      responses: { '200': { description: Reloaded, content: { application/json: { schema: { $ref: '#/components/schemas/Revision' } } } }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
-  /api/sites:
+      operationId: caddyAdminPut
+      description: Native mutation pass-through after durable checkpoint creation.
+      requestBody: { required: false, content: { application/json: { schema: {} } } }
+      responses:
+        default: { description: Native Caddy response; checkpoint and audit metadata are recorded. }
+    patch:
+      operationId: caddyAdminPatch
+      description: Native mutation pass-through after durable checkpoint creation.
+      requestBody: { required: false, content: { application/json: { schema: {} } } }
+      responses:
+        default: { description: Native Caddy response; checkpoint and audit metadata are recorded. }
+    delete:
+      operationId: caddyAdminDelete
+      description: Native mutation pass-through after durable checkpoint creation.
+      responses:
+        default: { description: Native Caddy response; checkpoint and audit metadata are recorded. }
+  /api/caddy-state:
     get:
-      operationId: listSites
-      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
-      responses: { '200': { description: Sites, content: { application/json: { schema: { $ref: '#/components/schemas/SiteList' } } } } }
-  /api/sites/{slug}/publish:
+      operationId: getCaddyState
+      responses:
+        '200': { description: Drift and known digests, content: { application/json: { schema: { $ref: '#/components/schemas/CaddyState' } } } }
+  /api/caddy-state/reconcile:
     post:
-      operationId: publishSite
-      parameters: [{ $ref: '#/components/parameters/Slug' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PublishRequest' } } } }
-      responses: { '201': { description: Published, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }, '400': { $ref: '#/components/responses/Problem' }, '409': { $ref: '#/components/responses/Problem' }, '422': { $ref: '#/components/responses/Problem' } }
-  /api/sites/{slug}/rollback:
+      operationId: reconcileCaddyState
+      parameters: [{ $ref: '#/components/parameters/IfMatchRuntimeDigest' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReconcileRequest' } } } }
+      responses:
+        '202': { description: Explicit full group-composition reconcile, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/caddy-state/checkpoints/{checkpointId}/restore:
     post:
-      operationId: rollbackSite
-      parameters: [{ $ref: '#/components/parameters/Slug' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RollbackRequest' } } } }
-      responses: { '202': { description: Rollback accepted, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }, '400': { $ref: '#/components/responses/Problem' }, '404': { $ref: '#/components/responses/Problem' }, '409': { $ref: '#/components/responses/Problem' } }
-  /api/listeners:
-    get:
-      operationId: listListeners
-      responses: { '200': { description: Listeners, content: { application/json: { schema: { $ref: '#/components/schemas/ListenerList' } } } } }
-  /api/upstreams:
-    get:
-      operationId: listUpstreams
-      responses: { '200': { description: Upstreams, content: { application/json: { schema: { $ref: '#/components/schemas/UpstreamList' } } } } }
+      operationId: restoreCaddyCheckpoint
+      parameters: [{ $ref: '#/components/parameters/CheckpointId' }]
+      responses:
+        '202': { description: Restore operation, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /api/plugins:
     get:
       operationId: listPlugins
-      responses: { '200': { description: Plugins, content: { application/json: { schema: { $ref: '#/components/schemas/PluginList' } } } } }
-  /api/plugins/{id}/restart:
+      responses:
+        '200': { description: Configured plugin instances, content: { application/json: { schema: { $ref: '#/components/schemas/PluginList' } } } }
+    post:
+      operationId: createPlugin
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PluginInput' } } } }
+      responses:
+        '201': { description: Created plugin instance, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/plugins/{pluginId}:
+    get:
+      operationId: getPlugin
+      parameters: [{ $ref: '#/components/parameters/PluginId' }]
+      responses:
+        '200': { description: Plugin resource, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      operationId: updatePlugin
+      parameters: [{ $ref: '#/components/parameters/PluginId' }, { $ref: '#/components/parameters/IfMatch' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PluginInput' } } } }
+      responses:
+        '200': { description: Updated plugin, content: { application/json: { schema: { $ref: '#/components/schemas/Plugin' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deletePlugin
+      parameters: [{ $ref: '#/components/parameters/PluginId' }]
+      responses:
+        '204': { description: Removed only when no active group references it. }
+        '409': { $ref: '#/components/responses/Problem' }
+  /api/plugins/{pluginId}/restart:
     post:
       operationId: restartPlugin
-      parameters: [{ $ref: '#/components/parameters/Id' }]
-      responses: { '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }, '404': { $ref: '#/components/responses/Problem' } }
-  /api/plugins/{id}/logs:
-    get:
-      operationId: getPluginLogs
-      parameters: [{ $ref: '#/components/parameters/Id' }, { $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
-      responses: { '200': { description: Logs, content: { application/json: { schema: { $ref: '#/components/schemas/LogList' } } } } }
+      parameters: [{ $ref: '#/components/parameters/PluginId' }]
+      responses:
+        '202': { description: Restart local process or refresh remote connection; remote process is not restarted by Gateway., content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
   /api/tls:
     get:
       operationId: listTls
-      responses: { '200': { description: TLS state, content: { application/json: { schema: { $ref: '#/components/schemas/TlsList' } } } } }
-  /api/tls/{issuer}/renew:
+      responses:
+        '200': { description: Caddy-managed certificate state/readiness by domain, content: { application/json: { schema: { $ref: '#/components/schemas/TlsList' } } } }
+  /api/tls/{domain}/renew:
     post:
       operationId: renewTls
-      parameters: [{ $ref: '#/components/parameters/Issuer' }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RenewRequest' } } } }
-      responses: { '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } } }
-  /api/tls/{issuer}/revoke:
+      parameters: [{ $ref: '#/components/parameters/Domain' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IdempotencyRequest' } } } }
+      responses:
+        '202': { description: Asynchronous renewal operation, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /api/tls/{domain}/revoke:
     post:
       operationId: revokeTls
-      parameters: [{ $ref: '#/components/parameters/Issuer' }]
+      parameters: [{ $ref: '#/components/parameters/Domain' }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RevokeRequest' } } } }
-      responses: { '202': { description: Accepted, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } } }
-  /api/operations/{id}:
+      responses:
+        '202': { description: Asynchronous revocation operation, content: { application/json: { schema: { $ref: '#/components/schemas/OperationReference' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /api/operations/{operationId}:
     get:
       operationId: getOperation
-      parameters: [{ $ref: '#/components/parameters/Id' }]
-      responses: { '200': { description: Operation, content: { application/json: { schema: { $ref: '#/components/schemas/Operation' } } } }, '404': { $ref: '#/components/responses/Problem' } }
+      parameters: [{ $ref: '#/components/parameters/OperationId' }]
+      responses:
+        '200': { description: Durable operation state, content: { application/json: { schema: { $ref: '#/components/schemas/Operation' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /api/audit:
     get:
       operationId: listAudit
       parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
-      responses: { '200': { description: Audit records, content: { application/json: { schema: { $ref: '#/components/schemas/AuditList' } } } } }
-  /metrics:
+      responses:
+        '200': { description: Redacted audit events, content: { application/json: { schema: { $ref: '#/components/schemas/AuditList' } } } }
+  /api/access/service-keys:
     get:
-      operationId: metrics
-      responses: { '200': { description: Prometheus exposition, content: { text/plain: { schema: { type: string } } } } }
+      operationId: listServiceKeys
+      responses:
+        '200': { description: Key metadata only. }
+    post:
+      operationId: createServiceKey
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceKeyInput' } } } }
+      responses:
+        '201': { description: Raw credential returned once, content: { application/json: { schema: { $ref: '#/components/schemas/CreatedServiceKey' } } } }
+  /api/access/service-keys/{keyId}/rotate:
+    post:
+      operationId: rotateServiceKey
+      parameters: [{ $ref: '#/components/parameters/KeyId' }]
+      responses:
+        '200': { description: New raw credential returned once., content: { application/json: { schema: { $ref: '#/components/schemas/CreatedServiceKey' } } } }
+  /api/access/service-keys/{keyId}/revoke:
+    post:
+      operationId: revokeServiceKey
+      parameters: [{ $ref: '#/components/parameters/KeyId' }]
+      responses:
+        '204': { description: Revoked key metadata; no credential is returned. }
 components:
   securitySchemes:
-    bearerAuth: { type: http, scheme: bearer, bearerFormat: lpgw service key }
-    mtls: { type: mutualTLS, description: Required together with bearerAuth on non-loopback management listeners. }
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: Gateway platform-admin service token }
+    mtls: { type: mutualTLS, description: Required with Bearer on every remote Management API listener. }
   parameters:
-    Slug: { name: slug, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$' } }
-    Id: { name: id, in: path, required: true, schema: { type: string } }
-    Issuer: { name: issuer, in: path, required: true, schema: { type: string } }
+    GroupId: { name: groupId, in: path, required: true, schema: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' } }
+    RevisionId: { name: revisionId, in: path, required: true, schema: { type: string, pattern: '^[0-9a-f]{64}$' } }
+    PluginId: { name: pluginId, in: path, required: true, schema: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' } }
+    CheckpointId: { name: checkpointId, in: path, required: true, schema: { type: string } }
+    OperationId: { name: operationId, in: path, required: true, schema: { type: string } }
+    KeyId: { name: keyId, in: path, required: true, schema: { type: string } }
+    Domain: { name: domain, in: path, required: true, schema: { type: string, format: hostname } }
     Cursor: { name: cursor, in: query, schema: { type: string, description: Opaque cursor } }
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
-    IfMatch: { name: If-Match, in: header, required: true, schema: { type: string }, description: Active snapshot digest }
+    IfMatch: { name: If-Match, in: header, required: true, schema: { type: string } }
+    IfMatchRuntimeDigest: { name: If-Match, in: header, required: true, schema: { type: string, pattern: '^[0-9a-f]{64}$' } }
   responses:
     Problem: { description: RFC 9457 problem, content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } } }
   schemas:
-    RequestId: { type: string, pattern: '^req_[A-Za-z0-9]+$' }
-    Health: { type: object, required: [status, requestId], properties: { status: { const: ok }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Revision: { type: object, required: [revision, digest, requestId], properties: { revision: { type: string }, digest: { type: string }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Validation: { allOf: [{ $ref: '#/components/schemas/Revision' }, { type: object, required: [valid], properties: { valid: { const: true } } }] }
-    Config: { allOf: [{ $ref: '#/components/schemas/Revision' }, { type: object, required: [yaml], properties: { yaml: { type: string } } }] }
-    Status: { type: object, required: [revision, digest, listeners, upstreams, plugins, requestId], properties: { revision: { type: string }, digest: { type: string }, listeners: { type: array, items: { $ref: '#/components/schemas/Listener' } }, upstreams: { type: array, items: { $ref: '#/components/schemas/Upstream' } }, plugins: { type: array, items: { $ref: '#/components/schemas/Plugin' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Site: { type: object, required: [name, source, state], properties: { name: { type: string }, source: { enum: [release, directory] }, slug: { type: [string, 'null'] }, root: { type: [string, 'null'] }, currentRevision: { type: [string, 'null'] }, previousRevision: { type: [string, 'null'] }, state: { enum: [ready, invalid, publishing] } } }
-    SiteList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Site' } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Publication: { type: object, required: [site, revision, previousRevision, requestId], properties: { site: { type: string }, revision: { type: string }, previousRevision: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    PublishRequest: { type: object, additionalProperties: false, required: [source, idempotencyKey, expectedCurrentRevision], properties: { source: { type: string }, idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' }, expectedCurrentRevision: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$', description: Current release revision, or null if the site has never been published } } }
-    RollbackRequest: { type: object, additionalProperties: false, required: [idempotencyKey, expectedCurrentRevision], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' }, expectedCurrentRevision: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$', description: Current release revision } } }
-    Listener: { type: object, required: [name, type, address, state, activeConnections], properties: { name: { type: string }, type: { enum: [http, tcp, udp] }, address: { type: string }, state: { enum: [ready, draining, failed] }, activeConnections: { type: integer, minimum: 0 } } }
-    ListenerList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Listener' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Upstream: { type: object, required: [name, targets, healthyTargets, state], properties: { name: { type: string }, targets: { type: integer }, healthyTargets: { type: integer }, state: { enum: [healthy, degraded, unavailable] } } }
-    UpstreamList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Upstream' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Plugin: { type: object, required: [id, state, capabilities, limits, health], properties: { id: { type: string }, state: { enum: [starting, ready, unhealthy, stopped] }, capabilities: { type: array, items: { type: string } }, limits: { type: object }, health: { type: boolean } } }
-    PluginList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Plugin' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    LogList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { type: object } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Tls: { type: object, required: [profile, domain, serial, notAfter, state], properties: { profile: { type: string }, domain: { type: string }, serial: { type: string }, notAfter: { type: string, format: date-time }, state: { enum: [ready, renewing, degraded] } } }
-    TlsList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Tls' } }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    OperationReference: { type: object, required: [operationId, state, requestId], properties: { operationId: { type: string }, state: { type: string }, result: {}, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Operation: { type: object, required: [id, state, createdAt, requestId], properties: { id: { type: string }, state: { enum: [pending, running, succeeded, failed] }, createdAt: { type: string, format: date-time }, startedAt: { type: [string, 'null'], format: date-time }, finishedAt: { type: [string, 'null'], format: date-time }, result: {}, problem: { $ref: '#/components/schemas/Problem' }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    Audit: { type: object, required: [timestamp, actor, action, resource, result, requestId], properties: { timestamp: { type: string, format: date-time }, actor: { type: string }, action: { type: string }, resource: { type: string }, result: { enum: [succeeded, failed] }, requestId: { $ref: '#/components/schemas/RequestId' }, digestBefore: { type: string }, digestAfter: { type: string } } }
-    AuditList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Audit' } }, nextCursor: { type: [string, 'null'] }, requestId: { $ref: '#/components/schemas/RequestId' } } }
-    RenewRequest: { allOf: [{ $ref: '#/components/schemas/IdempotencyRequest' }, { type: object, properties: { domains: { type: array, items: { type: string } } } }] }
-    RevokeRequest: { allOf: [{ $ref: '#/components/schemas/IdempotencyRequest' }, { type: object, required: [serial], properties: { serial: { type: string } } }] }
-    Problem: { type: object, required: [type, title, status, code, detail, instance, requestId], properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, code: { type: string }, detail: { type: string }, instance: { type: string }, requestId: { $ref: '#/components/schemas/RequestId' }, path: { type: string }, diagnostics: { type: array, items: { type: object } } } }
+    Health: { type: object, required: [status, requestId], properties: { status: { const: ok }, requestId: { type: string } } }
+    Status: { type: object, required: [caddy, drift, dataPlaneReadiness, requestId], properties: { caddy: { $ref: '#/components/schemas/CaddyBuild' }, drift: { type: boolean }, runtimeDigest: { type: string }, compositionDigest: { type: string }, dataPlaneReadiness: { $ref: '#/components/schemas/DataPlaneReadiness' }, requestId: { type: string } } }
+    DataPlaneReadiness: { type: object, required: [state], properties: { state: { enum: [ready, not-ready] }, reason: { enum: [system-release-required, caddy-unavailable, recovery-required], description: Present only when state is not-ready. } } }
+    CaddyBuild: { type: object, required: [variant, buildId, modules], properties: { variant: { enum: [embedded, external] }, buildId: { type: string }, modules: { type: array, items: { type: string } } } }
+    Group: { type: object, required: [id, kind, active, currentRevision, previousRevision, state], properties: { id: { type: string }, kind: { enum: [system, application] }, active: { type: boolean }, currentRevision: { type: [string, 'null'] }, previousRevision: { type: [string, 'null'] }, state: { enum: [empty, ready, applying, drift-blocked, failed] } } }
+    GroupList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Group' } }, requestId: { type: string } } }
+    GroupCreate: { type: object, additionalProperties: false, required: [id, idempotencyKey], properties: { id: { type: string, pattern: '^[a-z][a-z0-9-]{0,62}$' }, idempotencyKey: { type: string, minLength: 16, maxLength: 128 } } }
+    GroupRevision: { type: object, required: [id, groupId, caddyfile, caddyfileDigest, artifactDigest, frontends, createdAt], properties: { id: { type: string, pattern: '^[0-9a-f]{64}$' }, groupId: { type: string }, caddyfile: { type: string }, caddyfileDigest: { type: string, pattern: '^[0-9a-f]{64}$' }, artifactDigest: { type: [string, 'null'] }, frontends: { type: array, items: { type: object, required: [id, digest, files], properties: { id: { type: string }, digest: { type: string }, files: { type: integer, minimum: 0 } } } }, createdAt: { type: string, format: date-time }, actor: { type: string } } }
+    GroupRevisionList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/GroupRevision' } }, nextCursor: { type: [string, 'null'] }, requestId: { type: string } } }
+    GroupReleaseMetadata: { type: object, additionalProperties: false, required: [idempotencyKey, expectedCurrentRevision], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128, pattern: '^[!-~]+$' }, expectedCurrentRevision: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$' } } }
+    GroupReleaseMultipart: { type: object, additionalProperties: false, required: [metadata, caddyfile], properties: { metadata: { $ref: '#/components/schemas/GroupReleaseMetadata' }, caddyfile: { type: string }, artifact: { type: string, format: binary } } }
+    RevisionMutation: { type: object, additionalProperties: false, required: [idempotencyKey, expectedCurrentRevision], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128 }, expectedCurrentRevision: { type: [string, 'null'] } } }
+    CaddyState: { type: object, required: [drift, runtimeDigest, compositionDigest], properties: { drift: { type: boolean }, runtimeDigest: { type: string }, compositionDigest: { type: string }, latestCheckpointId: { type: [string, 'null'] } } }
+    ReconcileRequest: { type: object, additionalProperties: false, required: [groupRevisions, idempotencyKey], properties: { groupRevisions: { type: object, additionalProperties: { type: string } }, idempotencyKey: { type: string, minLength: 16, maxLength: 128 } } }
+    PluginInput: { type: object, additionalProperties: false, required: [mode, settings], properties: { mode: { enum: [local, remote] }, binary: { type: string }, endpoint: { type: string }, tls: { type: object }, settings: { type: object }, grants: { type: object }, limits: { type: object } } }
+    Plugin: { type: object, required: [id, mode, state, capabilities, settings], properties: { id: { type: string }, mode: { enum: [local, remote] }, state: { enum: [starting, ready, unhealthy, stopped] }, endpoint: { type: string }, capabilities: { type: array, items: { type: string } }, capabilityModes: { type: object, description: Modes attested by the plugin Manifest; consumers use this only for Caddyfile binding validation., additionalProperties: { type: array, items: { enum: [call, http-stream, websocket, sse, tcp, udp] } } }, settings: { type: object, description: Redacted settings. } } }
+    PluginList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/Plugin' } }, requestId: { type: string } } }
+    IdempotencyRequest: { type: object, additionalProperties: false, required: [idempotencyKey], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128 } } }
+    RevokeRequest: { type: object, additionalProperties: false, required: [idempotencyKey, serial, reason], properties: { idempotencyKey: { type: string, minLength: 16, maxLength: 128 }, serial: { type: string, minLength: 1 }, reason: { type: string, minLength: 1 } } }
+    OperationReference: { type: object, required: [operationId, state, requestId], properties: { operationId: { type: string }, state: { enum: [pending, running] }, requestId: { type: string } } }
+    Operation: { type: object, required: [id, kind, state, createdAt, requestId], properties: { id: { type: string }, kind: { type: string }, state: { enum: [pending, running, succeeded, failed] }, createdAt: { type: string, format: date-time }, updatedAt: { type: string, format: date-time }, result: {}, problem: { $ref: '#/components/schemas/Problem' }, requestId: { type: string } } }
+    TlsList: { type: object, required: [items, requestId], properties: { items: { type: array, items: { type: object, required: [domain, state], properties: { domain: { type: string }, serial: { type: [string, 'null'] }, notAfter: { type: [string, 'null'], format: date-time }, state: { enum: [pending, ready, renewing, degraded, expired] } } } }, requestId: { type: string } } }
+    AuditList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { type: object, required: [timestamp, actor, action, result], properties: { timestamp: { type: string, format: date-time }, actor: { type: string }, action: { type: string }, resource: { type: string }, result: { enum: [succeeded, failed] } } } }, nextCursor: { type: [string, 'null'] }, requestId: { type: string } } }
+    ServiceKeyInput: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 80 } } }
+    CreatedServiceKey: { type: object, required: [id, name, role, token, requestId], properties: { id: { type: string }, name: { type: string }, role: { const: platform-admin }, token: { type: string, writeOnly: true }, requestId: { type: string } } }
+    Problem: { type: object, required: [type, title, status, code, detail, instance, requestId], properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, code: { type: string }, detail: { type: string }, instance: { type: string }, requestId: { type: string }, diagnostics: { type: array, items: { type: object } } } }

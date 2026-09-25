@@ -1,316 +1,49 @@
 root:
-  - includes
-  - variables
-  - secrets
-  - registry
-  - sites
-  - listeners
-  - upstreams
-  - tlsProfiles
-  - authPolicies
-  - dataProviders
-  - wafPolicies
-  - rateLimits
-  - plugins
+  - state
+  - artifacts
   - management
-  - logging
-  - metrics
-  - tracing
-listener:
-  - type
-  - address
+  - caddy
+state:
+  - path
+artifacts:
+  - path
+management:
+  - listen
   - tls
-  - routes
-  - rules
-  - limits
-includes: includes
-listeners: listeners
-plugins: plugins
-sites: sites
-secrets: secrets
-variables: variables
-upstreams: upstreams
-rateLimits: rateLimits
-authPolicies: authPolicies
-authPolicy:
-  plugin: plugin
-wafPolicies: wafPolicies
-dataProviders: dataProviders
+  - requestLimits
+managementBootstrap:
+  section: management
+  listen: listen
+  tls: tls
+  clientCA: clientCA
+managementTLS:
+  - certificate
+  - key
+  - clientCA
+managementRequestLimits:
+  - maxBodyBytes
+  - headerTimeout
+  - requestTimeout
+caddy:
+  - variant
+  - binary
+  - expectedBuildID
+caddyVariant:
+  embedded: embedded
+  external: external
 secretReference:
-  envPrefix: "env:"
   filePrefix: "file:"
-registry:
-  section: registry
-  path: path
-substitution:
-  open: ${
-  close: '}'
+unknownFieldPolicy: reject
 semantics:
-  unusedSite: unused
-  overriddenSite: overridden
-  defaultLocaleMustBeListed: |
-    При наличии defaultLocale его значение должно точно совпадать с одним из locales. Это межполевое правило проверяет Gateway после JSON Schema; $data и иные расширения валидатора не используются.
-  managementNonLoopbackTLS: |
-    Для не-loopback адреса listener требуется tlsProfile, ссылающийся на запись tlsProfiles с clientAuth.mode=require.
-  managementNonLoopbackMTLS: |
-    Для не-loopback адреса listener профиль TLS должен требовать клиентский сертификат (clientAuth.mode=require).
-  managementStaticTokenNonLoopback: |
-    staticToken разрешён только на loopback-адресе listener.
-  managementStaticTokenExclusive: |
-    staticToken и serviceAccounts взаимоисключающие: нельзя задавать оба.
-  managementRemoteRequiresAccount: |
-    Для не-loopback адреса listener требуется как минимум один serviceAccounts. Каждый /api запрос также требует Bearer key.
+  minimalBootstrapOnly: |
+    Этот YAML содержит пути state/artifacts, Management API bind/TLS/trust и вариант Caddy. Traffic routes, sites, plugin settings и listener definitions задаются вне YAML.
+  localStorageOnly: |
+    SQLite и immutable artifact store размещаются на локальной файловой системе. Сетевые database mounts не поддерживаются.
+  managementRemoteSecurity: |
+    Вне loopback Management API требует private network/VPN, TLS, mTLS и Bearer service key роли platform-admin.
+  caddyVariant: |
+    External binary обязан иметь совместимый Liapoldus module manifest и Caddy-L4; несовместимая сборка отклоняется без downgrade.
 codes:
-  configInvalid: config_invalid
-  managementTLSRequired: management_tls_required
-  managementMTLSRequired: management_mtls_required
-  siteInvalid: site_invalid
-runtime:
-  http: http
-  directory: directory
-  release: release
-  section:
-    tlsProfiles: tlsProfiles
-    management: management
-    logging: logging
-    metrics: metrics
-    tracing: tracing
-  listener:
-    type: type
-    address: address
-    tls: tls
-    routes: routes
-    rules: rules
-    limits: limits
-    bodyBytes: bodyBytes
-    bodyBytesDefault: 10MiB
-    headerBytes: headerBytes
-    headerBytesDefault: 32KiB
-    quicField: quic
-    quic:
-      maxConnections: maxConnections
-      maxConnectionsDefault: "10000"
-      maxStreams: maxStreams
-      maxStreamsDefault: "100"
-      maxPacketBytes: maxPacketBytes
-      maxPacketBytesDefault: "1350"
-      maxPacketBytesMinimum: "1200"
-      maxPacketBytesMaximum: "1452"
-      idleTimeout: idleTimeout
-      idleTimeoutDefault: 30s
-      durationUnits: { d: 24h }
-  site:
-    source: source
-    type: type
-    root: root
-    index: index
-    indexDefault: index.html
-    manifestFileName: site.yaml
-    slug: slug
-    spa: spa
-    locales: locales
-    defaultLocale: defaultLocale
-    localeSeparator: /
-    redirects: redirects
-    headers: headers
-    deny: deny
-    cache: cache
-  siteRedirect:
-    from: from
-    to: to
-    status: status
-    location: Location
-  siteCache:
-    static: static
-    visibility: visibility
-    maxAge: maxAge
-  tlsProfile:
-    certificates: certificates
-    cert: cert
-    key: key
-    domains: domains
-    protocols: protocols
-    clientAuth: clientAuth
-  clientAuth:
-    mode: mode
-    ca: ca
-    require: require
-    optional: optional
-  logging:
-    format: format
-    access: access
-    application: application
-  metrics:
-    prometheus: prometheus
-    otlp: otlp
-    endpoint: endpoint
-    interval: interval
-  tracing:
-    otlp: otlp
-    endpoint: endpoint
-    sampling: sampling
-  management:
-    listener: listener
-    address: address
-    tlsProfile: tlsProfile
-    staticToken: staticToken
-    serviceAccounts: serviceAccounts
-    account:
-      id: id
-      role: role
-      keyHash: keyHash
-      rolePlatformAdmin: platform-admin
-  route:
-    when: when
-    then: then
-    host: host
-    method: method
-    path: path
-    prefix: prefix
-    exact: exact
-    regex: regex
-    site: site
-    proxy: proxy
-    redirect: redirect
-    rewrite: rewrite
-    headers: headers
-    query: query
-    deny: deny
-    plugin: plugin
-    auth: auth
-    waf: waf
-    rateLimit: rateLimit
-    cors: cors
-  redirect:
-    scheme: scheme
-    host: host
-    path: path
-    preserveQuery: preserveQuery
-    status: status
-  rewrite:
-    regex: regex
-    replacement: replacement
-  headers:
-    request: request
-    response: response
-    set: set
-    setIfAbsent: setIfAbsent
-    delete: delete
-  deny:
-    status: status
-    code: code
-  rateLimit:
-    key: key
-    requests: requests
-    per: per
-    burst: burst
-  waf:
-    rules: rules
-    when: when
-    then: then
-    plugin: plugin
-    path: path
-    method: method
-    sourceIP: sourceIp
-    headers: headers
-    query: query
-    geo: geo
-    asn: asn
-    provider: provider
-    country: country
-    city: city
-    onError: onError
-    prefix: prefix
-    exact: exact
-    regex: regex
-    exists: exists
-    in: in
-    notIn: notIn
-    all: all
-    any: any
-    not: not
-    requestSize: requestSize
-    comparison:
-      greaterThan: gt
-      greaterThanOrEqual: gte
-      lessThan: lt
-      lessThanOrEqual: lte
-    sizeUnits:
-      KiB: 1024
-      MiB: 1048576
-      GiB: 1073741824
-    allow: allow
-    deny: deny
-    status: status
-    code: code
-    limit: limit
-  dataProvider:
-    type: type
-    path: path
-    onError: onError
-    mmdb: mmdb
-    allow: allow
-    deny: deny
-  plugin:
-    instance: instance
-    capability: capability
-    binary: binary
-    args: args
-    env: env
-    capabilities: capabilities
-    settings: settings
-    grants: grants
-    secretGrants: secrets
-    grantName: name
-    grantPurpose: purpose
-    grantDomains: domains
-    wildcardDomainPrefix: "*."
-    context: context
-    contextSecrets: secrets
-    limits: limits
-    calls: calls
-    defaultCalls: 100
-    timeout: timeout
-    defaultTimeout: 5s
-    startTimeout: startTimeout
-    defaultStartTimeout: 10s
-    memory: memory
-    defaultMemory: 256MiB
-    defaultMemoryProbeInterval: 1s
-    restart: restart
-    enabled: enabled
-    backoff: backoff
-    maxBackoff: maxBackoff
-    defaultRestartEnabled: true
-    defaultRestartBackoff: 1s
-    defaultRestartMaxBackoff: 30s
-    defaultHealthProbeInterval: 5s
-    defaultHealthFailureThreshold: 3
-  proxy:
-    upstream: upstream
-    host: host
-    hostPreserve: preserve
-    hostUpstream: upstream
-  upstreamConfig:
-    targets: targets
-    targetAddress: address
-    targetWeight: weight
-    balance: balance
-    balanceRoundRobin: round-robin
-    balanceLeastConnections: least-connections
-    balanceHash: hash
-    hash: hash
-    hashSource: source
-    hashSourceIp: source-ip
-    hashSourceHeader: header
-    hashSourceCookie: cookie
-    hashSourceQuery: query
-    hashName: name
-    retry: retry
-    retryAttempts: attempts
-    retryOn: on
-    retryConnectFailure: connect-failure
-    retryTimeout: timeout
-    retryStatus502: status-502
-    retryStatus503: status-503
-    retryStatus504: status-504
+  unknownField: unknown_field
+  bootstrapInvalid: bootstrap_invalid
+  caddyBuildIncompatible: caddy_build_incompatible
