@@ -25,6 +25,7 @@ describe("durable Management API operations", () => {
         unknownStatus: number;
         unknownCode: string;
         resultSecretAbsent: boolean;
+        storedPayloadsNull: boolean;
       };
 
       expect(report.createStatus).toBe(202);
@@ -33,13 +34,18 @@ describe("durable Management API operations", () => {
       expect(report.operation).toMatchObject({
         id: report.operationId,
         kind: expect.any(String),
-        state: expect.any(String),
-        createdAt: expect.any(String),
+        state: "running",
+        createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
         requestId: expect.any(String),
       });
+      expect(report.operation).not.toHaveProperty("actor");
+      expect(report.operation).not.toHaveProperty("resource");
+      expect(report.operation).not.toHaveProperty("result");
+      expect(report.operation).not.toHaveProperty("problem");
       expect(report.unknownStatus).toBe(404);
       expect(report.unknownCode).toBeTruthy();
       expect(report.resultSecretAbsent).toBe(true);
+      expect(report.storedPayloadsNull).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -34,6 +34,7 @@ json:
   currentRevision: currentRevision
   previousRevision: previousRevision
   createdAt: createdAt
+  updatedAt: updatedAt
   startedAt: startedAt
   finishedAt: finishedAt
   result: result
@@ -119,3 +120,6 @@ codes:
   groupNotFound: group_not_found
   groupAlreadyExists: group_already_exists
   invalidRequest: invalid_request
+  operationNotFound: not_found
+diagnostics:
+  operationNotFound: The requested operation does not exist.

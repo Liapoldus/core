@@ -122,6 +122,7 @@ type ManagementWords struct {
 		GroupNotFound       string `yaml:"groupNotFound"`
 		GroupAlreadyExists  string `yaml:"groupAlreadyExists"`
 		InvalidRequest      string `yaml:"invalidRequest"`
+		OperationNotFound   string `yaml:"operationNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz          string `yaml:"healthz"`
@@ -181,6 +182,7 @@ type ManagementWords struct {
 		CurrentRevision    string `yaml:"currentRevision"`
 		PreviousRevision   string `yaml:"previousRevision"`
 		CreatedAt          string `yaml:"createdAt"`
+		UpdatedAt          string `yaml:"updatedAt"`
 		StartedAt          string `yaml:"startedAt"`
 		FinishedAt         string `yaml:"finishedAt"`
 		Result             string `yaml:"result"`
@@ -273,6 +275,9 @@ type ManagementWords struct {
 		Done     string `yaml:"done"`
 		Accepted string `yaml:"accepted"`
 	} `yaml:"operationState"`
+	Diagnostics struct {
+		OperationNotFound string `yaml:"operationNotFound"`
+	} `yaml:"diagnostics"`
 }
 
 func LoadManagement() (ManagementWords, error) {

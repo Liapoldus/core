@@ -28,11 +28,11 @@ type Server struct {
 	Token                    string
 	ServiceAccounts          []models.ServiceAccount
 	mu                       sync.RWMutex
-	operations               map[string]Operation
+	Operations               application.OperationService
 	AdminSurfaces            []AdminSurface
 	AdminDispatcher          *plugins.Dispatcher
 	Plugins                  []any
-	RestartPlugin            func(context.Context, string) (Operation, error)
+	RestartPlugin            func(context.Context, string) (models.Operation, error)
 	Audit                    *application.AuditService
 	GroupService             application.GroupService
 	AccessService            *application.AccessService
@@ -55,12 +55,6 @@ type AdminSurface struct {
 	Version      string   `json:"version"`
 	Title        string   `json:"title"`
 	Capabilities []string `json:"capabilities"`
-}
-type Operation struct {
-	ID        string    `json:"id"`
-	State     string    `json:"state"`
-	CreatedAt time.Time `json:"createdAt"`
-	Result    any       `json:"result,omitempty"`
 }
 
 func (server *Server) Handler() http.Handler {
@@ -190,28 +184,61 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
 			return
 		}
+		if server.Operations.Store == nil {
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			return
+		}
 		op, err := server.RestartPlugin(request.Context(), instance)
 		if err != nil {
-			writeProblem(response, 422, "operation_failed", err.Error(), requestID)
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 			return
 		}
-		server.mu.Lock()
-		if server.operations == nil {
-			server.operations = map[string]Operation{}
+		if op.ID == "" || op.Kind == "" || (op.State != server.Management.Statuses.Pending && op.State != server.Management.Statuses.Running) {
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			return
 		}
-		server.operations[op.ID] = op
-		server.mu.Unlock()
-		writeJSON(response, 202, map[string]any{"operationId": op.ID, "requestId": requestID})
+		op.RequestID = requestID
+		op.Actor = actor
+		op.Resource = instance
+		if op.CreatedAt.IsZero() {
+			op.CreatedAt = time.Now().UTC()
+		}
+		if err := server.Operations.Create(request.Context(), op); err != nil {
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			return
+		}
+		writeJSON(response, http.StatusAccepted, map[string]any{
+			server.Management.JSON.OperationID: op.ID,
+			server.Management.JSON.State:       op.State,
+			server.Management.JSON.RequestID:   requestID,
+		})
 	case strings.HasPrefix(path, server.Management.Paths.Operations+"/") && request.Method == http.MethodGet:
 		id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
-		server.mu.RLock()
-		operation, ok := server.operations[id]
-		server.mu.RUnlock()
-		if !ok {
-			writeProblem(response, 404, "not_found", "operation not found", requestID)
+		if server.Operations.Store == nil {
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 			return
 		}
-		writeJSON(response, 200, map[string]any{"id": operation.ID, "state": operation.State, "createdAt": operation.CreatedAt, server.Management.JSON.Result: operation.Result, server.Management.JSON.RequestID: requestID})
+		operation, err := server.Operations.Get(request.Context(), id)
+		if err != nil {
+			var notFound models.OperationNotFound
+			if errors.As(err, &notFound) {
+				writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
+				return
+			}
+			server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+			return
+		}
+		result := map[string]any{
+			server.Management.JSON.ID:        operation.ID,
+			server.Management.JSON.Kind:      operation.Kind,
+			server.Management.JSON.State:     operation.State,
+			server.Management.JSON.CreatedAt: operation.CreatedAt,
+			server.Management.JSON.RequestID: operation.RequestID,
+		}
+		if operation.UpdatedAt != nil {
+			result[server.Management.JSON.UpdatedAt] = *operation.UpdatedAt
+		}
+		writeJSON(response, http.StatusOK, result)
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
 	}
@@ -492,12 +519,6 @@ func sliceValues(values any) []any {
 	switch typed := values.(type) {
 	case []any:
 		return typed
-	case []Operation:
-		result := make([]any, len(typed))
-		for i := range typed {
-			result[i] = typed[i]
-		}
-		return result
 	case []models.AuditRecord:
 		result := make([]any, len(typed))
 		for i := range typed {

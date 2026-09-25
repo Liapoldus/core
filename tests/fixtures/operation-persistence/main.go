@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -23,6 +25,7 @@ type report struct {
 	UnknownStatus      int            `json:"unknownStatus"`
 	UnknownCode        string         `json:"unknownCode"`
 	ResultSecretAbsent bool           `json:"resultSecretAbsent"`
+	StoredPayloadsNull bool           `json:"storedPayloadsNull"`
 }
 
 func main() {
@@ -36,16 +39,23 @@ func main() {
 		panic(err)
 	}
 	database := openDatabase(path)
+	operationStore, err := storage.NewSQLiteOperationStore(database)
+	if err != nil {
+		panic(err)
+	}
 	server := &api.Server{
 		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
-		RestartPlugin: func(context.Context, string) (api.Operation, error) {
-			return api.Operation{
-				ID: "operation-restart-1", State: "running", CreatedAt: time.Now().UTC(),
-				Result: map[string]any{"secret": "must-not-be-persisted-or-returned"},
+		Operations: application.OperationService{Store: operationStore},
+		RestartPlugin: func(context.Context, string) (models.Operation, error) {
+			return models.Operation{
+				ID: "operation-restart-1", Kind: "plugin-restart", State: "running", CreatedAt: time.Now().UTC(),
 			}, nil
 		},
 	}
 	created := perform(server.Handler(), http.MethodPost, management.Paths.Plugins+"/forms/"+management.Paths.Restart, true)
+	if created.Code != http.StatusAccepted {
+		panic(created.Body.String())
+	}
 	var reference map[string]any
 	if err := json.Unmarshal(created.Body.Bytes(), &reference); err != nil {
 		panic(err)
@@ -56,8 +66,11 @@ func main() {
 	}
 	database = openDatabase(path)
 	defer database.Close()
-	_ = database
-	server = &api.Server{Token: "fixture-management-token", Management: management, Errors: errorCatalog}
+	operationStore, err = storage.NewSQLiteOperationStore(database)
+	if err != nil {
+		panic(err)
+	}
+	server = &api.Server{Token: "fixture-management-token", Management: management, Errors: errorCatalog, Operations: application.OperationService{Store: operationStore}}
 	read := perform(server.Handler(), http.MethodGet, management.Paths.Operations+"/"+operationID, true)
 	unknown := perform(server.Handler(), http.MethodGet, management.Paths.Operations+"/unknown-operation", true)
 	var operation map[string]any
@@ -69,11 +82,16 @@ func main() {
 		panic(err)
 	}
 	_, leaked := operation[management.JSON.Result]
+	var resultJSON, problemJSON sql.NullString
+	if err := database.QueryRowContext(context.Background(), "SELECT result_json, problem_json FROM operations WHERE id = ?", operationID).Scan(&resultJSON, &problemJSON); err != nil {
+		panic(err)
+	}
 	result := report{
 		CreateStatus: created.Code, OperationID: operationID,
 		ReadStatus: read.Code, Operation: operation,
 		UnknownStatus:      unknown.Code,
 		ResultSecretAbsent: !leaked && !strings.Contains(read.Body.String(), "must-not-be-persisted-or-returned"),
+		StoredPayloadsNull: !resultJSON.Valid && !problemJSON.Valid,
 	}
 	if code, ok := unknownBody["code"].(string); ok {
 		result.UnknownCode = code

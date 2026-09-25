@@ -1,0 +1,5 @@
+insertOperation: "INSERT INTO operations(id, kind, state, request_id, actor, resource, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
+selectOperation: "SELECT id, kind, state, created_at, updated_at, request_id, actor, resource FROM operations WHERE id = ?"
+timestampLayout: "2006-01-02T15:04:05.999999999Z07:00"
+operationNotFound: "The requested operation does not exist."
+invalidContract: "The SQLite operation-store contract is invalid."

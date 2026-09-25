@@ -28,6 +28,17 @@
   invalid cursor/limit, retention, restart и атомарный rollback при audit error.
   Остальные mutations, durable-operation transitions и общая политика ошибок
   audit store остаются незавершёнными.
+- `OperationStore` подключён через domain port, application service и SQLite
+  adapter. Restart operation и `GET /api/operations/{operationId}` используют
+  durable store; TS integration проверяет закрытие/повторное открытие SQLite,
+  неизвестный ID (`404`) и отсутствие opaque result/problem payloads. Lifecycle
+  transitions, recovery и audit operations остаются незавершёнными; это не
+  реализует group publish, чей acceptance-test остаётся pending.
+- Проверки текущего operation-slice: focused TS integration passed; `go vet`,
+  `go build`, macOS/Linux ARM64 builds и официальный Docker architecture lint
+  passed. `make check` останавливается на одном заранее сохранённом group-publish
+  red-test: валидный multipart пока получает `404` вместо ожидаемого `202`; прочие
+  29 TS-файлов / 49 тестов зелёные.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
@@ -48,10 +59,10 @@
 - Убраны недействующие CLI-конфигурационные и `site` команды; CLI оставлен для
   `serve` и `access bootstrap`. Статический CLI contract сокращён до реально
   используемых слов и настроек bootstrap key.
-- Удалён undocumented `GET /api/operations`, который выдавал только volatile
-  in-memory список и отсутствовал в OpenAPI; сохранён документированный
-  `GET /api/operations/{operationId}`. Удалена неиспользуемая domain-модель
-  `Operation`; runtime API-модель остаётся нужна restart/poll flow.
+- Undocumented `GET /api/operations` удалён. `GET
+  /api/operations/{operationId}` ранее читал volatile in-memory map; теперь
+  использует durable SQLite store. Domain-модель `Operation` содержит только
+  metadata; opaque result/problem payloads не сохраняются и не выдаются.
 - Удалены оставшиеся не маршрутизируемые `/api/sites` publish/rollback
   handlers, их volatile idempotency/revision-conflict обвязка и domain error;
   добавлен TS architecture gate, не допускающий возврат старого registry API.
