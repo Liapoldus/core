@@ -148,14 +148,6 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
 		server.writePage(response, server.Plugins, request, requestID)
-	case path == server.Management.Paths.Operations && request.Method == http.MethodGet:
-		server.mu.RLock()
-		items := make([]Operation, 0, len(server.operations))
-		for _, operation := range server.operations {
-			items = append(items, operation)
-		}
-		server.mu.RUnlock()
-		server.writePage(response, items, request, requestID)
 	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
 			writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})

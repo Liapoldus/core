@@ -48,6 +48,10 @@
 - Убраны недействующие CLI-конфигурационные и `site` команды; CLI оставлен для
   `serve` и `access bootstrap`. Статический CLI contract сокращён до реально
   используемых слов и настроек bootstrap key.
+- Удалён undocumented `GET /api/operations`, который выдавал только volatile
+  in-memory список и отсутствовал в OpenAPI; сохранён документированный
+  `GET /api/operations/{operationId}`. Удалена неиспользуемая domain-модель
+  `Operation`; runtime API-модель остаётся нужна restart/poll flow.
 - Удалены оставшиеся не маршрутизируемые `/api/sites` publish/rollback
   handlers, их volatile idempotency/revision-conflict обвязка и domain error;
   добавлен TS architecture gate, не допускающий возврат старого registry API.
