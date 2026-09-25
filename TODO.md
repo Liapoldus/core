@@ -51,9 +51,10 @@
   conformance всех archive limits/collisions, сериализация concurrent same-CAS
   reservations и production startup crash-recovery.
 - Текущий focused group suite: archive, rollback, release-store и Management API
-  tests проходят; также проходят `go vet ./...`, `go build ./...` и
-  `git diff --check`. Полный `make check`, кросс-сборки и Docker smoke ещё нужно
-  повторить после объединения параллельных изменений.
+  tests проходят. После объединения параллельных изменений прошёл полный
+  `make check` (Go build, 44 TS-файла / 73 теста и Docker arch-lint без
+  warnings), `go vet ./...`, Linux/macOS ARM64 builds и Gateway Docker smoke.
+  Это не закрывает незавершённые production lifecycle/conformance пункты ниже.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
@@ -258,9 +259,10 @@
   group publish pre-activation validation; текущий Caddy handler знает mode
   registry, но management/serve composition не валидирует весь published group
   against live instance Manifest до activation.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас два vectors
-  реально исполняются (bootstrap rejection и Management authentication); прочие
-  vectors пока проверяются только архитектурно/структурно.
+- [ ] Расширять исполняемые golden-vector conformance: сейчас три vectors
+  реально исполняются (bootstrap rejection, Management authentication и
+  archive traversal); прочие vectors пока проверяются только структурно либо
+  требуют отдельного production slice.
 - [ ] Исправить release workflow: он требует минимум 9 файлов в
   `contracts/v1`, хотя manifest перечисляет 7 payload-файлов и каталог содержит
   8 файлов. Проверять соответствие package contents manifest, а не фиксированный
