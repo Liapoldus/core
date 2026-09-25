@@ -41,6 +41,16 @@ describe("group Management API reads", () => {
         releaseDetailSafe: true,
         publishStatus: expect.any(Number),
         publish: expect.any(Object),
+        publishRetryStatus: expect.any(Number),
+        publishRetry: expect.any(Object),
+        idempotencyConflictStatus: expect.any(Number),
+        idempotencyConflictCode: expect.any(String),
+        invalidCaddyfileStatus: expect.any(Number),
+        invalidCaddyfileCode: expect.any(String),
+        pointersAfterInvalid: expect.any(String),
+        staleRevisionStatus: expect.any(Number),
+        staleRevisionCode: expect.any(String),
+        pointersAfterStale: expect.any(String),
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -64,6 +74,59 @@ describe("group Management API reads", () => {
       expect(report.publish.operationId).toBeTruthy();
       expect(report.publish.state).toMatch(/^(pending|running)$/);
       expect(report.publish.requestId).toBeTruthy();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects stale revisions and invalid Caddyfiles without changing active pointers", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-group-publish-validation-"));
+    try {
+      const result = await execFileAsync(
+        "go",
+        ["run", "./tests/fixtures/group-management-api", join(directory, "gateway.db")],
+        { cwd: coreRoot },
+      );
+      const report = JSON.parse(result.stdout) as {
+        invalidCaddyfileStatus: number;
+        invalidCaddyfileCode: string;
+        pointersAfterInvalid: string | null;
+        staleRevisionStatus: number;
+        staleRevisionCode: string;
+        pointersAfterStale: string | null;
+      };
+
+      expect(report.invalidCaddyfileStatus).toBe(422);
+      expect(report.invalidCaddyfileCode).toBe("caddy_adapt_failed");
+      expect(report.pointersAfterInvalid).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(report.staleRevisionStatus).toBe(409);
+      expect(report.staleRevisionCode).toBe("group_revision_conflict");
+      expect(report.pointersAfterStale).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates identical publish retries and rejects key reuse with different content", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-group-publish-idempotency-"));
+    try {
+      const result = await execFileAsync(
+        "go",
+        ["run", "./tests/fixtures/group-management-api", join(directory, "gateway.db")],
+        { cwd: coreRoot },
+      );
+      const report = JSON.parse(result.stdout) as {
+        publish: { operationId?: string };
+        publishRetryStatus: number;
+        publishRetry: { operationId?: string };
+        idempotencyConflictStatus: number;
+        idempotencyConflictCode: string;
+      };
+
+      expect(report.publishRetryStatus).toBe(202);
+      expect(report.publishRetry.operationId).toBe(report.publish.operationId);
+      expect(report.idempotencyConflictStatus).toBe(409);
+      expect(report.idempotencyConflictCode).toBe("idempotency_conflict");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
