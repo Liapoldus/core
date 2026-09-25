@@ -144,6 +144,13 @@ describe("production serve bootstrap and SQLite group reads", () => {
         id: "portal", kind: "application", active: true, currentRevision: null, previousRevision: null, state: "empty",
       });
 
+      const invalid = await requestJSON(address, "/api/groups", token, {
+        id: "Portal",
+        idempotencyKey: "create-invalid-group-0001",
+      });
+      expect(invalid.status).toBe(400);
+      expect(JSON.parse(invalid.body)).toMatchObject({ code: "invalid_request" });
+
       const duplicate = await requestJSON(address, "/api/groups", token, {
         id: "portal",
         idempotencyKey: "create-portal-group-0002",
