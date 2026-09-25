@@ -128,6 +128,11 @@
   adaptation/full-snapshot activation, plugin binding validation и согласованный
   journal/recovery для Caddy runtime и revision pointers. Не выпускать
   промежуточный handler, который принимает upload без полной activation-семантики.
+- [ ] TS integration red-test `operation-persistence.test.ts` требует, чтобы
+  Operation, созданная существующим restart endpoint, переживала закрытие и
+  повторное открытие SQLite, а неизвестный ID давал OpenAPI Problem 404. До
+  реализации API хранит operations только в памяти; persisted arbitrary
+  `result` запрещён, безопасный metadata-only ответ достаточен по OpenAPI.
 - [ ] Реализовать startup reconciliation незавершённых операций; crash между
   artifact/SQLite commit/Caddy activation не должен создавать смешанный runtime.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
