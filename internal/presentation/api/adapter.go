@@ -154,6 +154,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupReleases(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get:
 		server.handleGroupRelease(response, request, path, requestID)
+	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback) && request.Method == server.Management.Methods.Post:
+		server.handleGroupRollback(response, request, path, requestID, actor)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
 		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
@@ -548,6 +550,99 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 				return
 			}
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactInvalidCode, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	state := operation.State
+	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
+		state = server.GroupReleasePolicy.PendingState
+	}
+	writeJSON(response, http.StatusAccepted, map[string]any{
+		server.Management.JSON.OperationID: operation.ID,
+		server.Management.JSON.State:       state,
+		server.Management.JSON.RequestID:   requestID,
+	})
+}
+
+func (server *Server) handleGroupRollback(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+	if server.GroupReleases == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback)
+	if groupID == "" || strings.Contains(groupID, server.Management.Paths.GroupIDSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+		return
+	}
+	contentType, _, contentTypeErr := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if contentTypeErr != nil || contentType != server.GroupReleasePolicy.MetadataContentType {
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, server.GroupReleasePolicy.RequestLimitBytes)
+	fields := make(map[string]json.RawMessage)
+	decoder := json.NewDecoder(request.Body)
+	if err := decoder.Decode(&fields); err != nil || fields == nil || len(fields) != 2 {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	keyJSON, hasKey := fields[server.Management.JSON.IdempotencyKey]
+	expectedJSON, hasExpected := fields[server.GroupReleasePolicy.ExpectedCurrentRevisionField]
+	var idempotencyKey string
+	var expected *string
+	if !hasKey || !hasExpected || json.Unmarshal(keyJSON, &idempotencyKey) != nil || len(idempotencyKey) < server.Management.Idempotency.KeyMin || len(idempotencyKey) > server.Management.Idempotency.KeyChars || !ascii(idempotencyKey) || json.Unmarshal(expectedJSON, &expected) != nil {
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	if expected != nil {
+		valid, err := regexp.MatchString(server.GroupReleasePolicy.RevisionIDPattern, *expected)
+		if err != nil || !valid {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+			return
+		}
+	}
+	operation, _, err := server.GroupReleases.Rollback(request.Context(), models.GroupRollbackCommand{
+		GroupID: groupID, Actor: actor, RequestID: requestID,
+		IdempotencyKey:          idempotencyKey,
+		IdempotencyScope:        server.GroupReleasePolicy.ScopePrefix + groupID + server.GroupReleasePolicy.RollbackScopeSuffix,
+		ExpectedCurrentRevision: expected, IdempotencyWindow: server.GroupReleasePolicy.IdempotencyWindow,
+	})
+	if err != nil {
+		var conflict models.GroupRevisionConflict
+		if errors.As(err, &conflict) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.RevisionConflictCode, requestID)
+			return
+		}
+		var idempotencyConflict models.IdempotencyConflict
+		if errors.As(err, &idempotencyConflict) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.IdempotencyConflictCode, requestID)
+			return
+		}
+		var groupNotFound models.GroupNotFound
+		if errors.As(err, &groupNotFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		var revisionNotFound models.GroupRevisionNotFound
+		if errors.As(err, &revisionNotFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		var validation models.GroupReleaseValidationError
+		if errors.As(err, &validation) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.CaddyAdaptFailedCode, requestID)
 			return
 		}
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)

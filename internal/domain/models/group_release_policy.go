@@ -4,9 +4,12 @@ import "time"
 
 type GroupReleasePolicy struct {
 	OperationKind                  string
+	RollbackOperationKind          string
 	ScopePrefix                    string
 	ScopeSuffix                    string
+	RollbackScopeSuffix            string
 	AuditAction                    string
+	RollbackAuditAction            string
 	SuccessResult                  string
 	FailureResult                  string
 	PendingState                   string
@@ -47,5 +50,6 @@ type GroupReleasePolicy struct {
 	ActivationFailedCode           string
 	MetadataIdempotencyKeyField    string
 	MetadataExpectedRevisionField  string
+	ExpectedCurrentRevisionField   string
 	RevisionIDPattern              string
 }

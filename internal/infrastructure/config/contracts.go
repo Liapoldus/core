@@ -145,6 +145,7 @@ type ManagementWords struct {
 		Groups           string `yaml:"groups"`
 		GroupByID        string `yaml:"groupByID"`
 		GroupReleases    string `yaml:"groupReleases"`
+		GroupRollback    string `yaml:"groupRollback"`
 		GroupIDSeparator string `yaml:"groupIDSeparator"`
 		GroupIDPattern   string `yaml:"groupIDPattern"`
 	} `yaml:"paths"`

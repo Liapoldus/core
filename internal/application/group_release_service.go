@@ -109,6 +109,114 @@ func (service *GroupReleaseService) Accept(ctx context.Context, command models.G
 	return operation, false, nil
 }
 
+func (service *GroupReleaseService) Rollback(ctx context.Context, command models.GroupRollbackCommand) (models.Operation, bool, error) {
+	if service == nil {
+		return models.Operation{}, false, models.GroupReleaseValidationError{}
+	}
+	if service.Store == nil || service.Releases == nil || service.ContentReader == nil || service.Artifacts == nil || service.Activator == nil || command.GroupID == "" || command.Actor == "" || command.RequestID == "" || command.IdempotencyKey == "" || command.IdempotencyScope == "" {
+		return models.Operation{}, false, models.GroupReleaseValidationError{Cause: errors.New(service.Policy.InvalidConfiguration)}
+	}
+	group, err := service.Store.GetGroup(ctx, command.GroupID)
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	if !group.Active {
+		return models.Operation{}, false, models.GroupNotFound{}
+	}
+	pointers, err := service.Store.GetPointers(ctx, command.GroupID)
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	if pointers.PreviousRevisionID == nil {
+		return models.Operation{}, false, models.GroupRevisionNotFound{}
+	}
+	revision, err := service.Store.GetRevision(ctx, command.GroupID, *pointers.PreviousRevisionID)
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	operationID, err := randomDigestID()
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	command.Now = time.Now().UTC()
+	if command.IdempotencyWindow <= 0 {
+		command.IdempotencyWindow = service.Policy.IdempotencyWindow
+	}
+	candidate, err := service.compose(ctx, command.GroupID, &revision)
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	if err := service.Activator.Validate(ctx, candidate); err != nil {
+		return models.Operation{}, false, models.GroupReleaseValidationError{Cause: err}
+	}
+	keyHash := sha256.Sum256([]byte(command.IdempotencyKey))
+	requestHash := sha256.New()
+	_, _ = requestHash.Write([]byte(command.GroupID))
+	_, _ = requestHash.Write([]byte{0})
+	if command.ExpectedCurrentRevision != nil {
+		_, _ = requestHash.Write([]byte(*command.ExpectedCurrentRevision))
+	}
+	reservation := models.GroupReleaseReservation{
+		GroupID: command.GroupID, ExpectedCurrentRevision: command.ExpectedCurrentRevision,
+		Actor: command.Actor, Scope: command.IdempotencyScope, KeyDigest: hex.EncodeToString(keyHash[:]),
+		RequestDigest: hex.EncodeToString(requestHash.Sum(nil)), OperationID: operationID,
+		RevisionID: revision.ID, OperationKind: service.Policy.RollbackOperationKind,
+		OperationState: service.Policy.PendingState, RequestID: command.RequestID,
+		CaddyfileDigest: revision.CaddyfileDigest, CaddyfilePath: revision.CaddyfilePath,
+		ArtifactDigest: revision.ArtifactDigest, ArtifactPath: revision.ArtifactPath,
+		CreatedAt: command.Now, ExpiresAt: command.Now.Add(command.IdempotencyWindow),
+	}
+	operation, duplicate, err := service.Releases.Reserve(ctx, reservation)
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	if duplicate {
+		return operation, true, nil
+	}
+	go service.executeRollback(reservation, revision)
+	return operation, false, nil
+}
+
+func (service *GroupReleaseService) executeRollback(reservation models.GroupReleaseReservation, revision models.GroupRevision) {
+	ctx := context.Background()
+	releaseActivationLock.Lock()
+	defer releaseActivationLock.Unlock()
+	candidate, err := service.compose(ctx, reservation.GroupID, &revision)
+	if err == nil {
+		err = service.Activator.Activate(ctx, candidate)
+	}
+	if err != nil {
+		service.fail(ctx, reservation, nil)
+		return
+	}
+	beforeDigest := ""
+	if reservation.ExpectedCurrentRevision != nil {
+		beforeDigest = *reservation.ExpectedCurrentRevision
+	}
+	record := models.AuditRecord{
+		Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.Policy.RollbackAuditAction,
+		Resource: reservation.GroupID, Result: service.Policy.SuccessResult, RequestID: reservation.RequestID,
+		DigestBefore: beforeDigest, DigestAfter: revision.CaddyfileDigest,
+	}
+	err = service.Releases.Commit(ctx, models.GroupReleaseCommit{
+		GroupID: reservation.GroupID, ExpectedCurrentRevision: reservation.ExpectedCurrentRevision,
+		Revision: revision, RevisionAlreadyExists: true, OperationID: reservation.OperationID,
+		OperationState: service.Policy.SucceededState, JournalState: service.Policy.JournalCompleteState,
+		UpdatedAt: time.Now().UTC(), Audit: record,
+	})
+	if err == nil {
+		return
+	}
+	previousSnapshot, rollbackErr := service.compose(ctx, "", nil)
+	if rollbackErr == nil {
+		rollbackErr = service.Activator.Activate(ctx, previousSnapshot)
+	}
+	if rollbackErr != nil {
+		return
+	}
+	service.fail(ctx, reservation, &record)
+}
+
 func (service *GroupReleaseService) discard(ctx context.Context, revision models.GroupRevision) {
 	_ = service.Artifacts.DiscardCaddyfile(ctx, revision)
 	if revision.ArtifactPath != nil {
@@ -135,16 +243,18 @@ func (service *GroupReleaseService) Recover(ctx context.Context) error {
 	}
 	for _, reservation := range reservations {
 		record := models.AuditRecord{
-			Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.Policy.AuditAction,
+			Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.auditAction(reservation.OperationKind),
 			Resource: reservation.GroupID, Result: service.Policy.FailureResult, RequestID: reservation.RequestID,
 		}
 		if err := service.Releases.Fail(ctx, reservation.OperationID, service.Policy.FailedState, service.Policy.JournalFailedState, record); err != nil {
 			return err
 		}
-		service.discard(ctx, models.GroupRevision{
-			ID: reservation.RevisionID, CaddyfilePath: reservation.CaddyfilePath,
-			ArtifactPath: reservation.ArtifactPath,
-		})
+		if reservation.OperationKind != service.Policy.RollbackOperationKind {
+			service.discard(ctx, models.GroupRevision{
+				ID: reservation.RevisionID, CaddyfilePath: reservation.CaddyfilePath,
+				ArtifactPath: reservation.ArtifactPath,
+			})
+		}
 	}
 	return nil
 }
@@ -176,7 +286,7 @@ func (service *GroupReleaseService) execute(reservation models.GroupReleaseReser
 		beforeDigest = *reservation.ExpectedCurrentRevision
 	}
 	record := models.AuditRecord{
-		Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.Policy.AuditAction,
+		Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.auditAction(reservation.OperationKind),
 		Resource: reservation.GroupID, Result: service.Policy.SuccessResult, RequestID: reservation.RequestID,
 		DigestBefore: beforeDigest, DigestAfter: revision.CaddyfileDigest,
 	}
@@ -208,11 +318,20 @@ func (service *GroupReleaseService) fail(ctx context.Context, reservation models
 		record.DigestAfter = successRecord.DigestAfter
 	}
 	if err := service.Releases.Fail(ctx, reservation.OperationID, service.Policy.FailedState, service.Policy.JournalFailedState, record); err == nil {
-		service.discard(ctx, models.GroupRevision{
-			ID: reservation.RevisionID, CaddyfilePath: reservation.CaddyfilePath,
-			ArtifactPath: reservation.ArtifactPath,
-		})
+		if reservation.OperationKind != service.Policy.RollbackOperationKind {
+			service.discard(ctx, models.GroupRevision{
+				ID: reservation.RevisionID, CaddyfilePath: reservation.CaddyfilePath,
+				ArtifactPath: reservation.ArtifactPath,
+			})
+		}
 	}
+}
+
+func (service *GroupReleaseService) auditAction(operationKind string) string {
+	if operationKind == service.Policy.RollbackOperationKind {
+		return service.Policy.RollbackAuditAction
+	}
+	return service.Policy.AuditAction
 }
 
 func (service *GroupReleaseService) compose(ctx context.Context, candidateGroupID string, candidate *models.GroupRevision) ([]byte, error) {

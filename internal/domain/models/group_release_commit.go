@@ -6,6 +6,7 @@ type GroupReleaseCommit struct {
 	GroupID                 string
 	ExpectedCurrentRevision *string
 	Revision                GroupRevision
+	RevisionAlreadyExists   bool
 	OperationID             string
 	OperationState          string
 	JournalState            string

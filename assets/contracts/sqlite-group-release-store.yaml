@@ -9,7 +9,7 @@ insertRevision: "INSERT INTO group_revisions(id, group_id, caddyfile_digest, art
 advancePointers: "UPDATE group_pointers SET previous_revision_id = current_revision_id, current_revision_id = ?, updated_at = CURRENT_TIMESTAMP WHERE group_id = ? AND current_revision_id IS ?"
 updateOperation: "UPDATE operations SET state = ?, updated_at = ? WHERE id = ?"
 updateJournal: "UPDATE group_release_journal SET state = ?, updated_at = ? WHERE operation_id = ?"
-selectPending: "SELECT operation_id, group_id, expected_current_revision_id, revision_id, caddyfile_digest, artifact_digest, caddyfile_path, artifact_path, actor, request_id, created_at, (SELECT expires_at FROM idempotency WHERE operation_id = group_release_journal.operation_id) FROM group_release_journal WHERE state = ? ORDER BY created_at"
+selectPending: "SELECT journal.operation_id, journal.group_id, journal.expected_current_revision_id, journal.revision_id, operation.kind, journal.caddyfile_digest, journal.artifact_digest, journal.caddyfile_path, journal.artifact_path, journal.actor, journal.request_id, journal.created_at, (SELECT expires_at FROM idempotency WHERE operation_id = journal.operation_id) FROM group_release_journal journal JOIN operations operation ON operation.id = journal.operation_id WHERE journal.state = ? ORDER BY journal.created_at"
 groupExists: "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ?)"
 groupNotFound: "The requested group does not exist."
 operationNotFound: "The requested operation does not exist."

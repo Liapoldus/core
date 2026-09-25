@@ -1,7 +1,10 @@
 operationKind: group.publish
+rollbackOperationKind: group.rollback
 scopePrefix: groups/
 scopeSuffix: /releases
+rollbackScopeSuffix: /rollback
 auditAction: group.publish
+rollbackAuditAction: group.rollback
 successResult: succeeded
 failureResult: failed
 pendingState: pending
@@ -42,4 +45,5 @@ artifactTooLargeCode: artifact_too_large
 activationFailedCode: activation_failed
 metadataIdempotencyKeyField: idempotencyKey
 metadataExpectedRevisionField: expectedCurrentRevision
+expectedCurrentRevisionField: expectedCurrentRevision
 revisionIDPattern: '^[0-9a-f]{64}$'

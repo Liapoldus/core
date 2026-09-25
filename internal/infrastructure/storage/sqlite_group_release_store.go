@@ -143,11 +143,13 @@ func (store *SQLiteGroupReleaseStore) Commit(ctx context.Context, commit models.
 		return err
 	}
 	defer transaction.Rollback()
-	if _, err := transaction.ExecContext(ctx, store.contract.InsertRevision,
-		commit.Revision.ID, commit.Revision.GroupID, commit.Revision.CaddyfileDigest,
-		optionalString(commit.Revision.ArtifactDigest), commit.Revision.CaddyfilePath,
-		optionalString(commit.Revision.ArtifactPath), commit.Revision.Actor); err != nil {
-		return err
+	if !commit.RevisionAlreadyExists {
+		if _, err := transaction.ExecContext(ctx, store.contract.InsertRevision,
+			commit.Revision.ID, commit.Revision.GroupID, commit.Revision.CaddyfileDigest,
+			optionalString(commit.Revision.ArtifactDigest), commit.Revision.CaddyfilePath,
+			optionalString(commit.Revision.ArtifactPath), commit.Revision.Actor); err != nil {
+			return err
+		}
 	}
 	result, err := transaction.ExecContext(ctx, store.contract.AdvancePointers, commit.Revision.ID, commit.GroupID, optionalString(commit.ExpectedCurrentRevision))
 	if err != nil {
@@ -275,7 +277,7 @@ func scanPendingRelease(row operationRow, layout string) (models.GroupReleaseRes
 	var expected, artifactDigest, artifactPath sql.NullString
 	var createdAt, expiresAt string
 	if err := row.Scan(&reservation.OperationID, &reservation.GroupID, &expected, &reservation.RevisionID,
-		&reservation.CaddyfileDigest, &artifactDigest, &reservation.CaddyfilePath, &artifactPath,
+		&reservation.OperationKind, &reservation.CaddyfileDigest, &artifactDigest, &reservation.CaddyfilePath, &artifactPath,
 		&reservation.Actor, &reservation.RequestID, &createdAt, &expiresAt); err != nil {
 		return models.GroupReleaseReservation{}, err
 	}

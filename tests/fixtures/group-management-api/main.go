@@ -68,6 +68,12 @@ type report struct {
 	UnsafeArtifactCode         string           `json:"unsafeArtifactCode"`
 	RollbackStatus             int              `json:"rollbackStatus"`
 	RollbackCode               string           `json:"rollbackCode"`
+	RollbackRetryStatus        int              `json:"rollbackRetryStatus"`
+	RollbackRetryOperationID   string           `json:"rollbackRetryOperationId"`
+	RollbackStaleStatus        int              `json:"rollbackStaleStatus"`
+	RollbackStaleCode          string           `json:"rollbackStaleCode"`
+	CurrentBeforeRollback      *string          `json:"currentBeforeRollback"`
+	PreviousBeforeRollback     *string          `json:"previousBeforeRollback"`
 	CurrentAfterRollback       *string          `json:"currentAfterRollback"`
 	PreviousAfterRollback      *string          `json:"previousAfterRollback"`
 }
@@ -290,7 +296,7 @@ func main() {
 	if err := json.Unmarshal(groupAfterReopen.Body.Bytes(), &groupAfterReopenBody); err != nil {
 		panic(err)
 	}
-	rollback := performRollback(reopenedServer.Handler(), groupAfterReopenBody.CurrentRevision)
+	rollback := performRollback(reopenedServer.Handler(), groupAfterReopenBody.CurrentRevision, "rollback-key-00001")
 	var rollbackBody map[string]any
 	if err := json.Unmarshal(rollback.Body.Bytes(), &rollbackBody); err != nil {
 		panic(err)
@@ -299,10 +305,26 @@ func main() {
 	if rollbackOperationID != "" {
 		waitForOperation(reopenedOperationStore, rollbackOperationID)
 	}
+	rollbackRetry := performRollback(reopenedServer.Handler(), groupAfterReopenBody.CurrentRevision, "rollback-key-00001")
+	var rollbackRetryBody map[string]any
+	if err := json.Unmarshal(rollbackRetry.Body.Bytes(), &rollbackRetryBody); err != nil {
+		panic(err)
+	}
+	rollbackStale := performRollback(reopenedServer.Handler(), groupAfterReopenBody.CurrentRevision, "rollback-stale-00001")
+	var rollbackStaleBody map[string]any
+	if err := json.Unmarshal(rollbackStale.Body.Bytes(), &rollbackStaleBody); err != nil {
+		panic(err)
+	}
 	groupAfterRollback := perform(reopenedServer.Handler(), http.MethodGet, "/api/groups/application-a", true)
 	var groupAfterRollbackBody struct {
 		CurrentRevision  *string `json:"currentRevision"`
 		PreviousRevision *string `json:"previousRevision"`
+	}
+	var groupBeforeRollbackBody struct {
+		PreviousRevision *string `json:"previousRevision"`
+	}
+	if err := json.Unmarshal(groupAfterReopen.Body.Bytes(), &groupBeforeRollbackBody); err != nil {
+		panic(err)
 	}
 	if err := json.Unmarshal(groupAfterRollback.Body.Bytes(), &groupAfterRollbackBody); err != nil {
 		panic(err)
@@ -335,8 +357,12 @@ func main() {
 		PointersAfterStale:   pointersAfterStaleBody.CurrentRevision,
 		UnsafeArtifactStatus: unsafeArtifact.Code, UnsafeArtifactCode: stringField(unsafeArtifactBody, "code"),
 		RollbackStatus: rollback.Code, RollbackCode: stringField(rollbackBody, "code"),
-		CurrentAfterRollback:  groupAfterRollbackBody.CurrentRevision,
-		PreviousAfterRollback: groupAfterRollbackBody.PreviousRevision,
+		RollbackRetryStatus: rollbackRetry.Code, RollbackRetryOperationID: stringField(rollbackRetryBody, management.JSON.OperationID),
+		RollbackStaleStatus: rollbackStale.Code, RollbackStaleCode: stringField(rollbackStaleBody, "code"),
+		CurrentBeforeRollback:  groupAfterReopenBody.CurrentRevision,
+		PreviousBeforeRollback: groupBeforeRollbackBody.PreviousRevision,
+		CurrentAfterRollback:   groupAfterRollbackBody.CurrentRevision,
+		PreviousAfterRollback:  groupAfterRollbackBody.PreviousRevision,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
@@ -411,9 +437,9 @@ func performMultipartWithArtifact(handler http.Handler, idempotencyKey, expected
 	return response
 }
 
-func performRollback(handler http.Handler, expectedCurrentRevision *string) *httptest.ResponseRecorder {
+func performRollback(handler http.Handler, expectedCurrentRevision *string, idempotencyKey string) *httptest.ResponseRecorder {
 	body, err := json.Marshal(map[string]any{
-		"idempotencyKey": "rollback-key-00001", "expectedCurrentRevision": expectedCurrentRevision,
+		"idempotencyKey": idempotencyKey, "expectedCurrentRevision": expectedCurrentRevision,
 	})
 	if err != nil {
 		panic(err)

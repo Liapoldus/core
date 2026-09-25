@@ -20,14 +20,26 @@ describe("group release rollback", () => {
       const report = JSON.parse(result.stdout) as {
         rollbackStatus: number;
         rollbackCode: string;
+        rollbackRetryStatus: number;
+        rollbackRetryOperationId: string;
+        rollbackStaleStatus: number;
+        rollbackStaleCode: string;
+        currentBeforeRollback: string | null;
+        previousBeforeRollback: string | null;
         currentAfterRollback: string | null;
         previousAfterRollback: string | null;
       };
 
       expect(report.rollbackStatus).toBe(202);
       expect(report.rollbackCode).toBe("");
-      expect(report.currentAfterRollback).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-      expect(report.previousAfterRollback).not.toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(report.rollbackRetryStatus).toBe(202);
+      expect(report.rollbackRetryOperationId).toBeTruthy();
+      expect(report.rollbackStaleStatus).toBe(409);
+      expect(report.rollbackStaleCode).toBe("group_revision_conflict");
+      expect(report.currentBeforeRollback).not.toBeNull();
+      expect(report.previousBeforeRollback).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(report.currentAfterRollback).toBe(report.previousBeforeRollback);
+      expect(report.previousAfterRollback).toBe(report.currentBeforeRollback);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

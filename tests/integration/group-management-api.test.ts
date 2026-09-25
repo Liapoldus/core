@@ -57,6 +57,16 @@ describe("group Management API reads", () => {
         pointersAfterStale: expect.any(String),
         unsafeArtifactStatus: expect.any(Number),
         unsafeArtifactCode: expect.any(String),
+        rollbackStatus: expect.any(Number),
+        rollbackCode: expect.any(String),
+        rollbackRetryStatus: expect.any(Number),
+        rollbackRetryOperationId: expect.any(String),
+        rollbackStaleStatus: expect.any(Number),
+        rollbackStaleCode: expect.any(String),
+        currentBeforeRollback: expect.any(String),
+        previousBeforeRollback: expect.any(String),
+        currentAfterRollback: expect.any(String),
+        previousAfterRollback: expect.any(String),
       });
     } finally {
       await rm(directory, { recursive: true, force: true });
