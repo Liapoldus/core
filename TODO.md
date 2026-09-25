@@ -105,7 +105,7 @@
   generations не подключены, remote-replica fan-out не реализован. Сохранить
   этот код при подключении composition root и расширять по red TS тестам.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
-  manifests/modes, local supervision и remote fixed Service endpoint без
+  manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments
   разрешены; Caddy handler напрямую вызывает объявленную capability.
 - [ ] Развести Gateway control gRPC client и Caddy data-plane connection pool:
@@ -121,11 +121,13 @@
   trust roots разделить, rotation/revocation
   выполнять без downgrade. `DispatchApply` уже реализован в `pluginprotocol` v1;
   Gateway обязан применить candidate generation к каждой Ready replica и
-  получить/проверить индивидуальный acknowledgement до activation. Обычный
-  load-balanced Service не даёт адресной доставки и подтверждения от каждой
-  replica, поэтому сам по себе не подходит. Механизм discovery/индивидуальной
-  адресации replicas ожидает решения пользователя; до решения не выбирать его
-  молча и не начинать реализацию Gateway discovery.
+  получить/проверить индивидуальный acknowledgement до activation. Решение v1
+  зафиксировано в [canonical plugin deployment](https://liapoldus.github.io/gateway/architecture/plugin-deployment):
+  Management API хранит явный desired set stable endpoint-ов, каждый endpoint
+  адресует одну replica; core не вызывает Docker/Kubernetes API и не принимает
+  общий load-balanced Service как membership. Изменение размера/адресов набора
+  требует явного Management API update. Реализовать endpoint storage, readiness,
+  `DispatchApply` barrier и atomic dispatch/Caddy generation.
 - [ ] Реализовать bounded local restart/reconnect и remote Service reconnect;
   не повторять unary Call с неопределённым исходом, закрывать in-flight Streams,
   а недоступность одного plugin отражать только на связанных bindings.
