@@ -11,6 +11,7 @@ import (
 
 	coreassets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	caddycore "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	caddyhttp "github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -55,11 +56,12 @@ type dispatchAppConfig struct {
 }
 
 type pluginBinding struct {
-	client  *plugins.CapabilityClient
-	conn    *plugins.Client
-	modes   map[string]struct{}
-	cookies map[string]plugins.CookiePolicy
-	timeout time.Duration
+	client          *plugins.CapabilityClient
+	conn            *plugins.Client
+	modes           map[string]struct{}
+	invocationModes map[string]map[pluginv1.InvocationMode]struct{}
+	cookies         map[string]plugins.CookiePolicy
+	timeout         time.Duration
 }
 
 type dispatchApp struct {
@@ -119,7 +121,13 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 		}
 		capabilities := handshake.Manifest.GetCapabilities()
 		modes := make(map[string]struct{})
+		invocationModes := make(map[string]map[pluginv1.InvocationMode]struct{})
 		for _, descriptor := range handshake.Manifest.GetCapabilityDescriptors() {
+			declaredModes := make(map[pluginv1.InvocationMode]struct{}, len(descriptor.GetModes()))
+			for _, mode := range descriptor.GetModes() {
+				declaredModes[mode] = struct{}{}
+			}
+			invocationModes[descriptor.GetCapability()] = declaredModes
 			if plugins.ManifestSupportsCall(handshake.Manifest, descriptor.GetCapability()) {
 				modes[descriptor.GetCapability()] = struct{}{}
 			}
@@ -150,7 +158,7 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 			app.closeBindings()
 			return err
 		}
-		app.bindings[instance.Name] = pluginBinding{client: capabilityClient, conn: client, modes: modes, cookies: cookiePolicies, timeout: instance.Timeout}
+		app.bindings[instance.Name] = pluginBinding{client: capabilityClient, conn: client, modes: modes, invocationModes: invocationModes, cookies: cookiePolicies, timeout: instance.Timeout}
 	}
 	return nil
 }

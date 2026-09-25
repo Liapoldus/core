@@ -10,29 +10,12 @@ import { describe, expect, it } from "vitest";
 import { freeAddress } from "../support/http.js";
 
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
-const pluginProtocolRoot = join(coreRoot, "..", "pluginprotocol");
 const execFileAsync = promisify(execFile);
 
 async function build(binaryName: string, moduleRoot: string, packagePath: string, directory: string): Promise<string> {
   const output = join(directory, binaryName);
   await execFileAsync("go", ["build", "-o", output, packagePath], { cwd: moduleRoot });
   return output;
-}
-
-async function firstLine(child: ChildProcess): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    const onData = (chunk: Buffer) => {
-      output += chunk.toString();
-      const newline = output.indexOf("\n");
-      if (newline >= 0) {
-        child.stdout?.off("data", onData);
-        resolve(output.slice(0, newline).trim());
-      }
-    };
-    child.stdout?.on("data", onData);
-    child.once("exit", (code) => reject(new Error(`Plugin fixture exited before announcing its endpoint (${code})`)));
-  });
 }
 
 async function connectEventually(address: string, child: ChildProcess, stderr: () => string): Promise<Socket> {
@@ -63,7 +46,7 @@ describe("Caddy-L4 plugin dispatch", () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-l4-plugin-"));
     const [caddyBinary, pluginBinary, address] = await Promise.all([
       build("caddy-l4", coreRoot, "./tests/fixtures/caddy-plugin", directory),
-      build("grpc-plugin", pluginProtocolRoot, "./tests/fixtures/grpc-plugin", directory),
+      build("grpc-plugin", coreRoot, "./tests/fixtures/caddy-l4-plugin", directory),
       freeAddress(),
     ]);
     const configPath = join(directory, "l4.Caddyfile");
@@ -79,10 +62,14 @@ describe("Caddy-L4 plugin dispatch", () => {
 `;
     await writeFile(configPath, caddyfile, "utf8");
 
-    const plugin = spawn(pluginBinary, [], { cwd: pluginProtocolRoot, stdio: ["ignore", "pipe", "pipe"] });
+    const pluginAddress = await freeAddress();
+    const plugin = spawn(pluginBinary, [], {
+      cwd: coreRoot,
+      stdio: ["ignore", "ignore", "pipe"],
+      env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress },
+    });
     let pluginStderr = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginStderr += chunk.toString(); });
-    const pluginAddress = await firstLine(plugin);
     const caddy = spawn(caddyBinary, [configPath, pluginAddress], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"] });
     let caddyStderr = "";
     caddy.stderr?.on("data", (chunk: Buffer) => { caddyStderr += chunk.toString(); });
