@@ -35,6 +35,29 @@ function request(address: string, path: string, token?: string): Promise<Respons
   });
 }
 
+function requestJSON(address: string, path: string, token: string, body: unknown): Promise<ResponseValue> {
+  const port = Number(address.slice(address.lastIndexOf(":") + 1));
+  return new Promise((resolve, reject) => {
+    const requestValue = httpsRequest({
+      hostname: "127.0.0.1",
+      port,
+      path,
+      method: "POST",
+      rejectUnauthorized: false,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+      response.once("end", () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    requestValue.once("error", reject);
+    requestValue.end(JSON.stringify(body));
+  });
+}
+
 async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startGateway>>["process"]): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`Gateway exited before Management API became ready (${child.exitCode}).`);
@@ -111,6 +134,25 @@ describe("production serve bootstrap and SQLite group reads", () => {
       expect(JSON.parse(system.body)).toMatchObject({
         id: "system", kind: "system", active: true, currentRevision: null, previousRevision: null, state: "empty",
       });
+
+      const created = await requestJSON(address, "/api/groups", token, {
+        id: "portal",
+        idempotencyKey: "create-portal-group-0001",
+      });
+      expect(created.status).toBe(201);
+      expect(JSON.parse(created.body)).toMatchObject({
+        id: "portal", kind: "application", active: true, currentRevision: null, previousRevision: null, state: "empty",
+      });
+
+      const duplicate = await requestJSON(address, "/api/groups", token, {
+        id: "portal",
+        idempotencyKey: "create-portal-group-0002",
+      });
+      expect(duplicate.status).toBe(409);
+      expect(JSON.parse(duplicate.body)).toMatchObject({ code: "group_already_exists" });
+
+      const listed = await request(address, "/api/groups", token);
+      expect(JSON.parse(listed.body).items).toHaveLength(2);
       const databaseBytes = await readFile(database);
       expect(databaseBytes.byteLength).toBeGreaterThan(0);
       expect(databaseBytes.includes(Buffer.from(token))).toBe(false);
