@@ -1,0 +1,51 @@
+{
+  "versionArgs": ["version"],
+  "adaptArgs": ["adapt", "--config", "{{caddyfile}}", "--adapter", "caddyfile", "--pretty"],
+  "runArgs": ["run", "--config", "{{config}}", "--adapter", "json"],
+  "placeholders": {
+    "caddyfile": "{{caddyfile}}",
+    "config": "{{config}}"
+  },
+  "configuration": {
+    "admin": "admin",
+    "disabled": "disabled",
+    "listen": "listen",
+    "adminConfig": "config",
+    "persist": "persist",
+    "unixPrefix": "unix//",
+    "httpScheme": "http",
+    "httpHost": "caddy",
+    "healthPath": "/config/",
+    "loadPath": "/load",
+    "loadMethod": "POST"
+  },
+  "files": {
+    "runtimeDirectory": "caddy-runtime",
+    "activeConfiguration": "active.json",
+    "adminSocket": "admin.sock",
+    "candidateConfigurationPattern": "candidate-*.json",
+    "candidateCaddyfilePattern": "candidate-*.caddyfile"
+  },
+  "timeouts": {
+    "start": "10s",
+    "stop": "5s",
+    "restartMinimum": "100ms",
+    "restartMaximum": "5s",
+    "healthPoll": "100ms"
+  },
+  "modes": {
+    "directory": 448,
+    "socket": 384,
+    "configuration": 384
+  },
+  "diagnostics": {
+    "invalidContract": "External Caddy contract is invalid.",
+    "buildIdentityMismatch": "External Caddy build identity does not match the configured identity.",
+    "adaptFailed": "External Caddy rejected the Caddyfile candidate.",
+    "invalidConfiguration": "External Caddy produced an invalid runtime configuration.",
+    "startFailed": "External Caddy process could not be started.",
+    "notReady": "External Caddy Admin IPC did not become ready.",
+    "activationFailed": "External Caddy rejected the candidate snapshot; the active snapshot was retained.",
+    "runtimeStopped": "External Caddy runtime is stopped."
+  }
+}

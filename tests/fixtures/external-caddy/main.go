@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,11 +12,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/caddy"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 )
@@ -33,6 +36,7 @@ type caddyConfig struct {
 			} `json:"servers"`
 		} `json:"http"`
 	} `json:"apps"`
+	FixtureGeneration string `json:"fixtureGeneration"`
 }
 
 type event struct {
@@ -49,14 +53,130 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "component-host" {
+		if err := runComponentHost(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	for _, argument := range os.Args[1:] {
 		if strings.Contains(argument, "version") {
 			fmt.Println(buildID)
 			return
 		}
 	}
+	if len(os.Args) > 1 && os.Args[1] == "adapt" {
+		if err := adapt(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if err := run(os.Args[1:]); err != nil {
 		fatal(err)
+	}
+}
+
+func adapt(arguments []string) error {
+	configPath := ""
+	for index := 0; index+1 < len(arguments); index++ {
+		if arguments[index] == "--config" {
+			configPath = arguments[index+1]
+			break
+		}
+	}
+	if configPath == "" {
+		return fmt.Errorf("Caddy adapt fixture requires the standard config argument")
+	}
+	contents, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	address := regexp.MustCompile(`http://([^\s{]+)`).FindSubmatch(contents)
+	if len(address) != 2 {
+		return fmt.Errorf("fixture Caddyfile has no HTTP listener")
+	}
+	configuration := map[string]any{
+		"apps": map[string]any{
+			"http": map[string]any{
+				"servers": map[string]any{
+					"fixture": map[string]any{"listen": []string{string(address[1])}},
+				},
+			},
+		},
+		"fixtureGeneration": strings.TrimSpace(string(contents)),
+	}
+	return json.NewEncoder(os.Stdout).Encode(configuration)
+}
+
+type hostCommand struct {
+	Action string `json:"action"`
+	Path   string `json:"path"`
+}
+
+func runComponentHost(arguments []string) error {
+	if len(arguments) != 4 {
+		return fmt.Errorf("component host expects external binary, state directory, Caddyfile, and build identity")
+	}
+	initial, err := os.ReadFile(arguments[2])
+	if err != nil {
+		return err
+	}
+	runtime, err := caddy.StartExternal(context.Background(), caddy.ExternalOptions{
+		Binary: arguments[0], StateDirectory: arguments[1], ExpectedBuildID: arguments[3],
+	}, initial)
+	if err != nil {
+		return err
+	}
+	defer runtime.Stop()
+	encoder := json.NewEncoder(os.Stdout)
+	if err := encoder.Encode(map[string]any{"event": "ready", "adminSocket": runtime.AdminSocketPath()}); err != nil {
+		return err
+	}
+	input := make(chan hostCommand)
+	inputErrors := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			var command hostCommand
+			if err := json.Unmarshal(scanner.Bytes(), &command); err != nil {
+				inputErrors <- err
+				return
+			}
+			input <- command
+		}
+		inputErrors <- scanner.Err()
+	}()
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	for {
+		select {
+		case <-stop:
+			return nil
+		case err := <-inputErrors:
+			return err
+		case command := <-input:
+			switch command.Action {
+			case "ready":
+				err := runtime.Ready(context.Background())
+				_ = encoder.Encode(map[string]any{"action": command.Action, "ready": err == nil})
+			case "activate":
+				candidate, readErr := os.ReadFile(command.Path)
+				if readErr != nil {
+					_ = encoder.Encode(map[string]any{"action": command.Action, "activated": false})
+					continue
+				}
+				activateErr := runtime.Activate(context.Background(), candidate)
+				_ = encoder.Encode(map[string]any{"action": command.Action, "activated": activateErr == nil})
+			case "stop":
+				if err := runtime.Stop(); err != nil {
+					return err
+				}
+				_ = encoder.Encode(map[string]any{"event": "stopped"})
+				return nil
+			default:
+				_ = encoder.Encode(map[string]any{"action": command.Action, "error": true})
+			}
+		}
 	}
 }
 
@@ -162,12 +282,28 @@ func run(arguments []string) error {
 		return err
 	}
 	admin := &http.Server{Handler: http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/config/" {
-			http.NotFound(response, request)
+		if request.URL.Path == "/config/" {
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(configuration)
 			return
 		}
-		response.Header().Set("Content-Type", "application/json")
-		_, _ = response.Write([]byte(`{"admin":"private"}`))
+		if request.URL.Path == "/load" && request.Method == http.MethodPost {
+			rejectPath := os.Getenv("LIAPOLDUS_TEST_EXTERNAL_CADDY_REJECT")
+			if fileExists(rejectPath) {
+				_ = os.Remove(rejectPath)
+				http.Error(response, "rejected", http.StatusInternalServerError)
+				return
+			}
+			var candidate caddyConfig
+			if err := json.NewDecoder(request.Body).Decode(&candidate); err != nil {
+				http.Error(response, "invalid", http.StatusBadRequest)
+				return
+			}
+			configuration = candidate
+			response.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(response, request)
 	})}
 	adminDone := make(chan error, 1)
 	go func() { adminDone <- admin.Serve(listener) }()
