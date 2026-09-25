@@ -66,6 +66,12 @@ type report struct {
 	PointersAfterStale         *string          `json:"pointersAfterStale"`
 	UnsafeArtifactStatus       int              `json:"unsafeArtifactStatus"`
 	UnsafeArtifactCode         string           `json:"unsafeArtifactCode"`
+	SafeArtifactStatus         int              `json:"safeArtifactStatus"`
+	SafeArtifactDetailStatus   int              `json:"safeArtifactDetailStatus"`
+	SafeArtifactDigest         string           `json:"safeArtifactDigest"`
+	SafeFrontendID             string           `json:"safeFrontendId"`
+	SafeFrontendDigest         string           `json:"safeFrontendDigest"`
+	SafeFrontendFiles          int              `json:"safeFrontendFiles"`
 	RollbackStatus             int              `json:"rollbackStatus"`
 	RollbackCode               string           `json:"rollbackCode"`
 	RollbackRetryStatus        int              `json:"rollbackRetryStatus"`
@@ -176,6 +182,39 @@ func main() {
 	publishRetry := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n")
 	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 201\n}\n")
 	unsafeArtifact := performMultipartWithArtifact(handler, "unsafe-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n", archive("frontends/ui/../escape.txt"))
+	if _, err := store.CreateApplicationGroup(ctx, "application-archive", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "archive-group-create"}); err != nil {
+		panic(err)
+	}
+	safeArtifact := performMultipartForGroup(handler, "application-archive", "safe-archive-key-00001", "", "archive.example.test {\n  respond 200\n}\n", archive("frontends/ui/index.html"))
+	var safeArtifactBody map[string]any
+	if err := json.Unmarshal(safeArtifact.Body.Bytes(), &safeArtifactBody); err != nil {
+		panic(err)
+	}
+	safeOperationID := stringField(safeArtifactBody, management.JSON.OperationID)
+	if safeOperationID != "" {
+		waitForOperation(operationStore, safeOperationID)
+	}
+	archiveGroup, err := store.GetGroup(ctx, "application-archive")
+	if err != nil {
+		panic(err)
+	}
+	var safeArtifactDetail *httptest.ResponseRecorder
+	if archiveGroup.CurrentRevisionID != nil {
+		safeArtifactDetail = perform(handler, http.MethodGet, management.Paths.GroupByID+"application-archive"+management.Paths.GroupIDSeparator+management.Paths.GroupReleases+management.Paths.GroupIDSeparator+*archiveGroup.CurrentRevisionID, true)
+	}
+	var safeArtifactDetailBody struct {
+		ArtifactDigest *string `json:"artifactDigest"`
+		Frontends      []struct {
+			ID     string `json:"id"`
+			Digest string `json:"digest"`
+			Files  int    `json:"files"`
+		} `json:"frontends"`
+	}
+	if safeArtifactDetail != nil {
+		if err := json.Unmarshal(safeArtifactDetail.Body.Bytes(), &safeArtifactDetailBody); err != nil {
+			panic(err)
+		}
+	}
 
 	var groupList struct {
 		Items     []groupView `json:"items"`
@@ -356,7 +395,13 @@ func main() {
 		StaleRevisionStatus:  staleRevision.Code, StaleRevisionCode: stringField(staleRevisionBody, "code"),
 		PointersAfterStale:   pointersAfterStaleBody.CurrentRevision,
 		UnsafeArtifactStatus: unsafeArtifact.Code, UnsafeArtifactCode: stringField(unsafeArtifactBody, "code"),
-		RollbackStatus: rollback.Code, RollbackCode: stringField(rollbackBody, "code"),
+		SafeArtifactStatus:       safeArtifact.Code,
+		SafeArtifactDetailStatus: responseStatus(safeArtifactDetail),
+		SafeArtifactDigest:       stringPointerValue(safeArtifactDetailBody.ArtifactDigest),
+		SafeFrontendID:           firstFrontend(safeArtifactDetailBody.Frontends).ID,
+		SafeFrontendDigest:       firstFrontend(safeArtifactDetailBody.Frontends).Digest,
+		SafeFrontendFiles:        firstFrontend(safeArtifactDetailBody.Frontends).Files,
+		RollbackStatus:           rollback.Code, RollbackCode: stringField(rollbackBody, "code"),
 		RollbackRetryStatus: rollbackRetry.Code, RollbackRetryOperationID: stringField(rollbackRetryBody, management.JSON.OperationID),
 		RollbackStaleStatus: rollbackStale.Code, RollbackStaleCode: stringField(rollbackStaleBody, "code"),
 		CurrentBeforeRollback:  groupAfterReopenBody.CurrentRevision,
@@ -388,6 +433,10 @@ func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentR
 }
 
 func performMultipartWithArtifact(handler http.Handler, idempotencyKey, expectedCurrentRevision, caddyfile string, artifact []byte) *httptest.ResponseRecorder {
+	return performMultipartForGroup(handler, "application-a", idempotencyKey, expectedCurrentRevision, caddyfile, artifact)
+}
+
+func performMultipartForGroup(handler http.Handler, groupID, idempotencyKey, expectedCurrentRevision, caddyfile string, artifact []byte) *httptest.ResponseRecorder {
 	var body strings.Builder
 	writer := multipart.NewWriter(&body)
 	metadata, err := json.Marshal(map[string]any{"idempotencyKey": idempotencyKey, "expectedCurrentRevision": nullableString(expectedCurrentRevision)})
@@ -429,12 +478,45 @@ func performMultipartWithArtifact(handler http.Handler, idempotencyKey, expected
 	if err := writer.Close(); err != nil {
 		panic(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/groups/application-a/releases", strings.NewReader(body.String()))
+	request := httptest.NewRequest(http.MethodPost, "/api/groups/"+groupID+"/releases", strings.NewReader(body.String()))
 	request.Header.Set("Authorization", "Bearer fixture-management-token")
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func responseStatus(response *httptest.ResponseRecorder) int {
+	if response == nil {
+		return 0
+	}
+	return response.Code
+}
+
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func firstFrontend(frontends []struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Files  int    `json:"files"`
+}) struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Files  int    `json:"files"`
+} {
+	if len(frontends) == 0 {
+		return struct {
+			ID     string `json:"id"`
+			Digest string `json:"digest"`
+			Files  int    `json:"files"`
+		}{}
+	}
+	return frontends[0]
 }
 
 func performRollback(handler http.Handler, expectedCurrentRevision *string, idempotencyKey string) *httptest.ResponseRecorder {
