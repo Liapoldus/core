@@ -296,6 +296,16 @@ func parsePluginCallHandler(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHa
 	if len(args) != 3 || helper.NextArg() || args[0] == "" || args[1] == "" || args[2] == "" {
 		return nil, errors.New(contract.Diagnostics.InvalidDirective)
 	}
+	streamContract, err := loadHTTPStreamHandlerContract()
+	if err != nil {
+		return nil, err
+	}
+	if args[2] != streamContract.CallMode {
+		if !streamContract.SupportsMode(args[2]) {
+			return nil, errors.New(streamContract.Diagnostics.UnsupportedMode)
+		}
+		return &httpStreamHandler{Instance: args[0], Capability: args[1], Mode: args[2]}, nil
+	}
 	return &pluginCallHandler{Instance: args[0], Capability: args[1], Mode: args[2]}, nil
 }
 

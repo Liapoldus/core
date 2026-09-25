@@ -53,6 +53,7 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 	for {
 		message, err := stream.Recv()
 		if err != nil {
+			fmt.Fprintln(os.Stderr, "stream receive ended", err)
 			if err == io.EOF {
 				return nil
 			}
@@ -67,25 +68,49 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 			opened = true
 			switch mode {
 			case pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM:
-				if err := sendHTTP(stream, message.GetCapability()); err != nil { return err }
+				if err := sendHTTP(stream, message.GetCapability()); err != nil {
+					return err
+				}
 			case pluginv1.InvocationMode_INVOCATION_MODE_WEBSOCKET:
-				var open struct { OfferedSubprotocols []string `json:"offeredSubprotocols"` }
-				if err := json.Unmarshal(body.Open.GetContextJson(), &open); err != nil { return err }
+				var open struct {
+					OfferedSubprotocols []string `json:"offeredSubprotocols"`
+				}
+				if err := json.Unmarshal(body.Open.GetContextJson(), &open); err != nil {
+					return err
+				}
 				protocol := ""
-				if len(open.OfferedSubprotocols) > 0 { protocol = open.OfferedSubprotocols[0] }
-				if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_WebsocketHandshake{WebsocketHandshake: &pluginv1.WebSocketHandshakeResult{Accepted: true, Subprotocol: protocol}}}); err != nil { return err }
+				if len(open.OfferedSubprotocols) > 0 {
+					protocol = open.OfferedSubprotocols[0]
+				}
+				metadata, err := json.Marshal(map[string]any{"version": 1})
+				if err != nil {
+					return err
+				}
+				if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_WebsocketHandshake{WebsocketHandshake: &pluginv1.WebSocketHandshakeResult{Accepted: true, Subprotocol: protocol, MetadataJson: metadata}}}); err != nil {
+					return err
+				}
 			case pluginv1.InvocationMode_INVOCATION_MODE_SSE:
-				if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_SseEvent{SseEvent: &pluginv1.SseEvent{Event: "ready", Data: "fixture", Id: "one"}}}); err != nil { return err }
-				return nil
-		default:
-			return fmt.Errorf("unsupported stream mode")
-		}
+				if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_SseEvent{SseEvent: &pluginv1.SseEvent{Event: "ready", Data: "fixture", Id: "one"}}}); err != nil {
+					return err
+				}
+				return stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_Close{Close: &pluginv1.StreamClose{Code: pluginv1.StreamCloseCode_STREAM_CLOSE_CODE_NORMAL}}})
+			default:
+				return fmt.Errorf("unsupported stream mode")
+			}
 		case *pluginv1.StreamMessage_HttpRequestChunk:
-			if !opened || mode != pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM { return fmt.Errorf("unexpected HTTP request chunk") }
-			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_HttpResponseChunk{HttpResponseChunk: &pluginv1.HttpResponseChunk{Payload: append([]byte(nil), body.HttpRequestChunk.GetPayload()...), EndStream: body.HttpRequestChunk.GetEndStream()}}}); err != nil { return err }
+			if !opened || mode != pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM {
+				return fmt.Errorf("unexpected HTTP request chunk")
+			}
+			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_HttpResponseChunk{HttpResponseChunk: &pluginv1.HttpResponseChunk{Payload: append([]byte(nil), body.HttpRequestChunk.GetPayload()...), EndStream: body.HttpRequestChunk.GetEndStream()}}}); err != nil {
+				return err
+			}
 		case *pluginv1.StreamMessage_WebsocketMessage:
-			if !opened || mode != pluginv1.InvocationMode_INVOCATION_MODE_WEBSOCKET { return fmt.Errorf("unexpected WebSocket message") }
-			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_WebsocketMessage{WebsocketMessage: &pluginv1.WebSocketMessage{Kind: body.WebsocketMessage.GetKind(), Payload: append([]byte(nil), body.WebsocketMessage.GetPayload()...), Direction: pluginv1.StreamDirection_STREAM_DIRECTION_RESPONSE}}}); err != nil { return err }
+			if !opened || mode != pluginv1.InvocationMode_INVOCATION_MODE_WEBSOCKET {
+				return fmt.Errorf("unexpected WebSocket message")
+			}
+			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_WebsocketMessage{WebsocketMessage: &pluginv1.WebSocketMessage{Kind: body.WebsocketMessage.GetKind(), Payload: append([]byte(nil), body.WebsocketMessage.GetPayload()...), Direction: pluginv1.StreamDirection_STREAM_DIRECTION_RESPONSE}}}); err != nil {
+				return err
+			}
 		case *pluginv1.StreamMessage_Close:
 			return nil
 		default:
@@ -95,18 +120,26 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 }
 
 func sendHTTP(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage], capability string) error {
-	metadata, err := json.Marshal(map[string]any{"headers": map[string]string{"Content-Type": "application/octet-stream"}})
-	if err != nil { return err }
+	metadata, err := json.Marshal(map[string]any{"version": 1, "headers": map[string]string{"Content-Type": "application/octet-stream"}})
+	if err != nil {
+		return err
+	}
 	return stream.Send(&pluginv1.StreamMessage{Capability: capability, Body: &pluginv1.StreamMessage_HttpResponseStart{HttpResponseStart: &pluginv1.HttpResponseStart{StatusCode: 200, MetadataJson: metadata}}})
 }
 
 func main() {
 	listener, err := transport.ListenLoopback()
-	if err != nil { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	service := &plugin{}
 	service.server = transport.NewServer(service, transport.ServerOptions{})
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 	go func() { <-shutdown; service.server.GracefulStop() }()
-	if err := service.server.Serve(listener); err != nil && !strings.Contains(err.Error(), "stopped") { fmt.Fprintln(os.Stderr, err); os.Exit(1) }
+	if err := service.server.Serve(listener); err != nil && !strings.Contains(err.Error(), "stopped") {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
