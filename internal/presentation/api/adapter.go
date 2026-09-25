@@ -108,7 +108,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.writeCatalogProblem(response, server.Management.Codes.MTLSRequired, requestID)
 		return
 	}
-	_, authorized, authErr := server.authenticate(request.Context(), request.Header.Get("Authorization"))
+	actor, authorized, authErr := server.authenticate(request.Context(), request.Header.Get("Authorization"))
 	if authErr != nil {
 		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 		return
@@ -139,7 +139,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get:
 		server.handleGroupList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
-		server.handleGroupCreate(response, request, requestID)
+		server.handleGroupCreate(response, request, requestID, actor)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
 		server.handleGroupReleases(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get:
@@ -158,15 +158,29 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.writePage(response, items, request, requestID)
 	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
-			server.writePage(response, []models.AuditRecord{}, request, requestID)
+			writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
 			return
 		}
-		items, err := server.Audit.Records(request.Context())
+		limit := server.Management.Pagination.LimitDefault
+		if rawLimit := request.URL.Query().Get(server.Management.JSON.Limit); rawLimit != "" {
+			parsed, err := strconv.Atoi(rawLimit)
+			if err != nil {
+				server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+				return
+			}
+			limit = parsed
+		}
+		page, err := server.Audit.Records(request.Context(), request.URL.Query().Get(server.Management.JSON.Cursor), limit)
 		if err != nil {
+			var pageError models.AuditPageError
+			if errors.As(err, &pageError) {
+				server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+				return
+			}
 			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
-		server.writePage(response, items, request, requestID)
+		writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
 	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
@@ -231,7 +245,11 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 	})
 }
 
-func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID string) {
+func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {
+	auditResult := server.AuditWords.Audit.Results.Failed
+	defer func() {
+		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, auditResult, requestID, "", "")
+	}()
 	decoder := json.NewDecoder(request.Body)
 	var fields map[string]json.RawMessage
 	if err := decoder.Decode(&fields); err != nil || fields == nil {
@@ -284,6 +302,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
+	auditResult = server.AuditWords.Audit.Results.Succeeded
 	writeJSON(response, http.StatusCreated, result)
 }
 

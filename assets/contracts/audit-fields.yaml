@@ -1,19 +1,15 @@
 audit:
-  directory: audit
-  extension: .jsonl
   retentionDays: 90
-  dateLayout: "2006-01-02"
   actors:
-    anonymous: anonymous
     staticToken: static-token
   actions:
-    configReload: config.reload
-    configUpdate: config.update
+    groupCreate: group.create
   resources:
-    gateway: gateway
+    groups: groups
   results:
     succeeded: succeeded
     failed: failed
   storageUnavailable:
     code: audit_unavailable
     detail: audit storage is unavailable
+  invalidLimit: audit page limit is invalid

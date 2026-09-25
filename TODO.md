@@ -18,13 +18,21 @@
   читает файл только внутри immutable artifacts root; production `serve`
   получает reader с bootstrap artifacts path. Детализация frontend manifest для
   release с archive остаётся незавершённой до реализации publish.
+- Production `serve` теперь подключает append-only SQLite audit store;
+  `group.create` фиксирует succeeded/failed outcome, а `/api/audit` возвращает
+  newest-first cursor pages, prune-ит истёкшие записи и сохраняет записи через
+  restart. Проверены paging, invalid cursor/limit, retention и restart. Audit
+  coverage остальных mutations, durable-operation transitions и атомарная
+  согласованность audit/изменения состояния пока не завершены.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
   Дополнительно удалены неиспользуемые domain-модели `Action`, `Capability`,
   `ClientAuth`, `Revision`, `RegistryLockConflict`, пустой `ManagementStore`,
   незадействованный filesystem `FilesystemAuditStore` и неисполняемая fixture
-  `plugin-grant`. Целевой backend аудита — SQLite; его реализация остаётся TODO.
+  `plugin-grant`. SQLite-backed audit storage теперь сохраняет и листает
+  события, но нужно расширить запись на все state mutations и обеспечить
+  атомарность/ошибки audit вместе с durable operations.
   Удалены неиспользуемые route/proxy/WAF/Geo/telemetry domain модели и старые
   route/policy/resolver ports. Management contract больше не публикует config,
   site, listener/upstream или metrics endpoints. Удалены привязанные к ним
@@ -69,6 +77,10 @@
 - [ ] Завершить Management API semantics и storage для операций, audit,
   idempotency и Caddy checkpoints; текущий bootstrap slice покрывает только
   service-key verifier и группы.
+- [ ] Расширить SQLite audit events на все management mutations и durable
+  operation transitions; сейчас `group.create` сохраняет успех/ошибку, а
+  paginated `/api/audit` соблюдает retention и переживает restart. Разобрать
+  атомарную запись audit с изменением состояния; не терять ошибки audit store.
 - [ ] Реализовать строго минимальный gateway.yaml: state SQLite path, immutable
   artifacts root, Management bind/TLS/trust и embedded/external Caddy variant.
 - [ ] Разработать SQLite migrations/repositories для groups/revisions/current/

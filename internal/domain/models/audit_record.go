@@ -9,6 +9,6 @@ type AuditRecord struct {
 	Resource     string    `json:"resource"`
 	Result       string    `json:"result"`
 	RequestID    string    `json:"requestId"`
-	DigestBefore string    `json:"digestBefore,omitempty"`
-	DigestAfter  string    `json:"digestAfter,omitempty"`
+	DigestBefore string    `json:"beforeDigest,omitempty"`
+	DigestAfter  string    `json:"afterDigest,omitempty"`
 }

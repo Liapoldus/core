@@ -7,18 +7,19 @@ import (
 )
 
 const (
-	ConfigFields        = "config-fields.yaml"
-	CLIFields           = "cli-fields.yaml"
-	GatewaySchema       = "gateway.schema.json"
-	ManagementFields    = "management-fields.yaml"
-	AuditFields         = "audit-fields.yaml"
-	ErrorsJSON          = "errors.json"
-	SQLiteRuntime       = "sqlite-runtime.yaml"
-	SQLiteSchema        = "sqlite-schema.sql"
-	SQLiteGroupStore    = "sqlite-group-store.yaml"
-	SQLiteAccess        = "sqlite-access.yaml"
-	CaddyBuild          = "caddy-build.json"
-	CaddyPlugin         = "caddy-plugin.json"
+	ConfigFields     = "config-fields.yaml"
+	CLIFields        = "cli-fields.yaml"
+	GatewaySchema    = "gateway.schema.json"
+	ManagementFields = "management-fields.yaml"
+	AuditFields      = "audit-fields.yaml"
+	ErrorsJSON       = "errors.json"
+	SQLiteRuntime    = "sqlite-runtime.yaml"
+	SQLiteSchema     = "sqlite-schema.sql"
+	SQLiteGroupStore = "sqlite-group-store.yaml"
+	SQLiteAccess     = "sqlite-access.yaml"
+	SQLiteAuditStore = "sqlite-audit-store.yaml"
+	CaddyBuild       = "caddy-build.json"
+	CaddyPlugin      = "caddy-plugin.json"
 )
 
 //go:embed assets/contracts

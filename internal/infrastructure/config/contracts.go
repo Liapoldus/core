@@ -289,20 +289,15 @@ func LoadManagement() (ManagementWords, error) {
 
 type AuditWords struct {
 	Audit struct {
-		Directory     string `yaml:"directory"`
-		Extension     string `yaml:"extension"`
-		RetentionDays int    `yaml:"retentionDays"`
-		DateLayout    string `yaml:"dateLayout"`
+		RetentionDays int `yaml:"retentionDays"`
 		Actors        struct {
-			Anonymous   string `yaml:"anonymous"`
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			ConfigReload string `yaml:"configReload"`
-			ConfigUpdate string `yaml:"configUpdate"`
+			GroupCreate string `yaml:"groupCreate"`
 		} `yaml:"actions"`
 		Resources struct {
-			Gateway string `yaml:"gateway"`
+			Groups string `yaml:"groups"`
 		} `yaml:"resources"`
 		Results struct {
 			Succeeded string `yaml:"succeeded"`
@@ -312,92 +307,8 @@ type AuditWords struct {
 			Code   string `yaml:"code"`
 			Detail string `yaml:"detail"`
 		} `yaml:"storageUnavailable"`
+		InvalidLimit string `yaml:"invalidLimit"`
 	} `yaml:"audit"`
-	Operations struct {
-		Retention string `yaml:"retention"`
-		Directory string `yaml:"directory"`
-	} `yaml:"operations"`
-	Metrics struct {
-		IntervalDefault        string `yaml:"intervalDefault"`
-		ScopeName              string `yaml:"scopeName"`
-		Unit                   string `yaml:"unit"`
-		ExporterName           string `yaml:"exporterName"`
-		ExportFailureMessage   string `yaml:"exportFailureMessage"`
-		InvalidIntervalMessage string `yaml:"invalidIntervalMessage"`
-		Help                   struct {
-			RequestTotal        string `yaml:"requestTotal"`
-			RequestDuration     string `yaml:"requestDuration"`
-			ManagementTotal     string `yaml:"managementTotal"`
-			AuditRecordsTotal   string `yaml:"auditRecordsTotal"`
-			ExportFailuresTotal string `yaml:"exportFailuresTotal"`
-		} `yaml:"help"`
-		Names struct {
-			RequestTotal        string `yaml:"requestTotal"`
-			RequestDuration     string `yaml:"requestDuration"`
-			ManagementTotal     string `yaml:"managementTotal"`
-			AuditRecordsTotal   string `yaml:"auditRecordsTotal"`
-			ExportFailuresTotal string `yaml:"exportFailuresTotal"`
-		} `yaml:"names"`
-		Labels struct {
-			Listener string `yaml:"listener"`
-			Route    string `yaml:"route"`
-			Site     string `yaml:"site"`
-			Method   string `yaml:"method"`
-			Status   string `yaml:"status"`
-			Exporter string `yaml:"exporter"`
-			Action   string `yaml:"action"`
-			Result   string `yaml:"result"`
-		} `yaml:"labels"`
-	} `yaml:"metrics"`
-	Logging struct {
-		Formats struct {
-			JSON string `yaml:"json"`
-		} `yaml:"formats"`
-		AccessDefault      []string `yaml:"accessDefault"`
-		ApplicationDefault []string `yaml:"applicationDefault"`
-		AccessSinks        struct {
-			Stdout string `yaml:"stdout"`
-			Stderr string `yaml:"stderr"`
-		} `yaml:"accessSinks"`
-		ApplicationSinks struct {
-			Stdout string `yaml:"stdout"`
-			Stderr string `yaml:"stderr"`
-		} `yaml:"applicationSinks"`
-		AccessFields struct {
-			RequestIDHeader string `yaml:"requestIDHeader"`
-			Timestamp       string `yaml:"timestamp"`
-			RequestID       string `yaml:"requestID"`
-			Listener        string `yaml:"listener"`
-			Route           string `yaml:"route"`
-			Method          string `yaml:"method"`
-			Host            string `yaml:"host"`
-			Path            string `yaml:"path"`
-			Status          string `yaml:"status"`
-			Duration        string `yaml:"duration"`
-			Bytes           string `yaml:"bytes"`
-		} `yaml:"accessFields"`
-	} `yaml:"logging"`
-	Tracing struct {
-		SamplingParentBased                 string `yaml:"samplingParentBased"`
-		SamplingAlwaysOn                    string `yaml:"samplingAlwaysOn"`
-		SamplingAlwaysOff                   string `yaml:"samplingAlwaysOff"`
-		InitializationTimeout               string `yaml:"initializationTimeout"`
-		ShutdownTimeout                     string `yaml:"shutdownTimeout"`
-		InvalidSamplingMessage              string `yaml:"invalidSamplingMessage"`
-		InvalidInitializationTimeoutMessage string `yaml:"invalidInitializationTimeoutMessage"`
-		ScopeName                           string `yaml:"scopeName"`
-		ServiceName                         string `yaml:"serviceName"`
-		ServiceNameAttribute                string `yaml:"serviceNameAttribute"`
-		SpanName                            string `yaml:"spanName"`
-		ExporterName                        string `yaml:"exporterName"`
-		ExportFailureMessage                string `yaml:"exportFailureMessage"`
-		Attributes                          struct {
-			Method   string `yaml:"method"`
-			Listener string `yaml:"listener"`
-			Status   string `yaml:"status"`
-		} `yaml:"attributes"`
-	} `yaml:"tracing"`
-	Redaction []string `yaml:"redaction"`
 }
 
 func LoadAudit() (AuditWords, error) {

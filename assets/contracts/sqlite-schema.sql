@@ -94,6 +94,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
     after_digest TEXT
 );
 
+CREATE INDEX IF NOT EXISTS audit_events_by_timestamp
+    ON audit_events(timestamp);
+
 CREATE TABLE IF NOT EXISTS caddy_checkpoints (
     id TEXT PRIMARY KEY,
     runtime_digest TEXT NOT NULL,

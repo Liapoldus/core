@@ -79,6 +79,10 @@ headers:
 idempotency:
   keyChars: 128
   keyMin: 16
+pagination:
+  limitDefault: 50
+  limitMax: 100
+  limitMin: 1
 contentTypes:
   yaml: application/yaml
   json: application/json

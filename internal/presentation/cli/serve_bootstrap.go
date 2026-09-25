@@ -123,12 +123,22 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	auditStore, err := storage.NewSQLiteAuditStore(database)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	keyStore, err := storage.NewSQLiteServiceKeyStore(database)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
 	managementWords, err := config.LoadManagement()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	auditWords, err := config.LoadAudit()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
@@ -151,7 +161,13 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		GroupService: application.GroupService{
 			Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
 		},
+		Audit: &application.AuditService{
+			Store: auditStore, RetentionDays: auditWords.Audit.RetentionDays,
+			MinimumLimit: managementWords.Pagination.LimitMin, DefaultLimit: managementWords.Pagination.LimitDefault,
+			MaximumLimit: managementWords.Pagination.LimitMax, InvalidLimit: auditWords.Audit.InvalidLimit,
+		},
 		AccessService:   &application.AccessService{Store: keyStore, Compare: security.CompareServiceKey},
+		AuditWords:      auditWords,
 		Management:      managementWords,
 		Errors:          errorCatalog,
 		TLSConfig:       tlsConfiguration,

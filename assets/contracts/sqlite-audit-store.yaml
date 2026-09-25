@@ -1,0 +1,8 @@
+insertAuditEvent: "INSERT INTO audit_events(timestamp, actor, action, resource, result, request_id, before_digest, after_digest) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
+selectAuditFirstPage: "SELECT sequence, timestamp, actor, action, resource, result, request_id, before_digest, after_digest FROM audit_events WHERE timestamp >= ? ORDER BY sequence DESC LIMIT ?"
+selectAuditAfterCursor: "SELECT sequence, timestamp, actor, action, resource, result, request_id, before_digest, after_digest FROM audit_events WHERE timestamp >= ? AND sequence < ? ORDER BY sequence DESC LIMIT ?"
+deleteExpiredAuditEvents: "DELETE FROM audit_events WHERE timestamp < ?"
+timestampLayout: "2006-01-02T15:04:05.000000000Z07:00"
+invalidContract: "SQLite audit store contract is invalid."
+invalidCursor: "Audit cursor is invalid."
+invalidLimit: "Audit page limit is invalid."
