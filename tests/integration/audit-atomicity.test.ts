@@ -101,6 +101,13 @@ describe("group creation and audit atomicity", () => {
       expect(created.status).toBe(503);
       expect(JSON.parse(created.body)).toMatchObject({ code: "audit_unavailable" });
 
+      const rejected = await request(address, "POST", "/api/groups", token, {
+        id: "Invalid Group",
+        idempotencyKey: "create-invalid-group-0001",
+      });
+      expect(rejected.status).toBe(503);
+      expect(JSON.parse(rejected.body)).toMatchObject({ code: "audit_unavailable" });
+
       const groups = await request(address, "GET", "/api/groups", token);
       expect(groups.status).toBe(200);
       expect(JSON.parse(groups.body).items.map((group: { id: string }) => group.id)).not.toContain("unrecorded-group");
