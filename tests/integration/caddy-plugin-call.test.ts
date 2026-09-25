@@ -75,7 +75,7 @@ describe("Caddy Liapoldus call handler", () => {
         headers: {
           "content-type": "application/json",
           authorization: "Bearer should-not-cross-boundary",
-          cookie: "session=should-not-cross-boundary",
+          cookie: "session=synthetic-first; theme=synthetic-unlisted; session=synthetic-second",
         },
         body: JSON.stringify({ sample: "payload" }),
       });
@@ -85,7 +85,11 @@ describe("Caddy Liapoldus call handler", () => {
         path: "/submission",
         body: "{\"sample\":\"payload\"}",
         authorizationPresent: false,
-        cookiePresent: false,
+        cookieHeaderPresent: false,
+        cookies: [
+          { name: "session", value: "synthetic-first" },
+          { name: "session", value: "synthetic-second" },
+        ],
       });
       const cookieResponse = await fetch(`http://${publicAddress}/set-cookie`, {
         method: "POST",
