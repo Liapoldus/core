@@ -34,6 +34,15 @@
   неизвестный ID (`404`) и отсутствие opaque result/problem payloads. Lifecycle
   transitions, recovery и audit operations остаются незавершёнными; это не
   реализует group publish, чей acceptance-test остаётся pending.
+- Добавлен SQLite foundation для group release coordination: durable journal,
+  CAS проверки expected current revision, reservation для idempotency key с
+  digest-only key storage, одинаковый запрос возвращает исходный operation,
+  повтор ключа с другим request digest отклоняется, а commit атомарно вставляет
+  revision, переключает `previous/current`, обновляет operation и append-only
+  audit. TS integration проверяет duplicate/conflict, commit и reopen SQLite.
+  Это только storage foundation: Management API publish, потоковая staging и
+  архивная валидация, Caddy snapshot composition/activation, rollback и startup
+  recovery ещё не подключены; endpoint не объявляется готовым.
 - Проверки текущего operation-slice: focused TS integration passed; `go vet`,
   `go build`, macOS/Linux ARM64 builds и официальный Docker architecture lint
   passed. `make check` останавливается на одном заранее сохранённом group-publish

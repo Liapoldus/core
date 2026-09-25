@@ -19,6 +19,7 @@ const (
 	SQLiteAccess         = "sqlite-access.yaml"
 	SQLiteAuditStore     = "sqlite-audit-store.yaml"
 	SQLiteOperationStore = "sqlite-operation-store.yaml"
+	SQLiteGroupReleaseStore = "sqlite-group-release-store.yaml"
 	CaddyBuild           = "caddy-build.json"
 	CaddyPlugin          = "caddy-plugin.json"
 )

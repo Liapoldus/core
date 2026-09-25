@@ -28,6 +28,25 @@ CREATE TABLE IF NOT EXISTS group_revisions (
 CREATE INDEX IF NOT EXISTS group_revisions_by_group
     ON group_revisions(group_id, created_at DESC, id);
 
+CREATE TABLE IF NOT EXISTS group_release_journal (
+    operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE RESTRICT,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE RESTRICT,
+    expected_current_revision_id TEXT,
+    revision_id TEXT NOT NULL,
+    caddyfile_digest TEXT NOT NULL,
+    artifact_digest TEXT,
+    caddyfile_path TEXT NOT NULL,
+    artifact_path TEXT,
+    actor TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS group_release_journal_by_state
+    ON group_release_journal(state, created_at);
+
 CREATE TABLE IF NOT EXISTS group_pointers (
     group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE RESTRICT,
     current_revision_id TEXT,
