@@ -1,4 +1,0 @@
-includes:
-  - ./parts/invalid-listener.yaml
-registry:
-  path: ./registry

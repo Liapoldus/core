@@ -1,41 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://liapoldus.github.io/spec/http-runtime.json",
-  "title": "Liapoldus HTTP runtime contract",
+  "title": "Liapoldus Gateway traffic runtime boundary",
   "version": "1.0.0",
-  "defaults": {
-    "serverHeader": "Liapoldus",
-    "requestLineBytes": "8KiB",
-    "headerBytes": "32KiB",
-    "bodyBytes": "10MiB",
-    "headerTimeout": "10s",
-    "idleTimeout": "60s",
-    "h2": { "maxConcurrentStreams": 100, "initialWindowBytes": 65535, "maxHeaderListBytes": "32KiB" },
-    "h3": { "maxConnections": 10000, "maxStreams": 100, "maxPacketBytes": 1350, "idleTimeout": "30s" }
+  "trafficConfiguration": "Native Caddyfile fragments in group revisions; Gateway does not define a route DSL.",
+  "runtime": "Compatible Caddy handles HTTP/1.1, HTTP/2, HTTP/3, TLS, reverse proxy, static serving, WebSocket, SSE and ACME.",
+  "l4": "Caddy-L4 handles TCP/UDP relay and direct plugin streams; mandatory conformance applies to embedded and external Caddy variants.",
+  "pluginDataProtocol": {
+    "call": "Caddy Liapoldus handler calls the plugin directly using existing versioned JSON contracts.",
+    "stream": ["http-bidirectional-stream", "websocket-messages", "structured-sse-events", "tcp", "udp"],
+    "routeBinding": "Native Caddyfile handler binds instance, capability and invocation mode; Manifest declares supported modes and Gateway validates before activation.",
+    "managementApiInRequestPath": false,
+    "externalDispatch": "Gateway supervises external Caddy and synchronizes an authenticated immutable dispatch snapshot over private local Admin API/IPC."
   },
-  "pipeline": ["normalize", "route-select", "request-headers", "auth", "waf", "rate-limit", "rewrite", "terminal", "response-headers", "cors", "cache", "compression"],
-  "routing": {
-    "algorithm": "Routes are examined in array order. A missing when is true. A true when selects then. A false when selects else when present, otherwise continues to the next route. default is used only when no route selected a terminal action; it must occur in the final route. A selected policy denial stops the pipeline.",
-    "matcher": "Sibling matcher fields are AND. all is AND, any is OR, not negates one matcher. A scalar string is exact except sourceIp, which is CIDR or IP. destinationPort accepts an integer, an inclusive N-M range, or integer list. sourceIp is the direct peer address; X-Forwarded-For never changes matching.",
-    "transforms": "request headers apply before auth; auth, WAF and rate limit run in this order; rewrite runs once before terminal; response headers merge site then route, with route set/delete winning; CORS, cache, then compression run after terminal."
+  "ownership": {
+    "caddy": ["public listeners", "HTTP protocol runtime", "TLS/ACME", "Caddyfile adaptation", "direct plugin data dispatch", "HTTP response commit"],
+    "gateway": ["management authorization", "group revisions", "plugin lifecycle", "dispatch snapshot preparation", "grants", "audit", "redaction", "atomic activation"]
   },
-  "proxy": {
-    "host": "The original request Host is preserved by default. proxy.host: upstream replaces it with selected target authority; a literal replaces it with that literal.",
-    "forwarded": "Gateway appends the direct peer IP to X-Forwarded-For and overwrites X-Forwarded-Host, X-Forwarded-Proto and X-Forwarded-Port with the client-facing values. It removes incoming values of the latter three before setting them.",
-    "headers": "Connection, Keep-Alive, Proxy-Authenticate, Proxy-Authorization, TE, Trailer, Transfer-Encoding and Upgrade are stripped except a WebSocket Upgrade negotiated by this route. Set-Cookie is forwarded unchanged. Trailer is not forwarded. HTTP/1.1 chunking is decoded/re-encoded as required; 100-continue is relayed only after the request passed policies.",
-    "websocket": "Only a proxy route may upgrade WebSocket, after policies. HTTP/2 extended CONNECT is converted only for a negotiated WebSocket; all other hop-by-hop fields are never translated."
-  },
-  "static": {
-    "mime": { "html": "text/html; charset=utf-8", "css": "text/css; charset=utf-8", "js": "text/javascript; charset=utf-8", "json": "application/json", "svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "ico": "image/x-icon", "wasm": "application/wasm", "txt": "text/plain; charset=utf-8", "xml": "application/xml", "pdf": "application/pdf", "woff": "font/woff", "woff2": "font/woff2" },
-    "unknownMime": "application/octet-stream",
-    "etag": "\"lpg-<revision>-<size-hex>-<mtime-unixns-hex>\". It is strong only for an immutable release. If-None-Match has precedence over If-Modified-Since and produces 304 without a body.",
-    "range": "Bytes ranges follow RFC 9110. A satisfiable single range returns 206 with Content-Range. Multiple ranges return multipart/byteranges. Unsatisfiable range returns 416 with Content-Range: bytes */<size>. If-Range mismatch returns the full 200 representation.",
-    "filesystem": "Decoded path is normalized inside release root. NUL, absolute paths, traversal and symlinks escaping root return 404 route_not_found. Listings are disabled. A directory resolves only its configured index."
-  },
-  "siteLocales": "locales declares supported URL prefixes. /<locale>/x maps to release path /<locale>/x only for an exact declared locale. An unprefixed path maps to /<defaultLocale>/<path> when defaultLocale exists, without redirect. Accept-Language is ignored. No locale redirect is generated.",
-  "siteSources": { "release": "Resolves the current immutable registry release. It supports publish and atomic rollback; site.yaml belongs to the active release root.", "directory": "Uses a read-only local root and its site.yaml. Gateway does not watch the filesystem: a changed root or manifest needs validate/reload. File content is read per request. Publish, versions and rollback return 409 site_source_immutable." },
-  "cache": "Gateway never stores response bodies. cache only emits Cache-Control for static responses and route responses. public/private require maxAge; no-store emits Cache-Control: no-store. Gateway appends Vary: Accept-Encoding only when compression is selected, Origin only when CORS reflects Origin, and never overwrites upstream Vary.",
-  "compression": "Accept-Encoding q-values decide eligibility; q=0 excludes an encoding. Among equal q-values br wins over gzip. Responses below 1024 uncompressed body bytes, with existing Content-Encoding, no-transform, 1xx/204/304, Range, or Upgrade are not compressed. Selected compression emits Vary: Accept-Encoding.",
-  "cors": "For an OPTIONS preflight with Origin and Access-Control-Request-Method matching configured CORS, Gateway returns 204 before terminal with Allow-Origin, Allow-Methods, Allow-Headers, optional Allow-Credentials and Max-Age. A non-matching origin does not emit CORS headers and proceeds normally.",
-  "errors": { "headerTooLarge": [431, "header_too_large"], "bodyTooLarge": [413, "body_too_large"], "routeMiss": [404, "route_not_found"] }
+  "activation": "Gateway validates and prepares one complete composition from all active group revisions before activating it. Failed activation leaves the previous snapshot and current/previous pointers unchanged.",
+  "adminApi": "Native Caddy Admin API is loopback/local IPC only. External requests use authenticated Gateway pass-through with checkpointing and drift protection.",
+  "frontends": "Frontend files are immutable roots bundled into the same group revision as its Caddyfile fragment."
 }

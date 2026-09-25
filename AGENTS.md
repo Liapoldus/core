@@ -2,8 +2,10 @@
 
 ## Purpose and contract
 
-`core` implements the Liapoldus Gateway data plane and local control plane in
-Go. Until Gateway v1 is complete, the canonical observable contract is the
+`core` implements the Liapoldus Gateway control plane and integrates the Caddy
+data plane in Go. Public user traffic is served by embedded Caddy or a supervised
+compatible external Caddy process; the Gateway Management API is not a traffic
+proxy. Until Gateway v1 is complete, the canonical observable contract is the
 documentation repository at
 `/Users/docup/Projects/Liapoldus Engine/liapoldus.github.io`, especially
 `public/spec/` and the Gateway documentation pages.
@@ -16,7 +18,10 @@ The plugin transport contract does **not** belong in this repository. Its
 source, protobuf definitions, generated types, gRPC transport API, and protocol
 tests belong in `/Users/docup/Projects/Liapoldus Engine/pluginprotocol` and are
 released as `github.com/Liapoldus/pluginprotocol`. Gateway imports that module
-and owns process supervision, grants, and traffic dispatch.
+and owns process supervision and scoped grants. Caddy's Liapoldus handler
+dispatches user capability traffic directly to the plugin; Gateway control
+components prepare and synchronize immutable dispatch snapshots but must not
+proxy user request/response bodies.
 
 ## Implementation rules
 
@@ -28,9 +33,13 @@ and owns process supervision, grants, and traffic dispatch.
   `infrastructure/config`, `network`, `security`, `storage`, `plugins` and
   `observability`; keep presentation limited to `api` and `cli`.
   `cmd/gateway` is the composition root.
-- Use filesystem-first persistence only: atomic files/directories, release
-  pointers, JSONL audit and operation data. Do not introduce a database unless
-  explicitly approved.
+- Use SQLite as the authoritative store for Gateway v1 control-plane metadata:
+  groups/revisions/current/previous, plugin instances, service-key verifier
+  metadata, operations/idempotency, audit and Caddy checkpoints. This is an
+  explicit architecture decision; do not restore the former filesystem-only
+  persistence design. Keep immutable Caddyfile/frontend/checkpoint artifacts
+  as files under the configured artifact root. SQLite lives on local storage,
+  uses migrations/foreign keys/WAL, and must recover atomically with artifacts.
 - Never log, return, trace, or audit raw secrets, private keys, cookies,
   Authorization values, service keys, or grant handles.
 - Do not introduce domain string literals in Go. YAML fields, commands, flags,

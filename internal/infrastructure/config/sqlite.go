@@ -12,6 +12,8 @@ type SQLiteContract struct {
 	MaxOpenConnections     int    `yaml:"maxOpenConnections"`
 	MaxIdleConnections     int    `yaml:"maxIdleConnections"`
 	SchemaVersion          int    `yaml:"schemaVersion"`
+	SystemGroupID          string `yaml:"systemGroupID"`
+	ArtifactsDirectoryMode uint32 `yaml:"artifactsDirectoryMode"`
 	HasMigrationTableQuery string `yaml:"hasMigrationTableQuery"`
 	MigrationVersionQuery  string `yaml:"migrationVersionQuery"`
 	SchemaVersionError     string `yaml:"schemaVersionError"`

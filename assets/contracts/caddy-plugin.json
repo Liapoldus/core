@@ -1,0 +1,19 @@
+{
+  "app": "liapoldus",
+  "directive": "liapoldus_plugin",
+  "orderAnchor": "respond",
+  "handlerModule": "http.handlers.liapoldus",
+  "callMode": "call",
+  "maxRequestBytes": 10485760,
+  "unavailableStatus": 503,
+  "invalidResponseStatus": 502,
+  "blockedRequestHeaders": ["Authorization", "Cookie", "Proxy-Authorization"],
+  "blockedResponseHeaders": ["Set-Cookie"],
+  "diagnostics": {
+    "invalidDirective": "Некорректная директива Liapoldus plugin.",
+    "invalidInstance": "Plugin instance для Caddy handler не настроен.",
+    "unsupportedMode": "Plugin capability не поддерживает указанный invocation mode.",
+    "instanceUnavailable": "Plugin instance недоступен.",
+    "invalidSettings": "Настройки plugin instance должны быть JSON."
+  }
+}

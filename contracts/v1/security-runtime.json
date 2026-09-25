@@ -1,13 +1,53 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://liapoldus.github.io/spec/security-runtime.json",
-  "title": "Liapoldus security runtime contract",
+  "title": "Liapoldus Gateway security runtime contract",
   "version": "1.0.0",
-  "mtls": { "modes": { "require": "missing client certificate reaches HTTP authorization and returns 401 mtls_required; an invalid presented certificate fails TLS verification before HTTP and has no HTTP response", "optional": "missing certificate is allowed; any supplied certificate must validate during TLS handshake" }, "identity": "RE2 mapping applies to verified certificate subject/SAN only." },
-  "sourceIp": "The TCP/UDP peer address is sourceIp. X-Forwarded-For is never trusted for auth, WAF, rate-limit source-ip or geo/ASN lookup.",
-  "managementApi": { "defaultListener": "127.0.0.1:9090", "remoteListener": "A non-loopback management.listener requires tlsProfile with clientAuth.mode=require. A presented client certificate is verified before HTTP parsing; invalid certificates fail the TLS handshake without an HTTP response. With no certificate, TLS proceeds and each /api/* request returns 401 mtls_required; authorized requests also require a valid platform-admin Bearer service key.", "health": "/healthz remains unauthenticated readiness only; it does not disclose configuration or runtime inventory.", "failure": { "missingTlsProfile": [422, "management_tls_required"], "missingMtls": [422, "management_mtls_required"], "apiRequestWithoutClientCert": [401, "mtls_required"], "invalidPresentedClientCert": "TLS handshake failure before HTTP; no HTTP status or Problem body" } },
-  "geo": { "country": "ISO 3166-1 alpha-2 uppercase code", "city": "English city name from the MMDB city.names map", "asn": "non-negative integer returned by the local MaxMind MMDB reader", "onErrorPrecedence": "The matching WAF rule onError overrides the referenced data provider onError; if omitted, provider onError applies; if both are omitted, deny applies. A missing MMDB record is a failed lookup.", "reload": "A new MMDB is opened and checked before atomic replacement; a failed reload keeps the old reader. With no reader or failed lookup, the matching WAF rule applies its onError." },
-  "matcherComposition": "Поля matcher-а и композиционные группы объединяются через AND. Дочерние элементы all и any проверяются слева направо в порядке YAML. Ошибка provider lookup даёт неизвестный результат: доказанный false определяет all как false, доказанный true определяет any как true; иначе применяется onError правила. not передаёт неизвестный результат дальше, не инвертируя его. Пустой all равен true, пустой any — false.",
-  "requestSize": { "scope": "HTTP WAF request body", "measuredBytes": "Actual body octets after HTTP transfer framing is removed; excludes request line, headers, and chunk framing. Chunked bodies are measured from received bytes, not Content-Length.", "evaluation": "If any active matcher node uses requestSize, Gateway reads and preserves the request body before WAF evaluation, then forwards the same bytes to the selected upstream or plugin.", "limit": "Bounded by listener.limits.bodyBytes; exceeding it returns 413 body_too_large before upstream or plugin dispatch.", "threshold": "Non-negative integer bytes or a string with KiB, MiB, or GiB suffix; gt/gte/lt/lte use strict/inclusive comparison semantics." },
-  "tls": { "storage": "${registry.path}/tls/<storage>/{accounts,certificates,orders}/. Files containing account or private keys are mode 0600 and owned by the Gateway user. Plugins receive opaque handles only.", "sni": "Choose exact DNS SAN first; otherwise the longest matching wildcard SAN. No matching certificate fails TLS handshake.", "http3": "protocols including h3 requires a terminating TLS profile and binds TCP and UDP on the same listener address. QUIC limits are listener.limits.quic; TCP limits still apply independently.", "renewal": ["valid", "renewing", "degraded", "expired"], "degraded": "Repeated renew failure while a valid certificate exists is degraded and serves the valid certificate. At expiry Gateway stops new handshakes for affected SNI, returns tls_degraded where HTTP is possible, emits alert/audit and expiry metric." }
+  "management": {
+    "loopback": "Management API may bind loopback; local CLI/desktop SSH forwarding requires Bearer service key and TLS server verification.",
+    "webConstructor": "A trusted web Constructor backend connects only over private HTTPS with mTLS and a separate Bearer platform-admin token per Gateway binding.",
+    "desktopConstructor": "Desktop uses an external OpenSSH/bastion short-lived user certificate restricted to port-forwarding into loopback Management API; the tunnel still uses TLS server verification and Bearer authorization.",
+    "roles": ["platform-admin"],
+    "userAuthorization": "Constructor owns human users, roles, environment-scoped permissions and per-user audit; Gateway authenticates only the Controller binding principal.",
+    "rawKey": "Service key plaintext is returned once during create/rotate; only a verifier/hash is persisted.",
+    "trustRoots": "Management client trust roots and plugin workload trust roots MUST be distinct.",
+    "health": "Unauthenticated health endpoint exposes process health only and no configuration or runtime inventory."
+  },
+  "caddyAdmin": {
+    "bind": "permissioned-unix-socket-for-external-or-in-process-for-embedded",
+    "publicExposure": false,
+    "externalProcess": "Gateway launches and supervises the configured compatible Caddy binary; Caddy Admin API/IPC is authenticated and private to Gateway.",
+    "dispatchSync": "External Caddy receives immutable dispatch generations before activation; sync failure leaves active Caddy and dispatch generations unchanged.",
+    "gatewayPassThrough": "Authenticated Management API pass-through preserves native Caddy payloads.",
+    "mutation": "Every mutation creates a durable checkpoint before forwarding and writes metadata-only audit.",
+    "drift": "Unrepresentable runtime changes block group publish/rollback until explicit checkpoint restore or full-composition reconcile.",
+    "reverseConversion": "Arbitrary Caddy JSON is never converted back to Caddyfile automatically."
+  },
+  "plugins": {
+    "local": "Gateway supervises a plugin process on an assigned loopback endpoint.",
+    "remote": "A stable Service endpoint uses TLS/mTLS; each externally issued workload-replica identity maps to one logical plugin instance.",
+    "clientIdentities": "Remote Gateway control RPCs and Caddy data-plane Call/Stream use distinct workload client identities and scopes; the plugin rejects RPCs outside the identity scope.",
+    "replicas": "Ready replicas share protocol, release, Manifest and settings digests; every new gRPC connection repeats TLS validation and handshake.",
+    "recovery": "Gateway reconnects without replaying a unary Call with unknown outcome; an interrupted Stream closes and is not migrated to another replica.",
+    "degradedMode": "An unavailable plugin degrades only its bound routes; unrelated routes remain available.",
+    "dataPath": "Caddy Liapoldus handler calls the plugin directly; Gateway Management API never proxies user request bodies.",
+    "grantBroker": "Only a narrow plugin-to-Gateway scoped-secret redemption callback is permitted; it does not proxy client traffic.",
+    "gatewayCa": false,
+    "downgrade": false,
+    "pluginToPluginTraffic": false,
+    "managementApiInUserRequestPath": false,
+    "rotation": "External CA rotation uses credential replacement and rolling restart; rejected/revoked certificates fail closed."
+  },
+  "secrets": {
+    "plaintextAllowedIn": [],
+    "externalReferencesOnly": true,
+    "redactFrom": ["API errors", "logs", "traces", "audit", "crash reports"],
+    "adminAudit": "Never stores native request/response bodies or sensitive headers."
+  },
+  "storage": {
+    "database": "SQLite on local filesystem; network filesystem database mounts are unsupported.",
+    "artifactStore": "Immutable Caddyfile/plugin-settings revisions, frontend roots and checkpoints are stored separately as files.",
+    "runtime": "Active configuration is hydrated into an immutable in-memory snapshot; user request paths do not read SQLite or config files.",
+    "secretValuesInDatabase": false
+  }
 }

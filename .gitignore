@@ -1,4 +1,5 @@
 # Local dependency and test-runner output.
+/gateway
 tests/node_modules/
 tests/.vite/
 node_modules/

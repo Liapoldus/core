@@ -1,4 +1,0 @@
-variables:
-  environment: production
-registry:
-  path: /srv/${missing}/registry

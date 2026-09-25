@@ -1,51 +1,29 @@
 paths:
   healthz: /healthz
   status: /api/status
-  config: /api/config
-  configValidate: /api/config/validate
-  configReload: /api/config/reload
-  reload: /api/reload
-  sites: /api/sites
-  publish: publish
-  rollback: rollback
-  listeners: /api/listeners
-  upstreams: /api/upstreams
   plugins: /api/plugins
   adminSurfaces: /api/plugins/admin-surfaces
   adminPages: admin/pages
   restart: restart
-  logs: logs
   operations: /api/operations
   audit: /api/audit
-  metrics: /metrics
   groups: /api/groups
   groupByID: /api/groups/
   groupIDSeparator: "/"
+  groupIDPattern: '^[a-z][a-z0-9-]{0,62}$'
 methods:
   get: GET
   post: POST
-  put: PUT
-  delete: DELETE
 json:
   requestId: requestId
   operationId: operationId
   state: state
   items: items
   nextCursor: nextCursor
-  yaml: yaml
-  revision: revision
-  digest: digest
-  valid: valid
-  source: source
-  idempotencyKey: idempotencyKey
-  expectedCurrentRevision: expectedCurrentRevision
-  expectedRevision: expectedRevision
   id: id
+  idempotencyKey: idempotencyKey
   replyTo: replyTo
   status: status
-  slug: slug
-  route: route
-  root: root
   currentRevision: currentRevision
   previousRevision: previousRevision
   createdAt: createdAt
@@ -77,11 +55,23 @@ json:
   cursor: cursor
   kind: kind
   active: active
+  caddy: caddy
+  variant: variant
+  buildId: buildId
+  modules: modules
+  drift: drift
+  runtimeDigest: runtimeDigest
+  compositionDigest: compositionDigest
+  dataPlaneReadiness: dataPlaneReadiness
+  reason: reason
 headers:
   ifMatch: If-Match
   requestId: X-Request-ID
   location: Location
   retryAfter: Retry-After
+idempotency:
+  keyChars: 128
+  keyMin: 16
 contentTypes:
   yaml: application/yaml
   json: application/json
@@ -105,31 +95,16 @@ statuses:
   running: running
   succeeded: succeeded
   empty: empty
-idempotency:
-  limitDefault: 20
-  limitMax: 100
-  limitMin: 1
-  keyChars: 128
-  keyMin: 16
-  window: 24h
-  key: X-Idempotency-Key
-  replyTo: Reply-To
+  notReady: not-ready
+  systemReleaseRequired: system-release-required
+  caddyUnavailable: caddy-unavailable
+  recoveryRequired: recovery-required
 codes:
+  bearerRequired: management_bearer_required
   routeNotFound: route_not_found
-  siteSourceImmutable: site_source_immutable
-  idempotencyConflict: idempotency_conflict
-  releaseInvalid: release_invalid
   registryUnavailable: registry_unavailable
-  publishInProgress: publish_in_progress
-  noPreviousRelease: no_previous_release
-  releaseRevisionConflict: release_revision_conflict
   mtlsRequired: mtls_required
   pluginUnavailable: plugin_unavailable
   groupNotFound: group_not_found
-pagination:
-  limitDefault: 50
-  limitMax: 100
-  limitMin: 1
-operationState:
-  done: done
-  accepted: accepted
+  groupAlreadyExists: group_already_exists
+  invalidRequest: invalid_request

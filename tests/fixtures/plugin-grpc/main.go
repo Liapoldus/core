@@ -178,10 +178,15 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 	if err != nil {
 		return nil, err
 	}
-	response, err := json.Marshal(struct {
-		Status int    `json:"status"`
-		Body   []byte `json:"body"`
-	}{Status: 200, Body: body})
+	httpResponse := struct {
+		Status  int      `json:"status"`
+		Body    []byte   `json:"body"`
+		Cookies []string `json:"cookies,omitempty"`
+	}{Status: 200, Body: body}
+	if input.Path == "/set-cookie" {
+		httpResponse.Cookies = []string{"session=fixture"}
+	}
+	response, err := json.Marshal(httpResponse)
 	if err != nil {
 		return nil, err
 	}

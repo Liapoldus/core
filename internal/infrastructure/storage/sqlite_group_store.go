@@ -29,6 +29,7 @@ type sqliteGroupStoreContract struct {
 	SelectPointers             string `yaml:"selectPointers"`
 	AdvancePointers            string `yaml:"advancePointers"`
 	GroupNotFound              string `yaml:"groupNotFound"`
+	GroupAlreadyExists         string `yaml:"groupAlreadyExists"`
 	RevisionNotFound           string `yaml:"revisionNotFound"`
 	RevisionConflict           string `yaml:"revisionConflict"`
 	InvalidContract            string `yaml:"invalidContract"`
@@ -57,7 +58,7 @@ func NewSQLiteGroupStore(database *sql.DB) (*SQLiteGroupStore, error) {
 	if err := yaml.Unmarshal(contents, &queries); err != nil {
 		return nil, err
 	}
-	if database == nil || queries.InsertApplicationGroup == "" || queries.InsertGroupPointer == "" || queries.SelectGroup == "" || queries.SelectGroups == "" || queries.SelectGroupKind == "" || queries.ArchiveApplicationGroup == "" || queries.InsertRevision == "" || queries.SelectRevision == "" || queries.SelectRevisionsFirstPage == "" || queries.SelectRevisionsAfterCursor == "" || queries.SelectRevisionExists == "" || queries.SelectGroupExists == "" || queries.SelectPointers == "" || queries.AdvancePointers == "" || queries.GroupNotFound == "" || queries.RevisionNotFound == "" || queries.RevisionConflict == "" || queries.SystemGroupArchiveRejected == "" || queries.InvalidRevisionCursor == "" || queries.InvalidRevisionLimit == "" || queries.CursorSeparator == "" || queries.DefaultRevisionLimit < 1 || queries.MaximumRevisionLimit < queries.DefaultRevisionLimit || queries.ApplicationGroupKind == "" {
+	if database == nil || queries.InsertApplicationGroup == "" || queries.InsertGroupPointer == "" || queries.SelectGroup == "" || queries.SelectGroups == "" || queries.SelectGroupKind == "" || queries.ArchiveApplicationGroup == "" || queries.InsertRevision == "" || queries.SelectRevision == "" || queries.SelectRevisionsFirstPage == "" || queries.SelectRevisionsAfterCursor == "" || queries.SelectRevisionExists == "" || queries.SelectGroupExists == "" || queries.SelectPointers == "" || queries.AdvancePointers == "" || queries.GroupNotFound == "" || queries.GroupAlreadyExists == "" || queries.RevisionNotFound == "" || queries.RevisionConflict == "" || queries.SystemGroupArchiveRejected == "" || queries.InvalidRevisionCursor == "" || queries.InvalidRevisionLimit == "" || queries.CursorSeparator == "" || queries.DefaultRevisionLimit < 1 || queries.MaximumRevisionLimit < queries.DefaultRevisionLimit || queries.ApplicationGroupKind == "" {
 		return nil, errors.New(queries.InvalidContract)
 	}
 	return &SQLiteGroupStore{database: database, queries: queries}, nil
@@ -69,8 +70,16 @@ func (store *SQLiteGroupStore) CreateApplicationGroup(ctx context.Context, id st
 		return models.Group{}, err
 	}
 	defer transaction.Rollback()
-	if _, err := transaction.ExecContext(ctx, store.queries.InsertApplicationGroup, id); err != nil {
+	result, err := transaction.ExecContext(ctx, store.queries.InsertApplicationGroup, id)
+	if err != nil {
 		return models.Group{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return models.Group{}, err
+	}
+	if rows == 0 {
+		return models.Group{}, models.GroupAlreadyExists{Message: store.queries.GroupAlreadyExists}
 	}
 	if _, err := transaction.ExecContext(ctx, store.queries.InsertGroupPointer, id); err != nil {
 		return models.Group{}, err

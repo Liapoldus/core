@@ -4,16 +4,14 @@ package api
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +20,6 @@ import (
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/observability"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -30,53 +27,26 @@ import (
 type Server struct {
 	Token                    string
 	ServiceAccounts          []models.ServiceAccount
-	Config                   string
-	Revision                 string
-	Digest                   string
 	mu                       sync.RWMutex
-	idempotency              map[string]idempotencyRecord
-	publishMu                sync.Mutex
 	operations               map[string]Operation
 	AdminSurfaces            []AdminSurface
 	AdminDispatcher          *plugins.Dispatcher
-	Listeners                []any
-	Upstreams                []any
 	Plugins                  []any
-	Sites                    []any
-	ListSites                func(context.Context) ([]any, error)
 	RestartPlugin            func(context.Context, string) (Operation, error)
-	ValidateConfig           func(string) error
-	ReloadConfig             func(context.Context, string) (Operation, error)
-	PublishSite              func(context.Context, string, string, string, *string) (Operation, *models.ReleaseRevisionConflict, error)
-	RollbackSite             func(context.Context, string, string, *string) (Operation, *models.ReleaseRevisionConflict, error)
-	Metrics                  *observability.Registry
 	Audit                    *application.AuditService
 	GroupService             application.GroupService
-	AuditWords               config.ObservabilityWords
+	AccessService            *application.AccessService
+	CaddyVariant             string
+	CaddyBuildID             string
+	CaddyModules             []string
+	DataPlaneState           string
+	DataPlaneReason          string
+	AuditWords               config.AuditWords
 	Management               config.ManagementWords
 	Errors                   config.ErrorCatalog
-	SiteSources              map[string]models.Site
 	TLSConfig                *tls.Config
 	RequireClientCertificate bool
-	ListenerAddress          string
 	contractOnce             sync.Once
-}
-
-// UpdateRuntimeRevision atomically updates the management snapshot metadata
-// after an application-layer reload has prepared a new graph.
-func (server *Server) UpdateRuntimeRevision(revision, digest string) {
-	server.mu.Lock()
-	defer server.mu.Unlock()
-	server.Revision = revision
-	server.Digest = digest
-}
-
-func (server *Server) UpdateRuntimeConfig(revision, digest, configuration string) {
-	server.mu.Lock()
-	defer server.mu.Unlock()
-	server.Revision = revision
-	server.Digest = digest
-	server.Config = configuration
 }
 
 type AdminSurface struct {
@@ -87,90 +57,23 @@ type AdminSurface struct {
 	Capabilities []string `json:"capabilities"`
 }
 type Operation struct {
-	ID            string    `json:"id"`
-	State         string    `json:"state"`
-	CreatedAt     time.Time `json:"createdAt"`
-	Result        any       `json:"result,omitempty"`
-	LockRecovered bool      `json:"-"`
-}
-
-type idempotencyRecord struct {
-	Fingerprint string
-	Operation   Operation
-	RequestID   string
-	Status      int
-	ExpiresAt   time.Time
+	ID        string    `json:"id"`
+	State     string    `json:"state"`
+	CreatedAt time.Time `json:"createdAt"`
+	Result    any       `json:"result,omitempty"`
 }
 
 func (server *Server) Handler() http.Handler {
 	server.contractOnce.Do(func() {
-		if server.Management.Paths.Sites != "" {
-			if _, exists := server.Errors.Lookup(server.Management.Codes.NoPreviousRelease); exists {
-				return
-			}
-		} else {
+		if server.Management.Paths.Groups == "" {
 			server.Management, _ = config.LoadManagement()
 		}
 		server.Errors, _ = config.LoadErrorCatalog()
 	})
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		started := time.Now()
-		finishTrace := func(int) {}
-		listener := server.ListenerAddress
-		if listener == "" {
-			listener = request.Host
-		}
-		if server.Metrics != nil {
-			request, finishTrace = server.Metrics.StartHTTPTrace(request, listener)
-		}
-		wrapped := &metricResponseWriter{ResponseWriter: response}
-		server.handle(wrapped, request)
-		if server.Metrics != nil {
-			status := wrapped.status
-			if status == 0 {
-				status = http.StatusOK
-			}
-			duration := time.Since(started)
-			finishTrace(status)
-			server.Metrics.ObserveManagement(request.Method, strconv.Itoa(status))
-			server.Metrics.WriteAccess(observability.AccessRecord{
-				RequestID: wrapped.Header().Get(server.Management.Headers.RequestID),
-				Listener:  listener,
-				Route:     request.URL.Path,
-				Method:    request.Method,
-				Host:      request.Host,
-				Path:      request.URL.Path,
-				Status:    status,
-				Duration:  duration.Seconds(),
-				Bytes:     wrapped.bytes,
-			})
-		}
-	})
-}
-
-type metricResponseWriter struct {
-	http.ResponseWriter
-	status int
-	bytes  int64
-}
-
-func (w *metricResponseWriter) WriteHeader(status int) {
-	if w.status == 0 {
-		w.status = status
-	}
-	w.ResponseWriter.WriteHeader(status)
-}
-func (w *metricResponseWriter) Write(data []byte) (int, error) {
-	if w.status == 0 {
-		w.WriteHeader(http.StatusOK)
-	}
-	written, err := w.ResponseWriter.Write(data)
-	w.bytes += int64(written)
-	return written, err
+	return http.HandlerFunc(server.handle)
 }
 
 func (server *Server) Listen(ctx context.Context, address string) error {
-	server.ListenerAddress = address
 	httpServer := &http.Server{Addr: address, Handler: server.Handler()}
 	result := make(chan error, 1)
 	go func() {
@@ -205,9 +108,13 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.writeCatalogProblem(response, server.Management.Codes.MTLSRequired, requestID)
 		return
 	}
-	actor, authorized := server.authenticate(request.Header.Get("Authorization"))
+	_, authorized, authErr := server.authenticate(request.Context(), request.Header.Get("Authorization"))
+	if authErr != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
 	if !authorized {
-		writeProblem(response, 401, "unauthorized", "management authentication required", requestID)
+		server.writeCatalogProblem(response, server.Management.Codes.BearerRequired, requestID)
 		return
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
@@ -215,26 +122,26 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	case path == server.Management.Paths.Status && request.Method == http.MethodGet:
 		server.mu.RLock()
 		defer server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "listeners": server.Listeners, "upstreams": server.Upstreams, "plugins": server.Plugins, "requestId": requestID})
+		readiness := map[string]any{"state": server.DataPlaneState}
+		if server.DataPlaneState == server.Management.Statuses.NotReady {
+			readiness[server.Management.JSON.Reason] = server.DataPlaneReason
+		}
+		writeJSON(response, 200, map[string]any{
+			server.Management.JSON.Caddy: map[string]any{
+				server.Management.JSON.Variant: server.CaddyVariant,
+				server.Management.JSON.BuildID: server.CaddyBuildID,
+				server.Management.JSON.Modules: server.CaddyModules,
+			},
+			server.Management.JSON.Drift:              false,
+			server.Management.JSON.DataPlaneReadiness: readiness,
+			server.Management.JSON.RequestID:          requestID,
+		})
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get:
 		server.handleGroupList(response, request, requestID)
+	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
+		server.handleGroupCreate(response, request, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
 		server.handleGroupGet(response, request, path, requestID)
-	case path == server.Management.Paths.Listeners && request.Method == http.MethodGet:
-		server.writePage(response, server.Listeners, request, requestID)
-	case path == server.Management.Paths.Upstreams && request.Method == http.MethodGet:
-		server.writePage(response, server.Upstreams, request, requestID)
-	case path == server.Management.Paths.Sites && request.Method == http.MethodGet:
-		items := server.Sites
-		if server.ListSites != nil {
-			listed, err := server.ListSites(request.Context())
-			if err != nil {
-				server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
-				return
-			}
-			items = listed
-		}
-		server.writePage(response, items, request, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
 		server.writePage(response, server.Plugins, request, requestID)
 	case path == server.Management.Paths.Operations && request.Method == http.MethodGet:
@@ -245,88 +152,6 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		}
 		server.mu.RUnlock()
 		server.writePage(response, items, request, requestID)
-	case path == server.Management.Paths.Config && request.Method == http.MethodGet:
-		server.mu.RLock()
-		defer server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "yaml": redact(server.Config), "requestId": requestID})
-	case path == server.Management.Paths.Config && request.Method == http.MethodPut:
-		server.mu.RLock()
-		digestBefore := server.Digest
-		currentRevision := server.Revision
-		server.mu.RUnlock()
-		var input struct {
-			YAML string `json:"yaml"`
-		}
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-			writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
-			return
-		}
-		if expected := request.Header.Get("If-Match"); expected != "" && expected != currentRevision {
-			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
-			return
-		}
-		if server.ValidateConfig != nil {
-			if err := server.ValidateConfig(input.YAML); err != nil {
-				server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-				writeProblem(response, 422, "config_invalid", err.Error(), requestID)
-				return
-			}
-		}
-		server.mu.Lock()
-		server.Config = input.YAML
-		server.Revision = randomID()
-		digest := sha256.Sum256([]byte(input.YAML))
-		server.Digest = hex.EncodeToString(digest[:])
-		digestAfter := server.Digest
-		server.mu.Unlock()
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigUpdate, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
-		writeJSON(response, 202, map[string]any{"revision": server.Revision, "digest": server.Digest, "requestId": requestID})
-	case strings.HasPrefix(path, server.Management.Paths.Sites+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Publish) && request.Method == http.MethodPost:
-		server.handleSitePublish(response, request, path, actor, requestID)
-	case strings.HasPrefix(path, server.Management.Paths.Sites+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Rollback) && request.Method == http.MethodPost:
-		server.handleSiteRollback(response, request, path, actor, requestID)
-	case path == server.Management.Paths.ConfigValidate && request.Method == http.MethodPost:
-		var input struct {
-			YAML string `json:"yaml"`
-		}
-		_ = json.NewDecoder(request.Body).Decode(&input)
-		if server.ValidateConfig != nil {
-			if err := server.ValidateConfig(input.YAML); err != nil {
-				writeProblem(response, 422, "config_invalid", err.Error(), requestID)
-				return
-			}
-		}
-		writeJSON(response, 200, map[string]any{"revision": server.Revision, "digest": server.Digest, "valid": true, "requestId": requestID})
-	case (path == server.Management.Paths.ConfigReload || path == server.Management.Paths.Reload) && request.Method == http.MethodPost:
-		if expected := request.Header.Get("If-Match"); expected != "" && expected != server.Revision {
-			writeProblem(response, 409, "conflict", "configuration revision does not match If-Match", requestID)
-			return
-		}
-		if server.ReloadConfig == nil {
-			writeProblem(response, 501, "not_implemented", "configuration reload is unavailable", requestID)
-			return
-		}
-		server.mu.RLock()
-		digestBefore := server.Digest
-		revision := server.Revision
-		server.mu.RUnlock()
-		op, err := server.ReloadConfig(request.Context(), revision)
-		if err != nil {
-			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigReload, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-			writeProblem(response, 422, "config_invalid", err.Error(), requestID)
-			return
-		}
-		server.mu.Lock()
-		if server.operations == nil {
-			server.operations = make(map[string]Operation)
-		}
-		server.operations[op.ID] = op
-		digestAfter := server.Digest
-		server.mu.Unlock()
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.ConfigReload, server.AuditWords.Audit.Resources.Gateway, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestAfter)
-		writeJSON(response, 202, map[string]any{"operationId": op.ID, "state": op.State, "requestId": requestID})
 	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
 			server.writePage(response, []models.AuditRecord{}, request, requestID)
@@ -338,14 +163,6 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			return
 		}
 		server.writePage(response, items, request, requestID)
-	case path == server.Management.Paths.Metrics && request.Method == http.MethodGet:
-		if server.Metrics != nil {
-			server.Metrics.Handler().ServeHTTP(response, request)
-			return
-		}
-		response.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = fmt.Fprintln(response, "# HELP liapoldus_management_requests_total Management API requests")
-		_, _ = fmt.Fprintln(response, "# TYPE liapoldus_management_requests_total counter")
 	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
@@ -408,6 +225,62 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 		server.Management.JSON.Items:     items,
 		server.Management.JSON.RequestID: requestID,
 	})
+}
+
+func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID string) {
+	decoder := json.NewDecoder(request.Body)
+	var fields map[string]json.RawMessage
+	if err := decoder.Decode(&fields); err != nil || fields == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if len(fields) != 2 {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	for key := range fields {
+		if key != server.Management.JSON.ID && key != server.Management.JSON.IdempotencyKey {
+			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+	}
+	var id, key string
+	if json.Unmarshal(fields[server.Management.JSON.ID], &id) != nil || json.Unmarshal(fields[server.Management.JSON.IdempotencyKey], &key) != nil || len(key) < server.Management.Idempotency.KeyMin || len(key) > server.Management.Idempotency.KeyChars || !ascii(key) {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	validID, err := regexp.MatchString(server.Management.Paths.GroupIDPattern, id)
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	if !validID {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if server.GroupService.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	group, err := server.GroupService.Create(request.Context(), id)
+	if err != nil {
+		var exists models.GroupAlreadyExists
+		if errors.As(err, &exists) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupAlreadyExists, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
+	result := server.groupResponse(group)
+	result[server.Management.JSON.RequestID] = requestID
+	writeJSON(response, http.StatusCreated, result)
 }
 
 func (server *Server) handleGroupGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
@@ -510,168 +383,6 @@ func sliceValues(values any) []any {
 	}
 }
 
-func (server *Server) handleSitePublish(response http.ResponseWriter, request *http.Request, path, actor, requestID string) {
-	sitePrefix := server.Management.Paths.Sites + "/"
-	siteSuffix := "/" + server.Management.Paths.Publish
-	if !strings.HasPrefix(path, sitePrefix) || !strings.HasSuffix(path, siteSuffix) {
-		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-		return
-	}
-	site := strings.TrimSuffix(strings.TrimPrefix(path, sitePrefix), siteSuffix)
-	if site == "" || strings.Contains(site, "/") {
-		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-		return
-	}
-	if server.SiteSources != nil {
-		definition, exists := server.SiteSources[site]
-		if !exists {
-			writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-			return
-		}
-		if definition.Source != models.SourceRelease {
-			server.writeCatalogProblem(response, server.Management.Codes.SiteSourceImmutable, requestID)
-			return
-		}
-	}
-	if server.PublishSite == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
-		return
-	}
-	var input struct {
-		Source                  string
-		IdempotencyKey          string
-		ExpectedCurrentRevision *string
-	}
-	var fields map[string]json.RawMessage
-	decoder := json.NewDecoder(request.Body)
-	decodeErr := decoder.Decode(&fields)
-	if decodeErr == nil {
-		for key := range fields {
-			if key != server.Management.JSON.Source && key != server.Management.JSON.IdempotencyKey && key != server.Management.JSON.ExpectedCurrentRevision {
-				decodeErr = fmt.Errorf("unexpected publish request property")
-				break
-			}
-		}
-	}
-	if decodeErr == nil {
-		var trailing json.RawMessage
-		if trailingErr := decoder.Decode(&trailing); trailingErr != io.EOF {
-			decodeErr = fmt.Errorf("unexpected trailing publish request data")
-		}
-	}
-	if decodeErr == nil {
-		decodeErr = json.Unmarshal(fields[server.Management.JSON.Source], &input.Source)
-	}
-	if decodeErr == nil {
-		decodeErr = json.Unmarshal(fields[server.Management.JSON.IdempotencyKey], &input.IdempotencyKey)
-	}
-	if decodeErr == nil {
-		if _, present := fields[server.Management.JSON.ExpectedCurrentRevision]; !present {
-			decodeErr = fmt.Errorf("expected current revision is required")
-		} else {
-			input.ExpectedCurrentRevision, decodeErr = decodeExpectedCurrentRevision(fields[server.Management.JSON.ExpectedCurrentRevision])
-		}
-	}
-	if decodeErr != nil || input.Source == "" || len(input.IdempotencyKey) < server.Management.Idempotency.KeyMin || len(input.IdempotencyKey) > server.Management.Idempotency.KeyChars || !ascii(input.IdempotencyKey) {
-		writeProblem(response, http.StatusBadRequest, "invalid_input", "source, idempotencyKey and expectedCurrentRevision are required", requestID)
-		return
-	}
-	window, windowErr := time.ParseDuration(server.Management.Idempotency.Window)
-	if windowErr != nil || window <= 0 {
-		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management idempotency contract is invalid", requestID)
-		return
-	}
-	cacheKey := idempotencyKey(site, actor, input.IdempotencyKey)
-	fingerprint := publishFingerprint(input.Source, input.ExpectedCurrentRevision)
-	server.publishMu.Lock()
-	defer server.publishMu.Unlock()
-	now := time.Now().UTC()
-	server.mu.Lock()
-	for key, record := range server.idempotency {
-		if !now.Before(record.ExpiresAt) {
-			delete(server.idempotency, key)
-		}
-	}
-	previous, cached := server.idempotency[cacheKey]
-	server.mu.Unlock()
-	if cached {
-		if previous.Fingerprint != fingerprint {
-			server.writeCatalogProblem(response, server.Management.Codes.IdempotencyConflict, requestID)
-			return
-		} else {
-			writeIdempotentOperation(response, server.Management, previous)
-			return
-		}
-	}
-	digestBefore := server.runtimeDigest()
-	operation, conflict, err := server.PublishSite(request.Context(), site, input.Source, input.IdempotencyKey, input.ExpectedCurrentRevision)
-	if conflict != nil {
-		server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SitePublished, site, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-		server.writeReleaseRevisionConflict(response, request, requestID, conflict)
-		return
-	}
-	if err != nil {
-		server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SitePublished, site, server.AuditWords.Audit.Results.Failed, requestID, digestBefore, digestBefore)
-		var lockConflict models.RegistryLockConflict
-		if errors.As(err, &lockConflict) {
-			server.writeCatalogProblem(response, server.Management.Codes.PublishInProgress, requestID)
-			return
-		}
-		server.writeCatalogProblem(response, server.Management.Codes.ReleaseInvalid, requestID)
-		return
-	}
-	operation.CreatedAt = now
-	server.mu.Lock()
-	if server.idempotency == nil {
-		server.idempotency = make(map[string]idempotencyRecord)
-	}
-	record := idempotencyRecord{Fingerprint: fingerprint, Operation: operation, RequestID: requestID, Status: http.StatusCreated, ExpiresAt: operation.CreatedAt.Add(window)}
-	server.idempotency[cacheKey] = record
-	if server.operations == nil {
-		server.operations = make(map[string]Operation)
-	}
-	server.operations[operation.ID] = operation
-	server.mu.Unlock()
-	server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-	server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SitePublished, site, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, server.runtimeDigest())
-	writeIdempotentOperation(response, server.Management, record)
-}
-
-func (server *Server) recordPublishLockRecovery(ctx context.Context, actor, site, requestID, digest string, recovered bool) {
-	if !recovered {
-		return
-	}
-	server.recordAudit(ctx, actor, server.AuditWords.Audit.Actions.PublishLockRecovered, site,
-		server.AuditWords.Audit.Results.Succeeded, requestID, digest, digest)
-}
-
-func idempotencyKey(site, actor, key string) string {
-	value, _ := json.Marshal(struct {
-		Site  string
-		Actor string
-		Key   string
-	}{Site: site, Actor: actor, Key: key})
-	digest := sha256.Sum256(value)
-	return hex.EncodeToString(digest[:])
-}
-
-func publishFingerprint(source string, expected *string) string {
-	value, _ := json.Marshal(struct {
-		Source                  string
-		ExpectedCurrentRevision *string
-	}{Source: source, ExpectedCurrentRevision: expected})
-	digest := sha256.Sum256(value)
-	return hex.EncodeToString(digest[:])
-}
-
-func (server *Server) runtimeDigest() string {
-	server.mu.RLock()
-	defer server.mu.RUnlock()
-	return server.Digest
-}
-
 func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, requestID string) {
 	problem, exists := server.Errors.Lookup(code)
 	if !exists {
@@ -679,194 +390,6 @@ func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, re
 		return
 	}
 	writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
-}
-
-func (server *Server) writeReleaseRevisionConflict(response http.ResponseWriter, request *http.Request, requestID string, conflict *models.ReleaseRevisionConflict) {
-	problem, exists := server.Errors.Lookup(server.Management.Codes.ReleaseRevisionConflict)
-	if !exists {
-		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management error contract is invalid", requestID)
-		return
-	}
-	problem.Instance = request.URL.Path
-	problem.RequestID = requestID
-	response.Header().Set("Content-Type", server.Management.ContentTypes.Problem)
-	response.WriteHeader(problem.Status)
-	_ = json.NewEncoder(response).Encode(map[string]any{
-		"type": problem.Type, "title": problem.Title, "status": problem.Status,
-		"code": problem.Code, "detail": problem.Detail, "instance": problem.Instance,
-		server.Management.JSON.RequestID:        requestID,
-		server.Management.JSON.ExpectedRevision: conflict.ExpectedRevision,
-		server.Management.JSON.CurrentRevision:  conflict.CurrentRevision,
-	})
-}
-
-func decodeExpectedCurrentRevision(raw json.RawMessage) (*string, error) {
-	if string(raw) == "null" {
-		return nil, nil
-	}
-	var revision string
-	if err := json.Unmarshal(raw, &revision); err != nil || !validReleaseRevision(revision) {
-		return nil, fmt.Errorf("expected current revision must be null or a SHA-256 release revision")
-	}
-	return &revision, nil
-}
-
-func validReleaseRevision(revision string) bool {
-	if len(revision) != sha256.Size*2 {
-		return false
-	}
-	decoded, err := hex.DecodeString(revision)
-	return err == nil && len(decoded) == sha256.Size && revision == strings.ToLower(revision)
-}
-
-func writeIdempotentOperation(response http.ResponseWriter, management config.ManagementWords, record idempotencyRecord) {
-	response.Header().Set(management.Headers.RequestID, record.RequestID)
-	body := map[string]any{
-		management.JSON.OperationID: record.Operation.ID,
-		management.JSON.State:       record.Operation.State,
-		management.JSON.RequestID:   record.RequestID,
-	}
-	if record.Operation.Result != nil {
-		body[management.JSON.Result] = record.Operation.Result
-	}
-	writeJSON(response, record.Status, body)
-}
-
-func (server *Server) handleSiteRollback(response http.ResponseWriter, request *http.Request, path, actor, requestID string) {
-	if server.RollbackSite == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
-		return
-	}
-	sitePrefix := server.Management.Paths.Sites + "/"
-	siteSuffix := "/" + server.Management.Paths.Rollback
-	if !strings.HasPrefix(path, sitePrefix) || !strings.HasSuffix(path, siteSuffix) {
-		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-		return
-	}
-	site := strings.TrimSuffix(strings.TrimPrefix(path, sitePrefix), siteSuffix)
-	if site == "" || strings.Contains(site, "/") {
-		writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-		return
-	}
-	if server.SiteSources != nil {
-		definition, exists := server.SiteSources[site]
-		if !exists {
-			writeProblem(response, http.StatusNotFound, "not_found", "site resource not found", requestID)
-			return
-		}
-		if definition.Source != models.SourceRelease {
-			server.writeCatalogProblem(response, server.Management.Codes.SiteSourceImmutable, requestID)
-			return
-		}
-	}
-	var fields map[string]json.RawMessage
-	decoder := json.NewDecoder(request.Body)
-	decodeErr := decoder.Decode(&fields)
-	if decodeErr == nil {
-		for key := range fields {
-			if key != server.Management.JSON.IdempotencyKey && key != server.Management.JSON.ExpectedCurrentRevision {
-				decodeErr = fmt.Errorf("unexpected rollback request property")
-				break
-			}
-		}
-	}
-	if decodeErr == nil {
-		var trailing json.RawMessage
-		if trailingErr := decoder.Decode(&trailing); trailingErr != io.EOF {
-			decodeErr = fmt.Errorf("unexpected trailing rollback request data")
-		}
-	}
-	var key string
-	if decodeErr == nil {
-		decodeErr = json.Unmarshal(fields[server.Management.JSON.IdempotencyKey], &key)
-	}
-	var expected *string
-	if decodeErr == nil {
-		if _, present := fields[server.Management.JSON.ExpectedCurrentRevision]; !present {
-			decodeErr = fmt.Errorf("expected current revision is required")
-		} else {
-			expected, decodeErr = decodeExpectedCurrentRevision(fields[server.Management.JSON.ExpectedCurrentRevision])
-		}
-	}
-	if decodeErr != nil || key == "" || len(key) < server.Management.Idempotency.KeyMin || len(key) > server.Management.Idempotency.KeyChars || !ascii(key) || request.Header.Get("Idempotency-Key") != "" && request.Header.Get("Idempotency-Key") != key {
-		writeProblem(response, http.StatusBadRequest, "invalid_input", "idempotencyKey and expectedCurrentRevision are required", requestID)
-		return
-	}
-	window, windowErr := time.ParseDuration(server.Management.Idempotency.Window)
-	if windowErr != nil || window <= 0 {
-		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management idempotency contract is invalid", requestID)
-		return
-	}
-	cacheKey := idempotencyKey(site, actor, key)
-	fingerprint := rollbackFingerprint(expected)
-	server.publishMu.Lock()
-	defer server.publishMu.Unlock()
-	now := time.Now().UTC()
-	server.mu.Lock()
-	for cachedKey, record := range server.idempotency {
-		if !now.Before(record.ExpiresAt) {
-			delete(server.idempotency, cachedKey)
-		}
-	}
-	previous, cached := server.idempotency[cacheKey]
-	server.mu.Unlock()
-	if cached {
-		if previous.Fingerprint != fingerprint {
-			server.writeCatalogProblem(response, server.Management.Codes.IdempotencyConflict, requestID)
-			return
-		}
-		writeIdempotentOperation(response, server.Management, previous)
-		return
-	}
-	digestBefore := server.runtimeDigest()
-	recordRollback := func(result string) {
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SiteRolledBack, site, result, requestID, digestBefore, digestBefore)
-	}
-	operation, conflict, err := server.RollbackSite(request.Context(), site, key, expected)
-	if conflict != nil {
-		recordRollback(server.AuditWords.Audit.Results.Failed)
-		server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-		server.writeReleaseRevisionConflict(response, request, requestID, conflict)
-		return
-	}
-	if err != nil {
-		recordRollback(server.AuditWords.Audit.Results.Failed)
-		server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-		var lockConflict models.RegistryLockConflict
-		if errors.As(err, &lockConflict) {
-			server.writeCatalogProblem(response, server.Management.Codes.PublishInProgress, requestID)
-			return
-		}
-		if errors.Is(err, fs.ErrNotExist) {
-			server.writeCatalogProblem(response, server.Management.Codes.NoPreviousRelease, requestID)
-			return
-		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
-		return
-	}
-	operation.CreatedAt = now
-	server.mu.Lock()
-	if server.idempotency == nil {
-		server.idempotency = make(map[string]idempotencyRecord)
-	}
-	record := idempotencyRecord{Fingerprint: fingerprint, Operation: operation, RequestID: requestID, Status: http.StatusAccepted, ExpiresAt: operation.CreatedAt.Add(window)}
-	server.idempotency[cacheKey] = record
-	if server.operations == nil {
-		server.operations = make(map[string]Operation)
-	}
-	server.operations[operation.ID] = operation
-	server.mu.Unlock()
-	server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.SiteRolledBack, site, server.AuditWords.Audit.Results.Succeeded, requestID, digestBefore, digestBefore)
-	server.recordPublishLockRecovery(request.Context(), actor, site, requestID, digestBefore, operation.LockRecovered)
-	writeIdempotentOperation(response, server.Management, record)
-}
-
-func rollbackFingerprint(expected *string) string {
-	value, _ := json.Marshal(struct {
-		ExpectedCurrentRevision *string
-	}{ExpectedCurrentRevision: expected})
-	digest := sha256.Sum256(value)
-	return hex.EncodeToString(digest[:])
 }
 
 func ascii(value string) bool {
@@ -931,23 +454,24 @@ func randomID() string {
 	}
 	return hex.EncodeToString(bytes)
 }
-func (server *Server) authenticate(value string) (string, bool) {
-	if server.Token == "" && len(server.ServiceAccounts) == 0 {
-		return server.AuditWords.Audit.Actors.Anonymous, true
-	}
+func (server *Server) authenticate(ctx context.Context, value string) (string, bool, error) {
 	if !strings.HasPrefix(value, "Bearer ") {
-		return "", false
+		return "", false, nil
 	}
 	key := strings.TrimPrefix(value, "Bearer ")
+	if server.AccessService != nil {
+		actor, valid, err := server.AccessService.Authenticate(ctx, key)
+		return actor, valid, err
+	}
 	if server.Token != "" && key == server.Token {
-		return server.AuditWords.Audit.Actors.StaticToken, true
+		return server.AuditWords.Audit.Actors.StaticToken, true, nil
 	}
 	for _, account := range server.ServiceAccounts {
 		if bcrypt.CompareHashAndPassword([]byte(account.KeyHash), []byte(key)) == nil {
-			return account.ID, true
+			return account.ID, true, nil
 		}
 	}
-	return "", false
+	return "", false, nil
 }
 
 func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) {
@@ -964,9 +488,7 @@ func (server *Server) recordAudit(ctx context.Context, actor, action, resource, 
 		DigestBefore: digestBefore,
 		DigestAfter:  digestAfter,
 	}
-	if server.Audit.Record(ctx, record) == nil && server.Metrics != nil {
-		server.Metrics.ObserveAudit(action, result)
-	}
+	_ = server.Audit.Record(ctx, record)
 }
 func redact(value string) string {
 	lines := strings.Split(value, "\n")

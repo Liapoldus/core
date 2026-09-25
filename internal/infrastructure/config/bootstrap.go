@@ -2,7 +2,7 @@ package config
 
 import (
 	"os"
-	"strings"
+	"path/filepath"
 
 	assets "github.com/Liapoldus/core"
 	"gopkg.in/yaml.v3"
@@ -15,13 +15,21 @@ type BootstrapConfig struct {
 	ManagementCertificate    string
 	ManagementKey            string
 	ManagementClientCA       string
-	ManagementBearerVerifier string
 	ManagementMaxBodyBytes   int64
 	ManagementHeaderTimeout  string
 	ManagementRequestTimeout string
 	CaddyVariant             string
 	CaddyBinary              string
 	CaddyExpectedBuildID     string
+	CaddyEmbeddedVariant     string
+	CaddyExternalVariant     string
+}
+
+type managementBootstrapFields struct {
+	Section  string `yaml:"section"`
+	Listen   string `yaml:"listen"`
+	TLS      string `yaml:"tls"`
+	ClientCA string `yaml:"clientCA"`
 }
 
 type managementBootstrapOptions struct {
@@ -37,11 +45,15 @@ type bootstrapFieldLists struct {
 	ManagementTLS           []string `yaml:"managementTLS"`
 	ManagementRequestLimits []string `yaml:"managementRequestLimits"`
 	Caddy                   []string `yaml:"caddy"`
+	CaddyVariant            struct {
+		Embedded string `yaml:"embedded"`
+		External string `yaml:"external"`
+	} `yaml:"caddyVariant"`
 }
 
-// LoadBootstrap validates and decodes the bootstrap document without resolving
-// secrets or interpreting paths. Callers receive external references, never
-// secret contents.
+// LoadBootstrap validates and decodes bootstrap configuration. Relative paths
+// and file references are resolved against the bootstrap document directory;
+// callers receive paths, never secret contents.
 func LoadBootstrap(path string) (BootstrapConfig, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -55,7 +67,7 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-	if err := validateDocument(contents, loaded); err != nil {
+	if err := ValidateYAML(string(contents)); err != nil {
 		return BootstrapConfig{}, err
 	}
 
@@ -103,7 +115,7 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 			return BootstrapConfig{}, err
 		}
 	}
-	bearerVerifier, requestLimits, err := managementOptions(management, loaded, fieldLists)
+	requestLimits, err := managementOptions(management, loaded, fieldLists)
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
@@ -125,18 +137,19 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	}
 
 	return BootstrapConfig{
-		StatePath:                statePath,
-		ArtifactsPath:            artifactsPath,
+		StatePath:                resolveRelative(path, statePath),
+		ArtifactsPath:            resolveRelative(path, artifactsPath),
 		ManagementListen:         managementListen,
-		ManagementCertificate:    certificate,
-		ManagementKey:            key,
-		ManagementClientCA:       clientCA,
-		ManagementBearerVerifier: bearerVerifier,
+		ManagementCertificate:    resolveReference(path, certificate, loaded.SecretReference.FilePrefix),
+		ManagementKey:            resolveReference(path, key, loaded.SecretReference.FilePrefix),
+		ManagementClientCA:       resolveReference(path, clientCA, loaded.SecretReference.FilePrefix),
 		ManagementMaxBodyBytes:   requestLimits.MaxBodyBytes,
 		ManagementHeaderTimeout:  requestLimits.HeaderTimeout,
 		ManagementRequestTimeout: requestLimits.RequestTimeout,
 		CaddyVariant:             variant,
-		CaddyBinary:              binary,
+		CaddyEmbeddedVariant:     fieldLists.CaddyVariant.Embedded,
+		CaddyExternalVariant:     fieldLists.CaddyVariant.External,
+		CaddyBinary:              resolveRelative(path, binary),
 		CaddyExpectedBuildID:     buildID,
 	}, nil
 }
@@ -153,10 +166,8 @@ func loadBootstrapFieldLists() (bootstrapFieldLists, error) {
 	return fields, nil
 }
 
-func managementOptions(management *yaml.Node, loaded contractFile, fields bootstrapFieldLists) (string, managementBootstrapOptions, error) {
-	var bearerVerifier string
+func managementOptions(management *yaml.Node, loaded contractFile, fields bootstrapFieldLists) (managementBootstrapOptions, error) {
 	var requestLimits managementBootstrapOptions
-	var err error
 	for _, field := range fields.Management {
 		if field == loaded.ManagementBootstrap.Listen || field == loaded.ManagementBootstrap.TLS {
 			continue
@@ -165,37 +176,49 @@ func managementOptions(management *yaml.Node, loaded contractFile, fields bootst
 		if value == nil {
 			continue
 		}
-		if value.Kind == yaml.ScalarNode && strings.HasPrefix(value.Value, loaded.SecretReference.FilePrefix) {
-			bearerVerifier = value.Value
-			continue
-		}
 		if value.Kind != yaml.MappingNode {
 			continue
 		}
 		if len(fields.ManagementRequestLimits) != 3 {
-			return "", requestLimits, ErrInvalidDocument
+			return requestLimits, ErrInvalidDocument
 		}
 		bodySize := mappingValue(value, fields.ManagementRequestLimits[0])
 		if bodySize != nil {
 			var parsed int64
 			if err := bodySize.Decode(&parsed); err != nil {
-				return "", requestLimits, err
+				return requestLimits, err
 			}
 			requestLimits.MaxBodyBytes = parsed
 		}
+		var err error
 		requestLimits.HeaderTimeout, err = optionalScalarValue(mappingValue(value, fields.ManagementRequestLimits[1]))
 		if err != nil {
-			return "", requestLimits, err
+			return requestLimits, err
 		}
 		requestLimits.RequestTimeout, err = optionalScalarValue(mappingValue(value, fields.ManagementRequestLimits[2]))
 		if err != nil {
-			return "", requestLimits, err
+			return requestLimits, err
 		}
 	}
-	if bearerVerifier == "" {
-		return "", requestLimits, ErrInvalidDocument
+	return requestLimits, nil
+}
+
+func resolveRelative(bootstrapPath, value string) string {
+	if value == "" || filepath.IsAbs(value) {
+		return value
 	}
-	return bearerVerifier, requestLimits, nil
+	absoluteBootstrapPath, err := filepath.Abs(bootstrapPath)
+	if err != nil {
+		return filepath.Clean(filepath.Join(filepath.Dir(bootstrapPath), value))
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(absoluteBootstrapPath), value))
+}
+
+func resolveReference(bootstrapPath, value, prefix string) string {
+	if len(value) >= len(prefix) && value[:len(prefix)] == prefix {
+		return resolveRelative(bootstrapPath, value[len(prefix):])
+	}
+	return value
 }
 
 func mappingValue(node *yaml.Node, key string) *yaml.Node {

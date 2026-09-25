@@ -1,154 +1,50 @@
 commands:
   serve: serve
-  config: config
-  accounts: accounts
-  site: site
-subcommands:
-  path: path
-  validate: validate
-  print: print
-  format: format
-  explain: explain
-  diff: diff
-site:
-  publish: publish
-  rollback: rollback
-  current: current
-  previous: previous
+  access: access
+access:
+  bootstrap: bootstrap
 flags:
   output: --output
   config: --config
-  configDir: --config-dir
-  noManagement: --no-management
-  role: --role
-accounts:
-  create: create
-  rotate: rotate
-  revoke: revoke
+serviceKey:
   rolePlatformAdmin: platform-admin
-  keyPrefix: lpgw_
   keyBytes: 32
   hashCost: 12
-  hashExtension: .bcrypt
-  secretsDir: secrets
-  accountsDir: accounts
-  keyHashWord: keyHash
-  saveMessage: "service account %s created; save this key now — it will not be shown again:"
-  rotateMessage: "service account %s rotated; save this key now — it will not be shown again:"
-  revokedMessage: "service account %s revoked"
-serve:
-  gracefulTimeout: 10s
 outputs:
   text: text
   json: json
 environment:
   gatewayConfig: LIAPOLDUS_GATEWAY_CONFIG
-  configDir: LIAPOLDUS_CONFIG_DIR
 paths:
   defaultConfig: /etc/liapoldus/gateway.yaml
-  fileName: gateway.yaml
 codes:
+  accessBootstrapConflict: access_bootstrap_conflict
   configNotFound: config_not_found
   configInvalid: config_invalid
-  unknownField: unknown_field
-  noPreviousRelease: no_previous_release
-  wafProviderUnavailable: waf_provider_unavailable
-  bodyTooLarge: body_too_large
-  headerTooLarge: header_too_large
-  resourceExhausted: resource_exhausted
-  pluginTimeout: plugin_timeout
-  rateLimited: rate_limited
-  siteInvalid: site_invalid
-  siteSourceImmutable: site_source_immutable
-  registryUnavailable: registry_unavailable
-  releaseInvalid: release_invalid
-  publishInProgress: publish_in_progress
 exits:
   ok: 0
   internal: 1
   arguments: 2
   validation: 3
   conflict: 4
-  notFound: 5
-  authorization: 6
   unavailable: 7
 sources:
   flag: flag
   environment: environment
-  flagDirectory: flag-directory
   system: system
 json:
   ok: ok
-  command: command
-  path: path
-  source: source
-  valid: valid
-  document: document
   problem: problem
   code: code
   detail: detail
-  report: report
-  name: name
-  type: type
-  address: address
-  index: index
-  site: site
-  revision: revision
-  previousRevision: previousRevision
-  requestId: requestId
-  listeners: listeners
-  routes: routes
-  sites: sites
-  issues: issues
-  kind: kind
-  listener: listener
-  diff: diff
-  added: added
-  removed: removed
-  changed: changed
-  section: section
-display:
-  path: config path
-  validate: config validate
-  print: config print
-  format: config format
-  explain: config explain
-  diff: config diff
-  accountsCreate: accounts create
-  accountsRotate: accounts rotate
-  accountsRevoke: accounts revoke
-  siteRollback: site rollback
-  sitePublish: site publish
-  siteCurrent: site current
-  sitePrevious: site previous
-identifiers:
-  requestPrefix: req_
-  requestBytes: 8
-explain:
-  listener: "listener %s %s %s"
-  route: "route %s %d -> site %s"
-  site: "site %s index %s"
-  issue: "issue %s %s"
-diff:
-  added: added
-  removed: removed
-  changed: changed
-  section: "%s section %s"
-  entry: "%s %s %s"
+  token: token
 text:
   ok: ok
-  null: null
 diagnostics:
-  commandExpected: ожидается команда config
-  unknownConfigCommand: неизвестная config-команда
+  commandExpected: ожидается команда serve или access bootstrap
   configNotFound: Файл конфигурации не найден.
   configInvalid: Конфигурация не прошла проверку.
-  outputInvalid: --output must be text or json
-  configRequired: --config requires a path
-  configDirRequired: --config-dir requires a path
-  configLookupFailed: config not found
-  roleRequired: --role is required
-  roleInvalid: --role must be platform-admin
-  accountIDRequired: account id is required
-  accountNotFound: service account not found
-  hashInvalid: key hash file must contain a bcrypt hash
+  outputInvalid: --output должен иметь значение text или json
+  configRequired: --config требует путь к gateway.yaml
+  configLookupFailed: gateway.yaml не найден или является каталогом
+  accessBootstrapConflict: активный ключ доступа уже существует

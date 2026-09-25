@@ -1,5 +1,0 @@
-listeners:
-  web:
-    type: http
-    address: :8080
-    unknownListenerSetting: true

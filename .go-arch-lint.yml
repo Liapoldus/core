@@ -10,43 +10,27 @@ components:
   domainInterfaces: { in: internal/domain/interfaces }
   application: { in: internal/application }
   infrastructureConfig: { in: internal/infrastructure/config }
-  infrastructureAccounts: { in: internal/infrastructure/accounts }
-  infrastructureNetwork: { in: internal/infrastructure/network }
   contractAdapter: { in: [.] }
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
   infrastructurePlugins: { in: internal/infrastructure/plugins }
   infrastructureCaddy: { in: internal/infrastructure/caddy }
-  infrastructureObservability: { in: internal/infrastructure/observability }
   presentationAPI: { in: internal/presentation/api }
   presentationCLI: { in: internal/presentation/cli }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
-  otel: { in: [go.opentelemetry.io/otel, go.opentelemetry.io/otel/sdk, go.opentelemetry.io/otel/exporters] }
-  prometheus: { in: [github.com/prometheus/client_golang/prometheus, github.com/prometheus/client_golang/prometheus/promhttp] }
-  prometheusModel: { in: [github.com/prometheus/client_model/go] }
-  otelAttribute: { in: [go.opentelemetry.io/otel/attribute] }
-  otelMetricExporter: { in: [go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp] }
-  otelInstrumentation: { in: [go.opentelemetry.io/otel/sdk/instrumentation] }
-  otelMetricData: { in: [go.opentelemetry.io/otel/sdk/metric/metricdata] }
-  otelResource: { in: [go.opentelemetry.io/otel/sdk/resource] }
-  otelTraceAPI: { in: [go.opentelemetry.io/otel/trace] }
-  otelTraceExporter: { in: [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp] }
-  otelTraceSDK: { in: [go.opentelemetry.io/otel/sdk/trace] }
-  otelPropagation: { in: [go.opentelemetry.io/otel/propagation] }
-  otelCodes: { in: [go.opentelemetry.io/otel/codes] }
-  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
+  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto] }
-  maxminddb: { in: [github.com/oschwald/maxminddb-golang/v2] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
-  quic: { in: [github.com/quic-go/quic-go] }
-  quicHTTP3: { in: [github.com/quic-go/quic-go/http3] }
   sqliteDriver: { in: [modernc.org/sqlite] }
   caddy: { in: [github.com/caddyserver/caddy/v2, github.com/caddyserver/caddy/v2/modules/standard] }
   caddyLayer4: { in: [github.com/mholt/caddy-l4] }
   caddyConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig] }
+  caddyHTTP: { in: [github.com/caddyserver/caddy/v2/modules/caddyhttp] }
+  caddyHTTPConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile] }
+  googleUUID: { in: [github.com/google/uuid] }
 commonComponents: [domainModels]
 commonVendors: []
 deps:
@@ -62,31 +46,22 @@ deps:
   infrastructureConfig:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter]
     canUse: [yaml, jsonschema]
-  infrastructureAccounts:
-    mayDependOn: [domainModels, domainInterfaces]
-    canUse: [bcrypt]
   contractAdapter:
     mayDependOn: [domainModels]
-  infrastructureNetwork:
-    mayDependOn: [domainModels, domainInterfaces, infrastructureObservability, infrastructurePlugins]
-    canUse: [quic, quicHTTP3, otelPropagation]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [bcrypt, maxminddb]
+    canUse: [bcrypt]
   infrastructureStorage:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter]
     canUse: [sqliteDriver, yaml]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [yaml, jsonschema, bcrypt, otel, pluginprotocol, protobuf, gopsutil]
+    canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil]
   infrastructureCaddy:
-    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
-    canUse: [caddy, caddyLayer4, caddyConfig]
-  infrastructureObservability:
-    mayDependOn: [domainModels, domainInterfaces]
-    canUse: [otel, prometheus, prometheusModel, otelAttribute, otelMetricExporter, otelInstrumentation, otelMetricData, otelResource, otelTraceAPI, otelTraceExporter, otelTraceSDK, otelPropagation, otelCodes]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructurePlugins]
+    canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, googleUUID]
   presentationAPI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins]
     canUse: [bcrypt]
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureNetwork, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureObservability, infrastructureAccounts, presentationAPI]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPI]

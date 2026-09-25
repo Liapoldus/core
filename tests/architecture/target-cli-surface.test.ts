@@ -12,7 +12,10 @@ describe("target Gateway CLI surface", () => {
       readFile(join(coreRoot, "internal/presentation/cli/cli.go"), "utf8"),
     ]);
 
-    expect(contracts).not.toMatch(/^  (config|accounts|site):/m);
+    const commands = contracts.match(/^commands:\n((?:  [^\n]+\n)+)/m)?.[1] ?? "";
+    expect(commands).toMatch(/serve: serve/);
+    expect(commands).toMatch(/access: access/);
+    expect(commands).not.toMatch(/(?:config|accounts|site):/);
     expect(contracts).not.toMatch(/^subcommands:/m);
     expect(contracts).not.toMatch(/^site:/m);
     expect(source).not.toMatch(/func (config|accounts|site)\(/);

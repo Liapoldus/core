@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -24,7 +24,6 @@ describe("typed bootstrap loading", () => {
         "  tls:",
         "    certificate: file:/run/secrets/management.crt",
         "    key: file:/run/secrets/management.key",
-        "  bearerVerifier: file:/run/secrets/service-keys.json",
         "caddy:",
         "  variant: external",
         "  binary: /usr/local/bin/liapoldus-caddy",
@@ -35,16 +34,37 @@ describe("typed bootstrap loading", () => {
       const result = await execFileAsync(binary, [gatewayConfig], { cwd: coreRoot });
 
       expect(JSON.parse(result.stdout)).toMatchObject({
-        StatePath: "./state/gateway.db",
-        ArtifactsPath: "./state/artifacts",
+        StatePath: resolve(directory, "state/gateway.db"),
+        ArtifactsPath: resolve(directory, "state/artifacts"),
         ManagementListen: "127.0.0.1:9443",
-        ManagementCertificate: "file:/run/secrets/management.crt",
-        ManagementKey: "file:/run/secrets/management.key",
-        ManagementBearerVerifier: "file:/run/secrets/service-keys.json",
+        ManagementCertificate: "/run/secrets/management.crt",
+        ManagementKey: "/run/secrets/management.key",
         CaddyVariant: "external",
         CaddyBinary: "/usr/local/bin/liapoldus-caddy",
         CaddyExpectedBuildID: "caddy-module-set-1",
       });
+
+      const legacy = [
+        "state:",
+        "  path: ./state/gateway.db",
+        "artifacts:",
+        "  path: ./state/artifacts",
+        "management:",
+        "  listen: 127.0.0.1:9443",
+        "  tls:",
+        "    certificate: file:/run/secrets/management.crt",
+        "    key: file:/run/secrets/management.key",
+        "caddy:",
+        "  variant: embedded",
+        "listeners: {}",
+        "",
+      ].join("\n");
+      await writeFile(gatewayConfig, legacy, "utf8");
+      await expect(execFileAsync(binary, [gatewayConfig], { cwd: coreRoot })).rejects.toBeDefined();
+
+      const insecureRemote = legacy.replace("127.0.0.1:9443", "gateway.internal:9443").replace("listeners: {}\n", "");
+      await writeFile(gatewayConfig, insecureRemote, "utf8");
+      await expect(execFileAsync(binary, [gatewayConfig], { cwd: coreRoot })).rejects.toBeDefined();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

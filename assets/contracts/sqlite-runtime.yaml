@@ -4,6 +4,8 @@ databaseFileMode: 384
 maxOpenConnections: 1
 maxIdleConnections: 1
 schemaVersion: 1
+systemGroupID: system
+artifactsDirectoryMode: 448
 hasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')"
 migrationVersionQuery: "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
 schemaVersionError: "SQLite schema version is incompatible with this Gateway build."

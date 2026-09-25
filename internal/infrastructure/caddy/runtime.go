@@ -20,7 +20,8 @@ type buildContract struct {
 }
 
 type Runtime struct {
-	active bool
+	active  bool
+	plugins []PluginInstance
 }
 
 var processRuntime = struct {
@@ -29,6 +30,14 @@ var processRuntime = struct {
 }{}
 
 func StartCaddyfile(source []byte) (*Runtime, []caddyconfig.Warning, error) {
+	return startCaddyfile(source, nil)
+}
+
+func StartCaddyfileWithPlugins(source []byte, instances []PluginInstance) (*Runtime, []caddyconfig.Warning, error) {
+	return startCaddyfile(source, instances)
+}
+
+func startCaddyfile(source []byte, instances []PluginInstance) (*Runtime, []caddyconfig.Warning, error) {
 	processRuntime.Lock()
 	defer processRuntime.Unlock()
 	if processRuntime.active != nil {
@@ -39,14 +48,14 @@ func StartCaddyfile(source []byte) (*Runtime, []caddyconfig.Warning, error) {
 		return nil, nil, errors.New(contract.Diagnostics.RuntimeAlreadyActive)
 	}
 
-	configuration, warnings, err := AdaptCaddyfile(source)
+	configuration, warnings, err := adaptCaddyfile(source, instances)
 	if err != nil {
 		return nil, nil, err
 	}
 	if err := caddycore.Load(configuration, true); err != nil {
 		return nil, nil, err
 	}
-	runtime := &Runtime{active: true}
+	runtime := &Runtime{active: true, plugins: append([]PluginInstance(nil), instances...)}
 	processRuntime.active = runtime
 	return runtime, warnings, nil
 }
@@ -62,7 +71,7 @@ func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, 
 		return nil, errors.New(contract.Diagnostics.RuntimeNotActive)
 	}
 
-	configuration, warnings, err := AdaptCaddyfile(source)
+	configuration, warnings, err := adaptCaddyfile(source, runtime.plugins)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +82,10 @@ func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, 
 }
 
 func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
+	return adaptCaddyfile(source, nil)
+}
+
+func adaptCaddyfile(source []byte, instances []PluginInstance) ([]byte, []caddyconfig.Warning, error) {
 	contract, err := loadBuildContract()
 	if err != nil {
 		return nil, nil, err
@@ -88,6 +101,16 @@ func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
 	var adapted caddycore.Config
 	if err := json.Unmarshal(configuration, &adapted); err != nil {
 		return nil, nil, err
+	}
+	if instances != nil {
+		appName, appConfig, err := pluginDispatchAppConfig(instances)
+		if err != nil {
+			return nil, nil, err
+		}
+		if adapted.AppsRaw == nil {
+			adapted.AppsRaw = make(caddycore.ModuleMap)
+		}
+		adapted.AppsRaw[appName] = appConfig
 	}
 	persistConfig := false
 	adapted.Admin = &caddycore.AdminConfig{

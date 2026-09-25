@@ -1,0 +1,9 @@
+beginImmediate: BEGIN IMMEDIATE
+commit: COMMIT
+rollback: ROLLBACK
+selectActiveKey: "SELECT EXISTS(SELECT 1 FROM service_keys WHERE revoked_at IS NULL)"
+insertKey: "INSERT INTO service_keys(id, name, verifier, role) VALUES(?, ?, ?, ?)"
+selectActiveVerifiers: "SELECT id, verifier FROM service_keys WHERE revoked_at IS NULL ORDER BY id"
+bootstrapName: local-bootstrap
+invalidContract: SQLite service-key contract is invalid.
+activeKeyConflict: an active service key already exists
