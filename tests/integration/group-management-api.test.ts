@@ -37,6 +37,8 @@ describe("group Management API reads", () => {
           { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", artifactDigest: null, actor: "", createdAt: expect.any(String) },
         ],
         releasePathsHidden: true,
+        releaseDetailStatus: 200,
+        releaseDetailSafe: true,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

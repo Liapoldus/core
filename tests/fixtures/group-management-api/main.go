@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -37,6 +38,8 @@ type report struct {
 	ReleaseListRequestID bool             `json:"releaseListRequestID"`
 	Releases             []map[string]any `json:"releases"`
 	ReleasePathsHidden   bool             `json:"releasePathsHidden"`
+	ReleaseDetailStatus  int              `json:"releaseDetailStatus"`
+	ReleaseDetailSafe    bool             `json:"releaseDetailSafe"`
 }
 
 type problemView struct {
@@ -75,6 +78,9 @@ func main() {
 	}); err != nil {
 		panic(err)
 	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(os.Args[1]), "revision-a.caddyfile"), []byte("example.test { respond 200 }\n"), 0o600); err != nil {
+		panic(err)
+	}
 	if _, err := store.AdvanceCurrent(ctx, "application-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil); err != nil {
 		panic(err)
 	}
@@ -96,6 +102,7 @@ func main() {
 	missing := perform(handler, http.MethodGet, "/api/groups/missing", true)
 	unauthorized := perform(handler, http.MethodGet, "/api/groups", false)
 	releaseList := perform(handler, http.MethodGet, "/api/groups/application-a/releases", true)
+	releaseDetail := perform(handler, http.MethodGet, "/api/groups/application-a/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)
 
 	var groupList struct {
 		Items     []groupView `json:"items"`
@@ -124,6 +131,10 @@ func main() {
 		Items     []map[string]any `json:"items"`
 		RequestID string           `json:"requestId"`
 	}
+	var releaseDetailBody map[string]any
+	if err := json.Unmarshal(releaseDetail.Body.Bytes(), &releaseDetailBody); err != nil {
+		panic(err)
+	}
 	if err := json.Unmarshal(releaseList.Body.Bytes(), &releaseListBody); err != nil {
 		panic(err)
 	}
@@ -141,6 +152,8 @@ func main() {
 		UnauthorizedStatus: unauthorized.Code,
 		ReleaseListStatus:  releaseList.Code, ReleaseListRequestID: releaseListBody.RequestID != "",
 		Releases: releaseListBody.Items, ReleasePathsHidden: releasePathsHidden,
+		ReleaseDetailStatus: releaseDetail.Code,
+		ReleaseDetailSafe: releaseDetailBody["caddyfile"] == "example.test { respond 200 }\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
