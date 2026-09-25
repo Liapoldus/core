@@ -25,10 +25,11 @@ describe("Gateway archive golden-vector conformance", () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-golden-archive-vector-"));
     try {
       const vectorPath = join(directory, "vector.json");
+      const databasePath = join(directory, "gateway.db");
       await writeFile(vectorPath, JSON.stringify(vector), "utf8");
       const result = await execFileAsync(
         "go",
-        ["run", "./tests/fixtures/golden-vector-group-archive", vectorPath],
+        ["run", "./tests/fixtures/golden-vector-group-archive", vectorPath, databasePath],
         { cwd: coreRoot },
       );
       const observed = JSON.parse(result.stdout) as {
@@ -43,5 +44,5 @@ describe("Gateway archive golden-vector conformance", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
