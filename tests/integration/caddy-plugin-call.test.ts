@@ -92,8 +92,18 @@ describe("Caddy Liapoldus call handler", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sample: "payload" }),
       });
-      expect(cookieResponse.status).toBe(502);
-      expect(cookieResponse.headers.has("set-cookie")).toBe(false);
+      expect(cookieResponse.status).toBe(200);
+      expect(cookieResponse.headers.get("set-cookie")).toContain("session=synthetic-cookie-value");
+      expect(cookieResponse.headers.get("set-cookie")).toContain("HttpOnly");
+      expect(cookieResponse.headers.get("set-cookie")).toContain("Secure");
+
+      const invalidCookieResponse = await fetch(`http://${publicAddress}/invalid-cookies`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sample: "payload" }),
+      });
+      expect(invalidCookieResponse.status).toBe(502);
+      expect(invalidCookieResponse.headers.has("set-cookie")).toBe(false);
     } catch (error) {
       throw new Error(`Caddy stderr: ${caddyStderr}\nPlugin stderr: ${pluginStderr}\n${String(error)}`);
     } finally {
