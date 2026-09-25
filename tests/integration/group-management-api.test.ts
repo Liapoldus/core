@@ -39,7 +39,31 @@ describe("group Management API reads", () => {
         releasePathsHidden: true,
         releaseDetailStatus: 200,
         releaseDetailSafe: true,
+        publishStatus: expect.any(Number),
+        publish: expect.any(Object),
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a valid multipart group release and returns its durable operation reference", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-group-publish-"));
+    try {
+      const result = await execFileAsync(
+        "go",
+        ["run", "./tests/fixtures/group-management-api", join(directory, "gateway.db")],
+        { cwd: coreRoot },
+      );
+      const report = JSON.parse(result.stdout) as {
+        publishStatus: number;
+        publish: { operationId?: string; state?: string; requestId?: string };
+      };
+
+      expect(report.publishStatus).toBe(202);
+      expect(report.publish.operationId).toBeTruthy();
+      expect(report.publish.state).toMatch(/^(pending|running)$/);
+      expect(report.publish.requestId).toBeTruthy();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

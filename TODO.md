@@ -121,6 +121,13 @@
   Caddyfile fragment, optional single safe tar.gz, frontends roots, digest,
   staging limits, durable artifact commit, full snapshot prepare/activate и
   rollback current/previous.
+- [ ] TS integration red-test фиксирует корректный multipart
+  `POST /api/groups/{id}/releases` и ожидает durable `OperationReference`.
+  Endpoint пока намеренно не реализован: сначала нужны durable operation и
+  idempotency storage, immutable safe artifact staging, Caddy candidate
+  adaptation/full-snapshot activation, plugin binding validation и согласованный
+  journal/recovery для Caddy runtime и revision pointers. Не выпускать
+  промежуточный handler, который принимает upload без полной activation-семантики.
 - [ ] Реализовать startup reconciliation незавершённых операций; crash между
   artifact/SQLite commit/Caddy activation не должен создавать смешанный runtime.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint

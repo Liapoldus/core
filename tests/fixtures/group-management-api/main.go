@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -41,6 +43,8 @@ type report struct {
 	ReleasePathsHidden   bool             `json:"releasePathsHidden"`
 	ReleaseDetailStatus  int              `json:"releaseDetailStatus"`
 	ReleaseDetailSafe    bool             `json:"releaseDetailSafe"`
+	PublishStatus        int              `json:"publishStatus"`
+	Publish              map[string]any   `json:"publish"`
 }
 
 type problemView struct {
@@ -106,6 +110,7 @@ func main() {
 	unauthorized := perform(handler, http.MethodGet, "/api/groups", false)
 	releaseList := perform(handler, http.MethodGet, "/api/groups/application-a/releases", true)
 	releaseDetail := perform(handler, http.MethodGet, "/api/groups/application-a/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)
+	publish := performMultipart(handler)
 
 	var groupList struct {
 		Items     []groupView `json:"items"`
@@ -141,6 +146,10 @@ func main() {
 	if err := json.Unmarshal(releaseList.Body.Bytes(), &releaseListBody); err != nil {
 		panic(err)
 	}
+	var publishBody map[string]any
+	if err := json.Unmarshal(publish.Body.Bytes(), &publishBody); err != nil {
+		panic(err)
+	}
 	releasePathsHidden := len(releaseListBody.Items) == 1
 	if releasePathsHidden {
 		_, caddyfilePath := releaseListBody.Items[0]["caddyfilePath"]
@@ -157,6 +166,8 @@ func main() {
 		Releases: releaseListBody.Items, ReleasePathsHidden: releasePathsHidden,
 		ReleaseDetailStatus: releaseDetail.Code,
 		ReleaseDetailSafe:   releaseDetailBody["caddyfile"] == "example.test { respond 200 }\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
+		PublishStatus:       publish.Code,
+		Publish:             publishBody,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		panic(err)
@@ -168,6 +179,26 @@ func perform(handler http.Handler, method, path string, authorized bool) *httpte
 	if authorized {
 		request.Header.Set("Authorization", "Bearer fixture-management-token")
 	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func performMultipart(handler http.Handler) *httptest.ResponseRecorder {
+	var body strings.Builder
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("metadata", `{"idempotencyKey":"publish-key-00001","expectedCurrentRevision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`); err != nil {
+		panic(err)
+	}
+	if err := writer.WriteField("caddyfile", "example.test { respond 200 }\n"); err != nil {
+		panic(err)
+	}
+	if err := writer.Close(); err != nil {
+		panic(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/groups/application-a/releases", strings.NewReader(body.String()))
+	request.Header.Set("Authorization", "Bearer fixture-management-token")
+	request.Header.Set("Content-Type", writer.FormDataContentType())
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
