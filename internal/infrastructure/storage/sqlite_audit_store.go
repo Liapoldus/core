@@ -23,6 +23,11 @@ type sqliteAuditStoreContract struct {
 	InvalidContract   string `yaml:"invalidContract"`
 	InvalidCursor     string `yaml:"invalidCursor"`
 	InvalidLimit      string `yaml:"invalidLimit"`
+	AppendFailure     string `yaml:"appendFailure"`
+}
+
+type sqliteExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 type SQLiteAuditStore struct {
@@ -41,21 +46,28 @@ func NewSQLiteAuditStore(database *sql.DB) (*SQLiteAuditStore, error) {
 	if err := yaml.Unmarshal(contents, &contract); err != nil {
 		return nil, err
 	}
-	if database == nil || contract.InsertEvent == "" || contract.SelectFirstPage == "" || contract.SelectAfterCursor == "" || contract.DeleteExpired == "" || contract.TimestampLayout == "" || contract.InvalidContract == "" || contract.InvalidCursor == "" || contract.InvalidLimit == "" {
+	if database == nil || contract.InsertEvent == "" || contract.SelectFirstPage == "" || contract.SelectAfterCursor == "" || contract.DeleteExpired == "" || contract.TimestampLayout == "" || contract.InvalidContract == "" || contract.InvalidCursor == "" || contract.InvalidLimit == "" || contract.AppendFailure == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
 	return &SQLiteAuditStore{database: database, contract: contract}, nil
 }
 
 func (store *SQLiteAuditStore) Append(ctx context.Context, record models.AuditRecord) error {
+	return store.append(ctx, store.database, record)
+}
+
+func (store *SQLiteAuditStore) append(ctx context.Context, executor sqliteExecutor, record models.AuditRecord) error {
 	if record.Timestamp.IsZero() {
 		record.Timestamp = time.Now().UTC()
 	}
-	_, err := store.database.ExecContext(ctx, store.contract.InsertEvent,
+	_, err := executor.ExecContext(ctx, store.contract.InsertEvent,
 		record.Timestamp.UTC().Format(store.contract.TimestampLayout),
 		record.Actor, record.Action, record.Resource, record.Result, record.RequestID,
 		emptyToNil(record.DigestBefore), emptyToNil(record.DigestAfter))
-	return err
+	if err != nil {
+		return models.AuditAppendError{Message: store.contract.AppendFailure}
+	}
+	return nil
 }
 
 func (store *SQLiteAuditStore) List(ctx context.Context, cutoff time.Time, cursor string, limit int) (models.AuditPage, error) {

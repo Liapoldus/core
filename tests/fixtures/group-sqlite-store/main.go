@@ -51,10 +51,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := store.CreateApplicationGroup(ctx, "group-one"); err != nil {
+	if _, err := store.CreateApplicationGroup(ctx, "group-one", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "fixture-one"}); err != nil {
 		panic(err)
 	}
-	if _, err := store.CreateApplicationGroup(ctx, "group-two"); err != nil {
+	if _, err := store.CreateApplicationGroup(ctx, "group-two", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "fixture-two"}); err != nil {
 		panic(err)
 	}
 	for _, revision := range []models.GroupRevision{

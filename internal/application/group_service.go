@@ -20,8 +20,8 @@ func (service GroupService) Get(ctx context.Context, id string) (models.Group, e
 	return service.Store.GetGroup(ctx, id)
 }
 
-func (service GroupService) Create(ctx context.Context, id string) (models.Group, error) {
-	return service.Store.CreateApplicationGroup(ctx, id)
+func (service GroupService) Create(ctx context.Context, id string, record models.AuditRecord) (models.Group, error) {
+	return service.Store.CreateApplicationGroup(ctx, id, record)
 }
 
 func (service GroupService) ListRevisions(ctx context.Context, groupID, cursor string, limit int) (models.GroupRevisionList, error) {

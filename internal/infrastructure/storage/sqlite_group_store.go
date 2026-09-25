@@ -45,6 +45,7 @@ type sqliteGroupStoreContract struct {
 type SQLiteGroupStore struct {
 	database *sql.DB
 	queries  sqliteGroupStoreContract
+	audit    *SQLiteAuditStore
 }
 
 var _ interfaces.GroupStore = (*SQLiteGroupStore)(nil)
@@ -61,10 +62,14 @@ func NewSQLiteGroupStore(database *sql.DB) (*SQLiteGroupStore, error) {
 	if database == nil || queries.InsertApplicationGroup == "" || queries.InsertGroupPointer == "" || queries.SelectGroup == "" || queries.SelectGroups == "" || queries.SelectGroupKind == "" || queries.ArchiveApplicationGroup == "" || queries.InsertRevision == "" || queries.SelectRevision == "" || queries.SelectRevisionsFirstPage == "" || queries.SelectRevisionsAfterCursor == "" || queries.SelectRevisionExists == "" || queries.SelectGroupExists == "" || queries.SelectPointers == "" || queries.AdvancePointers == "" || queries.GroupNotFound == "" || queries.GroupAlreadyExists == "" || queries.RevisionNotFound == "" || queries.RevisionConflict == "" || queries.SystemGroupArchiveRejected == "" || queries.InvalidRevisionCursor == "" || queries.InvalidRevisionLimit == "" || queries.CursorSeparator == "" || queries.DefaultRevisionLimit < 1 || queries.MaximumRevisionLimit < queries.DefaultRevisionLimit || queries.ApplicationGroupKind == "" {
 		return nil, errors.New(queries.InvalidContract)
 	}
-	return &SQLiteGroupStore{database: database, queries: queries}, nil
+	audit, err := NewSQLiteAuditStore(database)
+	if err != nil {
+		return nil, err
+	}
+	return &SQLiteGroupStore{database: database, queries: queries, audit: audit}, nil
 }
 
-func (store *SQLiteGroupStore) CreateApplicationGroup(ctx context.Context, id string) (models.Group, error) {
+func (store *SQLiteGroupStore) CreateApplicationGroup(ctx context.Context, id string, record models.AuditRecord) (models.Group, error) {
 	transaction, err := store.database.BeginTx(ctx, nil)
 	if err != nil {
 		return models.Group{}, err
@@ -86,6 +91,9 @@ func (store *SQLiteGroupStore) CreateApplicationGroup(ctx context.Context, id st
 	}
 	group, err := scanGroup(transaction.QueryRowContext(ctx, store.queries.SelectGroup, id))
 	if err != nil {
+		return models.Group{}, err
+	}
+	if err := store.audit.append(ctx, transaction, record); err != nil {
 		return models.Group{}, err
 	}
 	if err := transaction.Commit(); err != nil {

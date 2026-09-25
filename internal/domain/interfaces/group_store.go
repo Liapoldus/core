@@ -7,7 +7,7 @@ import (
 )
 
 type GroupStore interface {
-	CreateApplicationGroup(context.Context, string) (models.Group, error)
+	CreateApplicationGroup(context.Context, string, models.AuditRecord) (models.Group, error)
 	GetGroup(context.Context, string) (models.Group, error)
 	ListGroups(context.Context) (models.GroupList, error)
 	ArchiveGroup(context.Context, string) (models.Group, error)

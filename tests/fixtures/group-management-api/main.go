@@ -71,7 +71,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := store.CreateApplicationGroup(ctx, "application-a"); err != nil {
+	if _, err := store.CreateApplicationGroup(ctx, "application-a", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "fixture-request"}); err != nil {
 		panic(err)
 	}
 	if _, err := store.CreateRevision(ctx, models.GroupRevision{

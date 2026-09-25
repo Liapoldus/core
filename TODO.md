@@ -19,11 +19,14 @@
   получает reader с bootstrap artifacts path. Детализация frontend manifest для
   release с archive остаётся незавершённой до реализации publish.
 - Production `serve` теперь подключает append-only SQLite audit store;
-  `group.create` фиксирует succeeded/failed outcome, а `/api/audit` возвращает
-  newest-first cursor pages, prune-ит истёкшие записи и сохраняет записи через
-  restart. Проверены paging, invalid cursor/limit, retention и restart. Audit
-  coverage остальных mutations, durable-operation transitions и атомарная
-  согласованность audit/изменения состояния пока не завершены.
+  успешный `group.create` и его audit row коммитятся в одной SQLite transaction;
+  если audit insert падает, API возвращает 503 и группа не создаётся. Ошибочные
+  попытки `group.create` записываются отдельно, но отказ append для них пока не
+  отражается в HTTP результате. `/api/audit` возвращает newest-first cursor
+  pages, prune-ит истёкшие записи и переживает restart. Проверены paging,
+  invalid cursor/limit, retention, restart и атомарный rollback при audit error.
+  Остальные mutations, durable-operation transitions и общая политика ошибок
+  audit store остаются незавершёнными.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
@@ -78,9 +81,10 @@
   idempotency и Caddy checkpoints; текущий bootstrap slice покрывает только
   service-key verifier и группы.
 - [ ] Расширить SQLite audit events на все management mutations и durable
-  operation transitions; сейчас `group.create` сохраняет успех/ошибку, а
-  paginated `/api/audit` соблюдает retention и переживает restart. Разобрать
-  атомарную запись audit с изменением состояния; не терять ошибки audit store.
+  operation transitions; сейчас `group.create` success атомарен с audit row,
+  а rejected attempts audit-ятся отдельно. Обеспечить явную обработку ошибок
+  audit store для всех результатов и транзакционную согласованность каждой
+  state mutation с её audit event.
 - [ ] Реализовать строго минимальный gateway.yaml: state SQLite path, immutable
   artifacts root, Management bind/TLS/trust и embedded/external Caddy variant.
 - [ ] Разработать SQLite migrations/repositories для groups/revisions/current/

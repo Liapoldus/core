@@ -247,8 +247,11 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 
 func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {
 	auditResult := server.AuditWords.Audit.Results.Failed
+	auditRecorded := false
 	defer func() {
-		server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, auditResult, requestID, "", "")
+		if !auditRecorded {
+			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, auditResult, requestID, "", "")
+		}
 	}()
 	decoder := json.NewDecoder(request.Body)
 	var fields map[string]json.RawMessage
@@ -289,8 +292,21 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
 		return
 	}
-	group, err := server.GroupService.Create(request.Context(), id)
+	auditRecord := models.AuditRecord{
+		Actor:     actor,
+		Action:    server.AuditWords.Audit.Actions.GroupCreate,
+		Resource:  server.AuditWords.Audit.Resources.Groups,
+		Result:    server.AuditWords.Audit.Results.Succeeded,
+		RequestID: requestID,
+	}
+	group, err := server.GroupService.Create(request.Context(), id, auditRecord)
 	if err != nil {
+		var auditFailure models.AuditAppendError
+		if errors.As(err, &auditFailure) {
+			auditRecorded = true
+			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			return
+		}
 		var exists models.GroupAlreadyExists
 		if errors.As(err, &exists) {
 			server.writeCatalogProblem(response, server.Management.Codes.GroupAlreadyExists, requestID)
@@ -302,7 +318,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
-	auditResult = server.AuditWords.Audit.Results.Succeeded
+	auditRecorded = true
 	writeJSON(response, http.StatusCreated, result)
 }
 
