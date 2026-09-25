@@ -21,6 +21,7 @@ import (
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
+	caddyadapter "github.com/Liapoldus/core/internal/infrastructure/caddy"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
@@ -229,6 +230,16 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		Plugins:         pluginInventory,
 		DataPlaneState:  readiness,
 		DataPlaneReason: reason,
+		DataPlaneReadiness: func(requestContext context.Context) (string, string) {
+			if readiness != managementWords.Statuses.Ready {
+				return readiness, reason
+			}
+			probe, ok := caddyRuntime.(interface{ Ready(context.Context) error })
+			if !ok || probe.Ready(requestContext) == nil {
+				return readiness, reason
+			}
+			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable
+		},
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -353,10 +364,24 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	if hex.EncodeToString(digest[:]) != revision.CaddyfileDigest {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
-	if bootstrap.CaddyVariant != bootstrap.CaddyEmbeddedVariant || runtimeBindings.StartCaddyfile == nil {
+	var caddyRuntime CaddyRuntime
+	switch bootstrap.CaddyVariant {
+	case bootstrap.CaddyEmbeddedVariant:
+		if runtimeBindings.StartCaddyfile == nil {
+			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
+		}
+		caddyRuntime, err = runtimeBindings.StartCaddyfile(caddyfile)
+	case bootstrap.CaddyExternalVariant:
+		if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" {
+			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
+		}
+		caddyRuntime, err = caddyadapter.StartExternal(context.Background(), caddyadapter.ExternalOptions{
+			Binary: bootstrap.CaddyBinary, ExpectedBuildID: bootstrap.CaddyExpectedBuildID,
+			StateDirectory: filepath.Dir(bootstrap.StatePath),
+		}, caddyfile)
+	default:
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	caddyRuntime, err := runtimeBindings.StartCaddyfile(caddyfile)
 	if err != nil {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}

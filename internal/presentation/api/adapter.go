@@ -46,6 +46,7 @@ type Server struct {
 	CaddyModules             []string
 	DataPlaneState           string
 	DataPlaneReason          string
+	DataPlaneReadiness       func(context.Context) (string, string)
 	AuditWords               config.AuditWords
 	Management               config.ManagementWords
 	Errors                   config.ErrorCatalog
@@ -123,10 +124,15 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	switch {
 	case path == server.Management.Paths.Status && request.Method == http.MethodGet:
 		server.mu.RLock()
-		defer server.mu.RUnlock()
-		readiness := map[string]any{"state": server.DataPlaneState}
-		if server.DataPlaneState == server.Management.Statuses.NotReady {
-			readiness[server.Management.JSON.Reason] = server.DataPlaneReason
+		state, reason := server.DataPlaneState, server.DataPlaneReason
+		provider := server.DataPlaneReadiness
+		server.mu.RUnlock()
+		if provider != nil {
+			state, reason = provider(request.Context())
+		}
+		readiness := map[string]any{"state": state}
+		if state == server.Management.Statuses.NotReady {
+			readiness[server.Management.JSON.Reason] = reason
 		}
 		writeJSON(response, 200, map[string]any{
 			server.Management.JSON.Caddy: map[string]any{

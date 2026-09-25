@@ -239,7 +239,7 @@ describe("supervised external Caddy Admin IPC", () => {
   }, 120_000);
 
   it("keeps Admin on a private Unix socket, restarts its child, and degrades data-plane readiness", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "liapoldus-external-caddy-"));
+    const directory = await mkdtemp(join(tmpdir(), "lc-s-"));
     const stateDirectory = join(directory, "state");
     const database = join(stateDirectory, "gateway.db");
     const artifacts = join(stateDirectory, "artifacts");
