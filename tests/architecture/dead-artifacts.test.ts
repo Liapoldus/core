@@ -13,6 +13,9 @@ describe("removed unreferenced legacy artifacts", () => {
       "internal/domain/models/client_auth.go",
       "internal/domain/models/revision.go",
       "internal/domain/models/registry_lock_conflict.go",
+      "internal/domain/models/actor.go",
+      "internal/domain/interfaces/authorizer.go",
+      "internal/application/management_service.go",
       "internal/infrastructure/storage/management.go",
       "internal/infrastructure/storage/audit.go",
       "tests/fixtures/plugin-grant/main.go",
@@ -21,6 +24,7 @@ describe("removed unreferenced legacy artifacts", () => {
     for (const path of removedPaths) {
       expect(existsSync(join(coreRoot, path)), path).toBe(false);
     }
+    expect(existsSync(join(coreRoot, "tests/fixtures/plugin-grant")), "empty plugin-grant fixture directory").toBe(false);
   });
 
   it("does not restore retired JSONL and telemetry configuration into the SQLite audit adapter", () => {
