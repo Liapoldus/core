@@ -15,8 +15,9 @@
 - `GET /api/groups/{id}/releases` выдаёт metadata-only summaries из SQLite с
   cursor pagination; response не раскрывает Caddyfile или пути артефактов.
 - `GET /api/groups/{id}/releases/{revisionId}` проверяет Caddyfile digest и
-  читает файл только внутри immutable artifacts root; детализация frontend
-  manifest для release с archive остаётся незавершённой до реализации publish.
+  читает файл только внутри immutable artifacts root; production `serve`
+  получает reader с bootstrap artifacts path. Детализация frontend manifest для
+  release с archive остаётся незавершённой до реализации publish.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.

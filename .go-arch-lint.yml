@@ -67,4 +67,4 @@ deps:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts]
     canUse: [bcrypt]
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPI]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPI]

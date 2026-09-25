@@ -20,6 +20,7 @@ import (
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
@@ -147,7 +148,9 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		defer stopRuntime()
 	}
 	management := &api.Server{
-		GroupService:    application.GroupService{Store: groupStore},
+		GroupService: application.GroupService{
+			Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
+		},
 		AccessService:   &application.AccessService{Store: keyStore, Compare: security.CompareServiceKey},
 		Management:      managementWords,
 		Errors:          errorCatalog,
