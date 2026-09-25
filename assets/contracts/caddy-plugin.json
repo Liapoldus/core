@@ -7,6 +7,7 @@
   "maxRequestBytes": 10485760,
   "unavailableStatus": 503,
   "invalidResponseStatus": 502,
+  "invalidRequestStatus": 400,
   "blockedRequestHeaders": ["Authorization", "Cookie", "Proxy-Authorization"],
   "blockedResponseHeaders": ["Set-Cookie"],
   "diagnostics": {
@@ -14,6 +15,8 @@
     "invalidInstance": "Plugin instance для Caddy handler не настроен.",
     "unsupportedMode": "Plugin capability не поддерживает указанный invocation mode.",
     "instanceUnavailable": "Plugin instance недоступен.",
-    "invalidSettings": "Настройки plugin instance должны быть JSON."
+    "invalidSettings": "Настройки plugin instance должны быть JSON.",
+    "invalidCookiePolicy": "Политика cookies plugin instance некорректна.",
+    "invalidCookieRequest": "Заголовок Cookie запроса некорректен."
   }
 }

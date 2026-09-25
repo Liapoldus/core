@@ -14,7 +14,7 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.4
 	github.com/google/uuid v1.6.0
 	github.com/mholt/caddy-l4 v0.1.1
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/shirou/gopsutil/v4 v4.26.7
 	golang.org/x/crypto v0.57.0
 	google.golang.org/grpc v1.81.0

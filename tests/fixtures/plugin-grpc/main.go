@@ -33,6 +33,10 @@ type httpRequest struct {
 	Path    string            `json:"path"`
 	Query   string            `json:"query"`
 	Headers map[string]string `json:"headers"`
+	Cookies []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"cookies"`
 	Body    []byte            `json:"body"`
 	Context map[string]string `json:"context"`
 	WAF     *struct {
@@ -121,8 +125,8 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 		}
 		response, err := json.Marshal(struct {
 			Status int    `json:"status"`
-			Body   []byte `json:"body"`
-		}{Status: 200, Body: body})
+			Body   string `json:"body"`
+		}{Status: 200, Body: string(body)})
 		if err != nil {
 			return nil, err
 		}
@@ -173,18 +177,28 @@ func (p *plugin) Call(ctx context.Context, request *pluginv1.CallRequest) (*plug
 		"path":                 input.Path,
 		"body":                 string(input.Body),
 		"authorizationPresent": authPresent,
-		"cookiePresent":        cookiePresent,
+		"cookieHeaderPresent":  cookiePresent,
+		"cookies":              input.Cookies,
 	})
 	if err != nil {
 		return nil, err
 	}
 	httpResponse := struct {
-		Status  int      `json:"status"`
-		Body    []byte   `json:"body"`
-		Cookies []string `json:"cookies,omitempty"`
-	}{Status: 200, Body: body}
+		Status  int    `json:"status"`
+		Body    string `json:"body"`
+		Cookies []any  `json:"cookies,omitempty"`
+	}{Status: 200, Body: string(body)}
 	if input.Path == "/set-cookie" {
-		httpResponse.Cookies = []string{"session=fixture"}
+		httpResponse.Cookies = []any{map[string]any{
+			"name": "session", "value": "synthetic-cookie-value", "path": "/", "secure": true,
+			"httpOnly": true, "sameSite": "Lax",
+		}}
+	}
+	if input.Path == "/invalid-cookies" {
+		httpResponse.Cookies = []any{
+			map[string]any{"name": "first", "value": "synthetic-first-cookie", "path": "/", "secure": true},
+			map[string]any{"name": "invalid", "value": "synthetic-invalid-cookie", "sameSite": "None", "secure": false},
+		}
 	}
 	response, err := json.Marshal(httpResponse)
 	if err != nil {

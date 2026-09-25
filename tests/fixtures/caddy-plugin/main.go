@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -25,6 +26,7 @@ func main() {
 		Timeout:            3 * time.Second,
 		StartTimeout:       3 * time.Second,
 		MaxConcurrentCalls: 8,
+		CookiePolicies:     []json.RawMessage{json.RawMessage(`{"version":1,"instanceId":"fixture","capability":"forms.submit","allowedNames":["session"]}`)},
 	}})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -58,9 +58,11 @@
   recovery.
 - [ ] Добавить TS red/green coverage до расширения целевого data/control-plane:
   multipart group publish/rollback, Caddy adapt/load and atomic snapshot,
-  external Caddy process, plugin replica readiness/DispatchApply, cookies,
-  Admin API checkpoint/reconcile и crash recovery. Legacy runtime suites
-  удалены, а не объявлены эквивалентом этих ещё не написанных проверок.
+  external Caddy process, plugin replica readiness/DispatchApply, Admin API
+  checkpoint/reconcile и crash recovery. Cookie boundary red/green coverage
+  имеется для изолированного Caddy `call` slice; его production composition
+  остаётся незавершённой. Legacy runtime suites удалены, а не объявлены
+  эквивалентом этих ещё не написанных проверок.
 
 ## Bootstrap, persistence и Management API
 
@@ -110,10 +112,11 @@
 
 - Имеется ограниченный, пока не подключённый к `serve` Caddy `call` slice:
   `StartCaddyfileWithPlugins`, per-config handshake и
-  `liapoldus_plugin <instance> <capability> call`. Он не завершает plugin
-  runtime v1: cookie actions пока fail closed, startup composition и snapshot
-  generations не подключены, remote-replica fan-out не реализован. Сохранить
-  этот код при подключении composition root и расширять по red TS тестам.
+  `liapoldus_plugin <instance> <capability> call`. В этом slice реализованы
+  protocol-owned inbound cookie allow-list и атомарные typed cookie response
+  actions; production startup composition, snapshot generations и
+  remote-replica fan-out не подключены. Сохранить этот код при подключении
+  composition root и расширять по red TS тестам.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
   manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments

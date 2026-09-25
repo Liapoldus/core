@@ -8,29 +8,52 @@ import (
 	"strings"
 	"sync/atomic"
 
+	plugincontracts "github.com/Liapoldus/pluginprotocol"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 )
 
 // HTTPRequest is the bounded HTTP context sent to an HTTP capability. The
 // gateway owns the listener, socket and credentials; none of those cross IPC.
 type HTTPRequest struct {
-	Method     string            `json:"method"`
-	Path       string            `json:"path"`
-	Query      string            `json:"query,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"`
-	Body       []byte            `json:"body,omitempty"`
-	RequestID  string            `json:"requestId"`
-	RemoteAddr string            `json:"remoteAddr,omitempty"`
-	GrantNames []string          `json:"-"`
-	Context    map[string]string `json:"context,omitempty"`
-	WAF        *WAFContext       `json:"waf,omitempty"`
+	Method     string                       `json:"method"`
+	Path       string                       `json:"path"`
+	Query      string                       `json:"query,omitempty"`
+	Headers    map[string]string            `json:"headers,omitempty"`
+	Cookies    []plugincontracts.CookiePair `json:"cookies,omitempty"`
+	Body       []byte                       `json:"body,omitempty"`
+	RequestID  string                       `json:"requestId"`
+	RemoteAddr string                       `json:"remoteAddr,omitempty"`
+	GrantNames []string                     `json:"-"`
+	Context    map[string]string            `json:"context,omitempty"`
+	WAF        *WAFContext                  `json:"waf,omitempty"`
+	Host       string                       `json:"-"`
+}
+
+// CookiePair and CookiePolicy keep the Caddy adapter on the plugin
+// infrastructure boundary while the shared protocol owns their wire shape.
+type CookiePair = plugincontracts.CookiePair
+type CookiePolicy = plugincontracts.CookiePolicy
+
+var ErrInvalidHTTPResponseAction = plugincontracts.ErrInvalidHTTPResponseAction
+
+func DecodeCookiePolicy(data []byte) (CookiePolicy, error) {
+	return plugincontracts.DecodeCookiePolicy(data)
+}
+
+func ParseCookieHeader(values []string) ([]CookiePair, error) {
+	return plugincontracts.ParseCookieHeader(values)
+}
+
+func FilterCookiePairs(policy CookiePolicy, instanceID, capability string, pairs []CookiePair) ([]CookiePair, error) {
+	return plugincontracts.FilterCookiePairs(policy, instanceID, capability, pairs)
 }
 
 type HTTPResponse struct {
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers,omitempty"`
-	Cookies []string          `json:"cookies,omitempty"`
-	Body    []byte            `json:"body,omitempty"`
+	Status           int                            `json:"status"`
+	Headers          map[string]string              `json:"headers,omitempty"`
+	Cookies          []plugincontracts.CookieAction `json:"cookies,omitempty"`
+	Body             []byte                         `json:"body,omitempty"`
+	SetCookieHeaders []string                       `json:"-"`
 }
 
 // WAFContext contains request facts needed by a configured policy capability.
@@ -101,14 +124,19 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" {
 		return HTTPResponse{}, errors.New("plugin http request is invalid")
 	}
-	var response HTTPResponse
-	if err := c.callJSON(ctx, capability, request, &response, request.GrantNames); err != nil {
+	var payload json.RawMessage
+	if err := c.callJSON(ctx, capability, request, &payload, request.GrantNames); err != nil {
 		return HTTPResponse{}, err
 	}
-	if response.Status < 100 || response.Status > 599 {
-		return HTTPResponse{}, errors.New("plugin http response status is invalid")
+	action, setCookieHeaders, err := plugincontracts.DecodeHTTPResponseAction(payload, request.Host)
+	if err != nil {
+		return HTTPResponse{}, err
 	}
-	return response, nil
+	var body []byte
+	if action.Body != nil {
+		body = []byte(*action.Body)
+	}
+	return HTTPResponse{Status: action.Status, Headers: action.Headers, Cookies: action.Cookies, Body: body, SetCookieHeaders: setCookieHeaders}, nil
 }
 
 func (c *CapabilityClient) WAF(ctx context.Context, capability string, request HTTPRequest) (WAFDecision, error) {

@@ -26,24 +26,28 @@ type pluginHandlerContract struct {
 	MaxRequestBytes        int64    `json:"maxRequestBytes"`
 	UnavailableStatus      int      `json:"unavailableStatus"`
 	InvalidResponseStatus  int      `json:"invalidResponseStatus"`
+	InvalidRequestStatus   int      `json:"invalidRequestStatus"`
 	BlockedRequestHeaders  []string `json:"blockedRequestHeaders"`
 	BlockedResponseHeaders []string `json:"blockedResponseHeaders"`
 	Diagnostics            struct {
-		InvalidDirective    string `json:"invalidDirective"`
-		InvalidInstance     string `json:"invalidInstance"`
-		UnsupportedMode     string `json:"unsupportedMode"`
-		InstanceUnavailable string `json:"instanceUnavailable"`
-		InvalidSettings     string `json:"invalidSettings"`
+		InvalidDirective     string `json:"invalidDirective"`
+		InvalidInstance      string `json:"invalidInstance"`
+		UnsupportedMode      string `json:"unsupportedMode"`
+		InstanceUnavailable  string `json:"instanceUnavailable"`
+		InvalidSettings      string `json:"invalidSettings"`
+		InvalidCookiePolicy  string `json:"invalidCookiePolicy"`
+		InvalidCookieRequest string `json:"invalidCookieRequest"`
 	} `json:"diagnostics"`
 }
 
 type PluginInstance struct {
-	Name               string        `json:"name"`
-	Endpoint           string        `json:"endpoint"`
-	Settings           []byte        `json:"settings,omitempty"`
-	Timeout            time.Duration `json:"timeout"`
-	StartTimeout       time.Duration `json:"startTimeout"`
-	MaxConcurrentCalls int           `json:"maxConcurrentCalls"`
+	Name               string            `json:"name"`
+	Endpoint           string            `json:"endpoint"`
+	Settings           []byte            `json:"settings,omitempty"`
+	Timeout            time.Duration     `json:"timeout"`
+	StartTimeout       time.Duration     `json:"startTimeout"`
+	MaxConcurrentCalls int               `json:"maxConcurrentCalls"`
+	CookiePolicies     []json.RawMessage `json:"cookiePolicies,omitempty"`
 }
 
 type dispatchAppConfig struct {
@@ -54,6 +58,7 @@ type pluginBinding struct {
 	client  *plugins.CapabilityClient
 	conn    *plugins.Client
 	modes   map[string]struct{}
+	cookies map[string]plugins.CookiePolicy
 	timeout time.Duration
 }
 
@@ -119,13 +124,33 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 				modes[descriptor.GetCapability()] = struct{}{}
 			}
 		}
+		cookiePolicies := make(map[string]plugins.CookiePolicy, len(instance.CookiePolicies))
+		for _, rawPolicy := range instance.CookiePolicies {
+			policy, err := plugins.DecodeCookiePolicy(rawPolicy)
+			if err != nil || policy.InstanceID != instance.Name {
+				_ = client.Close()
+				app.closeBindings()
+				return errors.New(contract.Diagnostics.InvalidCookiePolicy)
+			}
+			if _, supported := modes[policy.Capability]; !supported {
+				_ = client.Close()
+				app.closeBindings()
+				return errors.New(contract.Diagnostics.InvalidCookiePolicy)
+			}
+			if _, duplicate := cookiePolicies[policy.Capability]; duplicate {
+				_ = client.Close()
+				app.closeBindings()
+				return errors.New(contract.Diagnostics.InvalidCookiePolicy)
+			}
+			cookiePolicies[policy.Capability] = policy
+		}
 		capabilityClient, err := plugins.NewCapabilityClient(client, instance.MaxConcurrentCalls, capabilities...)
 		if err != nil {
 			_ = client.Close()
 			app.closeBindings()
 			return err
 		}
-		app.bindings[instance.Name] = pluginBinding{client: capabilityClient, conn: client, modes: modes, timeout: instance.Timeout}
+		app.bindings[instance.Name] = pluginBinding{client: capabilityClient, conn: client, modes: modes, cookies: cookiePolicies, timeout: instance.Timeout}
 	}
 	return nil
 }
@@ -198,23 +223,38 @@ func (handler *pluginCallHandler) ServeHTTP(writer http.ResponseWriter, request 
 		}
 		headers[name] = strings.Join(values, ",")
 	}
+	var cookies []plugins.CookiePair
+	if values := request.Header.Values("Cookie"); len(values) > 0 {
+		parsedCookies, err := plugins.ParseCookieHeader(values)
+		if err != nil {
+			writer.WriteHeader(handler.contract.InvalidRequestStatus)
+			return nil
+		}
+		if policy, allowed := handler.binding.cookies[handler.Capability]; allowed {
+			cookies, err = plugins.FilterCookiePairs(policy, handler.Instance, handler.Capability, parsedCookies)
+			if err != nil {
+				writer.WriteHeader(handler.contract.InvalidRequestStatus)
+				return nil
+			}
+		}
+	}
 	callContext, cancel := context.WithTimeout(request.Context(), handler.binding.timeout)
 	defer cancel()
 	response, err := handler.binding.client.HTTP(callContext, handler.Capability, plugins.HTTPRequest{
 		Method: request.Method, Path: request.URL.Path, Query: request.URL.RawQuery, Headers: headers,
-		Body: body, RequestID: uuid.NewString(), RemoteAddr: request.RemoteAddr,
+		Body: body, RequestID: uuid.NewString(), RemoteAddr: request.RemoteAddr, Cookies: cookies, Host: request.Host,
 	})
 	if err != nil {
+		if errors.Is(err, plugins.ErrInvalidHTTPResponseAction) {
+			writer.WriteHeader(handler.contract.InvalidResponseStatus)
+			return nil
+		}
 		writer.WriteHeader(handler.contract.UnavailableStatus)
 		return nil
 	}
 	blockedResponseHeaders := make(map[string]struct{}, len(handler.contract.BlockedResponseHeaders))
 	for _, name := range handler.contract.BlockedResponseHeaders {
 		blockedResponseHeaders[http.CanonicalHeaderKey(name)] = struct{}{}
-	}
-	if len(response.Cookies) > 0 {
-		writer.WriteHeader(handler.contract.InvalidResponseStatus)
-		return nil
 	}
 	for name := range response.Headers {
 		if _, blocked := blockedResponseHeaders[http.CanonicalHeaderKey(name)]; blocked {
@@ -224,6 +264,9 @@ func (handler *pluginCallHandler) ServeHTTP(writer http.ResponseWriter, request 
 	}
 	for name, value := range response.Headers {
 		writer.Header().Set(name, value)
+	}
+	for _, value := range response.SetCookieHeaders {
+		writer.Header().Add("Set-Cookie", value)
 	}
 	writer.WriteHeader(response.Status)
 	if len(response.Body) > 0 {
