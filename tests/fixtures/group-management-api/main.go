@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
+	"github.com/Liapoldus/core/internal/infrastructure/caddy"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -93,11 +95,11 @@ func main() {
 		panic(err)
 	}
 	if _, err := store.CreateRevision(ctx, models.GroupRevision{
-		ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", GroupID: "application-a", CaddyfileDigest: "687a79b127387ef55ac664491ab82b5665df6e3d9dc62e2b6062485e2da1c9c4", CaddyfilePath: "revision-a.caddyfile",
+		ID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", GroupID: "application-a", CaddyfileDigest: "a1ec39a1a96fd53b4e5b58e0734941379bb4e7c19130f04d2c577262b6f8d95c", CaddyfilePath: "revision-a.caddyfile",
 	}); err != nil {
 		panic(err)
 	}
-	if err := os.WriteFile(filepath.Join(filepath.Dir(os.Args[1]), "revision-a.caddyfile"), []byte("example.test { respond 200 }\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(filepath.Dir(os.Args[1]), "revision-a.caddyfile"), []byte("example.test {\n  respond 200\n}\n"), 0o600); err != nil {
 		panic(err)
 	}
 	if _, err := store.AdvanceCurrent(ctx, "application-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil); err != nil {
@@ -111,13 +113,35 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	auditWords, err := config.LoadAudit()
+	if err != nil {
+		panic(err)
+	}
 	operationStore, err := storage.NewSQLiteOperationStore(database)
 	if err != nil {
 		panic(err)
 	}
+	releaseStore, err := storage.NewSQLiteGroupReleaseStore(database)
+	if err != nil {
+		panic(err)
+	}
+	releasePolicy, err := config.LoadGroupRelease()
+	if err != nil {
+		panic(err)
+	}
+	releaseArtifacts, err := artifacts.NewGroupReleaseArtifacts(filepath.Dir(os.Args[1]))
+	if err != nil {
+		panic(err)
+	}
+	releaseService := &application.GroupReleaseService{
+		Store: store, Releases: releaseStore,
+		ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
+		Artifacts:     releaseArtifacts, Activator: fixtureActivator{}, Policy: releasePolicy,
+	}
 	server := &api.Server{
-		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
-		Operations: application.OperationService{Store: operationStore},
+		Token: "fixture-management-token", Management: management, Errors: errorCatalog, AuditWords: auditWords,
+		Operations:    application.OperationService{Store: operationStore},
+		GroupReleases: releaseService, GroupReleasePolicy: releasePolicy,
 		GroupService: application.GroupService{
 			Store: store, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
 		},
@@ -129,13 +153,13 @@ func main() {
 	unauthorized := perform(handler, http.MethodGet, "/api/groups", false)
 	releaseList := perform(handler, http.MethodGet, "/api/groups/application-a/releases", true)
 	releaseDetail := perform(handler, http.MethodGet, "/api/groups/application-a/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)
-	invalidCaddyfile := performMultipartWith(handler, "invalid-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test { totally_unknown_directive }\n")
+	invalidCaddyfile := performMultipartWith(handler, "invalid-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  totally_unknown_directive\n}\n")
 	pointersAfterInvalid := perform(handler, http.MethodGet, "/api/groups/application-a", true)
-	staleRevision := performMultipartWith(handler, "stale-key-000001", "", "example.test { respond 202 }\n")
+	staleRevision := performMultipartWith(handler, "stale-key-000001", "", "example.test {\n  respond 202\n}\n")
 	pointersAfterStale := perform(handler, http.MethodGet, "/api/groups/application-a", true)
 	publish := performMultipart(handler)
-	publishRetry := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test { respond 200 }\n")
-	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test { respond 201 }\n")
+	publishRetry := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n")
+	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 201\n}\n")
 
 	var groupList struct {
 		Items     []groupView `json:"items"`
@@ -194,6 +218,9 @@ func main() {
 		panic(err)
 	}
 	operationID, _ := publishBody[management.JSON.OperationID].(string)
+	if operationID != "" {
+		waitForOperation(operationStore, operationID)
+	}
 	if err := database.Close(); err != nil {
 		panic(err)
 	}
@@ -217,7 +244,7 @@ func main() {
 		panic(err)
 	}
 	reopenedServer := &api.Server{
-		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
+		Token: "fixture-management-token", Management: management, Errors: errorCatalog, AuditWords: auditWords,
 		GroupService: application.GroupService{
 			Store: reopenedGroupStore, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
 		},
@@ -250,7 +277,7 @@ func main() {
 		ReleaseListStatus:  releaseList.Code, ReleaseListRequestID: releaseListBody.RequestID != "",
 		Releases: releaseListBody.Items, ReleasePathsHidden: releasePathsHidden,
 		ReleaseDetailStatus: releaseDetail.Code,
-		ReleaseDetailSafe:   releaseDetailBody["caddyfile"] == "example.test { respond 200 }\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
+		ReleaseDetailSafe:   releaseDetailBody["caddyfile"] == "example.test {\n  respond 200\n}\n" && releaseDetailBody["id"] == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && releaseDetailBody["requestId"] != "" && releaseDetailBody["caddyfilePath"] == nil && releaseDetailBody["artifactPath"] == nil,
 		PublishStatus:       publish.Code,
 		Publish:             publishBody,
 		PublishRetryStatus:  publishRetry.Code, PublishRetry: publishRetryBody,
@@ -278,7 +305,7 @@ func perform(handler http.Handler, method, path string, authorized bool) *httpte
 }
 
 func performMultipart(handler http.Handler) *httptest.ResponseRecorder {
-	return performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test { respond 200 }\n")
+	return performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n")
 }
 
 func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentRevision, caddyfile string) *httptest.ResponseRecorder {
@@ -288,10 +315,24 @@ func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentR
 	if err != nil {
 		panic(err)
 	}
-	if err := writer.WriteField("metadata", string(metadata)); err != nil {
+	metadataPart, err := writer.CreatePart(map[string][]string{
+		"Content-Disposition": {"form-data; name=\"metadata\""},
+		"Content-Type":        {"application/json"},
+	})
+	if err != nil {
 		panic(err)
 	}
-	if err := writer.WriteField("caddyfile", caddyfile); err != nil {
+	if _, err := metadataPart.Write(metadata); err != nil {
+		panic(err)
+	}
+	caddyfilePart, err := writer.CreatePart(map[string][]string{
+		"Content-Disposition": {"form-data; name=\"caddyfile\"; filename=\"Caddyfile\""},
+		"Content-Type":        {"text/plain; charset=utf-8"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	if _, err := caddyfilePart.Write([]byte(caddyfile)); err != nil {
 		panic(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -303,6 +344,30 @@ func performMultipartWith(handler http.Handler, idempotencyKey, expectedCurrentR
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+type fixtureActivator struct{}
+
+func (fixtureActivator) Validate(_ context.Context, source []byte) error {
+	_, _, err := caddy.AdaptCaddyfile(source)
+	return err
+}
+
+func (fixtureActivator) Activate(context.Context, []byte) error { return nil }
+
+func waitForOperation(store *storage.SQLiteOperationStore, id string) {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		operation, err := store.Get(context.Background(), id)
+		if err != nil {
+			panic(err)
+		}
+		if operation.State == "succeeded" || operation.State == "failed" {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	panic("operation did not finish before fixture deadline")
 }
 
 func nullableString(value string) any {

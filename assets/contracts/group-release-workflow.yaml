@@ -1,0 +1,33 @@
+operationKind: group.publish
+scopePrefix: groups/
+scopeSuffix: /releases
+auditAction: group.publish
+successResult: succeeded
+failureResult: failed
+pendingState: pending
+runningState: running
+succeededState: succeeded
+failedState: failed
+journalPendingState: pending
+journalCompleteState: succeeded
+journalFailedState: failed
+fragmentSeparator: "\n"
+idempotencyWindow: 24h
+invalidContract: "The group-release workflow contract is invalid."
+systemGroupKind: system
+invalidConfiguration: "Group release service is unavailable."
+metadataPart: metadata
+caddyfilePart: caddyfile
+artifactPart: artifact
+multipartContentType: multipart/form-data
+requestLimitBytes: 105906176
+invalidRequestCode: invalid_request
+revisionConflictCode: group_revision_conflict
+idempotencyConflictCode: idempotency_conflict
+caddyAdaptFailedCode: caddy_adapt_failed
+artifactInvalidCode: artifact_invalid
+artifactTooLargeCode: artifact_too_large
+activationFailedCode: activation_failed
+metadataIdempotencyKeyField: idempotencyKey
+metadataExpectedRevisionField: expectedCurrentRevision
+revisionIDPattern: '^[0-9a-f]{64}$'

@@ -11,12 +11,12 @@ import (
 func main() {
 	version, _ := caddycore.Version()
 	os.Exit(cli.ExecuteWithRuntime(os.Args[1:], cli.RuntimeBindings{
-		StartCaddyfile: func(source []byte) (func() error, error) {
+		StartCaddyfile: func(source []byte) (cli.CaddyRuntime, error) {
 			runtime, _, err := caddyadapter.StartCaddyfile(source)
 			if err != nil {
 				return nil, err
 			}
-			return runtime.Stop, nil
+			return runtime, nil
 		},
 		CaddyBuildID: version,
 		CaddyModules: caddycore.Modules(),

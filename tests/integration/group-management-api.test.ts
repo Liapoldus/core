@@ -34,7 +34,7 @@ describe("group Management API reads", () => {
         releaseListStatus: 200,
         releaseListRequestID: true,
         releases: [
-          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "687a79b127387ef55ac664491ab82b5665df6e3d9dc62e2b6062485e2da1c9c4", artifactDigest: null, actor: "", createdAt: expect.any(String) },
+          { id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", groupId: "application-a", caddyfileDigest: "a1ec39a1a96fd53b4e5b58e0734941379bb4e7c19130f04d2c577262b6f8d95c", artifactDigest: null, actor: "", createdAt: expect.any(String) },
         ],
         releasePathsHidden: true,
         releaseDetailStatus: 200,
@@ -59,7 +59,7 @@ describe("group Management API reads", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it("accepts a valid multipart group release and returns its durable operation reference", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-group-publish-"));

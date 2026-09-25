@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
 
@@ -30,9 +31,14 @@ func Execute(arguments []string) int {
 }
 
 type RuntimeBindings struct {
-	StartCaddyfile func([]byte) (func() error, error)
+	StartCaddyfile func([]byte) (CaddyRuntime, error)
 	CaddyBuildID   string
 	CaddyModules   []string
+}
+
+type CaddyRuntime interface {
+	interfaces.CaddySnapshotActivator
+	Stop() error
 }
 
 func ExecuteWithRuntime(arguments []string, runtime RuntimeBindings) int {

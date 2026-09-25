@@ -1,6 +1,7 @@
 package caddy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -79,6 +80,16 @@ func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, 
 		return nil, err
 	}
 	return warnings, nil
+}
+
+func (runtime *Runtime) Validate(_ context.Context, source []byte) error {
+	_, _, err := adaptCaddyfile(source, runtime.plugins)
+	return err
+}
+
+func (runtime *Runtime) Activate(_ context.Context, source []byte) error {
+	_, err := runtime.ReplaceCaddyfile(source)
+	return err
 }
 
 func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {

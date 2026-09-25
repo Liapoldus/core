@@ -137,22 +137,28 @@
   для macOS/Linux; провал блокирует v1, Go net/gnet fallback не разрешать.
 - [ ] Реализовать native Caddyfile validation/adaptation, system group и
   стабильную composition application groups без Gateway route DSL.
-- [ ] Реализовать один multipart group release: metadata CAS/idempotency,
-  Caddyfile fragment, optional single safe tar.gz, frontends roots, digest,
-  staging limits, durable artifact commit, full snapshot prepare/activate и
-  rollback current/previous.
-- [ ] TS integration red-test фиксирует корректный multipart
-  `POST /api/groups/{id}/releases` и ожидает durable `OperationReference`.
-  Endpoint пока намеренно не реализован: сначала нужны durable operation и
-  idempotency storage, immutable safe artifact staging, Caddy candidate
-  adaptation/full-snapshot activation, plugin binding validation и согласованный
-  journal/recovery для Caddy runtime и revision pointers. Не выпускать
-  промежуточный handler, который принимает upload без полной activation-семантики.
-- [ ] TS integration red-test `operation-persistence.test.ts` требует, чтобы
+- [ ] Довести multipart group release до полного v1: один безопасный `.tar.gz`,
+  frontend roots, архивные limits/normalization/digests, plugin binding
+  validation, immutable staging, full-snapshot activation и rollback current/
+  previous. Текущий вертикальный срез уже принимает Caddyfile-only multipart,
+  проверяет Caddy adaptation, CAS/idempotency в SQLite, сохраняет revision и
+  operation, сериализует активацию и восстанавливает current composition при
+  старте. Он не завершён: наличие `artifact` пока отклоняется, а rollback/
+  activation API и integration conformance ещё не реализованы.
+- [x] TS integration фиксирует Caddyfile-only multipart
+  `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
+  Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
+  SQLite; fixture проходит focused Vitest suite. Это не покрывает archive или
+  production traffic activation.
+- [ ] TS integration red-test: reject traversal archive entry as
+  `422 artifact_invalid`; добавить positive safe `.tar.gz` digest/extraction,
+  gzip integrity, duplicate/case-collision/NFC/path depth/length, byte, ratio и
+  entry limits до включения artifact в release API.
+- [x] TS integration red-test `operation-persistence.test.ts` требует, чтобы
   Operation, созданная существующим restart endpoint, переживала закрытие и
-  повторное открытие SQLite, а неизвестный ID давал OpenAPI Problem 404. До
-  реализации API хранит operations только в памяти; persisted arbitrary
-  `result` запрещён, безопасный metadata-only ответ достаточен по OpenAPI.
+  повторное открытие SQLite, а неизвестный ID давал OpenAPI Problem 404; SQLite
+  operation store и metadata-only API response реализованы. Persisted arbitrary
+  `result` запрещён.
 - [ ] Реализовать startup reconciliation незавершённых операций; crash между
   artifact/SQLite commit/Caddy activation не должен создавать смешанный runtime.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint

@@ -10,12 +10,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -35,6 +38,8 @@ type Server struct {
 	RestartPlugin            func(context.Context, string) (models.Operation, error)
 	Audit                    *application.AuditService
 	GroupService             application.GroupService
+	GroupReleases            *application.GroupReleaseService
+	GroupReleasePolicy       models.GroupReleasePolicy
 	AccessService            *application.AccessService
 	CaddyVariant             string
 	CaddyBuildID             string
@@ -63,6 +68,9 @@ func (server *Server) Handler() http.Handler {
 			server.Management, _ = config.LoadManagement()
 		}
 		server.Errors, _ = config.LoadErrorCatalog()
+		if server.GroupReleasePolicy.OperationKind == "" {
+			server.GroupReleasePolicy, _ = config.LoadGroupRelease()
+		}
 	})
 	return http.HandlerFunc(server.handle)
 }
@@ -134,6 +142,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
 		server.handleGroupCreate(response, request, requestID, actor)
+	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post:
+		server.handleGroupPublish(response, request, path, requestID, actor)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
 		server.handleGroupReleases(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get:
@@ -459,6 +469,142 @@ func (server *Server) handleGroupRelease(response http.ResponseWriter, request *
 		server.Management.JSON.Actor:           revision.Actor,
 		server.Management.JSON.RequestID:       requestID,
 	})
+}
+
+func (server *Server) handleGroupPublish(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+	if server.GroupReleases == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupReleases)
+	if groupID == "" || strings.Contains(groupID, server.Management.Paths.GroupIDSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+		return
+	}
+	contentType, parameters, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || contentType != server.GroupReleasePolicy.MultipartContentType || parameters["boundary"] == "" {
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, server.GroupReleasePolicy.RequestLimitBytes)
+	metadata, caddyfile, err := readGroupReleaseMultipart(multipart.NewReader(request.Body, parameters["boundary"]), server.GroupReleasePolicy, server.Management)
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
+		return
+	}
+	operation, _, err := server.GroupReleases.Accept(request.Context(), models.GroupReleaseCommand{
+		GroupID: groupID, Actor: actor, RequestID: requestID,
+		IdempotencyKey:          metadata.IdempotencyKey,
+		IdempotencyScope:        server.GroupReleasePolicy.ScopePrefix + groupID + server.GroupReleasePolicy.ScopeSuffix,
+		ExpectedCurrentRevision: metadata.ExpectedCurrentRevision,
+		IdempotencyWindow:       server.GroupReleasePolicy.IdempotencyWindow,
+		Caddyfile:               caddyfile,
+	})
+	if err != nil {
+		var conflict models.GroupRevisionConflict
+		if errors.As(err, &conflict) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.RevisionConflictCode, requestID)
+			return
+		}
+		var idempotencyConflict models.IdempotencyConflict
+		if errors.As(err, &idempotencyConflict) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.IdempotencyConflictCode, requestID)
+			return
+		}
+		var groupNotFound models.GroupNotFound
+		if errors.As(err, &groupNotFound) {
+			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
+			return
+		}
+		var validation models.GroupReleaseValidationError
+		if errors.As(err, &validation) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.CaddyAdaptFailedCode, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		return
+	}
+	state := operation.State
+	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
+		state = server.GroupReleasePolicy.PendingState
+	}
+	writeJSON(response, http.StatusAccepted, map[string]any{
+		server.Management.JSON.OperationID: operation.ID,
+		server.Management.JSON.State:       state,
+		server.Management.JSON.RequestID:   requestID,
+	})
+}
+
+type groupReleaseMetadata struct {
+	IdempotencyKey          string
+	ExpectedCurrentRevision *string
+}
+
+func readGroupReleaseMultipart(reader *multipart.Reader, policy models.GroupReleasePolicy, management config.ManagementWords) (groupReleaseMetadata, []byte, error) {
+	var result groupReleaseMetadata
+	var metadataBytes, caddyfile []byte
+	metadataSeen, caddyfileSeen := false, false
+	for {
+		part, err := reader.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return result, nil, err
+		}
+		contents, err := io.ReadAll(io.LimitReader(part, policy.RequestLimitBytes+1))
+		_ = part.Close()
+		if err != nil || int64(len(contents)) > policy.RequestLimitBytes {
+			return result, nil, errors.New(policy.InvalidConfiguration)
+		}
+		switch part.FormName() {
+		case policy.MetadataPart:
+			if metadataSeen {
+				return result, nil, errors.New(policy.InvalidConfiguration)
+			}
+			metadataSeen = true
+			metadataBytes = contents
+		case policy.CaddyfilePart:
+			if caddyfileSeen || !utf8.Valid(contents) {
+				return result, nil, errors.New(policy.InvalidConfiguration)
+			}
+			caddyfileSeen = true
+			caddyfile = contents
+		case policy.ArtifactPart:
+			return result, nil, errors.New(policy.InvalidConfiguration)
+		default:
+			return result, nil, errors.New(policy.InvalidConfiguration)
+		}
+	}
+	if !metadataSeen || !caddyfileSeen || len(caddyfile) == 0 {
+		return result, nil, errors.New(policy.InvalidConfiguration)
+	}
+	fields := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(metadataBytes, &fields); err != nil || len(fields) != 2 {
+		return result, nil, errors.New(policy.InvalidConfiguration)
+	}
+	keyJSON, hasKey := fields[policy.MetadataIdempotencyKeyField]
+	expectedJSON, hasExpected := fields[policy.MetadataExpectedRevisionField]
+	if !hasKey || !hasExpected || json.Unmarshal(keyJSON, &result.IdempotencyKey) != nil || len(result.IdempotencyKey) < management.Idempotency.KeyMin || len(result.IdempotencyKey) > management.Idempotency.KeyChars || !ascii(result.IdempotencyKey) {
+		return result, nil, errors.New(policy.InvalidConfiguration)
+	}
+	var expected *string
+	if err := json.Unmarshal(expectedJSON, &expected); err != nil {
+		return result, nil, errors.New(policy.InvalidConfiguration)
+	}
+	if expected != nil {
+		valid, err := regexp.MatchString(policy.RevisionIDPattern, *expected)
+		if err != nil || !valid {
+			return result, nil, errors.New(policy.InvalidConfiguration)
+		}
+		result.ExpectedCurrentRevision = expected
+	}
+	return result, caddyfile, nil
 }
 
 func (server *Server) groupResponse(group models.Group) map[string]any {

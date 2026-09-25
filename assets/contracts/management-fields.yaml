@@ -29,6 +29,7 @@ json:
   frontends: frontends
   files: files
   idempotencyKey: idempotencyKey
+  expectedCurrentRevision: expectedCurrentRevision
   replyTo: replyTo
   status: status
   currentRevision: currentRevision

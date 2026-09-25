@@ -138,6 +138,21 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	releaseStore, err := storage.NewSQLiteGroupReleaseStore(database)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	releasePolicy, err := config.LoadGroupRelease()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	releaseArtifacts, err := artifacts.NewGroupReleaseArtifacts(bootstrap.ArtifactsPath)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	managementWords, err := config.LoadManagement()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -158,15 +173,28 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
-	readiness, reason, stopRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings)
+	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings)
 	if stopRuntime != nil {
 		defer stopRuntime()
+	}
+	groupReleaseService := &application.GroupReleaseService{
+		Store: groupStore, Releases: releaseStore,
+		ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
+		Artifacts:     releaseArtifacts, Activator: caddyRuntime, Policy: releasePolicy,
+	}
+	if caddyRuntime != nil {
+		if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
+			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+		} else if err := groupReleaseService.Recover(context.Background()); err != nil {
+			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+		}
 	}
 	management := &api.Server{
 		GroupService: application.GroupService{
 			Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
 		},
-		Operations: application.OperationService{Store: operationStore},
+		Operations:    application.OperationService{Store: operationStore},
+		GroupReleases: groupReleaseService,
 		Audit: &application.AuditService{
 			Store: auditStore, RetentionDays: auditWords.Audit.RetentionDays,
 			MinimumLimit: managementWords.Pagination.LimitMin, DefaultLimit: managementWords.Pagination.LimitDefault,
@@ -240,21 +268,21 @@ func managementTLS(bootstrap config.BootstrapConfig) (*tls.Config, error) {
 	return result, nil
 }
 
-func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings) (string, string, func() error) {
+func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings) (string, string, func() error, CaddyRuntime) {
 	sqliteContract, err := config.LoadSQLiteContract()
 	if err != nil || sqliteContract.SystemGroupID == "" {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	pointers, err := store.GetPointers(context.Background(), sqliteContract.SystemGroupID)
 	if err != nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	if pointers.CurrentRevisionID == nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, nil, nil
 	}
 	revision, err := store.GetRevision(context.Background(), sqliteContract.SystemGroupID, *pointers.CurrentRevisionID)
 	if err != nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	path := revision.CaddyfilePath
 	if !filepath.IsAbs(path) {
@@ -262,28 +290,28 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	root, err := filepath.EvalSymlinks(bootstrap.ArtifactsPath)
 	if err != nil || !withinDirectory(root, resolved) {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	caddyfile, err := os.ReadFile(resolved)
 	if err != nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	digest := sha256.Sum256(caddyfile)
 	if hex.EncodeToString(digest[:]) != revision.CaddyfileDigest {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	if bootstrap.CaddyVariant != bootstrap.CaddyEmbeddedVariant || runtimeBindings.StartCaddyfile == nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	stop, err := runtimeBindings.StartCaddyfile(caddyfile)
+	caddyRuntime, err := runtimeBindings.StartCaddyfile(caddyfile)
 	if err != nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil
+		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	return managementWords.Statuses.Ready, "", stop
+	return managementWords.Statuses.Ready, "", caddyRuntime.Stop, caddyRuntime
 }
 
 func withinDirectory(root, path string) bool {
