@@ -246,50 +246,50 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 }
 
 func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {
-	auditResult := server.AuditWords.Audit.Results.Failed
-	auditRecorded := false
-	defer func() {
-		if !auditRecorded {
-			server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, auditResult, requestID, "", "")
+	fail := func(code string) {
+		if err := server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, server.AuditWords.Audit.Results.Failed, requestID, "", ""); err != nil {
+			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			return
 		}
-	}()
+		server.writeCatalogProblem(response, code, requestID)
+	}
 	decoder := json.NewDecoder(request.Body)
 	var fields map[string]json.RawMessage
 	if err := decoder.Decode(&fields); err != nil || fields == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		fail(server.Management.Codes.InvalidRequest)
 		return
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		fail(server.Management.Codes.InvalidRequest)
 		return
 	}
 	if len(fields) != 2 {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		fail(server.Management.Codes.InvalidRequest)
 		return
 	}
 	for key := range fields {
 		if key != server.Management.JSON.ID && key != server.Management.JSON.IdempotencyKey {
-			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			fail(server.Management.Codes.InvalidRequest)
 			return
 		}
 	}
 	var id, key string
 	if json.Unmarshal(fields[server.Management.JSON.ID], &id) != nil || json.Unmarshal(fields[server.Management.JSON.IdempotencyKey], &key) != nil || len(key) < server.Management.Idempotency.KeyMin || len(key) > server.Management.Idempotency.KeyChars || !ascii(key) {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		fail(server.Management.Codes.InvalidRequest)
 		return
 	}
 	validID, err := regexp.MatchString(server.Management.Paths.GroupIDPattern, id)
 	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		fail(server.Management.Codes.RegistryUnavailable)
 		return
 	}
 	if !validID {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		fail(server.Management.Codes.InvalidRequest)
 		return
 	}
 	if server.GroupService.Store == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		fail(server.Management.Codes.RegistryUnavailable)
 		return
 	}
 	auditRecord := models.AuditRecord{
@@ -303,22 +303,20 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	if err != nil {
 		var auditFailure models.AuditAppendError
 		if errors.As(err, &auditFailure) {
-			auditRecorded = true
 			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
 		var exists models.GroupAlreadyExists
 		if errors.As(err, &exists) {
-			server.writeCatalogProblem(response, server.Management.Codes.GroupAlreadyExists, requestID)
+			fail(server.Management.Codes.GroupAlreadyExists)
 			return
 		}
-		server.writeCatalogProblem(response, server.Management.Codes.RegistryUnavailable, requestID)
+		fail(server.Management.Codes.RegistryUnavailable)
 		return
 	}
 	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
-	auditRecorded = true
 	writeJSON(response, http.StatusCreated, result)
 }
 
@@ -610,9 +608,9 @@ func (server *Server) authenticate(ctx context.Context, value string) (string, b
 	return "", false, nil
 }
 
-func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) {
+func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) error {
 	if server.Audit == nil || action == "" || actor == "" {
-		return
+		return nil
 	}
 	record := models.AuditRecord{
 		Timestamp:    time.Now().UTC(),
@@ -624,7 +622,7 @@ func (server *Server) recordAudit(ctx context.Context, actor, action, resource, 
 		DigestBefore: digestBefore,
 		DigestAfter:  digestAfter,
 	}
-	_ = server.Audit.Record(ctx, record)
+	return server.Audit.Record(ctx, record)
 }
 func redact(value string) string {
 	lines := strings.Split(value, "\n")

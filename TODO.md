@@ -21,8 +21,9 @@
 - Production `serve` теперь подключает append-only SQLite audit store;
   успешный `group.create` и его audit row коммитятся в одной SQLite transaction;
   если audit insert падает, API возвращает 503 и группа не создаётся. Ошибочные
-  попытки `group.create` записываются отдельно, но отказ append для них пока не
-  отражается в HTTP результате. `/api/audit` возвращает newest-first cursor
+  попытки `group.create` записываются отдельно до ответа; если failed-attempt
+  audit append не удаётся, исходный problem response заменяется на
+  `503 audit_unavailable`. `/api/audit` возвращает newest-first cursor
   pages, prune-ит истёкшие записи и переживает restart. Проверены paging,
   invalid cursor/limit, retention, restart и атомарный rollback при audit error.
   Остальные mutations, durable-operation transitions и общая политика ошибок
@@ -82,9 +83,8 @@
   service-key verifier и группы.
 - [ ] Расширить SQLite audit events на все management mutations и durable
   operation transitions; сейчас `group.create` success атомарен с audit row,
-  а rejected attempts audit-ятся отдельно. Обеспечить явную обработку ошибок
-  audit store для всех результатов и транзакционную согласованность каждой
-  state mutation с её audit event.
+  а failed attempts записываются до ответа. Обеспечить такую же транзакционную
+  согласованность и явную обработку audit errors для остальных mutations.
 - [ ] Реализовать строго минимальный gateway.yaml: state SQLite path, immutable
   artifacts root, Management bind/TLS/trust и embedded/external Caddy variant.
 - [ ] Разработать SQLite migrations/repositories для groups/revisions/current/
