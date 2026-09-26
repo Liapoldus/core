@@ -56,7 +56,7 @@
   crash-recovery открыты.
 - Текущий focused group suite: archive, rollback, release-store и Management API
   tests проходят. После объединения параллельных изменений прошёл полный
-  `make check` (Go build, 48 TS-файлов / 89 тестов и Docker arch-lint без
+  `make check` (Go build, 49 TS-файлов / 91 тест и Docker arch-lint без
   warnings), `go vet ./...`, Linux/macOS ARM64 builds и Gateway Docker smoke.
   Это не закрывает незавершённые production lifecycle/conformance пункты ниже.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
@@ -302,10 +302,9 @@
   реально исполняются (bootstrap rejection, Management authentication и одиннадцать
   archive cases); прочие vectors пока проверяются только структурно либо
   требуют отдельного production slice.
-- [ ] Исправить release workflow: он требует минимум 9 файлов в
-  `contracts/v1`, хотя manifest перечисляет 7 payload-файлов и каталог содержит
-  8 файлов. Проверять соответствие package contents manifest, а не фиксированный
-  порог.
+- [x] Исправить release workflow: пакетирование проверяет точный состав payload
+  по `manifest.json`, SHA-256 каждого файла, отсутствие неописанных файлов и
+  корректность путей вместо неподходящего фиксированного количества файлов.
 - [ ] Завершить прямой Caddy gRPC `Call`/`Stream` production composition:
   HTTP bidi, WebSocket, SSE и L4 focused handler/E2E slices уже есть, но full
   serve generation lifecycle, cancellation/backpressure/limits и deployment

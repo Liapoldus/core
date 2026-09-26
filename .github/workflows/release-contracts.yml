@@ -14,9 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify versioned contracts
-        run: |
-          test -f contracts/v1/manifest.json
-          test "$(find contracts/v1 -maxdepth 1 -type f | wc -l | tr -d ' ')" -ge 9
+        run: node scripts/verify-contract-bundle.mjs contracts/v1
       - name: Package contracts
         run: tar -czf "liapoldus-gateway-contracts-${GITHUB_REF_NAME#gateway-}.tar.gz" -C contracts v1
       - name: Publish release
