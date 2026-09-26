@@ -18,6 +18,8 @@ interface ArchiveTraversalVector {
     entryPathBytes?: number;
     entryCount?: number;
     contentBytes?: number;
+    contentEntropy?: boolean;
+    limits?: { compressedArtifactLimitBytes?: number; uncompressedArtifactLimitBytes?: number };
   };
   expected: { accepted: boolean; code: string; activeRevisionChanged: boolean };
 }
@@ -33,6 +35,8 @@ describe("Gateway archive golden-vector conformance", () => {
     "archive-path-byte-limit",
     "archive-entry-count-limit",
     "archive-compression-ratio-limit",
+    "archive-compressed-byte-limit",
+    "archive-uncompressed-byte-limit",
   ])("executes %s against the group-release Management API", async (vectorID) => {
     const document = JSON.parse(
       await readFile(join(coreRoot, "contracts/v1/golden-vectors.json"), "utf8"),
