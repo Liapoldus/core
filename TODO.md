@@ -48,12 +48,12 @@
   активирует previous revision и после успеха атомарно меняет current/previous.
   TS E2E проверяет safe archive frontend digest/manifest, traversal rejection,
   rollback, idempotent retry и stale-current conflict. Golden vectors дополнительно
-  исполняют gzip checksum, duplicate/case-fold collision и NFC normalization.
-  Не закрыты все numeric archive limits, сериализация concurrent same-CAS
-  reservations и production startup crash-recovery.
+  исполняют gzip checksum, duplicate/case-fold collision, NFC normalization,
+  path depth/byte length, entry-count и compression-ratio limits. Byte limits,
+  сериализация concurrent same-CAS reservations и startup crash-recovery открыты.
 - Текущий focused group suite: archive, rollback, release-store и Management API
   tests проходят. После объединения параллельных изменений прошёл полный
-  `make check` (Go build, 44 TS-файла / 73 теста и Docker arch-lint без
+  `make check` (Go build, 48 TS-файлов / 87 тестов и Docker arch-lint без
   warnings), `go vet ./...`, Linux/macOS ARM64 builds и Gateway Docker smoke.
   Это не закрывает незавершённые production lifecycle/conformance пункты ниже.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
@@ -189,8 +189,13 @@
   duplicate path, case-fold collision и NFC normalization. NFC имена принимаются
   после нормализации; дубли/коллизии и повреждённый gzip дают `artifact_invalid`
   до изменения active revision.
-- [ ] Добавить archive vectors для path depth/length, compressed/uncompressed
-  byte, ratio и entry limits.
+- [x] Добавить и исполнять archive vectors для path depth/byte length,
+  compression ratio и entry count. Все случаи отклоняются до активации; entry
+  count vector использует directory headers, чтобы не выполнять 10 000 sync
+  записей тестовых файлов.
+- [ ] Добавить безопасно ограниченные vectors для compressed/uncompressed byte
+  limits; текущие пределы велики, поэтому сценарии не должны выделять сотни MiB
+  или нагружать CI.
 - [x] TS integration проверяет `POST /api/groups/{id}/rollback`: durable
   operation, previous activation, CAS conflict, idempotent retry и атомарный swap
   current/previous. Нет отдельного `current`/`previous` endpoint в контракте;
@@ -291,8 +296,8 @@
   group publish pre-activation validation; текущий Caddy handler знает mode
   registry, но management/serve composition не валидирует весь published group
   against live instance Manifest до activation.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас семь vectors
-  реально исполняются (bootstrap rejection, Management authentication и пять
+- [ ] Расширять исполняемые golden-vector conformance: сейчас одиннадцать vectors
+  реально исполняются (bootstrap rejection, Management authentication и девять
   archive cases); прочие vectors пока проверяются только структурно либо
   требуют отдельного production slice.
 - [ ] Исправить release workflow: он требует минимум 9 файлов в

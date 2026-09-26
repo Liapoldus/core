@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -23,20 +24,26 @@ import (
 )
 
 type vector struct {
-	ID    string `json:"id"`
-	Input struct {
-		Entry   string `json:"entry"`
-		Entries []struct {
-			Name    string `json:"name"`
-			Content string `json:"content"`
-		} `json:"entries"`
-		CorruptGzip bool `json:"corruptGzip"`
-	} `json:"input"`
+	ID       string      `json:"id"`
+	Input    vectorInput `json:"input"`
 	Expected struct {
 		Accepted              bool   `json:"accepted"`
 		Code                  string `json:"code"`
 		ActiveRevisionChanged bool   `json:"activeRevisionChanged"`
 	} `json:"expected"`
+}
+
+type vectorInput struct {
+	Entry   string `json:"entry"`
+	Entries []struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	} `json:"entries"`
+	CorruptGzip    bool `json:"corruptGzip"`
+	EntryDepth     int  `json:"entryDepth"`
+	EntryPathBytes int  `json:"entryPathBytes"`
+	EntryCount     int  `json:"entryCount"`
+	ContentBytes   int  `json:"contentBytes"`
 }
 
 type observation struct {
@@ -51,7 +58,7 @@ func main() {
 	}
 	var testVector vector
 	vectorContents, err := os.ReadFile(os.Args[1])
-	if err != nil || json.Unmarshal(vectorContents, &testVector) != nil || testVector.ID == "" || (testVector.Input.Entry == "" && len(testVector.Input.Entries) == 0) {
+	if err != nil || json.Unmarshal(vectorContents, &testVector) != nil || testVector.ID == "" || !hasArchiveInput(testVector.Input) {
 		os.Exit(2)
 	}
 
@@ -136,7 +143,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	response := submit(server.Handler(), groupID, testVector.Input.Entry, testVector.Input.Entries, testVector.Input.CorruptGzip)
+	response := submit(server.Handler(), groupID, testVector.Input)
 	var problem struct {
 		Code string `json:"code"`
 	}
@@ -155,10 +162,7 @@ func main() {
 	}
 }
 
-func submit(handler http.Handler, groupID, entry string, entries []struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
-}, corruptGzip bool) *httptest.ResponseRecorder {
+func submit(handler http.Handler, groupID string, input vectorInput) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	metadata, _ := json.Marshal(map[string]any{"idempotencyKey": "archive-vector-key", "expectedCurrentRevision": strings.Repeat("a", 64)})
@@ -189,7 +193,7 @@ func submit(handler http.Handler, groupID, entry string, entries []struct {
 	if err != nil {
 		panic(err)
 	}
-	if _, err := artifactPart.Write(makeArchive(entry, entries, corruptGzip)); err != nil {
+	if _, err := artifactPart.Write(makeArchive(input)); err != nil {
 		panic(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -203,22 +207,39 @@ func submit(handler http.Handler, groupID, entry string, entries []struct {
 	return response
 }
 
-func makeArchive(entry string, entries []struct {
-	Name    string `json:"name"`
-	Content string `json:"content"`
-}, corruptGzip bool) []byte {
+func makeArchive(input vectorInput) []byte {
 	var compressed bytes.Buffer
 	compressor := gzip.NewWriter(&compressed)
 	writer := tar.NewWriter(compressor)
-	if entry != "" {
-		entries = append(entries, struct {
-			Name    string `json:"name"`
-			Content string `json:"content"`
-		}{Name: entry, Content: "vector payload"})
+	entries := input.Entries
+	if input.Entry != "" {
+		entries = append(entries, archiveEntry(input.Entry, "vector payload"))
+	}
+	if input.EntryDepth > 0 {
+		segments := []string{"frontends", "ui"}
+		for len(segments) < input.EntryDepth-1 {
+			segments = append(segments, "d")
+		}
+		segments = append(segments, "leaf.txt")
+		entries = append(entries, archiveEntry(strings.Join(segments, "/"), "vector payload"))
+	}
+	if input.EntryPathBytes > 0 {
+		prefix := "frontends/ui/"
+		entries = append(entries, archiveEntry(prefix+strings.Repeat("x", input.EntryPathBytes-len(prefix)), "vector payload"))
+	}
+	for index := 0; index < input.EntryCount; index++ {
+		entries = append(entries, archiveEntry(fmt.Sprintf("frontends/ui/d%05d/", index), ""))
+	}
+	if input.ContentBytes > 0 {
+		entries = append(entries, archiveEntry("frontends/ui/repeated.txt", strings.Repeat("x", input.ContentBytes)))
 	}
 	for _, archiveEntry := range entries {
 		contents := []byte(archiveEntry.Content)
-		if err := writer.WriteHeader(&tar.Header{Name: archiveEntry.Name, Mode: 0o600, Size: int64(len(contents)), Typeflag: tar.TypeReg}); err != nil {
+		entryType := byte(tar.TypeReg)
+		if strings.HasSuffix(archiveEntry.Name, "/") {
+			entryType = tar.TypeDir
+		}
+		if err := writer.WriteHeader(&tar.Header{Name: archiveEntry.Name, Mode: 0o600, Size: int64(len(contents)), Typeflag: entryType}); err != nil {
 			panic(err)
 		}
 		if _, err := writer.Write(contents); err != nil {
@@ -231,11 +252,25 @@ func makeArchive(entry string, entries []struct {
 	if err := compressor.Close(); err != nil {
 		panic(err)
 	}
-	if corruptGzip && compressed.Len() > 0 {
+	if input.CorruptGzip && compressed.Len() > 0 {
 		archive := compressed.Bytes()
 		archive[len(archive)-8] ^= 0xff
 	}
 	return compressed.Bytes()
+}
+
+func archiveEntry(name, content string) struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+} {
+	return struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}{Name: name, Content: content}
+}
+
+func hasArchiveInput(input vectorInput) bool {
+	return input.Entry != "" || len(input.Entries) > 0 || input.EntryDepth > 0 || input.EntryPathBytes > 0 || input.EntryCount > 0 || input.ContentBytes > 0
 }
 
 type activator struct{}
