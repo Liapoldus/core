@@ -234,13 +234,6 @@ func (service *GroupReleaseService) Recover(ctx context.Context) error {
 	}
 	releaseActivationLock.Lock()
 	defer releaseActivationLock.Unlock()
-	activeSnapshot, err := service.compose(ctx, "", nil)
-	if err != nil {
-		return err
-	}
-	if err := service.Activator.Activate(ctx, activeSnapshot); err != nil {
-		return err
-	}
 	for _, reservation := range reservations {
 		record := models.AuditRecord{
 			Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.auditAction(reservation.OperationKind),
@@ -256,7 +249,17 @@ func (service *GroupReleaseService) Recover(ctx context.Context) error {
 			})
 		}
 	}
-	return nil
+	activeSnapshot, err := service.compose(ctx, "", nil)
+	if err != nil {
+		return err
+	}
+	if len(activeSnapshot) == 0 {
+		return nil
+	}
+	if service.Activator == nil {
+		return models.GroupReleaseValidationError{Cause: errors.New(service.Policy.InvalidConfiguration)}
+	}
+	return service.Activator.Activate(ctx, activeSnapshot)
 }
 
 func (service *GroupReleaseService) ActivateCurrent(ctx context.Context) error {

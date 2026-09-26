@@ -16,6 +16,12 @@
   embedded Caddy listener. External variant без plugin instances использует
   Caddy `adapt` до запуска; external Caddy с plugin instances пока остаётся
   fenced до реализации dispatch snapshot sync.
+- При старте с существующей revision `serve` теперь сначала разрешает pending
+  release reservations в SQLite и только после успешного recovery активирует
+  Caddy через lazy runtime. TS E2E инъектирует ошибку durable transition и
+  подтверждает `recovery-required` при закрытом public listener. Исполняемый
+  process-kill/crash recovery и external Caddy process conformance всё ещё
+  требуют отдельного gate.
 - `/api/groups` и `/api/groups/{id}` читают SQLite. `POST /api/groups` создаёт
   application group, проверяет опубликованные ID/idempotency constraints,
   возвращает `201`, `400 invalid_request` или `409 group_already_exists`.

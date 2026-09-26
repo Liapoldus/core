@@ -266,12 +266,14 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		Artifacts:     releaseArtifacts, Activator: caddyRuntime, Policy: releasePolicy,
 	}
 	if caddyRuntime != nil {
-		lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
-		if !deferred || lazy.Active() {
-			if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
-				readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
-			} else if err := groupReleaseService.Recover(context.Background()); err != nil {
-				readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+		if err := groupReleaseService.Recover(context.Background()); err != nil {
+			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+		} else if reason != managementWords.Statuses.SystemReleaseRequired {
+			lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
+			if !deferred || !lazy.Active() {
+				if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
+					readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+				}
 			}
 		}
 	}
@@ -437,28 +439,14 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	if hex.EncodeToString(digest[:]) != revision.CaddyfileDigest {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
-	var caddyRuntime CaddyRuntime
-	switch bootstrap.CaddyVariant {
-	case bootstrap.CaddyEmbeddedVariant:
-		if runtimeBindings.StartEmbeddedCaddy == nil {
-			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
-		}
-		caddyRuntime, err = runtimeBindings.StartEmbeddedCaddy(caddyfile, pluginBindings)
-	case bootstrap.CaddyExternalVariant:
-		if pluginInstancesConfigured {
-			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
-		}
-		if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
-			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
-		}
-		caddyRuntime, err = runtimeBindings.StartExternalCaddy(bootstrap.CaddyBinary, bootstrap.CaddyExpectedBuildID, filepath.Dir(bootstrap.StatePath), caddyfile)
-	default:
+	if bootstrap.CaddyVariant == bootstrap.CaddyExternalVariant && pluginInstancesConfigured {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	if err != nil {
+	if bootstrap.CaddyVariant != bootstrap.CaddyEmbeddedVariant && bootstrap.CaddyVariant != bootstrap.CaddyExternalVariant {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	return managementWords.Statuses.Ready, "", caddyRuntime.Stop, caddyRuntime
+	activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable)
+	return managementWords.Statuses.Ready, "", activator.Stop, activator
 }
 
 func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, pluginInstancesConfigured bool, unavailable string) *lazyCaddyActivator {

@@ -41,6 +41,12 @@ func (activator *lazyCaddyActivator) Activate(ctx context.Context, source []byte
 	if activator.start == nil {
 		return errors.New(activator.unavailable)
 	}
+	if activator.validate == nil {
+		return errors.New(activator.unavailable)
+	}
+	if err := activator.validate(source); err != nil {
+		return err
+	}
 	runtime, err := activator.start(source)
 	if err != nil {
 		return err
