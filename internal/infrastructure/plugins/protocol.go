@@ -149,10 +149,6 @@ func (c *Client) Reconnect(ctx context.Context, endpoint, instanceID, grantBroke
 	return nil
 }
 
-func (c *Client) CallJSON(ctx context.Context, capability string, payload []byte) ([]byte, error) {
-	return c.CallJSONWithGrants(ctx, capability, payload, nil)
-}
-
 func (c *Client) CallJSONWithGrants(ctx context.Context, capability string, payload []byte, grants []*pluginv1.ActiveGrant) ([]byte, error) {
 	if !json.Valid(payload) {
 		return nil, ErrProtocolViolation

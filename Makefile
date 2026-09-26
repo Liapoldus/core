@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build test test-ts test-race docker-smoke arch-lint check
+.PHONY: build test test-ts test-race docker-smoke arch-lint staticcheck-u1000 check
 
 build:
 	go build ./...
@@ -18,5 +18,8 @@ docker-smoke:
 
 arch-lint:
 	docker run --rm -v "$(CURDIR):/app" fe3dback/go-arch-lint:latest-stable-release check --project-path /app
+
+staticcheck-u1000:
+	GOTOOLCHAIN=go1.26.0 go tool staticcheck -checks=U1000 ./...
 
 check: build test arch-lint

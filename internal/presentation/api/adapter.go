@@ -921,21 +921,6 @@ func (server *Server) recordAudit(ctx context.Context, actor, action, resource, 
 	}
 	return server.Audit.Record(ctx, record)
 }
-func redact(value string) string {
-	lines := strings.Split(value, "\n")
-	for index, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		lower := strings.ToLower(trimmed)
-		for _, key := range []string{"statictoken:", "keyhash:", "clientsecret:", "secret:"} {
-			if strings.HasPrefix(lower, key) {
-				indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-				lines[index] = indent + key + " ***"
-				break
-			}
-		}
-	}
-	return strings.Join(lines, "\n")
-}
 func writeJSON(response http.ResponseWriter, status int, value any) {
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(status)

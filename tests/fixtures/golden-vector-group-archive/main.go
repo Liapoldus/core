@@ -25,7 +25,12 @@ import (
 type vector struct {
 	ID    string `json:"id"`
 	Input struct {
-		Entry string `json:"entry"`
+		Entry   string `json:"entry"`
+		Entries []struct {
+			Name    string `json:"name"`
+			Content string `json:"content"`
+		} `json:"entries"`
+		CorruptGzip bool `json:"corruptGzip"`
 	} `json:"input"`
 	Expected struct {
 		Accepted              bool   `json:"accepted"`
@@ -46,7 +51,7 @@ func main() {
 	}
 	var testVector vector
 	vectorContents, err := os.ReadFile(os.Args[1])
-	if err != nil || json.Unmarshal(vectorContents, &testVector) != nil || testVector.ID == "" || testVector.Input.Entry == "" {
+	if err != nil || json.Unmarshal(vectorContents, &testVector) != nil || testVector.ID == "" || (testVector.Input.Entry == "" && len(testVector.Input.Entries) == 0) {
 		os.Exit(2)
 	}
 
@@ -131,7 +136,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	response := submit(server.Handler(), groupID, testVector.Input.Entry)
+	response := submit(server.Handler(), groupID, testVector.Input.Entry, testVector.Input.Entries, testVector.Input.CorruptGzip)
 	var problem struct {
 		Code string `json:"code"`
 	}
@@ -150,7 +155,10 @@ func main() {
 	}
 }
 
-func submit(handler http.Handler, groupID, entry string) *httptest.ResponseRecorder {
+func submit(handler http.Handler, groupID, entry string, entries []struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}, corruptGzip bool) *httptest.ResponseRecorder {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	metadata, _ := json.Marshal(map[string]any{"idempotencyKey": "archive-vector-key", "expectedCurrentRevision": strings.Repeat("a", 64)})
@@ -181,7 +189,7 @@ func submit(handler http.Handler, groupID, entry string) *httptest.ResponseRecor
 	if err != nil {
 		panic(err)
 	}
-	if _, err := artifactPart.Write(makeArchive(entry)); err != nil {
+	if _, err := artifactPart.Write(makeArchive(entry, entries, corruptGzip)); err != nil {
 		panic(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -195,22 +203,37 @@ func submit(handler http.Handler, groupID, entry string) *httptest.ResponseRecor
 	return response
 }
 
-func makeArchive(entry string) []byte {
+func makeArchive(entry string, entries []struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}, corruptGzip bool) []byte {
 	var compressed bytes.Buffer
 	compressor := gzip.NewWriter(&compressed)
 	writer := tar.NewWriter(compressor)
-	contents := []byte("vector payload")
-	if err := writer.WriteHeader(&tar.Header{Name: entry, Mode: 0o600, Size: int64(len(contents)), Typeflag: tar.TypeReg}); err != nil {
-		panic(err)
+	if entry != "" {
+		entries = append(entries, struct {
+			Name    string `json:"name"`
+			Content string `json:"content"`
+		}{Name: entry, Content: "vector payload"})
 	}
-	if _, err := writer.Write(contents); err != nil {
-		panic(err)
+	for _, archiveEntry := range entries {
+		contents := []byte(archiveEntry.Content)
+		if err := writer.WriteHeader(&tar.Header{Name: archiveEntry.Name, Mode: 0o600, Size: int64(len(contents)), Typeflag: tar.TypeReg}); err != nil {
+			panic(err)
+		}
+		if _, err := writer.Write(contents); err != nil {
+			panic(err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		panic(err)
 	}
 	if err := compressor.Close(); err != nil {
 		panic(err)
+	}
+	if corruptGzip && compressed.Len() > 0 {
+		archive := compressed.Bytes()
+		archive[len(archive)-8] ^= 0xff
 	}
 	return compressed.Bytes()
 }

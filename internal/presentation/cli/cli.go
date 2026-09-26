@@ -27,10 +27,6 @@ type options struct {
 	command []string
 }
 
-func Execute(arguments []string) int {
-	return ExecuteWithRuntime(arguments, RuntimeBindings{})
-}
-
 type RuntimeBindings struct {
 	StartEmbeddedCaddy func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
 	StartExternalCaddy func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)

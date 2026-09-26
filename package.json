@@ -1,0 +1,7 @@
+{
+  "name": "liapoldus-gateway-core",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

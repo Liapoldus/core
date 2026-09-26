@@ -47,8 +47,9 @@
   activation. Публикация синхронизирует snapshot через Caddy activator; rollback
   активирует previous revision и после успеха атомарно меняет current/previous.
   TS E2E проверяет safe archive frontend digest/manifest, traversal rejection,
-  rollback, idempotent retry и stale-current conflict. Не доказаны positive
-  conformance всех archive limits/collisions, сериализация concurrent same-CAS
+  rollback, idempotent retry и stale-current conflict. Golden vectors дополнительно
+  исполняют gzip checksum, duplicate/case-fold collision и NFC normalization.
+  Не закрыты все numeric archive limits, сериализация concurrent same-CAS
   reservations и production startup crash-recovery.
 - Текущий focused group suite: archive, rollback, release-store и Management API
   tests проходят. После объединения параллельных изменений прошёл полный
@@ -184,8 +185,12 @@
 - [x] TS integration red-tests проверяют traversal rejection `422
   artifact_invalid` до activation и positive safe `.tar.gz` staging, archive
   digest и frontend manifest digest.
-- [ ] Добавить archive vectors для gzip integrity, duplicate/case-collision/NFC,
-  path depth/length, compressed/uncompressed byte, ratio и entry limits.
+- [x] Добавить и исполнять archive vectors для gzip checksum integrity,
+  duplicate path, case-fold collision и NFC normalization. NFC имена принимаются
+  после нормализации; дубли/коллизии и повреждённый gzip дают `artifact_invalid`
+  до изменения active revision.
+- [ ] Добавить archive vectors для path depth/length, compressed/uncompressed
+  byte, ratio и entry limits.
 - [x] TS integration проверяет `POST /api/groups/{id}/rollback`: durable
   operation, previous activation, CAS conflict, idempotent retry и атомарный swap
   current/previous. Нет отдельного `current`/`previous` endpoint в контракте;
@@ -225,6 +230,10 @@
   idle-timeout и max-duration остаются TODO выше. Local `call` dispatch через
   embedded Caddy подключён к supervised child; dispatch generations, local TLS
   settings, config-scoped grants and remote-replica fan-out ещё не подключены.
+- [ ] Расширить `tests/fixtures/serve-plugin-child` lifecycle harness до
+  child-process smoke с реальными сборками captcha, forms-db и identity после
+  полного serve wiring. Текущие тесты подтверждают generic fixture capability
+  и supervision, но не являются интеграционной приёмкой этих трёх plugins.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
   manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments
@@ -263,6 +272,15 @@
 
 ## Обязательные gates
 
+- Staticcheck закреплён как Go tool dependency: Staticcheck 2026.1 (`v0.7.0`),
+  запускается через `make staticcheck-u1000` с Go 1.26.0. Старый бинарник
+  2025.1.1 (`v0.6.1`), собранный с Go 1.24.1, несовместим с модулем core и
+  не должен использоваться.
+- Vitest/E2E требует Node.js >=22: `package.json` и `tests/package.json`
+  декларируют `engines`. WebSocket E2E использует встроенный global `WebSocket`
+  и проверяет реальное соединение с Gateway; не заменять его заглушкой. CI
+  закреплён на Node 24. Локальный baseline этой сессии — Node 26.3.0
+  (`typeof WebSocket === "function"`).
 - [ ] Для каждого increment сначала отдельные красные TypeScript tests, затем
   реализация; Go test files в production packages не добавлять.
 - [ ] Для milestones запускать make check, go vet ./..., go build ./...,
@@ -273,9 +291,9 @@
   group publish pre-activation validation; текущий Caddy handler знает mode
   registry, но management/serve composition не валидирует весь published group
   against live instance Manifest до activation.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас три vectors
-  реально исполняются (bootstrap rejection, Management authentication и
-  archive traversal); прочие vectors пока проверяются только структурно либо
+- [ ] Расширять исполняемые golden-vector conformance: сейчас семь vectors
+  реально исполняются (bootstrap rejection, Management authentication и пять
+  archive cases); прочие vectors пока проверяются только структурно либо
   требуют отдельного production slice.
 - [ ] Исправить release workflow: он требует минимум 9 файлов в
   `contracts/v1`, хотя manifest перечисляет 7 payload-файлов и каталог содержит

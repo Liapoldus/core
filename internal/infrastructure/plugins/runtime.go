@@ -290,22 +290,6 @@ func manifestIncludes(advertised, configured []string) bool {
 	return true
 }
 
-func (r *Runtime) HTTPDispatchers() map[string]*CapabilityClient {
-	instances := make(map[string]*CapabilityClient, len(r.instances))
-	for name, instance := range r.instances {
-		instances[name] = instance.capability
-	}
-	return instances
-}
-
-func (r *Runtime) L4Dispatchers() map[string]*CapabilityClient {
-	instances := make(map[string]*CapabilityClient, len(r.instances))
-	for name, instance := range r.instances {
-		instances[name] = instance.capability
-	}
-	return instances
-}
-
 func (r *Runtime) DispatchBindings() []DispatchBinding {
 	if r == nil {
 		return nil
