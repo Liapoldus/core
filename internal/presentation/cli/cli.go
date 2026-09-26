@@ -28,10 +28,12 @@ type options struct {
 }
 
 type RuntimeBindings struct {
-	StartEmbeddedCaddy func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
-	StartExternalCaddy func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)
-	CaddyBuildID       string
-	CaddyModules       []string
+	StartEmbeddedCaddy    func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
+	StartExternalCaddy    func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)
+	ValidateEmbeddedCaddy func([]byte, []PluginDispatchBinding) error
+	ValidateExternalCaddy func(binary string, source []byte) error
+	CaddyBuildID          string
+	CaddyModules          []string
 }
 
 type PluginDispatchBinding struct {

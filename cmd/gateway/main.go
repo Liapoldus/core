@@ -32,6 +32,20 @@ func main() {
 				Binary: binary, ExpectedBuildID: expectedBuildID, StateDirectory: stateDirectory,
 			}, source)
 		},
+		ValidateEmbeddedCaddy: func(source []byte, bindings []cli.PluginDispatchBinding) error {
+			instances := make([]caddyadapter.PluginInstance, 0, len(bindings))
+			for _, binding := range bindings {
+				instances = append(instances, caddyadapter.PluginInstance{
+					Name: binding.Name, Endpoint: binding.Endpoint,
+					Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
+					MaxConcurrentCalls: binding.MaxConcurrentCalls,
+				})
+			}
+			return caddyadapter.ValidateCaddyfileWithPlugins(source, instances)
+		},
+		ValidateExternalCaddy: func(binary string, source []byte) error {
+			return caddyadapter.ValidateExternalCaddyfile(context.Background(), binary, source)
+		},
 		CaddyBuildID: version,
 		CaddyModules: caddycore.Modules(),
 	}))

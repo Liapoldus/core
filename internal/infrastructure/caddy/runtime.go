@@ -112,6 +112,18 @@ func AdaptCaddyfile(source []byte) ([]byte, []caddyconfig.Warning, error) {
 	return adaptCaddyfile(source, nil)
 }
 
+func ValidateCaddyfileWithPlugins(source []byte, instances []PluginInstance) error {
+	configuration, _, err := adaptCaddyfile(source, instances)
+	if err != nil {
+		return err
+	}
+	var adapted caddycore.Config
+	if err := json.Unmarshal(configuration, &adapted); err != nil {
+		return err
+	}
+	return caddycore.Validate(&adapted)
+}
+
 func adaptCaddyfile(source []byte, instances []PluginInstance) ([]byte, []caddyconfig.Warning, error) {
 	contract, err := loadBuildContract()
 	if err != nil {

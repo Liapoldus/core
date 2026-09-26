@@ -9,6 +9,13 @@
 - Production `serve` использует bootstrap + SQLite, а Management API защищён
   SQLite-backed Bearer verifier. Пути state/artifacts разрешаются относительно
   `gateway.yaml`; пустой Gateway запускается без public data plane.
+- Первая system revision теперь принимается из management-only bootstrap state:
+  lazy Caddy activator проверяет candidate без открытия public listener, затем
+  запускает data plane при activation и переводит readiness в `ready`. TS E2E
+  публикует первую system revision через API и запрашивает ответ с реального
+  embedded Caddy listener. External variant без plugin instances использует
+  Caddy `adapt` до запуска; external Caddy с plugin instances пока остаётся
+  fenced до реализации dispatch snapshot sync.
 - `/api/groups` и `/api/groups/{id}` читают SQLite. `POST /api/groups` создаёт
   application group, проверяет опубликованные ID/idempotency constraints,
   возвращает `201`, `400 invalid_request` или `409 group_already_exists`.
@@ -141,6 +148,12 @@
   согласованность и явную обработку audit errors для остальных mutations.
 - [ ] Реализовать строго минимальный gateway.yaml: state SQLite path, immutable
   artifacts root, Management bind/TLS/trust и embedded/external Caddy variant.
+- [x] Исправить bootstrap deadlock первой `system` revision: при пустом current
+  Management API оставался доступен, но publish отклонялся без Caddy activator.
+  Lazy activator проверяет candidate до старта и открывает Caddy listener только
+  при activation; TypeScript E2E проверяет publish, current revision, readiness
+  и реальный HTTP response. Recovery/crash barrier и external parity отдельно
+  остаются открытыми.
 - [ ] Разработать SQLite migrations/repositories для groups/revisions/current/
   previous, plugin instances, service-key verifier metadata, operations,
   idempotency, audit, checkpoints и retention.

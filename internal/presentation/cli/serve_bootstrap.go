@@ -266,10 +266,13 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		Artifacts:     releaseArtifacts, Activator: caddyRuntime, Policy: releasePolicy,
 	}
 	if caddyRuntime != nil {
-		if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
-			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
-		} else if err := groupReleaseService.Recover(context.Background()); err != nil {
-			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+		lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
+		if !deferred || lazy.Active() {
+			if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
+				readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+			} else if err := groupReleaseService.Recover(context.Background()); err != nil {
+				readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
+			}
 		}
 	}
 	management := &api.Server{
@@ -295,11 +298,20 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		DataPlaneState:  readiness,
 		DataPlaneReason: reason,
 		DataPlaneReadiness: func(requestContext context.Context) (string, string) {
-			if readiness != managementWords.Statuses.Ready {
+			lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
+			if deferred && !lazy.Active() {
 				return readiness, reason
+			}
+			if readiness != managementWords.Statuses.Ready {
+				if !deferred {
+					return readiness, reason
+				}
 			}
 			probe, ok := caddyRuntime.(interface{ Ready(context.Context) error })
 			if !ok || probe.Ready(requestContext) == nil {
+				if deferred {
+					return managementWords.Statuses.Ready, ""
+				}
 				return readiness, reason
 			}
 			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable
@@ -398,7 +410,8 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	if pointers.CurrentRevisionID == nil {
-		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, nil, nil
+		activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable)
+		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, activator.Stop, activator
 	}
 	revision, err := store.GetRevision(context.Background(), sqliteContract.SystemGroupID, *pointers.CurrentRevisionID)
 	if err != nil {
@@ -446,6 +459,42 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
 	return managementWords.Statuses.Ready, "", caddyRuntime.Stop, caddyRuntime
+}
+
+func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, pluginInstancesConfigured bool, unavailable string) *lazyCaddyActivator {
+	validate := func(source []byte) error {
+		switch bootstrap.CaddyVariant {
+		case bootstrap.CaddyEmbeddedVariant:
+			if runtimeBindings.ValidateEmbeddedCaddy == nil {
+				return errors.New(unavailable)
+			}
+			return runtimeBindings.ValidateEmbeddedCaddy(source, pluginBindings)
+		case bootstrap.CaddyExternalVariant:
+			if pluginInstancesConfigured || runtimeBindings.ValidateExternalCaddy == nil {
+				return errors.New(unavailable)
+			}
+			return runtimeBindings.ValidateExternalCaddy(bootstrap.CaddyBinary, source)
+		default:
+			return errors.New(unavailable)
+		}
+	}
+	start := func(source []byte) (CaddyRuntime, error) {
+		switch bootstrap.CaddyVariant {
+		case bootstrap.CaddyEmbeddedVariant:
+			if runtimeBindings.StartEmbeddedCaddy == nil {
+				return nil, errors.New(unavailable)
+			}
+			return runtimeBindings.StartEmbeddedCaddy(source, pluginBindings)
+		case bootstrap.CaddyExternalVariant:
+			if pluginInstancesConfigured || bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
+				return nil, errors.New(unavailable)
+			}
+			return runtimeBindings.StartExternalCaddy(bootstrap.CaddyBinary, bootstrap.CaddyExpectedBuildID, filepath.Dir(bootstrap.StatePath), source)
+		default:
+			return nil, errors.New(unavailable)
+		}
+	}
+	return newLazyCaddyActivator(validate, start, unavailable)
 }
 
 func withinDirectory(root, path string) bool {

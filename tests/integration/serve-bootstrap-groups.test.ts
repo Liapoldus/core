@@ -231,12 +231,29 @@ describe("production serve bootstrap and SQLite group reads", () => {
       expect(databaseBytes.byteLength).toBeGreaterThan(0);
       expect(databaseBytes.includes(Buffer.from(token))).toBe(false);
 
+      const publicAddress = await freeAddress();
       const firstRelease = await publishFirstSystemRevision(
         address,
         token,
-        `http://${await freeAddress()} {\n  respond \"first-system-release\"\n}\n`,
+        `http://${publicAddress} {\n  respond \"first-system-release\"\n}\n`,
       );
       expect(firstRelease.status, firstRelease.body).toBe(202);
+      let dataPlaneReady = false;
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const currentStatus = await request(address, "/api/status", token);
+        const current = JSON.parse(currentStatus.body) as { dataPlaneReadiness?: { state?: string } };
+        if (current.dataPlaneReadiness?.state === "ready") {
+          dataPlaneReady = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(dataPlaneReady).toBe(true);
+      const systemAfterPublish = JSON.parse((await request(address, "/api/groups/system", token)).body) as { currentRevision?: string | null };
+      expect(systemAfterPublish.currentRevision).toMatch(/^[a-f0-9]{64}$/);
+      const publicResponse = await fetch(`http://${publicAddress}`);
+      expect(publicResponse.status).toBe(200);
+      expect(await publicResponse.text()).toBe("first-system-release");
     } finally {
       if (gateway !== undefined) {
         await gateway.stop();

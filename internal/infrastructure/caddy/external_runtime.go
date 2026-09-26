@@ -187,6 +187,27 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 	return runtime, nil
 }
 
+func ValidateExternalCaddyfile(ctx context.Context, binary string, caddyfile []byte) error {
+	contract, err := loadExternalContract()
+	if err != nil {
+		return err
+	}
+	if ctx == nil || binary == "" || len(caddyfile) == 0 {
+		return errors.New(contract.Diagnostics.InvalidContract)
+	}
+	directory, err := os.MkdirTemp(os.TempDir(), contract.Files.RuntimeDirectory)
+	if err != nil {
+		return errors.New(contract.Diagnostics.AdaptFailed)
+	}
+	defer os.RemoveAll(directory)
+	runtime := &ExternalRuntime{
+		contract: contract, binary: binary, directory: directory,
+		socketPath: filepath.Join(directory, contract.Files.AdminSocket),
+	}
+	_, err = runtime.prepare(ctx, caddyfile)
+	return err
+}
+
 func (runtime *ExternalRuntime) Validate(ctx context.Context, caddyfile []byte) error {
 	_, err := runtime.prepare(ctx, caddyfile)
 	return err
