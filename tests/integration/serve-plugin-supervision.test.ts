@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,7 +62,8 @@ describe("serve local plugin supervision", () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-plugin-supervision-"));
     const gatewayBinary = await buildGatewayTestBinary();
     const pluginBinary = join(directory, "plugin-child");
-    const address = await freeAddress();
+    const managementAddress = await freeAddress();
+    const publicAddress = await freeAddress();
     const certificate = join(directory, "management.crt");
     const privateKey = join(directory, "management.key");
     const database = join(directory, "gateway.db");
@@ -81,7 +82,7 @@ describe("serve local plugin supervision", () => {
       await writeFile(config, [
         "state:", `  path: ${database}`,
         "artifacts:", `  path: ${artifacts}`,
-        "management:", `  listen: ${address}`,
+        "management:", `  listen: ${managementAddress}`,
         "  tls:", `    certificate: file:${certificate}`, `    key: file:${privateKey}`,
         "caddy:", "  variant: embedded", "",
       ].join("\n"), "utf8");
@@ -89,15 +90,16 @@ describe("serve local plugin supervision", () => {
       expect(bootstrap.stdout.trim()).not.toHaveLength(0);
       await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-composition", database, artifacts, pluginBinary, marker], {
         cwd: join(import.meta.dirname, "../.."),
-        env: { ...process.env, LIAPOLDUS_TEST_PUBLIC_ADDRESS: address },
+        env: { ...process.env, LIAPOLDUS_TEST_PUBLIC_ADDRESS: publicAddress },
       });
 
-      gateway = await startGateway(["--config", config, "serve"]);
-      await waitForManagement(address, gateway.process);
-      const response = await waitForPlugin(address);
+      gateway = await startGateway(["--config", config, "serve"], { LIAPOLDUS_TEST_SENTINEL: "must-not-reach-plugin" });
+      await waitForManagement(managementAddress, gateway.process);
+      const response = await waitForPlugin(publicAddress);
       expect(await response.text()).toBe("recovered");
       const starts = (await readFile(marker, "utf8")).trim().split("\n");
       expect(starts.length).toBeGreaterThanOrEqual(2);
+      await expect(access(`${marker}.inherited-environment`)).rejects.toMatchObject({ code: "ENOENT" });
 
       await gateway.stop();
       gateway = undefined;

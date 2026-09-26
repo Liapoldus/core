@@ -74,6 +74,11 @@ func main() {
 		os.Exit(2)
 	}
 	service := &plugin{startMarker: os.Args[1], marker: os.Args[2]}
+	if os.Getenv("LIAPOLDUS_TEST_SENTINEL") != "" {
+		if err := os.WriteFile(service.startMarker+".inherited-environment", []byte{}, 0o600); err != nil {
+			os.Exit(1)
+		}
+	}
 	file, err := os.OpenFile(service.startMarker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
