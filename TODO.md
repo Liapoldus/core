@@ -212,6 +212,15 @@
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
   до каждой mutation, drift detection, group publish block, explicit checkpoint
   restore и full-composition reconcile с If-Match.
+- [ ] Перед `GET /api/caddy-state` и Admin mutations согласовать/реализовать
+  общий trust boundary чтения фактической активной Caddy-конфигурации для
+  embedded и external вариантов, canonical digest для обоих вариантов и
+  SQLite-порт чтения/создания checkpoint metadata. Сейчас embedded Admin API
+  отключён, публичный `caddy.ActiveContext` не отдаёт полный effective config,
+  external runtime не читает `/config/`, а таблица `caddy_checkpoints` не имеет
+  production repository. Не возвращать фиктивные `drift: false`, digest или
+  checkpoint ID; до закрытия этих prerequisites endpoint и mutation proxy
+  остаются заблокированы.
 - [ ] Не обещать обратную генерацию Caddyfile из произвольного native Caddy JSON.
 
 ## Plugins, TLS и Constructor boundary
@@ -294,10 +303,13 @@
   macOS/Linux builds и подходящие Docker/Caddy variant smoke suites.
 - [ ] Добавить immutable dispatch generations и external-Caddy private Admin
   API/IPC synchronization; failure сохраняет прежний runtime generation.
-- [ ] Подключить capability→modes descriptor из `pluginprotocol` Manifest к
-  group publish pre-activation validation; текущий Caddy handler знает mode
-  registry, но management/serve composition не валидирует весь published group
-  against live instance Manifest до activation.
+- [ ] Завершить capability→modes pre-activation validation для обоих вариантов.
+  Embedded Caddy теперь вызывает non-starting `caddy.Validate`, provisions
+  candidate dispatch app и проверяет route mode по live Manifest до Reserve;
+  TS integration подтверждает синхронный отказ без operation/revision/pointer
+  изменений и успешный matching `CALL`. Временные plugin clients закрываются
+  через Caddy `CleanerUpper`. External `Validate` пока только готовит Caddyfile,
+  а external plugin dispatch snapshot/readiness barrier ещё не подключены.
 - [ ] Расширять исполняемые golden-vector conformance: сейчас тринадцать vectors
   реально исполняются (bootstrap rejection, Management authentication и одиннадцать
   archive cases); прочие vectors пока проверяются только структурно либо
