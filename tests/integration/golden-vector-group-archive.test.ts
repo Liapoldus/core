@@ -10,7 +10,15 @@ const coreRoot = join(import.meta.dirname, "../..");
 
 interface ArchiveTraversalVector {
   id: string;
-  input: { entry?: string; entries?: Array<{ name: string; content: string }>; corruptGzip?: boolean };
+  input: {
+    entry?: string;
+    entries?: Array<{ name: string; content: string }>;
+    corruptGzip?: boolean;
+    entryDepth?: number;
+    entryPathBytes?: number;
+    entryCount?: number;
+    contentBytes?: number;
+  };
   expected: { accepted: boolean; code: string; activeRevisionChanged: boolean };
 }
 
@@ -21,6 +29,10 @@ describe("Gateway archive golden-vector conformance", () => {
     "archive-duplicate-path",
     "archive-case-collision",
     "archive-nfc-normalization",
+    "archive-path-depth-limit",
+    "archive-path-byte-limit",
+    "archive-entry-count-limit",
+    "archive-compression-ratio-limit",
   ])("executes %s against the group-release Management API", async (vectorID) => {
     const document = JSON.parse(
       await readFile(join(coreRoot, "contracts/v1/golden-vectors.json"), "utf8"),
