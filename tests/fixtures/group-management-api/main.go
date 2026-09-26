@@ -6,12 +6,14 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
@@ -33,55 +35,66 @@ type groupView struct {
 }
 
 type report struct {
-	ListStatus                 int              `json:"listStatus"`
-	ListRequestID              bool             `json:"listRequestID"`
-	Groups                     []groupView      `json:"groups"`
-	GetStatus                  int              `json:"getStatus"`
-	GetRequestID               bool             `json:"getRequestID"`
-	GetGroup                   groupView        `json:"getGroup"`
-	MissingStatus              int              `json:"missingStatus"`
-	MissingProblem             problemView      `json:"missingProblem"`
-	UnauthorizedStatus         int              `json:"unauthorizedStatus"`
-	ReleaseListStatus          int              `json:"releaseListStatus"`
-	ReleaseListRequestID       bool             `json:"releaseListRequestID"`
-	Releases                   []map[string]any `json:"releases"`
-	ReleasePathsHidden         bool             `json:"releasePathsHidden"`
-	ReleaseDetailStatus        int              `json:"releaseDetailStatus"`
-	ReleaseDetailSafe          bool             `json:"releaseDetailSafe"`
-	PublishStatus              int              `json:"publishStatus"`
-	Publish                    map[string]any   `json:"publish"`
-	PublishRetryStatus         int              `json:"publishRetryStatus"`
-	PublishRetry               map[string]any   `json:"publishRetry"`
-	OperationAfterReopenStatus int              `json:"operationAfterReopenStatus"`
-	OperationAfterReopen       map[string]any   `json:"operationAfterReopen"`
-	GroupAfterReopenStatus     int              `json:"groupAfterReopenStatus"`
-	CurrentAfterReopen         *string          `json:"currentAfterReopen"`
-	IdempotencyConflictStatus  int              `json:"idempotencyConflictStatus"`
-	IdempotencyConflictCode    string           `json:"idempotencyConflictCode"`
-	InvalidCaddyfileStatus     int              `json:"invalidCaddyfileStatus"`
-	InvalidCaddyfileCode       string           `json:"invalidCaddyfileCode"`
-	PointersAfterInvalid       *string          `json:"pointersAfterInvalid"`
-	StaleRevisionStatus        int              `json:"staleRevisionStatus"`
-	StaleRevisionCode          string           `json:"staleRevisionCode"`
-	PointersAfterStale         *string          `json:"pointersAfterStale"`
-	UnsafeArtifactStatus       int              `json:"unsafeArtifactStatus"`
-	UnsafeArtifactCode         string           `json:"unsafeArtifactCode"`
-	SafeArtifactStatus         int              `json:"safeArtifactStatus"`
-	SafeArtifactDetailStatus   int              `json:"safeArtifactDetailStatus"`
-	SafeArtifactDigest         string           `json:"safeArtifactDigest"`
-	SafeFrontendID             string           `json:"safeFrontendId"`
-	SafeFrontendDigest         string           `json:"safeFrontendDigest"`
-	SafeFrontendFiles          int              `json:"safeFrontendFiles"`
-	RollbackStatus             int              `json:"rollbackStatus"`
-	RollbackCode               string           `json:"rollbackCode"`
-	RollbackRetryStatus        int              `json:"rollbackRetryStatus"`
-	RollbackRetryOperationID   string           `json:"rollbackRetryOperationId"`
-	RollbackStaleStatus        int              `json:"rollbackStaleStatus"`
-	RollbackStaleCode          string           `json:"rollbackStaleCode"`
-	CurrentBeforeRollback      *string          `json:"currentBeforeRollback"`
-	PreviousBeforeRollback     *string          `json:"previousBeforeRollback"`
-	CurrentAfterRollback       *string          `json:"currentAfterRollback"`
-	PreviousAfterRollback      *string          `json:"previousAfterRollback"`
+	ListStatus                      int              `json:"listStatus"`
+	ListRequestID                   bool             `json:"listRequestID"`
+	Groups                          []groupView      `json:"groups"`
+	GetStatus                       int              `json:"getStatus"`
+	GetRequestID                    bool             `json:"getRequestID"`
+	GetGroup                        groupView        `json:"getGroup"`
+	MissingStatus                   int              `json:"missingStatus"`
+	MissingProblem                  problemView      `json:"missingProblem"`
+	UnauthorizedStatus              int              `json:"unauthorizedStatus"`
+	ReleaseListStatus               int              `json:"releaseListStatus"`
+	ReleaseListRequestID            bool             `json:"releaseListRequestID"`
+	Releases                        []map[string]any `json:"releases"`
+	ReleasePathsHidden              bool             `json:"releasePathsHidden"`
+	ReleaseDetailStatus             int              `json:"releaseDetailStatus"`
+	ReleaseDetailSafe               bool             `json:"releaseDetailSafe"`
+	PublishStatus                   int              `json:"publishStatus"`
+	Publish                         map[string]any   `json:"publish"`
+	PublishRetryStatus              int              `json:"publishRetryStatus"`
+	PublishRetry                    map[string]any   `json:"publishRetry"`
+	ActivationCountAfterPublish     int64            `json:"activationCountAfterPublish"`
+	CurrentAfterPublish             *string          `json:"currentAfterPublish"`
+	CurrentAfterConflict            *string          `json:"currentAfterConflict"`
+	ActivationFailureStatus         int              `json:"activationFailureStatus"`
+	ActivationFailureOperationState string           `json:"activationFailureOperationState"`
+	CurrentBeforeActivationFailure  *string          `json:"currentBeforeActivationFailure"`
+	CurrentAfterActivationFailure   *string          `json:"currentAfterActivationFailure"`
+	PreviousBeforeActivationFailure *string          `json:"previousBeforeActivationFailure"`
+	PreviousAfterActivationFailure  *string          `json:"previousAfterActivationFailure"`
+	RuntimeAfterActivationFailure   string           `json:"runtimeAfterActivationFailure"`
+	OperationAfterReopenStatus      int              `json:"operationAfterReopenStatus"`
+	OperationAfterReopen            map[string]any   `json:"operationAfterReopen"`
+	GroupAfterReopenStatus          int              `json:"groupAfterReopenStatus"`
+	CurrentAfterReopen              *string          `json:"currentAfterReopen"`
+	IdempotencyConflictStatus       int              `json:"idempotencyConflictStatus"`
+	IdempotencyConflictCode         string           `json:"idempotencyConflictCode"`
+	InvalidCaddyfileStatus          int              `json:"invalidCaddyfileStatus"`
+	InvalidCaddyfileCode            string           `json:"invalidCaddyfileCode"`
+	PointersAfterInvalid            *string          `json:"pointersAfterInvalid"`
+	StaleRevisionStatus             int              `json:"staleRevisionStatus"`
+	StaleRevisionCode               string           `json:"staleRevisionCode"`
+	CurrentBeforeStale              *string          `json:"currentBeforeStale"`
+	PointersAfterStale              *string          `json:"pointersAfterStale"`
+	UnsafeArtifactStatus            int              `json:"unsafeArtifactStatus"`
+	UnsafeArtifactCode              string           `json:"unsafeArtifactCode"`
+	SafeArtifactStatus              int              `json:"safeArtifactStatus"`
+	SafeArtifactDetailStatus        int              `json:"safeArtifactDetailStatus"`
+	SafeArtifactDigest              string           `json:"safeArtifactDigest"`
+	SafeFrontendID                  string           `json:"safeFrontendId"`
+	SafeFrontendDigest              string           `json:"safeFrontendDigest"`
+	SafeFrontendFiles               int              `json:"safeFrontendFiles"`
+	RollbackStatus                  int              `json:"rollbackStatus"`
+	RollbackCode                    string           `json:"rollbackCode"`
+	RollbackRetryStatus             int              `json:"rollbackRetryStatus"`
+	RollbackRetryOperationID        string           `json:"rollbackRetryOperationId"`
+	RollbackStaleStatus             int              `json:"rollbackStaleStatus"`
+	RollbackStaleCode               string           `json:"rollbackStaleCode"`
+	CurrentBeforeRollback           *string          `json:"currentBeforeRollback"`
+	PreviousBeforeRollback          *string          `json:"previousBeforeRollback"`
+	CurrentAfterRollback            *string          `json:"currentAfterRollback"`
+	PreviousAfterRollback           *string          `json:"previousAfterRollback"`
 }
 
 type problemView struct {
@@ -154,10 +167,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	activator := &fixtureActivator{}
 	releaseService := &application.GroupReleaseService{
 		Store: store, Releases: releaseStore,
 		ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
-		Artifacts:     releaseArtifacts, Activator: fixtureActivator{}, Policy: releasePolicy,
+		Artifacts:     releaseArtifacts, Activator: activator, Policy: releasePolicy,
 	}
 	server := &api.Server{
 		Token: "fixture-management-token", Management: management, Errors: errorCatalog, AuditWords: auditWords,
@@ -176,46 +190,15 @@ func main() {
 	releaseDetail := perform(handler, http.MethodGet, "/api/groups/application-a/releases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true)
 	invalidCaddyfile := performMultipartWith(handler, "invalid-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  totally_unknown_directive\n}\n")
 	pointersAfterInvalid := perform(handler, http.MethodGet, "/api/groups/application-a", true)
+	pointersBeforeStale, err := store.GetPointers(ctx, "application-a")
+	if err != nil {
+		panic(err)
+	}
 	staleRevision := performMultipartWith(handler, "stale-key-000001", "", "example.test {\n  respond 202\n}\n")
 	pointersAfterStale := perform(handler, http.MethodGet, "/api/groups/application-a", true)
 	publish := performMultipart(handler)
 	publishRetry := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n")
-	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 201\n}\n")
 	unsafeArtifact := performMultipartWithArtifact(handler, "unsafe-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 200\n}\n", archive("frontends/ui/../escape.txt"))
-	if _, err := store.CreateApplicationGroup(ctx, "application-archive", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "archive-group-create"}); err != nil {
-		panic(err)
-	}
-	safeArtifact := performMultipartForGroup(handler, "application-archive", "safe-archive-key-00001", "", "archive.example.test {\n  respond 200\n}\n", archive("frontends/ui/index.html"))
-	var safeArtifactBody map[string]any
-	if err := json.Unmarshal(safeArtifact.Body.Bytes(), &safeArtifactBody); err != nil {
-		panic(err)
-	}
-	safeOperationID := stringField(safeArtifactBody, management.JSON.OperationID)
-	if safeOperationID != "" {
-		waitForOperation(operationStore, safeOperationID)
-	}
-	archiveGroup, err := store.GetGroup(ctx, "application-archive")
-	if err != nil {
-		panic(err)
-	}
-	var safeArtifactDetail *httptest.ResponseRecorder
-	if archiveGroup.CurrentRevisionID != nil {
-		safeArtifactDetail = perform(handler, http.MethodGet, management.Paths.GroupByID+"application-archive"+management.Paths.GroupIDSeparator+management.Paths.GroupReleases+management.Paths.GroupIDSeparator+*archiveGroup.CurrentRevisionID, true)
-	}
-	var safeArtifactDetailBody struct {
-		ArtifactDigest *string `json:"artifactDigest"`
-		Frontends      []struct {
-			ID     string `json:"id"`
-			Digest string `json:"digest"`
-			Files  int    `json:"files"`
-		} `json:"frontends"`
-	}
-	if safeArtifactDetail != nil {
-		if err := json.Unmarshal(safeArtifactDetail.Body.Bytes(), &safeArtifactDetailBody); err != nil {
-			panic(err)
-		}
-	}
-
 	var groupList struct {
 		Items     []groupView `json:"items"`
 		RequestID string      `json:"requestId"`
@@ -256,7 +239,7 @@ func main() {
 	}
 	var publishRetryBody, idempotencyConflictBody, invalidCaddyfileBody, staleRevisionBody, unsafeArtifactBody map[string]any
 	for response, destination := range map[*httptest.ResponseRecorder]*map[string]any{
-		publishRetry: &publishRetryBody, idempotencyConflict: &idempotencyConflictBody,
+		publishRetry:     &publishRetryBody,
 		invalidCaddyfile: &invalidCaddyfileBody, staleRevision: &staleRevisionBody, unsafeArtifact: &unsafeArtifactBody,
 	} {
 		if err := json.Unmarshal(response.Body.Bytes(), destination); err != nil {
@@ -275,6 +258,83 @@ func main() {
 	operationID, _ := publishBody[management.JSON.OperationID].(string)
 	if operationID != "" {
 		waitForOperation(operationStore, operationID)
+	}
+	pointersAfterPublish, err := store.GetPointers(ctx, "application-a")
+	if err != nil {
+		panic(err)
+	}
+	idempotencyConflict := performMultipartWith(handler, "publish-key-00001", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "example.test {\n  respond 201\n}\n")
+	if err := json.Unmarshal(idempotencyConflict.Body.Bytes(), &idempotencyConflictBody); err != nil {
+		panic(err)
+	}
+	pointersAfterConflict, err := store.GetPointers(ctx, "application-a")
+	if err != nil {
+		panic(err)
+	}
+	activationCountAfterPublish := activator.Count()
+	failingActivator := &fixtureFailingActivator{snapshot: []byte("old-snapshot")}
+	failingReleaseService := &application.GroupReleaseService{
+		Store: store, Releases: releaseStore,
+		ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
+		Artifacts:     releaseArtifacts, Activator: failingActivator, Policy: releasePolicy,
+	}
+	failingServer := &api.Server{
+		Token: "fixture-management-token", Management: management, Errors: errorCatalog, AuditWords: auditWords,
+		Operations:    application.OperationService{Store: operationStore},
+		GroupReleases: failingReleaseService, GroupReleasePolicy: releasePolicy,
+	}
+	activationFailure := performMultipartWith(failingServer.Handler(), "activation-failure-key-0001", *pointersAfterConflict.CurrentRevisionID, "example.test {\n  respond 200\n}\n")
+	var activationFailureBody map[string]any
+	if err := json.Unmarshal(activationFailure.Body.Bytes(), &activationFailureBody); err != nil {
+		panic(err)
+	}
+	activationFailureOperationID := stringField(activationFailureBody, management.JSON.OperationID)
+	if activationFailureOperationID == "" {
+		panic(activationFailure.Body.String())
+	}
+	if activationFailureOperationID != "" {
+		waitForOperation(operationStore, activationFailureOperationID)
+	}
+	failedOperation, err := operationStore.Get(ctx, activationFailureOperationID)
+	if err != nil {
+		panic(err)
+	}
+	pointersAfterActivationFailure, err := store.GetPointers(ctx, "application-a")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := store.CreateApplicationGroup(ctx, "application-archive", models.AuditRecord{Actor: "fixture", Action: "group.create", Resource: "groups", Result: "succeeded", RequestID: "archive-group-create"}); err != nil {
+		panic(err)
+	}
+	safeArtifact := performMultipartForGroup(handler, "application-archive", "safe-archive-key-00001", "", "archive.example.test {\n  respond 200\n}\n", archive("frontends/ui/index.html"))
+	var safeArtifactBody map[string]any
+	if err := json.Unmarshal(safeArtifact.Body.Bytes(), &safeArtifactBody); err != nil {
+		panic(err)
+	}
+	safeOperationID := stringField(safeArtifactBody, management.JSON.OperationID)
+	if safeOperationID != "" {
+		waitForOperation(operationStore, safeOperationID)
+	}
+	archiveGroup, err := store.GetGroup(ctx, "application-archive")
+	if err != nil {
+		panic(err)
+	}
+	var safeArtifactDetail *httptest.ResponseRecorder
+	if archiveGroup.CurrentRevisionID != nil {
+		safeArtifactDetail = perform(handler, http.MethodGet, management.Paths.GroupByID+"application-archive"+management.Paths.GroupIDSeparator+management.Paths.GroupReleases+management.Paths.GroupIDSeparator+*archiveGroup.CurrentRevisionID, true)
+	}
+	var safeArtifactDetailBody struct {
+		ArtifactDigest *string `json:"artifactDigest"`
+		Frontends      []struct {
+			ID     string `json:"id"`
+			Digest string `json:"digest"`
+			Files  int    `json:"files"`
+		} `json:"frontends"`
+	}
+	if safeArtifactDetail != nil {
+		if err := json.Unmarshal(safeArtifactDetail.Body.Bytes(), &safeArtifactDetailBody); err != nil {
+			panic(err)
+		}
 	}
 	if err := database.Close(); err != nil {
 		panic(err)
@@ -319,7 +379,7 @@ func main() {
 		GroupReleases: &application.GroupReleaseService{
 			Store: reopenedGroupStore, Releases: reopenedReleaseStore,
 			ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
-			Artifacts:     reopenedArtifacts, Activator: fixtureActivator{}, Policy: reopenedReleasePolicy,
+			Artifacts:     reopenedArtifacts, Activator: &fixtureActivator{}, Policy: reopenedReleasePolicy,
 		},
 		GroupReleasePolicy: reopenedReleasePolicy,
 	}
@@ -387,12 +447,23 @@ func main() {
 		PublishStatus:       publish.Code,
 		Publish:             publishBody,
 		PublishRetryStatus:  publishRetry.Code, PublishRetry: publishRetryBody,
-		OperationAfterReopenStatus: operationAfterReopen.Code, OperationAfterReopen: operationAfterReopenBody,
+		ActivationCountAfterPublish:     activationCountAfterPublish,
+		CurrentAfterPublish:             pointersAfterPublish.CurrentRevisionID,
+		CurrentAfterConflict:            pointersAfterConflict.CurrentRevisionID,
+		ActivationFailureStatus:         activationFailure.Code,
+		ActivationFailureOperationState: failedOperation.State,
+		CurrentBeforeActivationFailure:  pointersAfterConflict.CurrentRevisionID,
+		CurrentAfterActivationFailure:   pointersAfterActivationFailure.CurrentRevisionID,
+		PreviousBeforeActivationFailure: pointersAfterConflict.PreviousRevisionID,
+		PreviousAfterActivationFailure:  pointersAfterActivationFailure.PreviousRevisionID,
+		RuntimeAfterActivationFailure:   string(failingActivator.snapshot),
+		OperationAfterReopenStatus:      operationAfterReopen.Code, OperationAfterReopen: operationAfterReopenBody,
 		GroupAfterReopenStatus: groupAfterReopen.Code, CurrentAfterReopen: groupAfterReopenBody.CurrentRevision,
 		IdempotencyConflictStatus: idempotencyConflict.Code, IdempotencyConflictCode: stringField(idempotencyConflictBody, "code"),
 		InvalidCaddyfileStatus: invalidCaddyfile.Code, InvalidCaddyfileCode: stringField(invalidCaddyfileBody, "code"),
 		PointersAfterInvalid: pointersAfterInvalidBody.CurrentRevision,
 		StaleRevisionStatus:  staleRevision.Code, StaleRevisionCode: stringField(staleRevisionBody, "code"),
+		CurrentBeforeStale:   pointersBeforeStale.CurrentRevisionID,
 		PointersAfterStale:   pointersAfterStaleBody.CurrentRevision,
 		UnsafeArtifactStatus: unsafeArtifact.Code, UnsafeArtifactCode: stringField(unsafeArtifactBody, "code"),
 		SafeArtifactStatus:       safeArtifact.Code,
@@ -554,14 +625,30 @@ func archive(path string) []byte {
 	return compressed.Bytes()
 }
 
-type fixtureActivator struct{}
+type fixtureActivator struct{ activations atomic.Int64 }
 
-func (fixtureActivator) Validate(_ context.Context, source []byte) error {
+func (*fixtureActivator) Validate(_ context.Context, source []byte) error {
 	_, _, err := caddy.AdaptCaddyfile(source)
 	return err
 }
 
-func (fixtureActivator) Activate(context.Context, []byte) error { return nil }
+func (activator *fixtureActivator) Activate(_ context.Context, snapshot []byte) error {
+	activator.activations.Add(1)
+	return nil
+}
+
+func (activator *fixtureActivator) Count() int64 { return activator.activations.Load() }
+
+type fixtureFailingActivator struct{ snapshot []byte }
+
+func (*fixtureFailingActivator) Validate(_ context.Context, source []byte) error {
+	_, _, err := caddy.AdaptCaddyfile(source)
+	return err
+}
+
+func (*fixtureFailingActivator) Activate(context.Context, []byte) error {
+	return errors.New("activation rejected")
+}
 
 func waitForOperation(store *storage.SQLiteOperationStore, id string) {
 	deadline := time.Now().Add(5 * time.Second)

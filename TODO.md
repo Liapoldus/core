@@ -218,9 +218,12 @@
   SQLite-порт чтения/создания checkpoint metadata. Сейчас embedded Admin API
   отключён, публичный `caddy.ActiveContext` не отдаёт полный effective config,
   external runtime не читает `/config/`, а таблица `caddy_checkpoints` не имеет
-  production repository. Не возвращать фиктивные `drift: false`, digest или
-  checkpoint ID; до закрытия этих prerequisites endpoint и mutation proxy
-  остаются заблокированы.
+  production repository. Обнаружено расхождение: текущий `GET /api/status`
+  безусловно выдаёт `drift: false`, хотя фактический runtime drift пока нельзя
+  вычислить; до реализации trust boundary нужно убрать это ложное утверждение
+  согласованным способом обновления API-контракта. Не возвращать фиктивные
+  `drift: false`, digest или checkpoint ID; до закрытия prerequisites
+  `/api/caddy-state` и mutation proxy остаются заблокированы.
 - [ ] Не обещать обратную генерацию Caddyfile из произвольного native Caddy JSON.
 
 ## Plugins, TLS и Constructor boundary
@@ -310,10 +313,15 @@
   изменений и успешный matching `CALL`. Временные plugin clients закрываются
   через Caddy `CleanerUpper`. External `Validate` пока только готовит Caddyfile,
   а external plugin dispatch snapshot/readiness barrier ещё не подключены.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас тринадцать vectors
-  реально исполняются (bootstrap rejection, Management authentication и одиннадцать
-  archive cases); прочие vectors пока проверяются только структурно либо
-  требуют отдельного production slice.
+- [ ] Расширять исполняемые golden-vector conformance: сейчас семнадцать из
+  двадцати одного vector исполняются через интеграционные фикстуры: bootstrap
+  rejection, Management authentication, одиннадцать archive cases и три group
+  publish cases (idempotency/single activation, idempotency-key conflict без
+  смены revision и stale-CAS без смены pointer), а также activation failure
+  (operation помечается failed, current/previous pointers и runtime остаются
+  прежними). Четыре оставшихся вектора требуют соответствующих production
+  slices: Admin checkpoint/drift, remote-plugin no-downgrade и one-time
+  credential reveal.
 - [x] Исправить release workflow: пакетирование проверяет точный состав payload
   по `manifest.json`, SHA-256 каждого файла, отсутствие неописанных файлов и
   корректность путей вместо неподходящего фиксированного количества файлов.
