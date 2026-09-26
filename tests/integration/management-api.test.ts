@@ -21,6 +21,16 @@ describe("Management API v1", () => {
     expect(errors).toContain("details contain no secret values");
   });
 
+  it("defines the approved instance/capability cookie-policy API and CAS semantics", () => {
+    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
+    expect(contract).toContain("pluginCookiePolicies:");
+    expect(contract).toContain("cookiePoliciesSuffix: /cookie-policies/");
+    expect(contract).toContain("put: PUT");
+    expect(contract).toContain("ifMatch: If-Match");
+    expect(contract).toContain("allowedNames");
+    expect(contract).toContain("plugin.cookie_policy.replace");
+  });
+
   it("does not expose the retired Gateway config-DSL API", () => {
     const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
     expect(source).not.toContain("case path == server.Management.Paths.Config");
