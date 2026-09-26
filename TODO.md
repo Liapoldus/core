@@ -224,8 +224,10 @@
   embedded и external вариантов, canonical digest для обоих вариантов и
   SQLite-порт чтения/создания checkpoint metadata. Сейчас embedded Admin API
   отключён, публичный `caddy.ActiveContext` не отдаёт полный effective config,
-  external runtime не читает `/config/`, а таблица `caddy_checkpoints` не имеет
-  production repository. Обнаружено расхождение: текущий `GET /api/status`
+  external runtime обращается к Admin `/config/` только как readiness probe и
+  отбрасывает body, не инспектируя и не сравнивая effective config; таблица
+  `caddy_checkpoints` не имеет production repository. Обнаружено расхождение:
+  текущий `GET /api/status`
   безусловно выдаёт `drift: false`, хотя фактический runtime drift пока нельзя
   вычислить; до реализации trust boundary нужно убрать это ложное утверждение
   согласованным способом обновления API-контракта. Не возвращать фиктивные
