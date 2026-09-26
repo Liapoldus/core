@@ -10,17 +10,23 @@ const coreRoot = join(import.meta.dirname, "../..");
 
 interface ArchiveTraversalVector {
   id: string;
-  input: { entry: string };
+  input: { entry?: string; entries?: Array<{ name: string; content: string }>; corruptGzip?: boolean };
   expected: { accepted: boolean; code: string; activeRevisionChanged: boolean };
 }
 
 describe("Gateway archive golden-vector conformance", () => {
-  it("executes the traversal vector against the group-release Management API", async () => {
+  it.each([
+    "archive-traversal",
+    "archive-gzip-integrity",
+    "archive-duplicate-path",
+    "archive-case-collision",
+    "archive-nfc-normalization",
+  ])("executes %s against the group-release Management API", async (vectorID) => {
     const document = JSON.parse(
       await readFile(join(coreRoot, "contracts/v1/golden-vectors.json"), "utf8"),
     ) as { vectors: ArchiveTraversalVector[] };
-    const vector = document.vectors.find((candidate) => candidate.id === "archive-traversal");
-    expect(vector, "archive traversal vector").toBeDefined();
+    const vector = document.vectors.find((candidate) => candidate.id === vectorID);
+    expect(vector, `${vectorID} vector`).toBeDefined();
 
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-golden-archive-vector-"));
     try {
