@@ -29,6 +29,7 @@ type options struct {
 
 type RuntimeBindings struct {
 	StartEmbeddedCaddy    func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
+	ReplaceEmbeddedCaddy  func(CaddyRuntime, []byte, []PluginDispatchBinding) error
 	StartExternalCaddy    func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)
 	ValidateEmbeddedCaddy func([]byte, []PluginDispatchBinding) error
 	ValidateExternalCaddy func(binary string, source []byte) error
@@ -42,6 +43,7 @@ type PluginDispatchBinding struct {
 	Timeout            time.Duration
 	StartTimeout       time.Duration
 	MaxConcurrentCalls int
+	CookiePolicies     []json.RawMessage
 }
 
 type CaddyRuntime interface {

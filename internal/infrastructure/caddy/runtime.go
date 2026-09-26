@@ -23,6 +23,7 @@ type buildContract struct {
 type Runtime struct {
 	active  bool
 	plugins []PluginInstance
+	source  []byte
 }
 
 var processRuntime = struct {
@@ -56,12 +57,21 @@ func startCaddyfile(source []byte, instances []PluginInstance) (*Runtime, []cadd
 	if err := caddycore.Load(configuration, true); err != nil {
 		return nil, nil, err
 	}
-	runtime := &Runtime{active: true, plugins: append([]PluginInstance(nil), instances...)}
+	runtime := &Runtime{active: true, plugins: append([]PluginInstance(nil), instances...), source: append([]byte(nil), source...)}
 	processRuntime.active = runtime
 	return runtime, warnings, nil
 }
 
 func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, error) {
+	return runtime.replaceCaddyfile(source, nil, false)
+}
+
+func (runtime *Runtime) ReplaceCaddyfileWithPlugins(source []byte, instances []PluginInstance) error {
+	_, err := runtime.replaceCaddyfile(source, instances, true)
+	return err
+}
+
+func (runtime *Runtime) replaceCaddyfile(source []byte, instances []PluginInstance, replacePlugins bool) ([]caddyconfig.Warning, error) {
 	processRuntime.Lock()
 	defer processRuntime.Unlock()
 	if runtime == nil || processRuntime.active != runtime || !runtime.active {
@@ -72,13 +82,21 @@ func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, 
 		return nil, errors.New(contract.Diagnostics.RuntimeNotActive)
 	}
 
-	configuration, warnings, err := adaptCaddyfile(source, runtime.plugins)
+	instancesForSnapshot := runtime.plugins
+	if replacePlugins {
+		instancesForSnapshot = instances
+	}
+	configuration, warnings, err := adaptCaddyfile(source, instancesForSnapshot)
 	if err != nil {
 		return nil, err
 	}
 	if err := caddycore.Load(configuration, true); err != nil {
 		return nil, err
 	}
+	if replacePlugins {
+		runtime.plugins = append([]PluginInstance(nil), instances...)
+	}
+	runtime.source = append([]byte(nil), source...)
 	return warnings, nil
 }
 
@@ -122,6 +140,18 @@ func ValidateCaddyfileWithPlugins(source []byte, instances []PluginInstance) err
 		return err
 	}
 	return caddycore.Validate(&adapted)
+}
+
+func ReplaceCaddyfileWithPlugins(runtime any, source []byte, instances []PluginInstance) error {
+	active, ok := runtime.(*Runtime)
+	if !ok {
+		contract, err := loadBuildContract()
+		if err != nil {
+			return err
+		}
+		return errors.New(contract.Diagnostics.RuntimeNotActive)
+	}
+	return active.ReplaceCaddyfileWithPlugins(source, instances)
 }
 
 func adaptCaddyfile(source []byte, instances []PluginInstance) ([]byte, []caddyconfig.Warning, error) {

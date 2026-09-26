@@ -4,8 +4,10 @@ audit:
     staticToken: static-token
   actions:
     groupCreate: group.create
+    pluginCookiePolicyReplace: plugin.cookie_policy.replace
   resources:
     groups: groups
+    pluginCookiePolicies: plugin-cookie-policies
   results:
     succeeded: succeeded
     failed: failed

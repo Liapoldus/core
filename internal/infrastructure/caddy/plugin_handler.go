@@ -135,7 +135,7 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 				app.closeBindings()
 				return errors.New(contract.Diagnostics.InvalidCookiePolicy)
 			}
-			if _, supported := modes[policy.Capability]; !supported {
+			if !supportsCookiePolicy(invocationModes[policy.Capability]) {
 				_ = client.Close()
 				app.closeBindings()
 				return errors.New(contract.Diagnostics.InvalidCookiePolicy)
@@ -156,6 +156,19 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 		app.bindings[instance.Name] = pluginBinding{client: capabilityClient, conn: client, modes: modes, invocationModes: invocationModes, cookies: cookiePolicies, timeout: instance.Timeout}
 	}
 	return nil
+}
+
+func supportsCookiePolicy(modes map[pluginv1.InvocationMode]struct{}) bool {
+	for mode := range modes {
+		switch mode {
+		case pluginv1.InvocationMode_INVOCATION_MODE_CALL,
+			pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM,
+			pluginv1.InvocationMode_INVOCATION_MODE_WEBSOCKET,
+			pluginv1.InvocationMode_INVOCATION_MODE_SSE:
+			return true
+		}
+	}
+	return false
 }
 
 func (app *dispatchApp) Start() error { return nil }

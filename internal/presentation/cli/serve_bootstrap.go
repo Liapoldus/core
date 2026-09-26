@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"syscall"
 
 	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
@@ -175,6 +177,16 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable
 	}
+	cookiePolicyStore, err := storage.NewSQLitePluginCookiePolicyStore(database)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	configuredCookiePolicies, err := cookiePolicyStore.List(context.Background())
+	if err != nil {
+		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Unavailable
+	}
 	pluginInventory, err := presentPluginInventory(pluginRecords, pluginInventoryContract)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -241,6 +253,21 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 			MaxConcurrentCalls: binding.MaxConcurrentCalls,
 		})
 	}
+	for _, policy := range configuredCookiePolicies {
+		encoded, encodeErr := json.Marshal(plugins.CookiePolicy{
+			Version: managementWords.CookiePolicy.Version, InstanceID: policy.InstanceID,
+			Capability: policy.Capability, AllowedNames: policy.AllowedNames,
+		})
+		if encodeErr != nil {
+			writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+			return words.Exits.Internal
+		}
+		for index := range pluginBindings {
+			if pluginBindings[index].Name == policy.InstanceID {
+				pluginBindings[index].CookiePolicies = append(pluginBindings[index].CookiePolicies, encoded)
+			}
+		}
+	}
 	auditWords, err := config.LoadAudit()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -281,8 +308,9 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		GroupService: application.GroupService{
 			Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
 		},
-		Operations:    application.OperationService{Store: operationStore},
-		GroupReleases: groupReleaseService,
+		Operations:     application.OperationService{Store: operationStore},
+		GroupReleases:  groupReleaseService,
+		CookiePolicies: cookiePolicyManagementService(bootstrap, cookiePolicyStore, caddyRuntime, auditWords, managementWords),
 		Audit: &application.AuditService{
 			Store: auditStore, RetentionDays: auditWords.Audit.RetentionDays,
 			MinimumLimit: managementWords.Pagination.LimitMin, DefaultLimit: managementWords.Pagination.LimitDefault,
@@ -302,6 +330,9 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		DataPlaneReadiness: func(requestContext context.Context) (string, string) {
 			lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
 			if deferred && !lazy.Active() {
+				if readiness == managementWords.Statuses.Ready {
+					return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable
+				}
 				return readiness, reason
 			}
 			if readiness != managementWords.Statuses.Ready {
@@ -326,6 +357,24 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return words.Exits.Unavailable
 	}
 	return words.Exits.OK
+}
+
+func cookiePolicyManagementService(bootstrap config.BootstrapConfig, store interfaces.PluginCookiePolicyStore, runtime CaddyRuntime, audit config.AuditWords, management config.ManagementWords) *application.PluginCookiePolicyService {
+	if store == nil {
+		return nil
+	}
+	var activator interfaces.PluginCookiePolicyActivator
+	if bootstrap.CaddyVariant == bootstrap.CaddyEmbeddedVariant {
+		activator, _ = runtime.(interfaces.PluginCookiePolicyActivator)
+	}
+	return &application.PluginCookiePolicyService{
+		Store: store, Activator: activator,
+		AuditAction:      audit.Audit.Actions.PluginCookiePolicyReplace,
+		Resource:         audit.Audit.Resources.PluginCookiePolicies,
+		Success:          audit.Audit.Results.Succeeded,
+		Invalid:          management.Codes.InvalidCookiePolicy,
+		RevisionConflict: management.Codes.CookiePolicyRevisionConflict,
+	}
 }
 
 func presentPluginInventory(records []storage.PluginInstanceRecord, contract config.PluginInventoryContract) ([]any, error) {
@@ -412,7 +461,7 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	if pointers.CurrentRevisionID == nil {
-		activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable)
+		activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
 		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, activator.Stop, activator
 	}
 	revision, err := store.GetRevision(context.Background(), sqliteContract.SystemGroupID, *pointers.CurrentRevisionID)
@@ -445,11 +494,12 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	if bootstrap.CaddyVariant != bootstrap.CaddyEmbeddedVariant && bootstrap.CaddyVariant != bootstrap.CaddyExternalVariant {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable)
+	activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, pluginInstancesConfigured, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
 	return managementWords.Statuses.Ready, "", activator.Stop, activator
 }
 
-func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, pluginInstancesConfigured bool, unavailable string) *lazyCaddyActivator {
+func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, pluginInstancesConfigured bool, unavailable string, policyVersion int) *lazyCaddyActivator {
+	var activator *lazyCaddyActivator
 	validate := func(source []byte) error {
 		switch bootstrap.CaddyVariant {
 		case bootstrap.CaddyEmbeddedVariant:
@@ -472,7 +522,7 @@ func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings R
 			if runtimeBindings.StartEmbeddedCaddy == nil {
 				return nil, errors.New(unavailable)
 			}
-			return runtimeBindings.StartEmbeddedCaddy(source, pluginBindings)
+			return runtimeBindings.StartEmbeddedCaddy(source, activator.bindings)
 		case bootstrap.CaddyExternalVariant:
 			if pluginInstancesConfigured || bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
 				return nil, errors.New(unavailable)
@@ -482,7 +532,8 @@ func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings R
 			return nil, errors.New(unavailable)
 		}
 	}
-	return newLazyCaddyActivator(validate, start, unavailable)
+	activator = newLazyCaddyActivator(validate, start, unavailable, pluginBindings, runtimeBindings.ReplaceEmbeddedCaddy, policyVersion)
+	return activator
 }
 
 func withinDirectory(root, path string) bool {

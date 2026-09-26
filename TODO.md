@@ -143,7 +143,8 @@
   instance/capability и `GET`/`PUT` Management API с ETag/If-Match CAS и audit;
   `PUT` активирует candidate dispatch generation до SQLite commit и восстанавливает
   прежнее поколение при сбое. External Caddy остаётся недоступен для такой
-  mutation до dispatch snapshot sync. Реализация и production E2E не начаты.
+  mutation до dispatch snapshot sync. Реализация частичная; production
+  child-process E2E остаётся открытым.
 - [ ] Добавить TS red/green coverage до расширения целевого data/control-plane:
   multipart group publish/rollback, Caddy adapt/load and atomic snapshot,
   external Caddy process, plugin replica readiness/DispatchApply, Admin API
@@ -278,14 +279,19 @@
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;
   unary timeout не использовать для долгоживущих streams.
-- [ ] Реализовать Gateway-owned cookie policy как отдельные SQLite записи для
-  instance/capability; `GET` возвращает policy revision/ETag, `PUT` требует
-  `If-Match`, проверяет capability и audit-ит без cookie values. До durable CAS
-  Caddy атомарно активирует полный candidate dispatch generation; ошибка
-  storage восстанавливает предыдущее поколение. External Caddy отвечает
-  unavailable до реализации private snapshot synchronization. Добавить TS
-  Management API + real serve/Caddy/plugin E2E для фильтрации входящих cookie,
-  ordinary/HttpOnly response actions, CAS conflict, audit atomicity и rollback.
+- [ ] Cookie-policy slice реализован частично: SQLite schema v3, per-instance/
+  capability CAS-store с audit в той же транзакции, Management `GET`/`PUT`,
+  ETag/If-Match, schema validation и embedded-Caddy dispatch generation
+  activation с rollback при storage failure. Stream-only HTTP capabilities
+  принимаются, TCP/UDP-only capabilities отвергаются. External Caddy намеренно
+  отвечает unavailable до private snapshot synchronization. API пока нельзя
+  полноценно использовать на чистой установке: production CRUD/registration
+  plugin instances ещё не подключён, а тестовая API fixture создаёт instance
+  напрямую в SQLite. До v1 подключить generic plugin-instance management и
+  проверить весь путь без прямой подготовки БД. Остаются production child-process
+  conformance для request-cookie filtering, ordinary/HttpOnly response actions,
+  startup restore, rollback-failure fencing и activation/group-release
+  concurrency.
 
 - Caddy handler валидирует capability invocation modes `call`, `http-stream`,
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,

@@ -23,6 +23,9 @@
     {"code":"management_unavailable","status":503,"title":"Management API недоступен","detail":"Не удалось выполнить операцию с постоянным состоянием Management API."},
     {"code":"forbidden","status":403,"title":"Доступ запрещён","detail":"Для операции требуется platform-admin."},
     {"code":"plugin_unavailable","status":503,"title":"Плагин недоступен","detail":"Подключённый plugin instance не отвечает."},
+    {"code":"cookie_policy_revision_conflict","status":412,"title":"Версия cookie policy устарела","detail":"If-Match не соответствует текущей ревизии; policy и runtime не изменены."},
+    {"code":"cookie_policy_precondition_required","status":428,"title":"Требуется If-Match","detail":"Для изменения cookie policy передайте текущий сильный ETag в If-Match."},
+    {"code":"invalid_cookie_policy","status":400,"title":"Некорректная cookie policy","detail":"Policy содержит недопустимые или повторяющиеся имена cookie."},
     {"code":"plugin_tls_rejected","status":502,"title":"TLS плагина отклонён","detail":"Plugin peer не прошёл проверку TLS identity."},
     {"code":"resource_exhausted","status":503,"title":"Исчерпан ресурс","detail":"Операция превышает доступную concurrency или storage quota."}
   ],

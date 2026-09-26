@@ -3,6 +3,8 @@ paths:
   status: /api/status
   plugins: /api/plugins
   adminSurfaces: /api/plugins/admin-surfaces
+  pluginCookiePolicies: /api/plugins
+  cookiePoliciesSuffix: /cookie-policies/
   adminPages: admin/pages
   restart: restart
   operations: /api/operations
@@ -13,9 +15,15 @@ paths:
   groupRollback: rollback
   groupIDSeparator: "/"
   groupIDPattern: '^[a-z][a-z0-9-]{0,62}$'
+cookiePolicy:
+  version: 1
+  maximumBodyBytes: 65536
+auditActions:
+  pluginCookiePolicyReplace: plugin.cookie_policy.replace
 methods:
   get: GET
   post: POST
+  put: PUT
 json:
   requestId: requestId
   operationId: operationId
@@ -75,8 +83,13 @@ json:
   compositionDigest: compositionDigest
   dataPlaneReadiness: dataPlaneReadiness
   reason: reason
+  instanceId: instanceId
+  capability: capability
+  allowedNames: allowedNames
+  revision: revision
 headers:
   ifMatch: If-Match
+  etag: ETag
   requestId: X-Request-ID
   location: Location
   retryAfter: Retry-After
@@ -123,5 +136,10 @@ codes:
   groupAlreadyExists: group_already_exists
   invalidRequest: invalid_request
   operationNotFound: not_found
+  cookiePolicyNotFound: not_found
+  cookiePolicyRevisionConflict: cookie_policy_revision_conflict
+  cookiePolicyPreconditionRequired: cookie_policy_precondition_required
+  cookiePolicyUnavailable: management_unavailable
+  invalidCookiePolicy: invalid_cookie_policy
 diagnostics:
   operationNotFound: The requested operation does not exist.

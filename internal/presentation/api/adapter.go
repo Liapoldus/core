@@ -39,6 +39,7 @@ type Server struct {
 	Audit                    *application.AuditService
 	GroupService             application.GroupService
 	GroupReleases            *application.GroupReleaseService
+	CookiePolicies           *application.PluginCookiePolicyService
 	GroupReleasePolicy       models.GroupReleasePolicy
 	AccessService            *application.AccessService
 	CaddyVariant             string
@@ -148,6 +149,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
 		server.handleGroupCreate(response, request, requestID, actor)
+	case server.isPluginCookiePolicyPath(path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put):
+		server.handlePluginCookiePolicy(response, request, path, requestID, actor)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post:
 		server.handleGroupPublish(response, request, path, requestID, actor)
 	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
@@ -259,6 +262,142 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		writeJSON(response, http.StatusOK, result)
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
+	}
+}
+
+type pluginCookiePolicyInput struct {
+	AllowedNames []string `json:"allowedNames"`
+}
+
+func (server *Server) isPluginCookiePolicyPath(path string) bool {
+	separator := server.Management.Paths.GroupIDSeparator
+	if separator == "" || server.Management.Paths.PluginCookiePolicies == "" || server.Management.Paths.CookiePoliciesSuffix == "" {
+		return false
+	}
+	prefix := strings.TrimSuffix(server.Management.Paths.PluginCookiePolicies, separator) + separator
+	rest := strings.TrimPrefix(path, prefix)
+	if rest == path {
+		return false
+	}
+	suffix := server.Management.Paths.CookiePoliciesSuffix
+	index := strings.Index(rest, suffix)
+	if index <= 0 || !strings.HasPrefix(rest[index:], suffix) {
+		return false
+	}
+	capability := rest[index+len(suffix):]
+	return capability != "" && !strings.Contains(capability, separator) && !strings.Contains(rest[:index], separator)
+}
+
+func (server *Server) handlePluginCookiePolicy(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+	if server.CookiePolicies == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
+		return
+	}
+	instanceID, capability, ok := server.pluginCookiePolicyResource(path)
+	if !ok {
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyNotFound, requestID)
+		return
+	}
+	if request.Method == server.Management.Methods.Get {
+		policy, err := server.CookiePolicies.Get(request.Context(), instanceID, capability)
+		if err != nil {
+			server.writeCookiePolicyFailure(response, err, requestID)
+			return
+		}
+		response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(policy.Revision))
+		writeJSON(response, http.StatusOK, policy)
+		return
+	}
+	rawETag := request.Header.Get(server.Management.Headers.IfMatch)
+	if rawETag == "" {
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyPreconditionRequired, requestID)
+		return
+	}
+	expected, valid := parseCookiePolicyETag(rawETag)
+	if !valid {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, server.Management.CookiePolicy.MaximumBodyBytes))
+	decoder.DisallowUnknownFields()
+	var input pluginCookiePolicyInput
+	if err := decoder.Decode(&input); err != nil || input.AllowedNames == nil || decoder.Decode(&struct{}{}) != io.EOF {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
+		return
+	}
+	policy := plugins.CookiePolicy{
+		Version: server.Management.CookiePolicy.Version, InstanceID: instanceID,
+		Capability: capability, AllowedNames: input.AllowedNames,
+	}
+	encoded, err := json.Marshal(policy)
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	validated, err := plugins.DecodeCookiePolicy(encoded)
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
+		return
+	}
+	result, err := server.CookiePolicies.Replace(request.Context(), expected, models.PluginCookiePolicy{
+		InstanceID: validated.InstanceID, Capability: validated.Capability, AllowedNames: validated.AllowedNames,
+	}, actor, requestID)
+	if err != nil {
+		server.writeCookiePolicyFailure(response, err, requestID)
+		return
+	}
+	response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(result.Revision))
+	writeJSON(response, http.StatusOK, result)
+}
+
+func (server *Server) pluginCookiePolicyResource(path string) (string, string, bool) {
+	separator := server.Management.Paths.GroupIDSeparator
+	prefix := strings.TrimSuffix(server.Management.Paths.PluginCookiePolicies, separator) + separator
+	rest := strings.TrimPrefix(path, prefix)
+	if rest == path {
+		return "", "", false
+	}
+	suffix := server.Management.Paths.CookiePoliciesSuffix
+	index := strings.Index(rest, suffix)
+	if index <= 0 || !strings.HasPrefix(rest[index:], suffix) {
+		return "", "", false
+	}
+	instanceID, capability := rest[:index], rest[index+len(suffix):]
+	if capability == "" || strings.Contains(capability, separator) || strings.Contains(instanceID, separator) {
+		return "", "", false
+	}
+	return instanceID, capability, true
+}
+
+func cookiePolicyETag(revision int64) string {
+	return strconv.Quote(strconv.FormatInt(revision, 10))
+}
+
+func parseCookiePolicyETag(value string) (int64, bool) {
+	decoded, err := strconv.Unquote(value)
+	if err != nil || decoded == "" {
+		return 0, false
+	}
+	revision, err := strconv.ParseInt(decoded, 10, 64)
+	return revision, err == nil && revision >= 0 && strconv.FormatInt(revision, 10) == decoded
+}
+
+func (server *Server) writeCookiePolicyFailure(response http.ResponseWriter, err error, requestID string) {
+	var notFound models.PluginCookiePolicyNotFound
+	var conflict models.PluginCookiePolicyRevisionConflict
+	var invalid models.PluginCookiePolicyValidationError
+	var unavailable models.PluginCookiePolicyUnavailable
+	switch {
+	case errors.As(err, &notFound):
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyNotFound, requestID)
+	case errors.As(err, &conflict):
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyRevisionConflict, requestID)
+	case errors.As(err, &invalid):
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
+	case errors.As(err, &unavailable):
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
+	default:
+		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
 	}
 }
 

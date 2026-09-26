@@ -18,6 +18,9 @@ describe("Management API plugin cookie policy", () => {
         firstPutStatus: number;
         firstPutETag: string;
         stalePutStatus: number;
+        failedCommitStatus: number;
+        missingPreconditionStatus: number;
+        invalidPolicyStatus: number;
         getStatus: number;
         getETag: string;
         getRevision: number;
@@ -30,6 +33,9 @@ describe("Management API plugin cookie policy", () => {
       expect(result.firstPutStatus).toBe(200);
       expect(result.firstPutETag).toBe('"1"');
       expect(result.stalePutStatus).toBe(412);
+      expect(result.failedCommitStatus).toBe(503);
+      expect(result.missingPreconditionStatus).toBe(428);
+      expect(result.invalidPolicyStatus).toBe(400);
       expect(result.getStatus).toBe(200);
       expect(result.getETag).toBe('"1"');
       expect(result.getRevision).toBe(1);
@@ -37,6 +43,7 @@ describe("Management API plugin cookie policy", () => {
       expect(result.auditActions).toEqual(["plugin.cookie_policy.replace"]);
       expect(result.activationCount).toBe(1);
       expect(result.staleDidNotActivate).toBe(true);
+      expect(result.activationCount).toBe(1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

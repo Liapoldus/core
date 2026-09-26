@@ -112,42 +112,56 @@ func loadCLI() (CLIWords, error) {
 }
 
 type ManagementWords struct {
+	AuditActions struct {
+		PluginCookiePolicyReplace string `yaml:"pluginCookiePolicyReplace"`
+	} `yaml:"auditActions"`
+	CookiePolicy struct {
+		Version          int   `yaml:"version"`
+		MaximumBodyBytes int64 `yaml:"maximumBodyBytes"`
+	} `yaml:"cookiePolicy"`
 	Codes struct {
-		BearerRequired         string `yaml:"bearerRequired"`
-		ManagementUnavailable  string `yaml:"managementUnavailable"`
-		ManagementMTLSRequired string `yaml:"managementMTLSRequired"`
-		IdempotencyConflict    string `yaml:"idempotencyConflict"`
-		PluginUnavailable      string `yaml:"pluginUnavailable"`
-		GroupNotFound          string `yaml:"groupNotFound"`
-		GroupAlreadyExists     string `yaml:"groupAlreadyExists"`
-		InvalidRequest         string `yaml:"invalidRequest"`
-		OperationNotFound      string `yaml:"operationNotFound"`
+		BearerRequired                   string `yaml:"bearerRequired"`
+		ManagementUnavailable            string `yaml:"managementUnavailable"`
+		ManagementMTLSRequired           string `yaml:"managementMTLSRequired"`
+		IdempotencyConflict              string `yaml:"idempotencyConflict"`
+		PluginUnavailable                string `yaml:"pluginUnavailable"`
+		GroupNotFound                    string `yaml:"groupNotFound"`
+		GroupAlreadyExists               string `yaml:"groupAlreadyExists"`
+		InvalidRequest                   string `yaml:"invalidRequest"`
+		OperationNotFound                string `yaml:"operationNotFound"`
+		CookiePolicyNotFound             string `yaml:"cookiePolicyNotFound"`
+		CookiePolicyRevisionConflict     string `yaml:"cookiePolicyRevisionConflict"`
+		CookiePolicyPreconditionRequired string `yaml:"cookiePolicyPreconditionRequired"`
+		CookiePolicyUnavailable          string `yaml:"cookiePolicyUnavailable"`
+		InvalidCookiePolicy              string `yaml:"invalidCookiePolicy"`
 	} `yaml:"codes"`
 	Paths struct {
-		Healthz          string `yaml:"healthz"`
-		Status           string `yaml:"status"`
-		Config           string `yaml:"config"`
-		ConfigValidate   string `yaml:"configValidate"`
-		ConfigReload     string `yaml:"configReload"`
-		Reload           string `yaml:"reload"`
-		Listeners        string `yaml:"listeners"`
-		Upstreams        string `yaml:"upstreams"`
-		Plugins          string `yaml:"plugins"`
-		AdminSurfaces    string `yaml:"adminSurfaces"`
-		AdminPages       string `yaml:"adminPages"`
-		Restart          string `yaml:"restart"`
-		Logs             string `yaml:"logs"`
-		TLS              string `yaml:"tls"`
-		Renew            string `yaml:"renew"`
-		Revoke           string `yaml:"revoke"`
-		Operations       string `yaml:"operations"`
-		Audit            string `yaml:"audit"`
-		Groups           string `yaml:"groups"`
-		GroupByID        string `yaml:"groupByID"`
-		GroupReleases    string `yaml:"groupReleases"`
-		GroupRollback    string `yaml:"groupRollback"`
-		GroupIDSeparator string `yaml:"groupIDSeparator"`
-		GroupIDPattern   string `yaml:"groupIDPattern"`
+		Healthz              string `yaml:"healthz"`
+		Status               string `yaml:"status"`
+		Config               string `yaml:"config"`
+		ConfigValidate       string `yaml:"configValidate"`
+		ConfigReload         string `yaml:"configReload"`
+		Reload               string `yaml:"reload"`
+		Listeners            string `yaml:"listeners"`
+		Upstreams            string `yaml:"upstreams"`
+		Plugins              string `yaml:"plugins"`
+		AdminSurfaces        string `yaml:"adminSurfaces"`
+		PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
+		CookiePoliciesSuffix string `yaml:"cookiePoliciesSuffix"`
+		AdminPages           string `yaml:"adminPages"`
+		Restart              string `yaml:"restart"`
+		Logs                 string `yaml:"logs"`
+		TLS                  string `yaml:"tls"`
+		Renew                string `yaml:"renew"`
+		Revoke               string `yaml:"revoke"`
+		Operations           string `yaml:"operations"`
+		Audit                string `yaml:"audit"`
+		Groups               string `yaml:"groups"`
+		GroupByID            string `yaml:"groupByID"`
+		GroupReleases        string `yaml:"groupReleases"`
+		GroupRollback        string `yaml:"groupRollback"`
+		GroupIDSeparator     string `yaml:"groupIDSeparator"`
+		GroupIDPattern       string `yaml:"groupIDPattern"`
 	} `yaml:"paths"`
 	Methods struct {
 		Get    string `yaml:"get"`
@@ -162,7 +176,6 @@ type ManagementWords struct {
 		Items              string `yaml:"items"`
 		NextCursor         string `yaml:"nextCursor"`
 		YAML               string `yaml:"yaml"`
-		Revision           string `yaml:"revision"`
 		Digest             string `yaml:"digest"`
 		Valid              string `yaml:"valid"`
 		IdempotencyKey     string `yaml:"idempotencyKey"`
@@ -220,9 +233,14 @@ type ManagementWords struct {
 		CompositionDigest  string `yaml:"compositionDigest"`
 		DataPlaneReadiness string `yaml:"dataPlaneReadiness"`
 		Reason             string `yaml:"reason"`
+		InstanceID         string `yaml:"instanceId"`
+		Capability         string `yaml:"capability"`
+		AllowedNames       string `yaml:"allowedNames"`
+		Revision           string `yaml:"revision"`
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch    string `yaml:"ifMatch"`
+		ETag       string `yaml:"etag"`
 		RequestID  string `yaml:"requestId"`
 		Location   string `yaml:"location"`
 		RetryAfter string `yaml:"retryAfter"`
@@ -299,10 +317,12 @@ type AuditWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			GroupCreate string `yaml:"groupCreate"`
+			GroupCreate               string `yaml:"groupCreate"`
+			PluginCookiePolicyReplace string `yaml:"pluginCookiePolicyReplace"`
 		} `yaml:"actions"`
 		Resources struct {
-			Groups string `yaml:"groups"`
+			Groups               string `yaml:"groups"`
+			PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
 		} `yaml:"resources"`
 		Results struct {
 			Succeeded string `yaml:"succeeded"`

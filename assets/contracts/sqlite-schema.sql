@@ -72,6 +72,15 @@ CREATE TABLE IF NOT EXISTS plugin_launch_settings (
     launch_json BLOB NOT NULL CHECK (json_valid(launch_json))
 );
 
+CREATE TABLE IF NOT EXISTS plugin_cookie_policies (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
+    capability TEXT NOT NULL,
+    allowed_names_json BLOB NOT NULL CHECK (json_valid(allowed_names_json)),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (instance_id, capability)
+);
+
 CREATE TABLE IF NOT EXISTS service_keys (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -130,7 +139,7 @@ CREATE TABLE IF NOT EXISTS caddy_checkpoints (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
 
 INSERT OR IGNORE INTO groups(id, kind, active)
 VALUES ('system', 'system', 1);

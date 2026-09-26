@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 
 	caddyadapter "github.com/Liapoldus/core/internal/infrastructure/caddy"
@@ -19,6 +20,7 @@ func main() {
 					Name: binding.Name, Endpoint: binding.Endpoint,
 					Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
 					MaxConcurrentCalls: binding.MaxConcurrentCalls,
+					CookiePolicies:     append([]json.RawMessage(nil), binding.CookiePolicies...),
 				})
 			}
 			runtime, _, err := caddyadapter.StartCaddyfileWithPlugins(source, instances)
@@ -26,6 +28,18 @@ func main() {
 				return nil, err
 			}
 			return runtime, nil
+		},
+		ReplaceEmbeddedCaddy: func(current cli.CaddyRuntime, source []byte, bindings []cli.PluginDispatchBinding) error {
+			instances := make([]caddyadapter.PluginInstance, 0, len(bindings))
+			for _, binding := range bindings {
+				instances = append(instances, caddyadapter.PluginInstance{
+					Name: binding.Name, Endpoint: binding.Endpoint,
+					Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
+					MaxConcurrentCalls: binding.MaxConcurrentCalls,
+					CookiePolicies:     append([]json.RawMessage(nil), binding.CookiePolicies...),
+				})
+			}
+			return caddyadapter.ReplaceCaddyfileWithPlugins(current, source, instances)
 		},
 		StartExternalCaddy: func(binary, expectedBuildID, stateDirectory string, source []byte) (cli.CaddyRuntime, error) {
 			return caddyadapter.StartExternal(context.Background(), caddyadapter.ExternalOptions{
@@ -39,6 +53,7 @@ func main() {
 					Name: binding.Name, Endpoint: binding.Endpoint,
 					Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
 					MaxConcurrentCalls: binding.MaxConcurrentCalls,
+					CookiePolicies:     append([]json.RawMessage(nil), binding.CookiePolicies...),
 				})
 			}
 			return caddyadapter.ValidateCaddyfileWithPlugins(source, instances)

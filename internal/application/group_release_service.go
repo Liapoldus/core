@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
@@ -22,8 +21,6 @@ type GroupReleaseService struct {
 	Activator     interfaces.CaddySnapshotActivator
 	Policy        models.GroupReleasePolicy
 }
-
-var releaseActivationLock sync.Mutex
 
 func (service *GroupReleaseService) Accept(ctx context.Context, command models.GroupReleaseCommand) (models.Operation, bool, error) {
 	if service == nil {
@@ -179,8 +176,8 @@ func (service *GroupReleaseService) Rollback(ctx context.Context, command models
 
 func (service *GroupReleaseService) executeRollback(reservation models.GroupReleaseReservation, revision models.GroupRevision) {
 	ctx := context.Background()
-	releaseActivationLock.Lock()
-	defer releaseActivationLock.Unlock()
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
 	candidate, err := service.compose(ctx, reservation.GroupID, &revision)
 	if err == nil {
 		err = service.Activator.Activate(ctx, candidate)
@@ -232,8 +229,8 @@ func (service *GroupReleaseService) Recover(ctx context.Context) error {
 	if len(reservations) == 0 {
 		return nil
 	}
-	releaseActivationLock.Lock()
-	defer releaseActivationLock.Unlock()
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
 	for _, reservation := range reservations {
 		record := models.AuditRecord{
 			Timestamp: time.Now().UTC(), Actor: reservation.Actor, Action: service.auditAction(reservation.OperationKind),
@@ -263,8 +260,8 @@ func (service *GroupReleaseService) Recover(ctx context.Context) error {
 }
 
 func (service *GroupReleaseService) ActivateCurrent(ctx context.Context) error {
-	releaseActivationLock.Lock()
-	defer releaseActivationLock.Unlock()
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
 	snapshot, err := service.compose(ctx, "", nil)
 	if err != nil {
 		return err
@@ -274,8 +271,8 @@ func (service *GroupReleaseService) ActivateCurrent(ctx context.Context) error {
 
 func (service *GroupReleaseService) execute(reservation models.GroupReleaseReservation, revision models.GroupRevision) {
 	ctx := context.Background()
-	releaseActivationLock.Lock()
-	defer releaseActivationLock.Unlock()
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
 	candidate, err := service.compose(ctx, reservation.GroupID, &revision)
 	if err == nil {
 		err = service.Activator.Activate(ctx, candidate)
