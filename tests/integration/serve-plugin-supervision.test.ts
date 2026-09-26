@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -110,6 +110,63 @@ describe("serve local plugin supervision", () => {
       await expectNoProcess(pids[pids.length - 1]);
     } finally {
       if (gateway !== undefined) await gateway.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it.each([
+    { name: "oversized regular file", kind: "oversized" },
+    { name: "non-regular file", kind: "directory" },
+  ])("rejects a config secret reference to a $name without disclosing it", async ({ kind }) => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-plugin-secret-validation-"));
+    const gatewayBinary = await buildGatewayTestBinary();
+    const pluginBinary = join(directory, "unused-plugin-child");
+    const managementAddress = await freeAddress();
+    const publicAddress = await freeAddress();
+    const certificate = join(directory, "management.crt");
+    const privateKey = join(directory, "management.key");
+    const database = join(directory, "gateway.db");
+    const artifacts = join(directory, "artifacts");
+    const config = join(directory, "gateway.yaml");
+    const secretPath = join(directory, "plugin-secret");
+    const secretMarker = "oversized-secret-content-must-not-appear";
+
+    try {
+      if (kind === "directory") {
+        await mkdir(secretPath);
+      } else {
+        await writeFile(secretPath, `${secretMarker}${"x".repeat(64 * 1024)}`, { mode: 0o600 });
+      }
+      await execFileAsync("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+        "-keyout", privateKey, "-out", certificate,
+      ]);
+      await writeFile(config, [
+        "state:", `  path: ${database}`,
+        "artifacts:", `  path: ${artifacts}`,
+        "management:", `  listen: ${managementAddress}`,
+        "  tls:", `    certificate: file:${certificate}`, `    key: file:${privateKey}`,
+        "caddy:", "  variant: embedded", "",
+      ].join("\n"), "utf8");
+      const bootstrap = await execFileAsync(gatewayBinary, ["--config", config, "access", "bootstrap"]);
+      expect(bootstrap.stdout.trim()).not.toHaveLength(0);
+      await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-composition", database, artifacts, pluginBinary, secretPath], {
+        cwd: join(import.meta.dirname, "../.."),
+        env: { ...process.env, LIAPOLDUS_TEST_PUBLIC_ADDRESS: publicAddress },
+      });
+
+      let failure: { code?: number; stdout?: string; stderr?: string } | undefined;
+      try {
+        await execFileAsync(gatewayBinary, ["--config", config, "serve"]);
+      } catch (error) {
+        failure = error as typeof failure;
+      }
+      expect(failure?.code).toBeDefined();
+      const diagnostic = `${failure?.stdout ?? ""}${failure?.stderr ?? ""}`;
+      expect(diagnostic).not.toContain(secretPath);
+      expect(diagnostic).not.toContain(secretMarker);
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);

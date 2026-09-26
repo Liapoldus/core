@@ -67,6 +67,10 @@
   создавая сотни MiB; превышение uncompressed entry size возвращает
   `artifact_too_large`. Сериализация concurrent same-CAS reservations и startup
   crash-recovery открыты.
+- Подтверждён TS E2E для `file:` config-secret refs: oversized regular file и
+  directory отклоняются до запуска plugin, диагностика не содержит путь или
+  содержимое. Прямое доказательство очистки всех копий secret buffers ещё
+  отсутствует.
 - Текущий focused group suite: archive, rollback, release-store и Management API
   tests проходят. После объединения параллельных изменений прошёл полный
   `make check` (Go build, 49 TS-файлов / 91 тест и Docker arch-lint без
@@ -135,6 +139,11 @@
   Caddy-to-plugin dispatch и crash recovery. Уже есть исполняемые tests для
   Management auth/bootstrap rejection, group publish/archive/rollback,
   Caddy-L4 TCP/UDP, HTTP Stream/WebSocket/SSE и external-Caddy restart/status.
+  Владелец утвердил cookie-policy control plane: отдельная SQLite policy на
+  instance/capability и `GET`/`PUT` Management API с ETag/If-Match CAS и audit;
+  `PUT` активирует candidate dispatch generation до SQLite commit и восстанавливает
+  прежнее поколение при сбое. External Caddy остаётся недоступен для такой
+  mutation до dispatch snapshot sync. Реализация и production E2E не начаты.
 - [ ] Добавить TS red/green coverage до расширения целевого data/control-plane:
   multipart group publish/rollback, Caddy adapt/load and atomic snapshot,
   external Caddy process, plugin replica readiness/DispatchApply, Admin API
@@ -269,6 +278,14 @@
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;
   unary timeout не использовать для долгоживущих streams.
+- [ ] Реализовать Gateway-owned cookie policy как отдельные SQLite записи для
+  instance/capability; `GET` возвращает policy revision/ETag, `PUT` требует
+  `If-Match`, проверяет capability и audit-ит без cookie values. До durable CAS
+  Caddy атомарно активирует полный candidate dispatch generation; ошибка
+  storage восстанавливает предыдущее поколение. External Caddy отвечает
+  unavailable до реализации private snapshot synchronization. Добавить TS
+  Management API + real serve/Caddy/plugin E2E для фильтрации входящих cookie,
+  ordinary/HttpOnly response actions, CAS conflict, audit atomicity и rollback.
 
 - Caddy handler валидирует capability invocation modes `call`, `http-stream`,
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,
