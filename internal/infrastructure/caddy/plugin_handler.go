@@ -165,6 +165,11 @@ func (app *dispatchApp) Stop() error {
 	return nil
 }
 
+func (app *dispatchApp) Cleanup() error {
+	app.closeBindings()
+	return nil
+}
+
 func (app *dispatchApp) closeBindings() {
 	for _, binding := range app.bindings {
 		_ = binding.conn.Close()

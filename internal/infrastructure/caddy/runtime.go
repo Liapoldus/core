@@ -83,8 +83,24 @@ func (runtime *Runtime) ReplaceCaddyfile(source []byte) ([]caddyconfig.Warning, 
 }
 
 func (runtime *Runtime) Validate(_ context.Context, source []byte) error {
-	_, _, err := adaptCaddyfile(source, runtime.plugins)
-	return err
+	processRuntime.Lock()
+	defer processRuntime.Unlock()
+	if runtime == nil || processRuntime.active != runtime || !runtime.active {
+		contract, err := loadBuildContract()
+		if err != nil {
+			return err
+		}
+		return errors.New(contract.Diagnostics.RuntimeNotActive)
+	}
+	configuration, _, err := adaptCaddyfile(source, runtime.plugins)
+	if err != nil {
+		return err
+	}
+	var adapted caddycore.Config
+	if err := json.Unmarshal(configuration, &adapted); err != nil {
+		return err
+	}
+	return caddycore.Validate(&adapted)
 }
 
 func (runtime *Runtime) Activate(_ context.Context, source []byte) error {
