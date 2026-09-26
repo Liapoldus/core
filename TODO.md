@@ -315,10 +315,12 @@
   idle-timeout и max-duration остаются TODO выше. Local `call` dispatch через
   embedded Caddy подключён к supervised child; dispatch generations, local TLS
   settings, config-scoped grants and remote-replica fan-out ещё не подключены.
-- [ ] Расширить `tests/fixtures/serve-plugin-child` lifecycle harness до
-  child-process smoke с реальными сборками captcha, forms-db и identity после
-  полного serve wiring. Текущие тесты подтверждают generic fixture capability
-  и supervision, но не являются интеграционной приёмкой этих трёх plugins.
+- [x] Добавить real-child-process smoke для локальных сборок captcha,
+  forms-db и identity: Gateway `serve` выполняет Bootstrap/ConfigApply,
+  запускает три процесса с inherited listener FD и передаёт capability-вызовы
+  через embedded Caddy. Тест использует детерминированную CAPTCHA, memory
+  storage forms-db и JWKS identity; plugin-клоны не изменяются. Это покрытие не
+  закрывает generic plugin CRUD, remote plugins или общий cross-variant gate.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
   manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments

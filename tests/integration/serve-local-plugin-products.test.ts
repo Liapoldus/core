@@ -3,9 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
-import { buildGatewayTestBinary, startGateway } from "../support/gateway.js";
+import { buildGatewayTestBinary, startGatewayWithOutput } from "../support/gateway.js";
 import { freeAddress } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
@@ -20,38 +19,25 @@ async function buildPlugin(name: string, output: string): Promise<void> {
 }
 
 async function request(address: string, path: string, method = "GET", body?: string): Promise<Response> {
-  const port = Number(address.slice(address.lastIndexOf(":") + 1));
-  return await new Promise((resolve, reject) => {
-    const outgoing = httpsRequest({
-      hostname: "127.0.0.1",
-      port,
-      path,
-      method,
-      rejectUnauthorized: false,
-      headers: body === undefined ? undefined : { "content-type": "application/json", "content-length": Buffer.byteLength(body) },
-    }, (incoming) => {
-      const chunks: Buffer[] = [];
-      incoming.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
-      incoming.once("end", () => resolve(new Response(Buffer.concat(chunks), { status: incoming.statusCode ?? 0, headers: incoming.headers as HeadersInit })));
-    });
-    outgoing.once("error", reject);
-    if (body !== undefined) outgoing.write(body);
-    outgoing.end();
+  return fetch(`http://${address}${path}`, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body,
   });
 }
 
-async function waitForPublic(addresses: readonly string[], gateway: Awaited<ReturnType<typeof startGateway>>["process"]): Promise<void> {
+async function waitForPublic(addresses: readonly string[], gateway: Awaited<ReturnType<typeof startGatewayWithOutput>>): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (gateway.exitCode !== null) throw new Error(`Gateway exited before public Caddy readiness (${gateway.exitCode}).`);
+    if (gateway.process.exitCode !== null) throw new Error(`Gateway exited before public Caddy readiness (${gateway.process.exitCode}): ${gateway.stderr}`);
     try {
       const statuses = await Promise.all(addresses.map(async (address) => (await request(address, "/healthz")).status));
-      if (statuses.every((status) => status === 404)) return;
+      if (statuses.every((status) => status > 0)) return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error("Embedded Caddy did not become ready on the plugin listeners.");
+  throw new Error(`Embedded Caddy did not become ready on the plugin listeners: ${gateway.stderr}`);
 }
 
 describe("serve real locally supervised plugins", () => {
@@ -70,7 +56,7 @@ describe("serve real locally supervised plugins", () => {
     const database = join(directory, "gateway.db");
     const artifacts = join(directory, "artifacts");
     const config = join(directory, "gateway.yaml");
-    let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
+    let gateway: Awaited<ReturnType<typeof startGatewayWithOutput>> | undefined;
 
     try {
       await Promise.all([
@@ -97,8 +83,8 @@ describe("serve real locally supervised plugins", () => {
         captchaAddress, formsAddress, identityAddress, captchaBinary, formsBinary, identityBinary,
       ], { cwd: core });
 
-      gateway = await startGateway(["--config", config, "serve"]);
-      await waitForPublic([captchaAddress, formsAddress, identityAddress], gateway.process);
+      gateway = await startGatewayWithOutput(["--config", config, "serve"]);
+      await waitForPublic([captchaAddress, formsAddress, identityAddress], gateway);
 
       const captcha = await request(captchaAddress, "/verify", "POST", JSON.stringify({ token: "fixture-valid" }));
       expect(captcha.status).toBe(200);
