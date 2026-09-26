@@ -279,19 +279,26 @@
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;
   unary timeout не использовать для долгоживущих streams.
-- [ ] Cookie-policy slice реализован частично: SQLite schema v3, per-instance/
+- [x] Cookie-policy embedded slice: SQLite schema v3, per-instance/
   capability CAS-store с audit в той же транзакции, Management `GET`/`PUT`,
   ETag/If-Match, schema validation и embedded-Caddy dispatch generation
   activation с rollback при storage failure. Stream-only HTTP capabilities
   принимаются, TCP/UDP-only capabilities отвергаются. External Caddy намеренно
-  отвечает unavailable до private snapshot synchronization. API пока нельзя
-  полноценно использовать на чистой установке: production CRUD/registration
-  plugin instances ещё не подключён, а тестовая API fixture создаёт instance
-  напрямую в SQLite. До v1 подключить generic plugin-instance management и
-  проверить весь путь без прямой подготовки БД. Остаются production child-process
-  conformance для request-cookie filtering, ordinary/HttpOnly response actions,
-  startup restore, rollback-failure fencing и activation/group-release
-  concurrency.
+  отвечает unavailable до private snapshot synchronization. Production `serve`
+  E2E закрывает восстановление сохранённой policy при старте embedded Caddy,
+  реальный запрос через supervised child-plugin с allow-list, ordinary и
+  HttpOnly response actions, а также атомарный отказ набора cookie actions без
+  частичного `Set-Cookie`; тестовый seeder подготавливает только изолированную
+  временную SQLite inventory и не затрагивает пользовательский Gateway.
+  Остаются production conformance для rollback-failure fencing и совместной
+  сериализации cookie PUT с group-release activation.
+- [ ] Подключить документированный generic plugin-instance Management CRUD:
+  [`management.openapi.yaml`](https://github.com/Liapoldus/liapoldus.github.io/blob/main/public/spec/management.openapi.yaml)
+  описывает `GET`/`POST`/`PUT`/`DELETE /api/plugins`, но core сейчас
+  маршрутизирует только `GET`. Пока CRUD отсутствует, cookie-policy API нельзя
+  пройти на чистой установке через Management API: текущая production E2E
+  намеренно подготавливает instance/manifest/launch row непосредственно во
+  временной SQLite базе. Реализация должна оставаться generic и plugin-agnostic.
 
 - Caddy handler валидирует capability invocation modes `call`, `http-stream`,
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,
