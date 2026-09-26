@@ -179,7 +179,7 @@
   adaptation, CAS/idempotency в SQLite, сохраняет revision/operation и активирует
   composed snapshot через Caddy activator. Archive staging/manifest, rollback API
   и SQLite pointer swap реализованы и проверяются focused E2E. Не доказаны unique
-  in-flight CAS reservation и crash recovery между activation/commit.
+  in-flight CAS reservation и production crash recovery между activation/commit.
 - [x] TS integration фиксирует multipart
   `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
   Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
@@ -209,6 +209,13 @@
   `result` запрещён.
 - [ ] Реализовать startup reconciliation незавершённых операций; crash между
   artifact/SQLite commit/Caddy activation не должен создавать смешанный runtime.
+  `group-release-crash-recovery.test.ts` исполняет уже существующий service-level
+  `Recover`: fixture создаёт durable reservation, активирует кандидат в fake
+  activator, закрывает и повторно открывает SQLite, затем проверяет восстановление
+  SQLite current composition, failed operation/journal, неизменность
+  current/previous и удаление staged Caddyfile/archive. Это не моделирует аварийное
+  завершение production Gateway/Caddy и не доказывает полный crash recovery между
+  реальной Caddy activation и SQLite commit; пункт остаётся открытым.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
   до каждой mutation, drift detection, group publish block, explicit checkpoint
   restore и full-composition reconcile с If-Match.
