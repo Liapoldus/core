@@ -180,6 +180,67 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
+	pluginRuntimeContract, err := config.LoadPluginRuntimeContract()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	pluginLaunchSchema, err := config.LoadPluginLaunchSchema()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	fileReferencePrefix, err := config.LoadFileReferencePrefix()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	localRecords := make([]plugins.LocalInstanceRecord, 0, len(pluginRecords))
+	for _, record := range pluginRecords {
+		localRecords = append(localRecords, plugins.LocalInstanceRecord{
+			ID: record.ID, Mode: record.Mode, Revision: record.Revision, LaunchJSON: record.LaunchJSON,
+			SettingsJSON: record.SettingsJSON, ManifestJSON: record.ManifestJSON,
+		})
+	}
+	pluginRuntimeInstances := make(map[string]models.PluginInstance)
+	if bootstrap.CaddyVariant != bootstrap.CaddyExternalVariant || len(pluginRecords) == 0 {
+		pluginRuntimeInstances, err = plugins.BuildLocalInstances(localRecords, plugins.LocalRuntimeContract{
+			LocalMode: pluginRuntimeContract.Modes.Local, BinaryField: pluginRuntimeContract.LaunchFields.Binary,
+			MaximumSecretBytes:  pluginRuntimeContract.ConfigSecrets.MaximumBytes,
+			SecretGrantPurpose:  pluginRuntimeContract.ConfigSecrets.GrantPurpose,
+			FileReferencePrefix: fileReferencePrefix, LaunchSchema: pluginLaunchSchema,
+			CallTimeout:            pluginRuntimeContract.Defaults.CallTimeout,
+			StartTimeout:           pluginRuntimeContract.Defaults.StartTimeout,
+			MaxConcurrentCalls:     pluginRuntimeContract.Defaults.MaxConcurrentCalls,
+			RestartEnabled:         pluginRuntimeContract.Defaults.RestartEnabled,
+			RestartInitialBackoff:  pluginRuntimeContract.Defaults.RestartInitialBackoff,
+			RestartMaximumBackoff:  pluginRuntimeContract.Defaults.RestartMaximumBackoff,
+			HealthProbeInterval:    pluginRuntimeContract.Defaults.HealthProbeInterval,
+			HealthFailureThreshold: pluginRuntimeContract.Defaults.HealthFailureThreshold,
+			MemoryProbeInterval:    pluginRuntimeContract.Defaults.MemoryProbeInterval,
+			MemoryLimitBytes:       pluginRuntimeContract.Defaults.MemoryLimitBytes,
+			InvalidContract:        pluginRuntimeContract.Diagnostics.InvalidContract,
+			InvalidLaunch:          pluginRuntimeContract.Diagnostics.InvalidLaunch,
+		})
+		if err != nil {
+			writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, pluginRuntimeContract.Diagnostics.InvalidLaunch)
+			return words.Exits.Validation
+		}
+	}
+	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginRuntimeInstances, nil)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, pluginRuntimeContract.Diagnostics.StartupFailed)
+		return words.Exits.Unavailable
+	}
+	defer func() { _ = pluginRuntime.Stop(context.Background()) }()
+	pluginBindings := make([]PluginDispatchBinding, 0, len(pluginRuntime.DispatchBindings()))
+	for _, binding := range pluginRuntime.DispatchBindings() {
+		pluginBindings = append(pluginBindings, PluginDispatchBinding{
+			Name: binding.Name, Endpoint: binding.Endpoint,
+			Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
+			MaxConcurrentCalls: binding.MaxConcurrentCalls,
+		})
+	}
 	auditWords, err := config.LoadAudit()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -195,7 +256,7 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Validation
 	}
-	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings)
+	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings, pluginBindings, len(pluginRecords) > 0)
 	if stopRuntime != nil {
 		defer stopRuntime()
 	}
@@ -327,7 +388,7 @@ func managementTLS(bootstrap config.BootstrapConfig) (*tls.Config, error) {
 	return result, nil
 }
 
-func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings) (string, string, func() error, CaddyRuntime) {
+func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, pluginInstancesConfigured bool) (string, string, func() error, CaddyRuntime) {
 	sqliteContract, err := config.LoadSQLiteContract()
 	if err != nil || sqliteContract.SystemGroupID == "" {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
@@ -369,8 +430,11 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 		if runtimeBindings.StartEmbeddedCaddy == nil {
 			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 		}
-		caddyRuntime, err = runtimeBindings.StartEmbeddedCaddy(caddyfile)
+		caddyRuntime, err = runtimeBindings.StartEmbeddedCaddy(caddyfile, pluginBindings)
 	case bootstrap.CaddyExternalVariant:
+		if pluginInstancesConfigured {
+			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
+		}
 		if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
 			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 		}

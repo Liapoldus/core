@@ -74,6 +74,27 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 	return nil
 }
 
+// VerifyReady reads the plugin's manifest and checks health without applying
+// application settings. Gateway pushes settings through ConfigApply before
+// Caddy receives a dispatch binding.
+func (c *Client) VerifyReady(ctx context.Context) (*pluginv1.Manifest, error) {
+	ctx, cancel := c.withDeadline(ctx)
+	defer cancel()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	manifest, err := c.client.Service().Manifest(ctx, &pluginv1.ManifestRequest{})
+	if err != nil {
+		return nil, ErrPluginUnavailable
+	}
+	if ValidateManifest(manifest, nil) != nil {
+		return nil, ErrProtocolViolation
+	}
+	if err := c.client.CheckHealth(ctx); err != nil {
+		return nil, ErrPluginUnavailable
+	}
+	return manifest, nil
+}
+
 func (c *Client) Shutdown(ctx context.Context) error {
 	ctx, cancel := c.withDeadline(ctx)
 	defer cancel()
@@ -85,12 +106,14 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error) {
+func (c *Client) BootstrapAndHandshake(ctx context.Context, instanceID, grantBrokerEndpoint string, config []byte, settingsRevision string, grants []*pluginv1.ActiveGrant) (Handshake, error) {
 	ctx, cancel := context.WithDeadline(ctx, c.startDeadline)
 	defer cancel()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	handshake, err := c.client.Handshake(ctx, config)
+	handshake, err := c.client.BootstrapAndHandshake(ctx, &pluginv1.BootstrapRequest{
+		InstanceId: instanceID, GrantBrokerEndpoint: grantBrokerEndpoint,
+	}, config, settingsRevision, grants)
 	if err != nil {
 		return Handshake{}, ErrPluginUnavailable
 	}
@@ -100,14 +123,16 @@ func (c *Client) Handshake(ctx context.Context, config []byte) (Handshake, error
 	return Handshake{Manifest: handshake.Manifest}, nil
 }
 
-func (c *Client) Reconnect(ctx context.Context, endpoint string, config []byte, expectedName string, capabilities []string) error {
+func (c *Client) Reconnect(ctx context.Context, endpoint, instanceID, grantBrokerEndpoint string, config []byte, settingsRevision string, grants []*pluginv1.ActiveGrant, expectedName string, capabilities []string) error {
 	ctx, cancel := context.WithTimeout(ctx, c.startTimeout)
 	defer cancel()
 	replacement, err := transport.DialContext(ctx, endpoint)
 	if err != nil {
 		return ErrPluginUnavailable
 	}
-	handshake, err := replacement.Handshake(ctx, config)
+	handshake, err := replacement.BootstrapAndHandshake(ctx, &pluginv1.BootstrapRequest{
+		InstanceId: instanceID, GrantBrokerEndpoint: grantBrokerEndpoint,
+	}, config, settingsRevision, grants)
 	if err != nil {
 		_ = replacement.Close()
 		return ErrPluginUnavailable

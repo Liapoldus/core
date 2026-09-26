@@ -4,6 +4,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"sync"
@@ -17,8 +18,7 @@ var ErrPluginNotRunning = errors.New("plugin is not running")
 type Spec struct {
 	Instance string
 	Binary   string
-	Args     []string
-	Env      []string
+	Listener *net.TCPListener
 	Restart  RestartPolicy
 }
 
@@ -72,8 +72,16 @@ func (s *Supervisor) StartWithExit(ctx context.Context, spec Spec) (<-chan error
 	if _, ok := s.process[spec.Instance]; ok {
 		return nil, errors.New("plugin is already running")
 	}
-	cmd := exec.CommandContext(ctx, spec.Binary, spec.Args...)
-	cmd.Env = append(os.Environ(), spec.Env...)
+	cmd := exec.CommandContext(ctx, spec.Binary)
+	cmd.Env = []string{}
+	if spec.Listener != nil {
+		listenerFile, err := spec.Listener.File()
+		if err != nil {
+			return nil, err
+		}
+		cmd.ExtraFiles = []*os.File{listenerFile}
+		defer listenerFile.Close()
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -102,8 +110,11 @@ func (s *Supervisor) Stop(instance string) error {
 	delete(s.process, instance)
 	s.mu.Unlock()
 	if process.command.Process != nil {
-		_ = process.command.Process.Kill()
+		if err := process.command.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return err
+		}
 	}
+	<-process.done
 	return nil
 }
 

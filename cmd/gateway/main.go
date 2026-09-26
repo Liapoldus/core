@@ -12,8 +12,16 @@ import (
 func main() {
 	version, _ := caddycore.Version()
 	os.Exit(cli.ExecuteWithRuntime(os.Args[1:], cli.RuntimeBindings{
-		StartEmbeddedCaddy: func(source []byte) (cli.CaddyRuntime, error) {
-			runtime, _, err := caddyadapter.StartCaddyfile(source)
+		StartEmbeddedCaddy: func(source []byte, bindings []cli.PluginDispatchBinding) (cli.CaddyRuntime, error) {
+			instances := make([]caddyadapter.PluginInstance, 0, len(bindings))
+			for _, binding := range bindings {
+				instances = append(instances, caddyadapter.PluginInstance{
+					Name: binding.Name, Endpoint: binding.Endpoint,
+					Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
+					MaxConcurrentCalls: binding.MaxConcurrentCalls,
+				})
+			}
+			runtime, _, err := caddyadapter.StartCaddyfileWithPlugins(source, instances)
 			if err != nil {
 				return nil, err
 			}

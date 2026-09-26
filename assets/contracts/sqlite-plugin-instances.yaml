@@ -1,4 +1,4 @@
-selectInstances: "SELECT id, mode, state, revision, manifest_json FROM plugin_instances ORDER BY id"
+selectInstances: "SELECT instances.id, instances.mode, instances.state, instances.revision, instances.manifest_json, instances.settings_json, COALESCE(launch.launch_json, '') FROM plugin_instances AS instances LEFT JOIN plugin_launch_settings AS launch ON launch.instance_id = instances.id ORDER BY instances.id"
 validModes:
   - local
   - remote

@@ -35,7 +35,6 @@ type pluginHandlerContract struct {
 		InvalidInstance      string `json:"invalidInstance"`
 		UnsupportedMode      string `json:"unsupportedMode"`
 		InstanceUnavailable  string `json:"instanceUnavailable"`
-		InvalidSettings      string `json:"invalidSettings"`
 		InvalidCookiePolicy  string `json:"invalidCookiePolicy"`
 		InvalidCookieRequest string `json:"invalidCookieRequest"`
 	} `json:"diagnostics"`
@@ -44,7 +43,6 @@ type pluginHandlerContract struct {
 type PluginInstance struct {
 	Name               string            `json:"name"`
 	Endpoint           string            `json:"endpoint"`
-	Settings           []byte            `json:"settings,omitempty"`
 	Timeout            time.Duration     `json:"timeout"`
 	StartTimeout       time.Duration     `json:"startTimeout"`
 	MaxConcurrentCalls int               `json:"maxConcurrentCalls"`
@@ -106,29 +104,26 @@ func (app *dispatchApp) Provision(ctx caddycore.Context) error {
 		if _, duplicate := app.bindings[instance.Name]; duplicate {
 			return errors.New(contract.Diagnostics.InvalidInstance)
 		}
-		if len(instance.Settings) > 0 && !json.Valid(instance.Settings) {
-			return errors.New(contract.Diagnostics.InvalidSettings)
-		}
 		client, err := plugins.NewClient(instance.Endpoint, instance.Timeout, instance.StartTimeout)
 		if err != nil {
 			return err
 		}
-		handshake, err := client.Handshake(ctx, instance.Settings)
-		if err != nil || handshake.Manifest.GetName() != instance.Name {
+		manifest, err := client.VerifyReady(ctx)
+		if err != nil || manifest.GetName() != instance.Name {
 			_ = client.Close()
 			app.closeBindings()
 			return errors.New(contract.Diagnostics.InstanceUnavailable)
 		}
-		capabilities := handshake.Manifest.GetCapabilities()
+		capabilities := manifest.GetCapabilities()
 		modes := make(map[string]struct{})
 		invocationModes := make(map[string]map[pluginv1.InvocationMode]struct{})
-		for _, descriptor := range handshake.Manifest.GetCapabilityDescriptors() {
+		for _, descriptor := range manifest.GetCapabilityDescriptors() {
 			declaredModes := make(map[pluginv1.InvocationMode]struct{}, len(descriptor.GetModes()))
 			for _, mode := range descriptor.GetModes() {
 				declaredModes[mode] = struct{}{}
 			}
 			invocationModes[descriptor.GetCapability()] = declaredModes
-			if plugins.ManifestSupportsCall(handshake.Manifest, descriptor.GetCapability()) {
+			if plugins.ManifestSupportsCall(manifest, descriptor.GetCapability()) {
 				modes[descriptor.GetCapability()] = struct{}{}
 			}
 		}

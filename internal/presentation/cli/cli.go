@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
@@ -31,10 +32,18 @@ func Execute(arguments []string) int {
 }
 
 type RuntimeBindings struct {
-	StartEmbeddedCaddy func([]byte) (CaddyRuntime, error)
+	StartEmbeddedCaddy func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
 	StartExternalCaddy func(binary, expectedBuildID, stateDirectory string, source []byte) (CaddyRuntime, error)
 	CaddyBuildID       string
 	CaddyModules       []string
+}
+
+type PluginDispatchBinding struct {
+	Name               string
+	Endpoint           string
+	Timeout            time.Duration
+	StartTimeout       time.Duration
+	MaxConcurrentCalls int
 }
 
 type CaddyRuntime interface {

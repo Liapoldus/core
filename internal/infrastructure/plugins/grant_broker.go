@@ -14,6 +14,10 @@ import (
 
 type activeGrant struct {
 	secret               []byte
+	scope                pluginv1.GrantScope
+	instanceID           string
+	settingsRevision     string
+	secretReference      string
 	capability           string
 	purpose              string
 	domains              []string
@@ -22,18 +26,26 @@ type activeGrant struct {
 
 type grantBroker struct {
 	pluginv1.UnimplementedGrantBrokerServer
-	mu      sync.Mutex
-	active  map[string]activeGrant
-	allowed map[string]models.PluginSecretGrant
-	secrets map[string]models.Secret
+	mu               sync.Mutex
+	active           map[string]activeGrant
+	allowed          map[string]models.PluginSecretGrant
+	secrets          map[string]models.Secret
+	configSecrets    map[string][]byte
+	instanceID       string
+	settingsRevision string
+	configPurpose    string
 }
 
-func newGrantBroker(grants []models.PluginSecretGrant, secrets map[string]models.Secret) *grantBroker {
+func newGrantBroker(instanceID, settingsRevision string, grants []models.PluginSecretGrant, secrets map[string]models.Secret, configSecrets map[string][]byte, configPurpose string) *grantBroker {
 	allowed := make(map[string]models.PluginSecretGrant, len(grants))
 	for _, grant := range grants {
 		allowed[grant.Name] = grant
 	}
-	return &grantBroker{active: make(map[string]activeGrant), allowed: allowed, secrets: secrets}
+	return &grantBroker{
+		active: make(map[string]activeGrant), allowed: allowed, secrets: secrets,
+		configSecrets: configSecrets, instanceID: instanceID, settingsRevision: settingsRevision,
+		configPurpose: configPurpose,
+	}
 }
 
 func (b *grantBroker) issue(capability string, names []string) ([]*pluginv1.ActiveGrant, []string, error) {
@@ -53,9 +65,51 @@ func (b *grantBroker) issue(capability string, names []string) ([]*pluginv1.Acti
 		}
 		handle := base64.RawURLEncoding.EncodeToString(token[:])
 		b.mu.Lock()
-		b.active[handle] = activeGrant{secret: []byte(secret.Value), capability: capability, purpose: grant.Purpose, domains: append([]string(nil), grant.Domains...), wildcardDomainPrefix: grant.WildcardDomainPrefix}
+		b.active[handle] = activeGrant{
+			secret: []byte(secret.Value), scope: pluginv1.GrantScope_GRANT_SCOPE_CALL,
+			instanceID: b.instanceID, settingsRevision: b.settingsRevision,
+			capability: capability, purpose: grant.Purpose,
+			domains: append([]string(nil), grant.Domains...), wildcardDomainPrefix: grant.WildcardDomainPrefix,
+		}
 		b.mu.Unlock()
-		issued = append(issued, &pluginv1.ActiveGrant{Handle: handle, Purpose: grant.Purpose, Domains: append([]string(nil), grant.Domains...), Capability: capability})
+		issued = append(issued, &pluginv1.ActiveGrant{
+			Handle: handle, Purpose: grant.Purpose, Domains: append([]string(nil), grant.Domains...),
+			Capability: capability, Scope: pluginv1.GrantScope_GRANT_SCOPE_CALL,
+			InstanceId: b.instanceID, SettingsRevision: b.settingsRevision,
+		})
+		handles = append(handles, handle)
+	}
+	return issued, handles, nil
+}
+
+func (b *grantBroker) issueConfig() ([]*pluginv1.ActiveGrant, []string, error) {
+	issued := make([]*pluginv1.ActiveGrant, 0, len(b.configSecrets))
+	handles := make([]string, 0, len(b.configSecrets))
+	for reference, secret := range b.configSecrets {
+		if reference == "" || len(secret) == 0 || b.instanceID == "" || b.settingsRevision == "" || b.configPurpose == "" {
+			b.revoke(handles)
+			return nil, nil, ErrProtocolViolation
+		}
+		var token [32]byte
+		if _, err := rand.Read(token[:]); err != nil {
+			b.revoke(handles)
+			return nil, nil, ErrPluginUnavailable
+		}
+		handle := base64.RawURLEncoding.EncodeToString(token[:])
+		secretCopy := append([]byte(nil), secret...)
+		b.mu.Lock()
+		b.active[handle] = activeGrant{
+			secret: secretCopy, scope: pluginv1.GrantScope_GRANT_SCOPE_CONFIG_APPLY,
+			instanceID: b.instanceID, settingsRevision: b.settingsRevision,
+			secretReference: reference, purpose: b.configPurpose,
+		}
+		b.mu.Unlock()
+		issued = append(issued, &pluginv1.ActiveGrant{
+			Handle: handle, Purpose: b.configPurpose,
+			Scope:      pluginv1.GrantScope_GRANT_SCOPE_CONFIG_APPLY,
+			InstanceId: b.instanceID, SettingsRevision: b.settingsRevision,
+			SecretReference: reference,
+		})
 		handles = append(handles, handle)
 	}
 	return issued, handles, nil
@@ -81,10 +135,32 @@ func (b *grantBroker) RedeemGrant(_ context.Context, request *pluginv1.RedeemGra
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	grant, exists := b.active[request.GetHandle()]
-	if !exists || request.GetCapability() != grant.capability || request.GetPurpose() != grant.purpose || !grantDomainAllowed(grant.domains, grant.wildcardDomainPrefix, request.GetDomain()) {
+	if !exists || request.GetScope() != grant.scope || request.GetPurpose() != grant.purpose {
+		return nil, transport.ErrGrantDenied
+	}
+	if grant.scope == pluginv1.GrantScope_GRANT_SCOPE_CONFIG_APPLY {
+		if request.GetInstanceId() != grant.instanceID || request.GetSettingsRevision() != grant.settingsRevision || request.GetSecretReference() != grant.secretReference || request.GetCapability() != "" || request.GetDomain() != "" {
+			return nil, transport.ErrGrantDenied
+		}
+		secret := append([]byte(nil), grant.secret...)
+		clear(grant.secret)
+		delete(b.active, request.GetHandle())
+		return &pluginv1.RedeemGrantResponse{Secret: secret}, nil
+	}
+	if grant.scope != pluginv1.GrantScope_GRANT_SCOPE_CALL || request.GetCapability() != grant.capability || request.GetInstanceId() != "" && request.GetInstanceId() != grant.instanceID || request.GetSettingsRevision() != "" && request.GetSettingsRevision() != grant.settingsRevision || request.GetSecretReference() != "" || !grantDomainAllowed(grant.domains, grant.wildcardDomainPrefix, request.GetDomain()) {
 		return nil, transport.ErrGrantDenied
 	}
 	return &pluginv1.RedeemGrantResponse{Secret: append([]byte(nil), grant.secret...)}, nil
+}
+
+func (b *grantBroker) close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for handle, grant := range b.active {
+		clear(grant.secret)
+		delete(b.active, handle)
+	}
+	clearConfigSecrets(b.configSecrets)
 }
 
 func grantDomainAllowed(allowed []string, wildcardPrefix, requested string) bool {

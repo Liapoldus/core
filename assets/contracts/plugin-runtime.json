@@ -1,0 +1,34 @@
+{
+  "sqlite": {
+    "launchSettingsTable": "plugin_launch_settings"
+  },
+  "modes": {
+    "local": "local",
+    "remote": "remote"
+  },
+  "launchFields": {
+    "binary": "binary"
+  },
+  "configSecrets": {
+    "maximumBytes": 65536,
+    "requireAbsolutePath": true,
+    "grantPurpose": "plugin-config-apply"
+  },
+  "defaults": {
+    "callTimeout": "5s",
+    "startTimeout": "10s",
+    "maxConcurrentCalls": 64,
+    "restartEnabled": true,
+    "restartInitialBackoff": "100ms",
+    "restartMaximumBackoff": "5s",
+    "healthProbeInterval": "5s",
+    "healthFailureThreshold": 3,
+    "memoryProbeInterval": "5s",
+    "memoryLimitBytes": 0
+  },
+  "diagnostics": {
+    "invalidContract": "Plugin runtime contract is invalid.",
+    "invalidLaunch": "Plugin launch settings are invalid.",
+    "startupFailed": "A configured local plugin could not be started safely."
+  }
+}

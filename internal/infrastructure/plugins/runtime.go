@@ -7,7 +7,6 @@ import (
 	"net/netip"
 	"sort"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +21,8 @@ type runningInstance struct {
 	endpoint         string
 	grantServer      *transport.GrantServer
 	grantListener    net.Listener
+	broker           *grantBroker
+	listener         *net.TCPListener
 	client           *Client
 	capability       *CapabilityClient
 	model            models.PluginInstance
@@ -37,7 +38,22 @@ type Runtime struct {
 	watchCancel context.CancelFunc
 }
 
+type DispatchBinding struct {
+	Name               string
+	Endpoint           string
+	Timeout            time.Duration
+	StartTimeout       time.Duration
+	MaxConcurrentCalls int
+}
+
 func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, secrets map[string]models.Secret) (*Runtime, error) {
+	defer func() {
+		for name, instance := range configured {
+			clearConfigSecrets(instance.ConfigGrantSecrets)
+			instance.ConfigGrantSecrets = nil
+			configured[name] = instance
+		}
+	}()
 	processContext, cancel := context.WithCancel(context.Background())
 	watchContext, watchCancel := context.WithCancel(ctx)
 	runtime := &Runtime{supervisor: NewSupervisor(), instances: make(map[string]runningInstance, len(configured)), cancel: cancel, watchCancel: watchCancel}
@@ -48,31 +64,31 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 	sort.Strings(names)
 	for _, name := range names {
 		instance := configured[name]
-		endpoint, err := reserveLoopbackEndpoint()
+		runtimeConfigSecrets := cloneConfigSecrets(instance.ConfigGrantSecrets)
+		clearConfigSecrets(instance.ConfigGrantSecrets)
+		instance.ConfigGrantSecrets = nil
+		configured[name] = instance
+		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: netip.AddrFrom4([4]byte{127, 0, 0, 1}).AsSlice()})
 		if err != nil {
+			clearConfigSecrets(runtimeConfigSecrets)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
+		endpoint := listener.Addr().String()
 		grantListener, err := net.Listen("tcp", net.JoinHostPort(netip.AddrFrom4([4]byte{127, 0, 0, 1}).String(), strconv.Itoa(0)))
 		if err != nil {
+			clearConfigSecrets(runtimeConfigSecrets)
+			_ = listener.Close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		broker := newGrantBroker(instance.SecretGrants, secrets)
+		broker := newGrantBroker(name, instance.SettingsRevision, instance.SecretGrants, secrets, runtimeConfigSecrets, instance.ConfigGrantPurpose)
 		brokerServer := transport.NewGrantBrokerServer(broker)
 		go func() { _ = brokerServer.Serve(grantListener) }()
-		env, err := pluginEnvironment(instance.Env, endpoint, grantListener.Addr().String())
-		if err != nil {
-			brokerServer.Stop()
-			_ = grantListener.Close()
-			_ = runtime.Stop(context.Background())
-			return nil, ErrPluginStartup
-		}
 		spec := Spec{
 			Instance: name,
 			Binary:   instance.Binary,
-			Args:     instance.Args,
-			Env:      env,
+			Listener: listener,
 			Restart: RestartPolicy{
 				Enabled: instance.RestartEnabled,
 				Initial: instance.RestartInitialBackoff,
@@ -83,6 +99,8 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		if err != nil {
 			brokerServer.Stop()
 			_ = grantListener.Close()
+			_ = listener.Close()
+			broker.close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
@@ -90,16 +108,32 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		if err != nil {
 			brokerServer.Stop()
 			_ = grantListener.Close()
+			_ = listener.Close()
+			broker.close()
 			_ = runtime.supervisor.Stop(name)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		handshake, err := client.Handshake(ctx, instance.Settings)
+		configGrants, configHandles, err := broker.issueConfig()
+		if err != nil {
+			brokerServer.Stop()
+			_ = grantListener.Close()
+			_ = listener.Close()
+			_ = client.Close()
+			_ = runtime.supervisor.Stop(name)
+			broker.close()
+			_ = runtime.Stop(context.Background())
+			return nil, ErrPluginStartup
+		}
+		handshake, err := client.BootstrapAndHandshake(ctx, name, grantListener.Addr().String(), instance.Settings, instance.SettingsRevision, configGrants)
+		broker.revoke(configHandles)
 		if err != nil || handshake.Manifest.GetName() != name || !manifestIncludes(handshake.Manifest.GetCapabilities(), instance.Capabilities) {
 			brokerServer.Stop()
 			_ = grantListener.Close()
+			_ = listener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
+			broker.close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
@@ -107,8 +141,10 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		if err != nil {
 			brokerServer.Stop()
 			_ = grantListener.Close()
+			_ = listener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
+			broker.close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
@@ -119,7 +155,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}, func() {
 			_ = runtime.supervisor.Stop(name)
 		}, resourceExceeded)
-		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, broker: broker, listener: listener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
@@ -213,7 +249,18 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 		done, err := r.supervisor.StartWithExit(processContext, instance.spec)
 		if err == nil {
 			instance.resourceExceeded.Store(false)
-			reconnectErr := instance.client.Reconnect(ctx, instance.endpoint, instance.model.Settings, instance.name, instance.model.Capabilities)
+			configGrants, configHandles, grantErr := instance.broker.issueConfig()
+			if grantErr != nil {
+				_ = r.supervisor.Stop(instance.name)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-done:
+				}
+				continue
+			}
+			reconnectErr := instance.client.Reconnect(ctx, instance.endpoint, instance.name, instance.grantListener.Addr().String(), instance.model.Settings, instance.model.SettingsRevision, configGrants, instance.name, instance.model.Capabilities)
+			instance.broker.revoke(configHandles)
 			if reconnectErr == nil {
 				return done
 			}
@@ -228,32 +275,6 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 			return nil
 		}
 	}
-}
-
-func reserveLoopbackEndpoint() (string, error) {
-	host := netip.AddrFrom4([4]byte{127, 0, 0, 1}).String()
-	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(0)))
-	if err != nil {
-		return "", err
-	}
-	endpoint := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		return "", err
-	}
-	return endpoint, nil
-}
-
-func pluginEnvironment(configured []string, endpoint, grantEndpoint string) ([]string, error) {
-	result := make([]string, 0, len(configured)+2)
-	for _, value := range configured {
-		key, _, hasValue := strings.Cut(value, "=")
-		if hasValue && (key == transport.EndpointEnvironment || key == transport.GrantBrokerEndpointEnvironment) {
-			return nil, ErrPluginStartup
-		}
-		result = append(result, value)
-	}
-	result = append(result, transport.EndpointEnvironment+"="+endpoint)
-	return append(result, transport.GrantBrokerEndpointEnvironment+"="+grantEndpoint), nil
 }
 
 func manifestIncludes(advertised, configured []string) bool {
@@ -285,6 +306,38 @@ func (r *Runtime) L4Dispatchers() map[string]*CapabilityClient {
 	return instances
 }
 
+func (r *Runtime) DispatchBindings() []DispatchBinding {
+	if r == nil {
+		return nil
+	}
+	names := make([]string, 0, len(r.instances))
+	for name := range r.instances {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	bindings := make([]DispatchBinding, 0, len(names))
+	for _, name := range names {
+		instance := r.instances[name]
+		bindings = append(bindings, DispatchBinding{
+			Name: instance.name, Endpoint: instance.endpoint,
+			Timeout: instance.model.Timeout, StartTimeout: instance.model.StartTimeout,
+			MaxConcurrentCalls: instance.model.MaxConcurrentCalls,
+		})
+	}
+	return bindings
+}
+
+func cloneConfigSecrets(secrets map[string][]byte) map[string][]byte {
+	if len(secrets) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]byte, len(secrets))
+	for reference, secret := range secrets {
+		cloned[reference] = append([]byte(nil), secret...)
+	}
+	return cloned
+}
+
 func (r *Runtime) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil
@@ -306,8 +359,14 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		if instance.grantServer != nil {
 			instance.grantServer.Stop()
 		}
+		if instance.broker != nil {
+			instance.broker.close()
+		}
 		if instance.grantListener != nil {
 			_ = instance.grantListener.Close()
+		}
+		if instance.listener != nil {
+			_ = instance.listener.Close()
 		}
 	}
 	if r.cancel != nil {

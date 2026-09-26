@@ -69,6 +69,23 @@
   site, listener/upstream или metrics endpoints. Удалены привязанные к ним
   красные legacy suites и фикстуры; групповой SQLite,
   минимальный bootstrap, Caddy runtime и plugin fixtures сохранены.
+- Local plugin launch использует normalized `plugin_launch_settings` только
+  для абсолютного пути бинарника; приложение не получает argv, environment или
+  локальные config-файлы. Gateway передаёт заранее открытый loopback listener
+  как inherited FD, посылает служебный typed `Bootstrap`, затем сам выполняет
+  `ConfigApply` с SQLite settings revision до health/readiness. Config остаётся
+  in-memory в процессе plugin; Caddy dispatch snapshot не содержит settings и
+  только проверяет manifest/health. Child-process TS E2E покрывает FD,
+  application-env isolation, push перед вызовом, crash/restart, scoped
+  ConfigApply secret redemption и reap при остановке Gateway. Gateway разрешает
+  generic external `file:` refs только для ConfigApply, ограничивает каждый
+  файл 64 KiB, заменяет путь opaque ID и выдаёт одноразовый grant для instance
+  и settings revision; исходные байты удерживаются только в памяти runtime для
+  повторного ConfigApply после рестарта и очищаются при остановке. Ротация файла
+  применяется только новой settings revision. Нужно добавить contract-level
+  тесты на очистку буферов и отказ размера/типа файла. External Caddy намеренно
+  сообщает data plane `not-ready` при сохранённых plugin instances: private
+  immutable dispatch sync ещё не реализован.
 - Bootstrap-проверки оставлены и обновлены: TS integration проверяет загрузку
   относительных путей, запрет прежнего route DSL и отказ удалённому bind без
   client CA. `bearerVerifier` удалён из core fixtures/tests.
@@ -187,19 +204,15 @@
 
 ## Plugins, TLS и Constructor boundary
 
-- Plugin inventory CRUD/readiness foundation уже есть, но production runtime
-  dispatch, local process supervision и secure remote mTLS mode ещё не
-  реализованы. Текущая SQLite inventory не сохраняет executable/args/env,
-  restart/grant/limit policy и remote TLS identity references; gRPC dial ещё
-  insecure. До схемы и миграции заблокировано: `pluginprotocol` `launch.json`
-  задаёт только loopback endpoint/environment, а не `binary`, `args`, env
-  secret references, restart/timeout/resource fields; `remote-deployment.json`
-  требует отдельные identities и file references, но не задаёт допустимый
-  syntax/resolver/ownership для этих references. Документация
-  `gateway/configuration/secrets.md` прямо требует закрепить resolver contract
-  до реализации. Сначала normative docs/schema должны определить эти поля,
-  единицы/границы лимитов и secret-reference grammar; затем — TS red tests,
-  SQLite migration, local lifecycle/restart и remote mTLS identity/revocation.
+- Локальный запуск передаёт inherited listener и не использует argv,
+  environment или application config file плагина; Gateway отправляет настройки
+  конкретной revision через typed Bootstrap/ConfigApply до проверки readiness.
+  Эту границу покрывает child-process TS E2E, но полный release gate ещё не
+  пройден. Остаются: remote mTLS identity/revocation и endpoint sets;
+  DispatchApply readiness barrier; immutable external-Caddy dispatch sync;
+  management CRUD для launch settings; configurable restart/resource/grant
+  policy. External Caddy с настроенными plugin instances остаётся fenced и не
+  готовым к parity.
 - HTTP `Stream` contract/handler фиксирует route concurrency, но отсутствуют
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;
@@ -209,8 +222,9 @@
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,
   WebSocket и SSE focused E2E проходят 3/3, TCP/UDP — отдельный Caddy-L4 E2E.
   Route concurrency guard уже есть, но configurable per-instance shared limit,
-  idle-timeout и max-duration остаются TODO выше. Full serve dispatch generation,
-  local plugin launch/TLS settings и remote-replica fan-out ещё не подключены.
+  idle-timeout и max-duration остаются TODO выше. Local `call` dispatch через
+  embedded Caddy подключён к supervised child; dispatch generations, local TLS
+  settings, config-scoped grants and remote-replica fan-out ещё не подключены.
 - [ ] Оставить core plugin-agnostic: CRUD generic instances/capability
   manifests/modes, local supervision и remote explicit per-replica endpoint sets без
   конкретных plugin names; режим задаётся per instance, mixed deployments

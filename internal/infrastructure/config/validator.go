@@ -20,6 +20,14 @@ type contractSecretReference struct {
 	FilePrefix string `yaml:"filePrefix"`
 }
 
+func LoadFileReferencePrefix() (string, error) {
+	loaded, err := loadContractFile()
+	if err != nil || loaded.SecretReference.FilePrefix == "" {
+		return "", ErrInvalidDocument
+	}
+	return loaded.SecretReference.FilePrefix, nil
+}
+
 type contractFile struct {
 	Root                []string                  `yaml:"root"`
 	ManagementBootstrap managementBootstrapFields `yaml:"managementBootstrap"`

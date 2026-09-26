@@ -13,6 +13,8 @@ type PluginInstanceRecord struct {
 	State        string
 	Revision     int64
 	ManifestJSON []byte
+	SettingsJSON []byte
+	LaunchJSON   []byte
 }
 
 type PluginInstanceQuery struct {
@@ -36,7 +38,7 @@ func ListPluginInstances(ctx context.Context, database *sql.DB, query PluginInst
 	instances := make([]PluginInstanceRecord, 0)
 	for rows.Next() {
 		var instance PluginInstanceRecord
-		if err := rows.Scan(&instance.ID, &instance.Mode, &instance.State, &instance.Revision, &instance.ManifestJSON); err != nil {
+		if err := rows.Scan(&instance.ID, &instance.Mode, &instance.State, &instance.Revision, &instance.ManifestJSON, &instance.SettingsJSON, &instance.LaunchJSON); err != nil {
 			return nil, err
 		}
 		if instance.ID == "" || instance.Revision < 1 || !contains(query.ValidModes, instance.Mode) || !contains(query.ValidStates, instance.State) || !json.Valid(instance.ManifestJSON) {

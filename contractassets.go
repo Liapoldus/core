@@ -21,6 +21,8 @@ const (
 	SQLiteOperationStore    = "sqlite-operation-store.yaml"
 	SQLiteGroupReleaseStore = "sqlite-group-release-store.yaml"
 	SQLitePluginInstances   = "sqlite-plugin-instances.yaml"
+	PluginLocalLaunchSchema = "local-launch.schema.json"
+	PluginRuntime           = "plugin-runtime.json"
 	CaddyHTTPStream         = "caddy-http-stream.json"
 	GroupReleaseArtifacts   = "group-release-artifacts.yaml"
 	GroupReleaseWorkflow    = "group-release-workflow.yaml"
