@@ -46,10 +46,10 @@ func main() {
 	})
 	check(err)
 
-	previous := createRevision(ctx, groupStore, root, "previous", "previous-release")
+	previous := createRevision(ctx, groupStore, root, "a-previous", "previous-release")
 	_, err = groupStore.AdvanceCurrent(ctx, group.ID, previous.ID, nil)
 	check(err)
-	current := createRevision(ctx, groupStore, root, "current", "current-release")
+	current := createRevision(ctx, groupStore, root, "b-current", "current-release")
 	_, err = groupStore.AdvanceCurrent(ctx, group.ID, current.ID, &previous.ID)
 	check(err)
 	pointersBefore, err := groupStore.GetPointers(ctx, group.ID)
