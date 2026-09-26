@@ -339,7 +339,7 @@ func servePublic(address, holdPath string) error {
 }
 
 func unixAddress(value string) (string, string, bool) {
-	const prefix = "unix//"
+	const prefix = "unix/"
 	if !strings.HasPrefix(value, prefix) {
 		return "", "", false
 	}

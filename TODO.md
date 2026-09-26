@@ -13,9 +13,11 @@
   lazy Caddy activator проверяет candidate без открытия public listener, затем
   запускает data plane при activation и переводит readiness в `ready`. TS E2E
   публикует первую system revision через API и запрашивает ответ с реального
-  embedded Caddy listener. External variant без plugin instances использует
-  Caddy `adapt` до запуска; external Caddy с plugin instances пока остаётся
-  fenced до реализации dispatch snapshot sync.
+  embedded Caddy listener. External variant теперь передаёт `PluginDispatchBinding`
+  в custom Caddy config: настоящий Caddy binary загружает тот же Liapoldus
+  dispatch app и вызывает plugin напрямую. TS E2E проверяет plugin `Call` и то,
+  что отвергнутый Caddy candidate сохраняет прежний обслуживающий snapshot.
+  Полная cross-variant conformance остаётся открытой.
 - При старте с существующей revision `serve` теперь сначала разрешает pending
   release reservations в SQLite и только после успешного recovery активирует
   Caddy через lazy runtime. TS E2E инъектирует ошибку durable transition и
@@ -104,9 +106,11 @@
   и settings revision; исходные байты удерживаются только в памяти runtime для
   повторного ConfigApply после рестарта и очищаются при остановке. Ротация файла
   применяется только новой settings revision. Нужно добавить contract-level
-  тесты на очистку буферов и отказ размера/типа файла. External Caddy намеренно
-  сообщает data plane `not-ready` при сохранённых plugin instances: private
-  immutable dispatch sync ещё не реализован.
+  тесты на очистку буферов и отказ размера/типа файла. External Caddy теперь
+  включает текущие plugin dispatch bindings в конфигурацию Caddy private Admin
+  `/load`; Liapoldus handler вызывает plugin напрямую. Отдельного generation
+  envelope или proxy RPC нет. Отказ атомарной загрузки Caddy покрыт; remote
+  DispatchApply barrier и полный cross-variant conformance остаются открыты.
 - Bootstrap-проверки оставлены и обновлены: TS integration проверяет загрузку
   относительных путей, запрет прежнего route DSL и отказ удалённому bind без
   client CA. `bearerVerifier` удалён из core fixtures/tests.
@@ -191,8 +195,11 @@
 - [ ] Собрать embedded Caddy и запускать compatible external custom Caddy binary
   как обязательные v1 variants; stock Caddy недопустим.
 - [x] External-Caddy runtime запускается из `serve` с закрытым локальным
-  control socket; focused E2E проверяет startup/restart/status. Embedded/external
-  parity, module/build identity и полная deployment conformance остаются открыты.
+  control socket; настоящий custom Caddy fixture импортирует standard Caddy,
+  Caddy-L4 и Liapoldus modules. Focused E2E проверяет direct plugin dispatch,
+  startup/restart/status и сохранение прежнего snapshot при отказе `/load`.
+  Embedded/external parity, module/build identity и полная deployment
+  conformance остаются открыты.
 - [ ] Зафиксировать Caddy/xcaddy/module versions, build identity/module
   manifest, supply-chain verification и общий parity matrix.
 - [x] Caddy-L4 TCP/UDP plugin dispatch прошёл focused E2E; общий parity gate
@@ -271,10 +278,11 @@
   конкретной revision через typed Bootstrap/ConfigApply до проверки readiness.
   Эту границу покрывает child-process TS E2E, но полный release gate ещё не
   пройден. Остаются: remote mTLS identity/revocation и endpoint sets;
-  DispatchApply readiness barrier; immutable external-Caddy dispatch sync;
-  management CRUD для launch settings; configurable restart/resource/grant
-  policy. External Caddy с настроенными plugin instances остаётся fenced и не
-  готовым к parity.
+  DispatchApply readiness barrier для remote replicas; management CRUD для
+  launch settings; configurable restart/resource/grant policy. External Caddy
+  передаёт local dispatch bindings в custom module через private Admin `/load`;
+  external cookie-policy mutation, remote dispatch barriers и общий
+  embedded/external parity gate остаются открыты.
 - HTTP `Stream` contract/handler фиксирует route concurrency, но отсутствуют
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;

@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -47,6 +47,10 @@ async function buildFixture(name: string, output: string): Promise<void> {
   await execFileAsync("go", ["build", "-o", output, `./tests/fixtures/${name}`], { cwd: coreRoot });
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 async function stopChild(child: ChildProcess | undefined): Promise<void> {
   if (child === undefined || child.exitCode !== null || child.signalCode !== null) return;
   await new Promise<void>((resolveClose) => {
@@ -57,13 +61,14 @@ async function stopChild(child: ChildProcess | undefined): Promise<void> {
 
 describe("supervised custom external Caddy plugin dispatch", () => {
   it("dispatches directly to a plugin and retains the active snapshot when Caddy rejects a candidate", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "liapoldus-external-caddy-plugin-"));
+    const directory = await mkdtemp(join(tmpdir(), "lc-"));
     const publicAddress = await freeAddress();
     const pluginAddress = await freeAddress();
     const stateDirectory = join(directory, "state");
     const pluginBinary = join(directory, "plugin-grpc");
     const launcherBinary = join(directory, "plugin-launcher");
     const caddyBinary = join(directory, "liapoldus-caddy");
+    const externalLog = join(directory, "external-caddy.log");
     const hostBinary = join(directory, "external-caddy-host");
     const initialCaddyfile = join(directory, "initial.Caddyfile");
     const rejectedCandidate = join(directory, "rejected.Caddyfile");
@@ -83,6 +88,13 @@ describe("supervised custom external Caddy plugin dispatch", () => {
       ]);
       await writeFile(initialCaddyfile, initial, "utf8");
       await writeFile(rejectedCandidate, candidate, "utf8");
+      const externalWrapper = join(directory, "liapoldus-caddy-wrapper");
+      await writeFile(externalWrapper, [
+        "#!/bin/sh",
+        `exec ${shellQuote(caddyBinary)} "$@" 2>>${shellQuote(externalLog)}`,
+        "",
+      ].join("\n"), { mode: 0o700 });
+      await chmod(externalWrapper, 0o700);
 
       plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], {
         cwd: coreRoot,
@@ -90,7 +102,7 @@ describe("supervised custom external Caddy plugin dispatch", () => {
       });
       plugin.stderr?.on("data", (chunk: Buffer) => { pluginStderr += chunk.toString(); });
 
-      host = spawn(hostBinary, [caddyBinary, stateDirectory, initialCaddyfile, externalBuildID, pluginAddress], {
+      host = spawn(hostBinary, [externalWrapper, stateDirectory, initialCaddyfile, externalBuildID, pluginAddress], {
         cwd: coreRoot,
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -122,7 +134,8 @@ describe("supervised custom external Caddy plugin dispatch", () => {
       expect(hostStderr).not.toContain(pluginAddress);
       expect(pluginStderr).not.toContain("secret");
     } catch (error) {
-      throw new Error(`External Caddy stderr: ${hostStderr}\nPlugin stderr: ${pluginStderr}\n${String(error)}`);
+      const externalDiagnostics = await readFile(externalLog, "utf8").catch(() => "");
+      throw new Error(`External Caddy stderr: ${hostStderr}\nExternal diagnostics: ${externalDiagnostics}\nPlugin stderr: ${pluginStderr}\n${String(error)}`);
     } finally {
       await stopChild(host);
       await stopChild(plugin);

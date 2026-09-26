@@ -1,18 +1,19 @@
 {
   "versionArgs": ["version"],
   "adaptArgs": ["adapt", "--config", "{{caddyfile}}", "--adapter", "caddyfile", "--pretty"],
-  "runArgs": ["run", "--config", "{{config}}", "--adapter", "json"],
+  "runArgs": ["run", "--config", "{{config}}"],
   "placeholders": {
     "caddyfile": "{{caddyfile}}",
     "config": "{{config}}"
   },
   "configuration": {
+    "apps": "apps",
     "admin": "admin",
     "disabled": "disabled",
     "listen": "listen",
     "adminConfig": "config",
     "persist": "persist",
-    "unixPrefix": "unix//",
+    "unixPrefix": "unix/",
     "httpScheme": "http",
     "httpHost": "caddy",
     "healthPath": "/config/",

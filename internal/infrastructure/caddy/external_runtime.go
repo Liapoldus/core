@@ -22,6 +22,7 @@ type ExternalOptions struct {
 	Binary          string
 	ExpectedBuildID string
 	StateDirectory  string
+	PluginInstances []PluginInstance
 	StartTimeout    time.Duration
 	StopTimeout     time.Duration
 	RestartMinimum  time.Duration
@@ -38,6 +39,7 @@ type externalContract struct {
 		Config    string `json:"config"`
 	} `json:"placeholders"`
 	Configuration struct {
+		Apps        string `json:"apps"`
 		Admin       string `json:"admin"`
 		Disabled    string `json:"disabled"`
 		Listen      string `json:"listen"`
@@ -82,26 +84,27 @@ type externalContract struct {
 }
 
 type ExternalRuntime struct {
-	mu             sync.Mutex
-	contract       externalContract
-	binary         string
-	expectedBuild  string
-	directory      string
-	configPath     string
-	socketPath     string
-	activeConfig   []byte
-	child          *exec.Cmd
-	stopped        bool
-	fenced         bool
-	startTimeout   time.Duration
-	stopTimeout    time.Duration
-	restartMinimum time.Duration
-	restartMaximum time.Duration
-	healthPoll     time.Duration
-	client         *http.Client
-	ctx            context.Context
-	cancel         context.CancelFunc
-	done           chan struct{}
+	mu              sync.Mutex
+	contract        externalContract
+	binary          string
+	expectedBuild   string
+	directory       string
+	configPath      string
+	socketPath      string
+	activeConfig    []byte
+	pluginInstances []PluginInstance
+	child           *exec.Cmd
+	stopped         bool
+	fenced          bool
+	startTimeout    time.Duration
+	stopTimeout     time.Duration
+	restartMinimum  time.Duration
+	restartMaximum  time.Duration
+	healthPoll      time.Duration
+	client          *http.Client
+	ctx             context.Context
+	cancel          context.CancelFunc
+	done            chan struct{}
 }
 
 func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfile []byte) (*ExternalRuntime, error) {
@@ -157,8 +160,9 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 	runtime := &ExternalRuntime{
 		contract: contract, binary: binary, expectedBuild: options.ExpectedBuildID,
 		directory: runtimeDirectory, configPath: filepath.Join(runtimeDirectory, contract.Files.ActiveConfiguration),
-		socketPath:   filepath.Join(runtimeDirectory, contract.Files.AdminSocket),
-		startTimeout: startTimeout, stopTimeout: stopTimeout, restartMinimum: restartMinimum,
+		socketPath:      filepath.Join(runtimeDirectory, contract.Files.AdminSocket),
+		pluginInstances: clonePluginInstances(options.PluginInstances),
+		startTimeout:    startTimeout, stopTimeout: stopTimeout, restartMinimum: restartMinimum,
 		restartMaximum: restartMaximum, healthPoll: healthPoll, ctx: runtimeContext, cancel: cancel,
 		done: make(chan struct{}),
 	}
@@ -187,7 +191,23 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 	return runtime, nil
 }
 
+func clonePluginInstances(instances []PluginInstance) []PluginInstance {
+	cloned := make([]PluginInstance, len(instances))
+	for index, instance := range instances {
+		cloned[index] = instance
+		cloned[index].CookiePolicies = make([]json.RawMessage, len(instance.CookiePolicies))
+		for policyIndex, policy := range instance.CookiePolicies {
+			cloned[index].CookiePolicies[policyIndex] = append(json.RawMessage(nil), policy...)
+		}
+	}
+	return cloned
+}
+
 func ValidateExternalCaddyfile(ctx context.Context, binary string, caddyfile []byte) error {
+	return ValidateExternalCaddyfileWithPlugins(ctx, binary, caddyfile, nil)
+}
+
+func ValidateExternalCaddyfileWithPlugins(ctx context.Context, binary string, caddyfile []byte, instances []PluginInstance) error {
 	contract, err := loadExternalContract()
 	if err != nil {
 		return err
@@ -202,7 +222,8 @@ func ValidateExternalCaddyfile(ctx context.Context, binary string, caddyfile []b
 	defer os.RemoveAll(directory)
 	runtime := &ExternalRuntime{
 		contract: contract, binary: binary, directory: directory,
-		socketPath: filepath.Join(directory, contract.Files.AdminSocket),
+		socketPath:      filepath.Join(directory, contract.Files.AdminSocket),
+		pluginInstances: clonePluginInstances(instances),
 	}
 	_, err = runtime.prepare(ctx, caddyfile)
 	return err
@@ -481,6 +502,22 @@ func (runtime *ExternalRuntime) prepare(ctx context.Context, caddyfile []byte) (
 	if err := json.Unmarshal(output.Bytes(), &configuration); err != nil {
 		return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
 	}
+	if len(runtime.pluginInstances) > 0 {
+		appName, appConfig, appErr := pluginDispatchAppConfig(runtime.pluginInstances)
+		if appErr != nil {
+			return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+		}
+		apps, ok := configuration[runtime.contract.Configuration.Apps].(map[string]any)
+		if !ok {
+			apps = make(map[string]any)
+			configuration[runtime.contract.Configuration.Apps] = apps
+		}
+		var decodedApp any
+		if json.Unmarshal(appConfig, &decodedApp) != nil {
+			return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+		}
+		apps[appName] = decodedApp
+	}
 	admin, ok := objectAt(configuration, runtime.contract.Configuration.Admin, true)
 	if !ok {
 		return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
@@ -566,7 +603,7 @@ func loadExternalContract() (externalContract, error) {
 func validateExternalContract(contract externalContract) error {
 	if len(contract.VersionArgs) == 0 || len(contract.AdaptArgs) == 0 || len(contract.RunArgs) == 0 ||
 		contract.Placeholders.Caddyfile == "" || contract.Placeholders.Config == "" ||
-		contract.Configuration.Admin == "" || contract.Configuration.Disabled == "" || contract.Configuration.Listen == "" ||
+		contract.Configuration.Apps == "" || contract.Configuration.Admin == "" || contract.Configuration.Disabled == "" || contract.Configuration.Listen == "" ||
 		contract.Configuration.AdminConfig == "" || contract.Configuration.Persist == "" || contract.Configuration.UnixPrefix == "" ||
 		contract.Configuration.HTTPScheme == "" || contract.Configuration.HTTPHost == "" || contract.Configuration.HealthPath == "" ||
 		contract.Configuration.LoadPath == "" || contract.Configuration.LoadMethod == "" ||

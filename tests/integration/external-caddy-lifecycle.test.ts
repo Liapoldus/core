@@ -301,7 +301,7 @@ describe("supervised external Caddy Admin IPC", () => {
       const firstReady = events.find((event) => event.name === "ready");
       expect(firstReady).toBeDefined();
       expect(firstReady?.adminListen).toMatch(/^unix\/\//);
-      const socketPath = firstReady?.adminListen?.slice("unix//".length) ?? "";
+      const socketPath = firstReady?.adminListen?.slice("unix/".length) ?? "";
       const relativeSocketPath = relative(resolve(stateDirectory), resolve(socketPath));
       expect(relativeSocketPath).not.toBe("");
       expect(relativeSocketPath).not.toBe("..");
