@@ -254,6 +254,19 @@ describe("production serve bootstrap and SQLite group reads", () => {
       const publicResponse = await fetch(`http://${publicAddress}`);
       expect(publicResponse.status).toBe(200);
       expect(await publicResponse.text()).toBe("first-system-release");
+
+      await gateway.stop();
+      gateway = undefined;
+      await execFileAsync("go", ["run", "./tests/fixtures/serve-pending-recovery", database, artifacts], {
+        cwd: join(import.meta.dirname, "../.."),
+      });
+      gateway = await startGateway(["--config", config, "serve"]);
+      await waitForManagement(address, gateway.process);
+      const recoveryStatus = await request(address, "/api/status", token);
+      expect(JSON.parse(recoveryStatus.body)).toMatchObject({
+        dataPlaneReadiness: { state: "not-ready", reason: "recovery-required" },
+      });
+      await expect(fetch(`http://${publicAddress}`)).rejects.toThrow();
     } finally {
       if (gateway !== undefined) {
         await gateway.stop();
