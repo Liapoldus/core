@@ -12,19 +12,21 @@ import (
 )
 
 type report struct {
-	Columns []string `json:"columns"`
-	Seeded  bool     `json:"seeded"`
+	Columns              []string `json:"columns"`
+	LaunchSettingsSeeded bool     `json:"launchSettingsSeeded"`
+	Seeded               bool     `json:"seeded"`
 }
 
 func main() {
-	if len(os.Args) != 2 {
+	if len(os.Args) != 3 {
 		os.Exit(2)
 	}
+	databasePath, pluginBinary := os.Args[1], os.Args[2]
 	contract, err := config.LoadSQLiteContract()
 	if err != nil {
 		panic(err)
 	}
-	database, err := storage.OpenSQLite(context.Background(), os.Args[1], storage.SQLiteOptions{
+	database, err := storage.OpenSQLite(context.Background(), databasePath, storage.SQLiteOptions{
 		Driver: contract.Driver, ParentDirectoryMode: contract.ParentDirectoryMode,
 		DatabaseFileMode: contract.DatabaseFileMode, MaxOpenConnections: contract.MaxOpenConnections,
 		MaxIdleConnections: contract.MaxIdleConnections, SchemaVersion: contract.SchemaVersion,
@@ -54,15 +56,22 @@ func main() {
 		panic(err)
 	}
 
-	manifest := json.RawMessage(`{"name":"serve-fixture","protocolVersion":"liapoldus.plugin.v1","capabilities":["forms.submit","admin.surface.get"],"capabilityDescriptors":[{"capability":"forms.submit","modes":["INVOCATION_MODE_CALL"]},{"capability":"admin.surface.get","modes":["INVOCATION_MODE_CALL"]}]}`)
+	manifest := json.RawMessage(`{"name":"serve-fixture","protocolVersion":"liapoldus.plugin.v1","capabilities":["test.lifecycle"],"capabilityDescriptors":[{"capability":"test.lifecycle","modes":["INVOCATION_MODE_CALL"]}]}`)
 	_, err = database.ExecContext(context.Background(), `INSERT INTO plugin_instances
 		(id, mode, endpoint, settings_json, manifest_json, state, revision)
 		VALUES (?, ?, ?, ?, ?, ?, 1)`,
-		"serve-fixture", "local", "127.0.0.1:45678", []byte(`{"privateSetting":"fixture-private-value"}`), []byte(manifest), "configured")
+		"serve-fixture", "local", nil, []byte(`{}`), []byte(manifest), "configured")
 	if err != nil {
 		panic(err)
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(report{Columns: columns, Seeded: true}); err != nil {
+	launch, err := json.Marshal(map[string]string{"binary": pluginBinary})
+	if err != nil {
+		panic(err)
+	}
+	if _, err := database.ExecContext(context.Background(), `INSERT INTO plugin_launch_settings (instance_id, launch_json) VALUES (?, ?)`, "serve-fixture", launch); err != nil {
+		panic(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(report{Columns: columns, LaunchSettingsSeeded: true, Seeded: true}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

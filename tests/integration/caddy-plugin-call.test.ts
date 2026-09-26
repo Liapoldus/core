@@ -42,23 +42,19 @@ describe("Caddy Liapoldus call handler", () => {
     const pluginAddress = await freeAddress();
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-plugin-call-"));
     const pluginBinary = join(directory, "plugin-grpc");
+    const launcherBinary = join(directory, "plugin-launcher");
     const caddyBinary = join(directory, "caddy-plugin");
     const configPath = join(directory, "runtime.Caddyfile");
     await Promise.all([
       buildFixture("plugin-grpc", pluginBinary),
+      buildFixture("plugin-process-launcher", launcherBinary),
       buildFixture("caddy-plugin", caddyBinary),
     ]);
     await writeFile(configPath, `http://${publicAddress} {\n  liapoldus_plugin fixture forms.submit call\n}\n`, "utf8");
 
-    const plugin = spawn(pluginBinary, [], {
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], {
       cwd: coreRoot,
       stdio: ["ignore", "ignore", "pipe"],
-      env: {
-        ...process.env,
-        LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress,
-        LIAPOLDUS_FIXTURE_MANIFEST_NAME: "fixture",
-        LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES: "forms.submit",
-      },
     });
     let pluginStderr = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginStderr += chunk.toString(); });
@@ -125,22 +121,18 @@ describe("Caddy Liapoldus call handler", () => {
     const pluginAddress = await freeAddress();
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-plugin-mode-"));
     const pluginBinary = join(directory, "plugin-grpc");
+    const launcherBinary = join(directory, "plugin-launcher");
     const caddyBinary = join(directory, "caddy-plugin");
     const configPath = join(directory, "runtime.Caddyfile");
     await Promise.all([
       buildFixture("plugin-grpc", pluginBinary),
+      buildFixture("plugin-process-launcher", launcherBinary),
       buildFixture("caddy-plugin", caddyBinary),
     ]);
     await writeFile(configPath, `http://${publicAddress} {\n  liapoldus_plugin fixture ${capability} ${mode}\n}\n`, "utf8");
-    const plugin = spawn(pluginBinary, [], {
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], {
       cwd: coreRoot,
       stdio: ["ignore", "ignore", "ignore"],
-      env: {
-        ...process.env,
-        LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress,
-        LIAPOLDUS_FIXTURE_MANIFEST_NAME: "fixture",
-        LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES: "forms.submit",
-      },
     });
     const caddy = spawn(caddyBinary, [configPath, pluginAddress], {
       cwd: coreRoot,

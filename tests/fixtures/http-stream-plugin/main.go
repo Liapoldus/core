@@ -128,7 +128,7 @@ func sendHTTP(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.S
 }
 
 func main() {
-	listener, err := transport.ListenLoopback()
+	listener, err := transport.ListenInherited()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

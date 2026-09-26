@@ -54,13 +54,14 @@ async function waitHTTP(address: string, child: ChildProcess, stderr: () => stri
 describe("Caddy HTTP Stream plugin dispatch", () => {
   it("streams HTTP request chunks and response chunks without buffering the body", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-http-stream-"));
-    const [caddyBinary, pluginBinary, address, pluginAddress] = await Promise.all([
+    const [caddyBinary, pluginBinary, launcherBinary, address, pluginAddress] = await Promise.all([
       build("caddy-http-stream", "./tests/fixtures/caddy-http-stream", directory),
       build("grpc-plugin", "./tests/fixtures/http-stream-plugin", directory),
+      build("plugin-launcher", "./tests/fixtures/plugin-process-launcher", directory),
       freeAddress(),
       freeAddress(),
     ]);
-    const plugin = spawn(pluginBinary, [], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress } });
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"] });
     let pluginOutput = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginOutput += chunk.toString(); });
     const caddy = await startCaddy(caddyBinary, pluginAddress, "http-stream", "forms.http", address);
@@ -88,13 +89,14 @@ describe("Caddy HTTP Stream plugin dispatch", () => {
 
   it("lets the plugin accept a WebSocket and echoes framed text messages", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-websocket-stream-"));
-    const [caddyBinary, pluginBinary, address, pluginAddress] = await Promise.all([
+    const [caddyBinary, pluginBinary, launcherBinary, address, pluginAddress] = await Promise.all([
       build("caddy-websocket", "./tests/fixtures/caddy-http-stream", directory),
       build("grpc-plugin", "./tests/fixtures/http-stream-plugin", directory),
+      build("plugin-launcher", "./tests/fixtures/plugin-process-launcher", directory),
       freeAddress(),
       freeAddress(),
     ]);
-    const plugin = spawn(pluginBinary, [], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress } });
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"] });
     let pluginOutput = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginOutput += chunk.toString(); });
     const caddy = await startCaddy(caddyBinary, pluginAddress, "websocket", "forms.websocket", address);
@@ -125,13 +127,14 @@ describe("Caddy HTTP Stream plugin dispatch", () => {
 
   it("serializes plugin SSE events with event, id, and data fields", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-sse-stream-"));
-    const [caddyBinary, pluginBinary, address, pluginAddress] = await Promise.all([
+    const [caddyBinary, pluginBinary, launcherBinary, address, pluginAddress] = await Promise.all([
       build("caddy-sse", "./tests/fixtures/caddy-http-stream", directory),
       build("grpc-plugin", "./tests/fixtures/http-stream-plugin", directory),
+      build("plugin-launcher", "./tests/fixtures/plugin-process-launcher", directory),
       freeAddress(),
       freeAddress(),
     ]);
-    const plugin = spawn(pluginBinary, [], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress } });
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], { cwd: coreRoot, stdio: ["ignore", "ignore", "pipe"] });
     let pluginOutput = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginOutput += chunk.toString(); });
     const caddy = await startCaddy(caddyBinary, pluginAddress, "sse", "forms.sse", address);

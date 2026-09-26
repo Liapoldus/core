@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -47,21 +46,7 @@ type httpRequest struct {
 }
 
 func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.Manifest, error) {
-	if delay := os.Getenv("LIAPOLDUS_FIXTURE_MANIFEST_DELAY"); delay != "" {
-		wait, err := time.ParseDuration(delay)
-		if err != nil {
-			return nil, err
-		}
-		time.Sleep(wait)
-	}
 	capabilities := []string{"forms.submit", "forms.concurrent", "forms.crash-once", "forms.memory", "forms.slow", "peer.session", "tcp.echo"}
-	if configured := os.Getenv("LIAPOLDUS_FIXTURE_MANIFEST_CAPABILITIES"); configured != "" {
-		capabilities = strings.Split(configured, ",")
-	}
-	name := os.Getenv("LIAPOLDUS_FIXTURE_MANIFEST_NAME")
-	if name == "" {
-		name = "forms"
-	}
 	descriptors := make([]*pluginv1.CapabilityDescriptor, 0, len(capabilities))
 	for _, capability := range capabilities {
 		descriptors = append(descriptors, &pluginv1.CapabilityDescriptor{
@@ -69,7 +54,7 @@ func (*plugin) Manifest(context.Context, *pluginv1.ManifestRequest) (*pluginv1.M
 			Modes:      []pluginv1.InvocationMode{pluginv1.InvocationMode_INVOCATION_MODE_CALL},
 		})
 	}
-	return &pluginv1.Manifest{Name: name, ProtocolVersion: pluginprotocol.ProtocolVersion, Capabilities: capabilities, CapabilityDescriptors: descriptors}, nil
+	return &pluginv1.Manifest{Name: "fixture", ProtocolVersion: pluginprotocol.ProtocolVersion, Capabilities: capabilities, CapabilityDescriptors: descriptors}, nil
 }
 
 func (*plugin) ConfigSchema(context.Context, *pluginv1.ConfigSchemaRequest) (*pluginv1.ConfigSchema, error) {
@@ -258,24 +243,26 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 }
 
 func main() {
-	startMarker := os.Getenv("LIAPOLDUS_FIXTURE_START_MARKER")
-	if startMarker != "" {
-		file, err := os.OpenFile(startMarker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			return
-		}
-		_, writeErr := file.WriteString("start\n")
-		closeErr := file.Close()
-		if writeErr != nil || closeErr != nil {
-			return
-		}
+	executable, err := os.Executable()
+	if err != nil {
+		return
 	}
-	listener, err := transport.ListenLoopback()
+	startMarker := executable + ".starts"
+	file, err := os.OpenFile(startMarker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	_, writeErr := file.WriteString("start\n")
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		return
+	}
+	listener, err := transport.ListenInherited()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
 	}
-	service := &plugin{crashMarker: os.Getenv("LIAPOLDUS_FIXTURE_CRASH_MARKER")}
+	service := &plugin{crashMarker: executable + ".crash"}
 	service.server = transport.NewServer(service, transport.ServerOptions{})
 	if err := service.server.Serve(listener); err != nil {
 		return

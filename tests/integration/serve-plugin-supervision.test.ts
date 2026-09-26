@@ -69,11 +69,13 @@ describe("serve local plugin supervision", () => {
     const database = join(directory, "gateway.db");
     const artifacts = join(directory, "artifacts");
     const config = join(directory, "gateway.yaml");
-    const marker = join(directory, "plugin-starts.txt");
+    const marker = `${pluginBinary}.starts`;
+    const secretFile = join(directory, "plugin-secret.txt");
     let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
 
     try {
       await buildFixture("serve-plugin-child", pluginBinary);
+      await writeFile(secretFile, "secret-dsn-for-fixture", { mode: 0o600 });
       await execFileAsync("openssl", [
         "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
         "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
@@ -88,7 +90,7 @@ describe("serve local plugin supervision", () => {
       ].join("\n"), "utf8");
       const bootstrap = await execFileAsync(gatewayBinary, ["--config", config, "access", "bootstrap"]);
       expect(bootstrap.stdout.trim()).not.toHaveLength(0);
-      await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-composition", database, artifacts, pluginBinary, marker], {
+      await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-composition", database, artifacts, pluginBinary, secretFile], {
         cwd: join(import.meta.dirname, "../.."),
         env: { ...process.env, LIAPOLDUS_TEST_PUBLIC_ADDRESS: publicAddress },
       });
@@ -99,7 +101,7 @@ describe("serve local plugin supervision", () => {
       expect(await response.text()).toBe("recovered");
       const starts = (await readFile(marker, "utf8")).trim().split("\n");
       expect(starts.length).toBeGreaterThanOrEqual(2);
-      await expect(access(`${marker}.inherited-environment`)).rejects.toMatchObject({ code: "ENOENT" });
+      await expect(access(`${pluginBinary}.inherited-environment`)).rejects.toMatchObject({ code: "ENOENT" });
 
       await gateway.stop();
       gateway = undefined;

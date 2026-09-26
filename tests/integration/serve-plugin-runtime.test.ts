@@ -48,6 +48,12 @@ async function waitForManagement(address: string, child: Awaited<ReturnType<type
   throw new Error("Gateway Management API did not become ready.");
 }
 
+async function buildFixture(name: string, output: string): Promise<void> {
+  await execFileAsync("go", ["build", "-o", output, `./tests/fixtures/${name}`], {
+    cwd: join(import.meta.dirname, "../.."),
+  });
+}
+
 describe("serve plugin runtime composition", () => {
   it("loads SQLite plugin instances and exposes them only through the ready management runtime", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-serve-plugin-runtime-"));
@@ -58,6 +64,7 @@ describe("serve plugin runtime composition", () => {
     const database = join(directory, "gateway.db");
     const artifacts = join(directory, "artifacts");
     const config = join(directory, "gateway.yaml");
+    const pluginBinary = join(directory, "plugin-child");
     let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
 
     try {
@@ -86,11 +93,13 @@ describe("serve plugin runtime composition", () => {
       const token = bootstrap.stdout.trim();
       expect(token.length).toBeGreaterThan(0);
 
-      const seeded = await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-runtime", database], {
+      await buildFixture("serve-plugin-child", pluginBinary);
+      const seeded = await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-runtime", database, pluginBinary], {
         cwd: join(import.meta.dirname, "../.."),
       });
-      const seedReport = JSON.parse(seeded.stdout) as { columns: string[]; seeded: boolean };
+      const seedReport = JSON.parse(seeded.stdout) as { columns: string[]; launchSettingsSeeded: boolean; seeded: boolean };
       expect(seedReport.seeded).toBe(true);
+      expect(seedReport.launchSettingsSeeded).toBe(true);
       expect(seedReport.columns).toEqual(expect.arrayContaining([
         "id", "mode", "endpoint", "settings_json", "manifest_json", "state", "revision",
       ]));
@@ -113,9 +122,9 @@ describe("serve plugin runtime composition", () => {
           mode: "local",
           state: "configured",
           revision: 1,
-          capabilities: expect.arrayContaining(["forms.submit", "admin.surface.get"]),
+          capabilities: expect.arrayContaining(["test.lifecycle"]),
           capabilityDescriptors: expect.arrayContaining([
-            expect.objectContaining({ capability: "forms.submit", modes: ["INVOCATION_MODE_CALL"] }),
+            expect.objectContaining({ capability: "test.lifecycle", modes: ["INVOCATION_MODE_CALL"] }),
           ]),
         }),
       ]));

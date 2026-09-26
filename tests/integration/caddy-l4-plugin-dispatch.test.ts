@@ -72,9 +72,10 @@ async function udpExchange(socket: DatagramSocket, address: string, payload: Buf
 describe("Caddy-L4 plugin dispatch", () => {
   it("relays TCP connection bytes through the declared plugin Stream capability", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-l4-plugin-"));
-    const [caddyBinary, pluginBinary, address] = await Promise.all([
+    const [caddyBinary, pluginBinary, launcherBinary, address] = await Promise.all([
       build("caddy-l4", coreRoot, "./tests/fixtures/caddy-plugin", directory),
       build("grpc-plugin", coreRoot, "./tests/fixtures/caddy-l4-plugin", directory),
+      build("plugin-launcher", coreRoot, "./tests/fixtures/plugin-process-launcher", directory),
       freeAddress(),
     ]);
     const configPath = join(directory, "l4.Caddyfile");
@@ -91,10 +92,9 @@ describe("Caddy-L4 plugin dispatch", () => {
     await writeFile(configPath, caddyfile, "utf8");
 
     const pluginAddress = await freeAddress();
-    const plugin = spawn(pluginBinary, [], {
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], {
       cwd: coreRoot,
       stdio: ["ignore", "ignore", "pipe"],
-      env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress },
     });
     let pluginStderr = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginStderr += chunk.toString(); });
@@ -129,9 +129,10 @@ describe("Caddy-L4 plugin dispatch", () => {
 
   it("opens one UDP plugin Stream per datagram and preserves datagram payload boundaries", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-caddy-l4-udp-plugin-"));
-    const [caddyBinary, pluginBinary, address, pluginAddress] = await Promise.all([
+    const [caddyBinary, pluginBinary, launcherBinary, address, pluginAddress] = await Promise.all([
       build("caddy-l4", coreRoot, "./tests/fixtures/caddy-plugin", directory),
       build("grpc-plugin", coreRoot, "./tests/fixtures/caddy-l4-plugin", directory),
+      build("plugin-launcher", coreRoot, "./tests/fixtures/plugin-process-launcher", directory),
       freeAddress(),
       freeAddress(),
     ]);
@@ -148,10 +149,9 @@ describe("Caddy-L4 plugin dispatch", () => {
 `;
     await writeFile(configPath, caddyfile, "utf8");
 
-    const plugin = spawn(pluginBinary, [], {
+    const plugin = spawn(launcherBinary, [pluginAddress, pluginBinary], {
       cwd: coreRoot,
       stdio: ["ignore", "ignore", "pipe"],
-      env: { ...process.env, LIAPOLDUS_PLUGIN_ENDPOINT: pluginAddress },
     });
     let pluginStderr = "";
     plugin.stderr?.on("data", (chunk: Buffer) => { pluginStderr += chunk.toString(); });

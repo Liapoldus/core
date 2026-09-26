@@ -32,7 +32,7 @@ func main() {
 		writeReport(false, false)
 		return
 	}
-	if _, err := database.ExecContext(context.Background(), "INSERT INTO schema_migrations(version) VALUES (2)"); err != nil {
+	if _, err := database.ExecContext(context.Background(), "INSERT INTO schema_migrations(version) VALUES (3)"); err != nil {
 		_ = database.Close()
 		writeReport(false, false)
 		return

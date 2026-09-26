@@ -98,7 +98,7 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 }
 
 func main() {
-	listener, err := transport.ListenLoopback()
+	listener, err := transport.ListenInherited()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

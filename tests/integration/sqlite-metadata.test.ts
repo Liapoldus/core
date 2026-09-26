@@ -19,7 +19,7 @@ describe("SQLite control-plane state", () => {
       expect(JSON.parse(first.stdout)).toMatchObject({
         journalMode: "wal",
         foreignKeys: 1,
-        migrationVersion: 1,
+        migrationVersion: 2,
         systemGroupExists: true,
         systemPointerExists: true,
         crossGroupPointerRejected: true,
@@ -31,7 +31,7 @@ describe("SQLite control-plane state", () => {
       const second = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", database], {
         cwd: coreRoot,
       });
-      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 1, migrationCount: 1 });
+      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 2, migrationCount: 1 });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
