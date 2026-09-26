@@ -354,9 +354,13 @@ func extractFrontendArchive(root string, contents []byte, policy models.GroupRel
 				return nil, err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if header.Size < 0 || header.Size > policy.UncompressedArtifactLimitBytes-uncompressedBytes {
+			if header.Size < 0 {
 				_ = decompressed.Close()
 				return invalid()
+			}
+			if header.Size > policy.UncompressedArtifactLimitBytes-uncompressedBytes {
+				_ = decompressed.Close()
+				return tooLarge()
 			}
 			if err := os.MkdirAll(filepath.Dir(absolute), folderMode); err != nil {
 				_ = decompressed.Close()

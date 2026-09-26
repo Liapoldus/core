@@ -49,11 +49,14 @@
   TS E2E проверяет safe archive frontend digest/manifest, traversal rejection,
   rollback, idempotent retry и stale-current conflict. Golden vectors дополнительно
   исполняют gzip checksum, duplicate/case-fold collision, NFC normalization,
-  path depth/byte length, entry-count и compression-ratio limits. Byte limits,
-  сериализация concurrent same-CAS reservations и startup crash-recovery открыты.
+  path depth/byte length, entry-count, compression-ratio и compressed/uncompressed
+  byte limits. Byte-limit vectors уменьшают порог только внутри fixture, не
+  создавая сотни MiB; превышение uncompressed entry size возвращает
+  `artifact_too_large`. Сериализация concurrent same-CAS reservations и startup
+  crash-recovery открыты.
 - Текущий focused group suite: archive, rollback, release-store и Management API
   tests проходят. После объединения параллельных изменений прошёл полный
-  `make check` (Go build, 48 TS-файлов / 87 тестов и Docker arch-lint без
+  `make check` (Go build, 48 TS-файлов / 89 тестов и Docker arch-lint без
   warnings), `go vet ./...`, Linux/macOS ARM64 builds и Gateway Docker smoke.
   Это не закрывает незавершённые production lifecycle/conformance пункты ниже.
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
@@ -193,9 +196,8 @@
   compression ratio и entry count. Все случаи отклоняются до активации; entry
   count vector использует directory headers, чтобы не выполнять 10 000 sync
   записей тестовых файлов.
-- [ ] Добавить безопасно ограниченные vectors для compressed/uncompressed byte
-  limits; текущие пределы велики, поэтому сценарии не должны выделять сотни MiB
-  или нагружать CI.
+- [x] Проверить compressed/uncompressed byte-limit ветки на уменьшенных порогах
+  test fixture, сохранив production limits и не выделяя сотни MiB.
 - [x] TS integration проверяет `POST /api/groups/{id}/rollback`: durable
   operation, previous activation, CAS conflict, idempotent retry и атомарный swap
   current/previous. Нет отдельного `current`/`previous` endpoint в контракте;
@@ -296,8 +298,8 @@
   group publish pre-activation validation; текущий Caddy handler знает mode
   registry, но management/serve composition не валидирует весь published group
   against live instance Manifest до activation.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас одиннадцать vectors
-  реально исполняются (bootstrap rejection, Management authentication и девять
+- [ ] Расширять исполняемые golden-vector conformance: сейчас тринадцать vectors
+  реально исполняются (bootstrap rejection, Management authentication и одиннадцать
   archive cases); прочие vectors пока проверяются только структурно либо
   требуют отдельного production slice.
 - [ ] Исправить release workflow: он требует минимум 9 файлов в

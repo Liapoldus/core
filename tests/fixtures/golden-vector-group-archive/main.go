@@ -44,6 +44,11 @@ type vectorInput struct {
 	EntryPathBytes int  `json:"entryPathBytes"`
 	EntryCount     int  `json:"entryCount"`
 	ContentBytes   int  `json:"contentBytes"`
+	ContentEntropy bool `json:"contentEntropy"`
+	Limits         struct {
+		CompressedArtifactLimitBytes   int64 `json:"compressedArtifactLimitBytes"`
+		UncompressedArtifactLimitBytes int64 `json:"uncompressedArtifactLimitBytes"`
+	} `json:"limits"`
 }
 
 type observation struct {
@@ -110,6 +115,12 @@ func main() {
 	policy, err := config.LoadGroupRelease()
 	if err != nil {
 		panic(err)
+	}
+	if testVector.Input.Limits.CompressedArtifactLimitBytes > 0 {
+		policy.CompressedArtifactLimitBytes = testVector.Input.Limits.CompressedArtifactLimitBytes
+	}
+	if testVector.Input.Limits.UncompressedArtifactLimitBytes > 0 {
+		policy.UncompressedArtifactLimitBytes = testVector.Input.Limits.UncompressedArtifactLimitBytes
 	}
 	root := filepath.Dir(os.Args[2])
 	releaseArtifacts, err := artifacts.NewGroupReleaseArtifacts(root)
@@ -231,7 +242,15 @@ func makeArchive(input vectorInput) []byte {
 		entries = append(entries, archiveEntry(fmt.Sprintf("frontends/ui/d%05d/", index), ""))
 	}
 	if input.ContentBytes > 0 {
-		entries = append(entries, archiveEntry("frontends/ui/repeated.txt", strings.Repeat("x", input.ContentBytes)))
+		content := strings.Repeat("x", input.ContentBytes)
+		if input.ContentEntropy {
+			contents := make([]byte, input.ContentBytes)
+			for index := range contents {
+				contents[index] = byte(index)
+			}
+			content = string(contents)
+		}
+		entries = append(entries, archiveEntry("frontends/ui/repeated.txt", content))
 	}
 	for _, archiveEntry := range entries {
 		contents := []byte(archiveEntry.Content)
