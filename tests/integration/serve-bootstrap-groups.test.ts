@@ -58,6 +58,37 @@ function requestJSON(address: string, path: string, token: string, body: unknown
   });
 }
 
+function publishFirstSystemRevision(address: string, token: string, caddyfile: string): Promise<ResponseValue> {
+  const boundary = "liapoldus-first-system-release-boundary";
+  const chunks = [
+    `--${boundary}\r\nContent-Disposition: form-data; name="metadata"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ idempotencyKey: "first-system-release-0001", expectedCurrentRevision: null })}\r\n`,
+    `--${boundary}\r\nContent-Disposition: form-data; name="caddyfile"; filename="Caddyfile"\r\nContent-Type: text/plain\r\n\r\n${caddyfile}\r\n`,
+    `--${boundary}--\r\n`,
+  ];
+  const body = Buffer.from(chunks.join(""), "utf8");
+  const port = Number(address.slice(address.lastIndexOf(":") + 1));
+  return new Promise((resolve, reject) => {
+    const requestValue = httpsRequest({
+      hostname: "127.0.0.1",
+      port,
+      path: "/api/groups/system/releases",
+      method: "POST",
+      rejectUnauthorized: false,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": body.byteLength,
+      },
+    }, (response) => {
+      const responseChunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => responseChunks.push(Buffer.from(chunk)));
+      response.once("end", () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(responseChunks).toString("utf8") }));
+    });
+    requestValue.once("error", reject);
+    requestValue.end(body);
+  });
+}
+
 async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startGateway>>["process"]): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`Gateway exited before Management API became ready (${child.exitCode}).`);
@@ -199,6 +230,13 @@ describe("production serve bootstrap and SQLite group reads", () => {
       const databaseBytes = await readFile(database);
       expect(databaseBytes.byteLength).toBeGreaterThan(0);
       expect(databaseBytes.includes(Buffer.from(token))).toBe(false);
+
+      const firstRelease = await publishFirstSystemRevision(
+        address,
+        token,
+        `http://${await freeAddress()} {\n  respond \"first-system-release\"\n}\n`,
+      );
+      expect(firstRelease.status, firstRelease.body).toBe(202);
     } finally {
       if (gateway !== undefined) {
         await gateway.stop();
