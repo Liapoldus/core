@@ -132,10 +132,18 @@
   cookie-policy failure mapping, pagination response и `recordAudit` выделены из
   legacy `adapter.go` в `api/respond.go` без изменения response behavior. Red
   ownership tests `42595e7`, `26a04f9` закрепили эти границы; test correction
-  `51c6af4` уточнила, что `sliceValues` принадлежит `codec.go` и временно
-  остаётся в `adapter.go`, как и `groupResponse`. P0 response characterization и
-  ownership suite прошли (8 файлов / 26 тестов), `go build ./...`, `go vet
-  ./...`, `make staticcheck-u1000` и `make arch-lint` также прошли.
+  `51c6af4` уточнила, что `sliceValues` принадлежит `codec.go`. P0 response
+  characterization и ownership suite прошли (8 файлов / 26 тестов), `go build
+  ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` также
+  прошли.
+
+- D3.3 API codec: request DTOs, group-release multipart decoding, `groupResponse`,
+  slice projection и ASCII validation перемещены в `api/codec.go`; семантика
+  upload validation/limits и serialized group response не менялась. Red test
+  `0120611` фиксирует target ownership и отсутствие этих объявлений в
+  `adapter.go`. Management/group-release conformance и ownership suite прошли
+  (12 файлов / 32 теста), `go build ./...`, `go vet ./...`,
+  `make staticcheck-u1000` и `make arch-lint` прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
