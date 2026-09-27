@@ -42,17 +42,30 @@
   Management response characterization и текущая форма `api.Server`.
   Полный `make check` на Node v22.21.1 прошёл (72 файла / 129 тестов, build и
   Docker arch-lint); отдельно прошли `go vet ./...` и
-  `make staticcheck-u1000`. Следующий этап — D5, затем разрешённые D3.3 package
-  moves; production-изменения остаются только в `internal/presentation/`.
+  `make staticcheck-u1000`. D5 package/ownership guards включены в `make check`;
+  дальше идут раздельные D3.3 API и D4 CLI package moves. Production-изменения
+  остаются только в `internal/presentation/`.
 
 - Correction к исходной инвентаризации presentation: актуальный `api.Server`
   имеет 27 экспортированных и 2 неэкспортированных поля; TypeScript guard
   фиксирует имена и порядок всего набора. Перечень «9 fixture fields» из
   вложенного плана не совпадает с текущим source (например, `Store` не является
   полем `api.Server`), а `tests/fixtures/management-api-characterization`
-  напрямую использует дополнительный экспорт `api.AdminSurface`. D5 проверка
-  намеренно остаётся красной по этому экспорту до его переноса в
-  `api/handlers/` на шаге D3.3; форму и имена полей `Server` сохраняем.
+  напрямую использует дополнительный экспорт `api.AdminSurface`. Этот тип и
+  клонирование списка перенесены в `api/handlers/`; fixture использует новый
+  владеющий пакет, а корневой `api` экспортирует только `Server`. Форму и
+  имена/порядок полей `Server` сохранили.
+  D5 negative proofs: исходный лишний `AdminSurface` сделал root-export test
+  красным; Token→TokenProbe сделал красным Server-shape test; временная
+  однофайловая подпапка стала красной; временный production `*_test.go` стал
+  красным и удалён; запрещённые Caddy и pluginprotocol imports в `api/handlers`
+  дали две lint errors; временный обратный edge CLI graph сделал dependency test
+  красным; вне `api/`/`cli/` каталог сделал красным structure guard. Все
+  мутации удалены/откачены, focused architecture + characterization прогон
+  зелёный (4 файла / 15 тестов), `go build ./...` и `make arch-lint` прошли.
+  `.go-arch-lint.yml` заранее разрешает только направленные CLI→caddyruntime и
+  CLI→bootstrap edges, а bootstrap→caddyruntime; файлы этих CLI пакетов ещё
+  предстоит перенести по D4.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

@@ -25,6 +25,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
+	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -33,7 +34,7 @@ type Server struct {
 	ServiceAccounts          []models.ServiceAccount
 	mu                       sync.RWMutex
 	Operations               application.OperationService
-	AdminSurfaces            []AdminSurface
+	AdminSurfaces            []handlers.AdminSurface
 	AdminDispatcher          *plugins.Dispatcher
 	Plugins                  []any
 	PluginIDField            string
@@ -58,14 +59,6 @@ type Server struct {
 	TLSConfig                *tls.Config
 	RequireClientCertificate bool
 	contractOnce             sync.Once
-}
-
-type AdminSurface struct {
-	Plugin       string   `json:"plugin"`
-	Namespace    string   `json:"namespace"`
-	Version      string   `json:"version"`
-	Title        string   `json:"title"`
-	Capabilities []string `json:"capabilities"`
 }
 
 func (server *Server) Handler() http.Handler {
@@ -247,7 +240,7 @@ func (server *Server) dispatchPluginCollections(response http.ResponseWriter, re
 	}
 	if path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet {
 		server.mu.RLock()
-		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
+		surfaces := handlers.CloneAdminSurfaces(server.AdminSurfaces)
 		server.mu.RUnlock()
 		server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: surfaces, server.Management.JSON.RequestID: requestID})
 		return true

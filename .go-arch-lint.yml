@@ -77,7 +77,7 @@ deps:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
     canUse: []
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPI]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPI, presentationCLICaddyRuntime, presentationCLIBootstrap]
   presentationCLICaddyRuntime:
     mayDependOn: [domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
     canUse: []
