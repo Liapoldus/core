@@ -1,7 +1,7 @@
 import { execFile, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { gzipSync } from "node:zlib";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request as httpsRequest } from "node:https";
@@ -12,7 +12,6 @@ import { freeAddress } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
-const externalBuildID = "external-caddy-fixture-build";
 const activationToken = "crash-candidate-release";
 
 interface HTTPResult {
@@ -23,6 +22,7 @@ interface HTTPResult {
 interface FixtureEvent {
   readonly name: string;
   readonly pid: number;
+  readonly childPid?: number;
   readonly detail?: string;
 }
 
@@ -98,10 +98,6 @@ async function processState(fixture: string, database: string, artifacts: string
   return JSON.parse(result.stdout) as ProcessState;
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
 function tarGzip(path: string, value: string): Buffer {
   const content = Buffer.from(value, "utf8");
   const header = Buffer.alloc(512);
@@ -162,12 +158,10 @@ describe("Gateway process group-release crash recovery", () => {
     const config = join(directory, "gateway.yaml");
     const certificate = join(directory, "management.crt");
     const privateKey = join(directory, "management.key");
-    const fixture = join(directory, "external-caddy-fixture");
+    const caddyBinary = join(directory, "liapoldus-caddy");
+    const adminProxy = join(directory, "external-caddy-admin-proxy");
     const stateFixture = join(directory, "group-release-process-state");
-    const externalBinary = join(directory, "liapoldus-caddy");
     const eventsPath = join(directory, "external-caddy-events.jsonl");
-    const externalLog = join(directory, "external-caddy.log");
-    const startupHoldPath = join(directory, "hold-startup");
     const activationBarrierPath = join(directory, "hold-caddy-activation");
     const managementAddress = await freeAddress();
     const publicAddress = await freeAddress();
@@ -183,19 +177,14 @@ describe("Gateway process group-release crash recovery", () => {
       ]);
       await writeFile(activationBarrierPath, "hold", "utf8");
       await Promise.all([
-        execFileAsync("go", ["build", "-o", fixture, "./tests/fixtures/external-caddy"], { cwd: coreRoot }),
+        execFileAsync("go", ["build", "-o", caddyBinary, "./tests/fixtures/external-caddy-custom"], { cwd: coreRoot }),
+        execFileAsync("go", ["build", "-o", adminProxy, "./tests/fixtures/external-caddy-admin-proxy"], { cwd: coreRoot }),
         execFileAsync("go", ["build", "-o", stateFixture, "./tests/fixtures/group-release-process-state"], { cwd: coreRoot }),
       ]);
-      await writeFile(externalBinary, [
-        "#!/bin/sh",
-        `export LIAPOLDUS_TEST_EXTERNAL_CADDY_EVENTS=${shellQuote(eventsPath)}`,
-        `export LIAPOLDUS_TEST_EXTERNAL_CADDY_HOLD=${shellQuote(startupHoldPath)}`,
-        `export LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_BARRIER=${shellQuote(activationBarrierPath)}`,
-        `export LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_TOKEN=${shellQuote(activationToken)}`,
-        `exec ${shellQuote(fixture)} "$@" 2>>${shellQuote(externalLog)}`,
-        "",
-      ].join("\n"), { mode: 0o700 });
-      await chmod(externalBinary, 0o700);
+      const buildIdentity = (await execFileAsync(caddyBinary, ["version"])).stdout.trim();
+      const modules = (await execFileAsync(caddyBinary, ["list-modules"])).stdout;
+      expect(modules).toContain("http.handlers.liapoldus");
+      expect(modules).toContain("layer4.handlers.liapoldus_plugin");
       await writeFile(config, [
         "state:",
         `  path: ${database}`,
@@ -208,8 +197,8 @@ describe("Gateway process group-release crash recovery", () => {
         `    key: file:${privateKey}`,
         "caddy:",
         "  variant: external",
-        `  binary: ${externalBinary}`,
-        `  expectedBuildID: ${externalBuildID}`,
+        `  binary: ${adminProxy}`,
+        `  expectedBuildID: ${JSON.stringify(buildIdentity)}`,
         "",
       ].join("\n"), "utf8");
 
@@ -220,16 +209,26 @@ describe("Gateway process group-release crash recovery", () => {
       const seed = await execFileAsync(stateFixture, ["seed", database, artifacts, publicAddress], { cwd: coreRoot });
       const pointers = JSON.parse(seed.stdout) as { currentRevision: string; previousRevision: string };
 
-      gateway = await startGatewayWithOutput(["--config", config, "serve"]);
+      gateway = await startGatewayWithOutput(["--config", config, "serve"], {
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_BINARY: caddyBinary,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_EVENTS: eventsPath,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_BARRIER: activationBarrierPath,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_TOKEN: activationToken,
+      });
       await waitFor(async () => (await managementRequest(managementAddress, "/healthz", token)).status === 200 || undefined, "Gateway Management API");
       try {
         await waitFor(async () => {
         const events = await readEvents(eventsPath);
-        for (const event of events) if (event.name === "started") orphanedCaddyPids.add(event.pid);
+        for (const event of events) {
+          if (event.name === "started") {
+            orphanedCaddyPids.add(event.pid);
+            if (event.childPid !== undefined) orphanedCaddyPids.add(event.childPid);
+          }
+        }
         return events.find((event) => event.name === "ready");
         }, "initial external Caddy readiness", 10_000);
       } catch (error) {
-        throw new Error(`${String(error)}\nGateway exit: ${gateway.process.exitCode}\nGateway stderr: ${gateway.stderr}\nExternal log: ${await readFile(externalLog, "utf8").catch(() => "<missing>")}\nExternal events: ${await readFile(eventsPath, "utf8").catch(() => "<missing>")}`);
+        throw new Error(`${String(error)}\nGateway exit: ${gateway.process.exitCode}\nGateway stderr: ${gateway.stderr}\nExternal events: ${await readFile(eventsPath, "utf8").catch(() => "<missing>")}`);
       }
       const initialResponse = await fetch(`http://${publicAddress}/`);
       expect(initialResponse.status).toBe(200);
@@ -245,10 +244,16 @@ describe("Gateway process group-release crash recovery", () => {
 
       const blockedActivation = await waitFor(async () => {
         const events = await readEvents(eventsPath);
-        for (const event of events) if (event.name === "started") orphanedCaddyPids.add(event.pid);
+        for (const event of events) {
+          if (event.name === "started") {
+            orphanedCaddyPids.add(event.pid);
+            if (event.childPid !== undefined) orphanedCaddyPids.add(event.childPid);
+          }
+        }
         return events.find((event) => event.name === "activation-blocked" && event.detail === activationToken);
-      }, "fixture-confirmed post-load/pre-response barrier", 15_000);
+      }, "real Caddy post-load/pre-response barrier", 15_000);
       orphanedCaddyPids.add(blockedActivation.pid);
+      if (blockedActivation.childPid !== undefined) orphanedCaddyPids.add(blockedActivation.childPid);
 
       const candidateResponse = await fetch(`http://${publicAddress}/`);
       expect(candidateResponse.status).toBe(200);
@@ -273,7 +278,12 @@ describe("Gateway process group-release crash recovery", () => {
       await waitPortReleased(publicAddress);
       await rm(activationBarrierPath, { force: true });
 
-      gateway = await startGatewayWithOutput(["--config", config, "serve"]);
+      gateway = await startGatewayWithOutput(["--config", config, "serve"], {
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_BINARY: caddyBinary,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_EVENTS: eventsPath,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_BARRIER: activationBarrierPath,
+        LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_TOKEN: activationToken,
+      });
       await waitFor(async () => (await managementRequest(managementAddress, "/healthz", token)).status === 200 || undefined, "restarted Gateway Management API");
       await waitFor(async () => {
         const events = await readEvents(eventsPath);
