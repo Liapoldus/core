@@ -39,4 +39,13 @@ describe("CLI bootstrap ownership", () => {
     expect(bootstrapSources).toMatch(/^func\s+OpenDatabase\s*\(/m);
     expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
+
+  it("places plugin inventory presentation in the inventory leaf", async () => {
+    const cliSources = await directGoSources(cliRoot);
+    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+
+    expect(cliSources).not.toMatch(/^func\s+presentPluginInventory\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+PresentPluginInventory\s*\(/m);
+    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+  });
 });
