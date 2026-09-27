@@ -311,6 +311,12 @@
 - Caddy handler валидирует capability invocation modes `call`, `http-stream`,
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,
   WebSocket и SSE focused E2E проходят 3/3, TCP/UDP — отдельный Caddy-L4 E2E.
+  [x] HTTP Stream request-size conformance: TypeScript E2E читает канонический
+  `maxRequestBytes` из `assets/contracts/caddy-http-stream.json`, отправляет
+  настоящий HTTP/1.1 chunked body без `Content-Length` выше лимита и проверяет
+  `413` до plugin response-start; child-plugin подтверждает, что переданный
+  префикс не превышает лимит. Runtime уже считал фактически прочитанные bytes,
+  поэтому production-изменение не потребовалось.
   Route concurrency guard уже есть, но configurable per-instance shared limit,
   idle-timeout и max-duration остаются TODO выше. Local `call` dispatch через
   embedded Caddy подключён к supervised child; dispatch generations, local TLS

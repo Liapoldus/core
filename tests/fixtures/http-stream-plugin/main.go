@@ -49,11 +49,16 @@ func (p *plugin) Shutdown(context.Context, *pluginv1.ShutdownRequest) (*pluginv1
 
 func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, pluginv1.StreamMessage]) error {
 	opened := false
+	deferHTTPResponse := false
+	var receivedRequestBytes int64
 	mode := pluginv1.InvocationMode_INVOCATION_MODE_UNSPECIFIED
 	for {
 		message, err := stream.Recv()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "stream receive ended", err)
+			if deferHTTPResponse {
+				fmt.Fprintf(os.Stderr, "request-limit-received-bytes=%d\n", receivedRequestBytes)
+			}
 			if err == io.EOF {
 				return nil
 			}
@@ -65,11 +70,20 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 				return fmt.Errorf("invalid stream open")
 			}
 			mode = body.Open.GetMode()
+			var requestContext struct {
+				Path string `json:"path"`
+			}
+			if err := json.Unmarshal(body.Open.GetContextJson(), &requestContext); err != nil {
+				return err
+			}
+			deferHTTPResponse = requestContext.Path == "/request-limit"
 			opened = true
 			switch mode {
 			case pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM:
-				if err := sendHTTP(stream, message.GetCapability()); err != nil {
-					return err
+				if !deferHTTPResponse {
+					if err := sendHTTP(stream, message.GetCapability()); err != nil {
+						return err
+					}
 				}
 			case pluginv1.InvocationMode_INVOCATION_MODE_WEBSOCKET:
 				var open struct {
@@ -100,6 +114,19 @@ func (p *plugin) Stream(stream grpc.BidiStreamingServer[pluginv1.StreamMessage, 
 		case *pluginv1.StreamMessage_HttpRequestChunk:
 			if !opened || mode != pluginv1.InvocationMode_INVOCATION_MODE_HTTP_STREAM {
 				return fmt.Errorf("unexpected HTTP request chunk")
+			}
+			receivedRequestBytes += int64(len(body.HttpRequestChunk.GetPayload()))
+			if deferHTTPResponse {
+				if body.HttpRequestChunk.GetEndStream() {
+					if err := sendHTTP(stream, message.GetCapability()); err != nil {
+						return err
+					}
+					payload := []byte(fmt.Sprintf("%d", receivedRequestBytes))
+					if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_HttpResponseChunk{HttpResponseChunk: &pluginv1.HttpResponseChunk{Payload: payload, EndStream: true}}}); err != nil {
+						return err
+					}
+				}
+				continue
 			}
 			if err := stream.Send(&pluginv1.StreamMessage{Capability: message.GetCapability(), Body: &pluginv1.StreamMessage_HttpResponseChunk{HttpResponseChunk: &pluginv1.HttpResponseChunk{Payload: append([]byte(nil), body.HttpRequestChunk.GetPayload()...), EndStream: body.HttpRequestChunk.GetEndStream()}}}); err != nil {
 				return err
