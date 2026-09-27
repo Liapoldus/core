@@ -19,8 +19,13 @@
   сохраняются status, content type, request ID и точный body. Контролируемая
   mutation `writeProblem` (все статусы заменены на 200) сделала тест красным;
   production source mutation полностью откатана, focused baseline зелёный.
-  Следующий шаг — дальнейшие переносы по утверждённой последовательности;
-  форму `api.Server` не менять.
+  P1 перенёс в текущие asset-backed поля Management literals для JSON/query,
+  pagination и media types; P0 остаётся точным oracle для response-поведения.
+  Неизвестные текущим контрактам значения (`Authorization`, `Content-Type`,
+  часть HTTP-кодов и error/detail strings, Problem schema keys) не менять и не
+  подменять: их внешнее описание/источник требует отдельного решения по
+  контрактам. P2–P4 должны сохранить P0 и разложить текущую маршрутизацию и
+  файлы без изменения API; форму `api.Server` не менять.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

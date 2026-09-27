@@ -109,10 +109,10 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
 	if request.URL.Path == server.Management.Paths.Healthz {
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
+			server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
 			return
 		}
-		writeJSON(response, http.StatusOK, map[string]any{"status": "ok", "requestId": requestID})
+		server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Status: server.Management.Statuses.OK, server.Management.JSON.RequestID: requestID})
 		return
 	}
 	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
@@ -138,11 +138,11 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		if provider != nil {
 			state, reason = provider(request.Context())
 		}
-		readiness := map[string]any{"state": state}
+		readiness := map[string]any{server.Management.JSON.State: state}
 		if state == server.Management.Statuses.NotReady {
 			readiness[server.Management.JSON.Reason] = reason
 		}
-		writeJSON(response, 200, map[string]any{
+		server.writeJSON(response, 200, map[string]any{
 			server.Management.JSON.Caddy: map[string]any{
 				server.Management.JSON.Variant: server.CaddyVariant,
 				server.Management.JSON.BuildID: server.CaddyBuildID,
@@ -180,12 +180,12 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
 		server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
+		server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: surfaces, server.Management.JSON.RequestID: requestID})
 	case server.isPluginDetailPath(path) && request.Method == server.Management.Methods.Get:
 		server.handlePluginDetail(response, path, requestID)
 	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
-			writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
+			server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
 			return
 		}
 		limit := server.Management.Pagination.LimitDefault
@@ -204,20 +204,20 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 				server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
 				return
 			}
-			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
-		writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
+		server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
 	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
 		server.handlePluginAdmin(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost:
 		if server.RestartPlugin == nil {
-			writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
+			server.writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
 			return
 		}
 		instance := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.Plugins+"/"), "/"+server.Management.Paths.Restart)
 		if len(instance) == 0 || strings.Contains(instance, "/") {
-			writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
+			server.writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
 			return
 		}
 		if server.Operations.Store == nil {
@@ -243,7 +243,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 			return
 		}
-		writeJSON(response, http.StatusAccepted, map[string]any{
+		server.writeJSON(response, http.StatusAccepted, map[string]any{
 			server.Management.JSON.OperationID: op.ID,
 			server.Management.JSON.State:       op.State,
 			server.Management.JSON.RequestID:   requestID,
@@ -258,7 +258,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		if err != nil {
 			var notFound models.OperationNotFound
 			if errors.As(err, &notFound) {
-				writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
+				server.writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
 				return
 			}
 			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
@@ -274,9 +274,9 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		if operation.UpdatedAt != nil {
 			result[server.Management.JSON.UpdatedAt] = *operation.UpdatedAt
 		}
-		writeJSON(response, http.StatusOK, result)
+		server.writeJSON(response, http.StatusOK, result)
 	default:
-		writeProblem(response, 404, "not_found", "resource not found", requestID)
+		server.writeProblem(response, 404, "not_found", "resource not found", requestID)
 	}
 }
 
@@ -301,7 +301,7 @@ func (server *Server) handleServiceKeyList(response http.ResponseWriter, request
 			server.Management.JSON.RevokedAt: item.RevokedAt,
 		})
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	server.writeJSON(response, http.StatusOK, map[string]any{
 		server.Management.JSON.Items:     items,
 		server.Management.JSON.RequestID: requestID,
 	})
@@ -441,13 +441,13 @@ func (server *Server) handleServiceKeyCreate(response http.ResponseWriter, reque
 	}, record); err != nil {
 		var auditFailure models.AuditAppendError
 		if errors.As(err, &auditFailure) {
-			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
-	writeJSON(response, server.Management.ServiceKeys.CreatedStatus, map[string]any{
+	server.writeJSON(response, server.Management.ServiceKeys.CreatedStatus, map[string]any{
 		server.Management.JSON.ID:        id,
 		server.Management.JSON.Name:      name,
 		server.Management.JSON.Role:      words.ServiceKey.RolePlatformAdmin,
@@ -495,7 +495,7 @@ func (server *Server) handlePluginDetail(response http.ResponseWriter, path, req
 		server.writeCatalogProblem(response, server.Management.Codes.PluginNotFound, requestID)
 		return
 	}
-	writeJSON(response, http.StatusOK, matched)
+	server.writeJSON(response, http.StatusOK, matched)
 }
 
 func (server *Server) isPluginCookiePolicyPath(path string) bool {
@@ -534,7 +534,7 @@ func (server *Server) handlePluginCookiePolicy(response http.ResponseWriter, req
 			return
 		}
 		response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(policy.Revision))
-		writeJSON(response, http.StatusOK, policy)
+		server.writeJSON(response, http.StatusOK, policy)
 		return
 	}
 	rawETag := request.Header.Get(server.Management.Headers.IfMatch)
@@ -576,7 +576,7 @@ func (server *Server) handlePluginCookiePolicy(response http.ResponseWriter, req
 		return
 	}
 	response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(result.Revision))
-	writeJSON(response, http.StatusOK, result)
+	server.writeJSON(response, http.StatusOK, result)
 }
 
 func (server *Server) pluginCookiePolicyResource(path string) (string, string, bool) {
@@ -644,7 +644,7 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 	for _, group := range groups.Items {
 		items = append(items, server.groupResponse(group))
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	server.writeJSON(response, http.StatusOK, map[string]any{
 		server.Management.JSON.Items:     items,
 		server.Management.JSON.RequestID: requestID,
 	})
@@ -653,7 +653,7 @@ func (server *Server) handleGroupList(response http.ResponseWriter, request *htt
 func (server *Server) handleGroupCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {
 	fail := func(code string) {
 		if err := server.recordAudit(request.Context(), actor, server.AuditWords.Audit.Actions.GroupCreate, server.AuditWords.Audit.Resources.Groups, server.AuditWords.Audit.Results.Failed, requestID, "", ""); err != nil {
-			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
 		server.writeCatalogProblem(response, code, requestID)
@@ -708,7 +708,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	if err != nil {
 		var auditFailure models.AuditAppendError
 		if errors.As(err, &auditFailure) {
-			writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
 			return
 		}
 		var exists models.GroupAlreadyExists
@@ -722,7 +722,7 @@ func (server *Server) handleGroupCreate(response http.ResponseWriter, request *h
 	response.Header().Set(server.Management.Headers.Location, server.Management.Paths.GroupByID+id)
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
-	writeJSON(response, http.StatusCreated, result)
+	server.writeJSON(response, http.StatusCreated, result)
 }
 
 func (server *Server) handleGroupGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
@@ -747,7 +747,7 @@ func (server *Server) handleGroupGet(response http.ResponseWriter, request *http
 	}
 	result := server.groupResponse(group)
 	result[server.Management.JSON.RequestID] = requestID
-	writeJSON(response, http.StatusOK, result)
+	server.writeJSON(response, http.StatusOK, result)
 }
 
 func (server *Server) handleGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID string) {
@@ -796,7 +796,7 @@ func (server *Server) handleGroupReleases(response http.ResponseWriter, request 
 			server.Management.JSON.Actor:           revision.Actor,
 		})
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	server.writeJSON(response, http.StatusOK, map[string]any{
 		server.Management.JSON.Items:      items,
 		server.Management.JSON.NextCursor: page.NextCursor,
 		server.Management.JSON.RequestID:  requestID,
@@ -834,7 +834,7 @@ func (server *Server) handleGroupRelease(response http.ResponseWriter, request *
 			server.Management.JSON.Files:  frontend.Files,
 		})
 	}
-	writeJSON(response, http.StatusOK, map[string]any{
+	server.writeJSON(response, http.StatusOK, map[string]any{
 		server.Management.JSON.ID:              revision.ID,
 		server.Management.JSON.GroupID:         revision.GroupID,
 		server.Management.JSON.Caddyfile:       detail.Caddyfile,
@@ -932,7 +932,7 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
 		state = server.GroupReleasePolicy.PendingState
 	}
-	writeJSON(response, http.StatusAccepted, map[string]any{
+	server.writeJSON(response, http.StatusAccepted, map[string]any{
 		server.Management.JSON.OperationID: operation.ID,
 		server.Management.JSON.State:       state,
 		server.Management.JSON.RequestID:   requestID,
@@ -1025,7 +1025,7 @@ func (server *Server) handleGroupRollback(response http.ResponseWriter, request 
 	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
 		state = server.GroupReleasePolicy.PendingState
 	}
-	writeJSON(response, http.StatusAccepted, map[string]any{
+	server.writeJSON(response, http.StatusAccepted, map[string]any{
 		server.Management.JSON.OperationID: operation.ID,
 		server.Management.JSON.State:       state,
 		server.Management.JSON.RequestID:   requestID,
@@ -1135,22 +1135,22 @@ func (server *Server) groupResponse(group models.Group) map[string]any {
 
 func (server *Server) writePage(response http.ResponseWriter, values any, request *http.Request, requestID string) {
 	// Lists are kept as typed slices internally; pagination is an opaque offset cursor.
-	limit := 50
-	if raw := request.URL.Query().Get("limit"); raw != "" {
+	limit := server.Management.Pagination.LimitDefault
+	if raw := request.URL.Query().Get(server.Management.JSON.Limit); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil {
 			limit = parsed
 		}
 	}
-	if limit < 1 || limit > 100 {
-		writeProblem(response, 400, "invalid_pagination", "limit must be between 1 and 100", requestID)
+	if limit < server.Management.Pagination.LimitMin || limit > server.Management.Pagination.LimitMax {
+		server.writeProblem(response, 400, "invalid_pagination", "limit must be between 1 and 100", requestID)
 		return
 	}
 	offset := 0
-	if cursor := request.URL.Query().Get("cursor"); cursor != "" {
+	if cursor := request.URL.Query().Get(server.Management.JSON.Cursor); cursor != "" {
 		decoded, err := base64.RawURLEncoding.DecodeString(cursor)
 		parsed, parseErr := strconv.Atoi(string(decoded))
 		if err != nil || parseErr != nil || parsed < 0 {
-			writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
+			server.writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
 			return
 		} else {
 			offset = parsed
@@ -1158,7 +1158,7 @@ func (server *Server) writePage(response http.ResponseWriter, values any, reques
 	}
 	items := sliceValues(values)
 	if offset > len(items) {
-		writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
+		server.writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
 		return
 	}
 	end := offset + limit
@@ -1169,7 +1169,7 @@ func (server *Server) writePage(response http.ResponseWriter, values any, reques
 	if end < len(items) {
 		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
 	}
-	writeJSON(response, 200, map[string]any{"items": items[offset:end], "nextCursor": next, "requestId": requestID})
+	server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: items[offset:end], server.Management.JSON.NextCursor: next, server.Management.JSON.RequestID: requestID})
 }
 
 func sliceValues(values any) []any {
@@ -1190,10 +1190,10 @@ func sliceValues(values any) []any {
 func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, requestID string) {
 	problem, exists := server.Errors.Lookup(code)
 	if !exists {
-		writeProblem(response, http.StatusInternalServerError, "config_invalid", "management error contract is invalid", requestID)
+		server.writeProblem(response, http.StatusInternalServerError, "config_invalid", "management error contract is invalid", requestID)
 		return
 	}
-	writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
+	server.writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
 }
 
 func ascii(value string) bool {
@@ -1207,20 +1207,20 @@ func ascii(value string) bool {
 
 func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if server.AdminDispatcher == nil {
-		writeProblem(response, 503, "plugin_unavailable", "plugin admin surface is unavailable", requestID)
+		server.writeProblem(response, 503, "plugin_unavailable", "plugin admin surface is unavailable", requestID)
 		return
 	}
 	instanceAndRoute := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
 	instance, route, found := strings.Cut(instanceAndRoute, "/")
 	pagePrefix := server.Management.Paths.AdminPages + "/"
 	if !found || instance == "" || !strings.HasPrefix(route, pagePrefix) {
-		writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
+		server.writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
 		return
 	}
 	pageAndAction := strings.TrimPrefix(route, pagePrefix)
 	parts := strings.Split(pageAndAction, "/")
 	if len(parts) > 2 || parts[0] == "" || (len(parts) == 2 && parts[1] == "") {
-		writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
+		server.writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
 		return
 	}
 	page := parts[0]
@@ -1232,20 +1232,20 @@ func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *h
 	if request.Method == http.MethodPost {
 		defer request.Body.Close()
 		if err := json.NewDecoder(request.Body).Decode(&input); err != nil && err.Error() != "EOF" {
-			writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
+			server.writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
 			return
 		}
 	}
 	result, err := server.AdminDispatcher.Dispatch(request.Context(), instance, plugins.RequestContext{Instance: instance, Page: page, Action: action, Method: request.Method, RequestID: requestID, Actor: "management", Input: input})
 	if err != nil {
-		writeProblem(response, 502, "plugin_error", err.Error(), requestID)
+		server.writeProblem(response, 502, "plugin_error", err.Error(), requestID)
 		return
 	}
 	if result.Status == 0 {
 		result.Status = 200
 	}
 	if result.ContentType == "" {
-		result.ContentType = "application/json"
+		result.ContentType = server.Management.ContentTypes.JSON
 	}
 	response.Header().Set("Content-Type", result.ContentType)
 	response.WriteHeader(result.Status)
@@ -1294,13 +1294,13 @@ func (server *Server) recordAudit(ctx context.Context, actor, action, resource, 
 	}
 	return server.Audit.Record(ctx, record)
 }
-func writeJSON(response http.ResponseWriter, status int, value any) {
-	response.Header().Set("Content-Type", "application/json")
+func (server *Server) writeJSON(response http.ResponseWriter, status int, value any) {
+	response.Header().Set("Content-Type", server.Management.ContentTypes.JSON)
 	response.WriteHeader(status)
 	_ = json.NewEncoder(response).Encode(value)
 }
-func writeProblem(response http.ResponseWriter, status int, code, detail, requestID string) {
-	response.Header().Set("Content-Type", "application/problem+json")
+func (server *Server) writeProblem(response http.ResponseWriter, status int, code, detail, requestID string) {
+	response.Header().Set("Content-Type", server.Management.ContentTypes.Problem)
 	response.WriteHeader(status)
-	_ = json.NewEncoder(response).Encode(map[string]any{"type": "about:blank", "title": code, "status": status, "code": code, "detail": detail, "instance": "", "requestId": requestID})
+	_ = json.NewEncoder(response).Encode(map[string]any{"type": "about:blank", "title": code, server.Management.JSON.Status: status, "code": code, "detail": detail, "instance": "", server.Management.JSON.RequestID: requestID})
 }
