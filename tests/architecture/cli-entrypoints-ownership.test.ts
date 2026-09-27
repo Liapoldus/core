@@ -24,4 +24,14 @@ describe("CLI entrypoint ownership", () => {
     expect(rootSources).not.toMatch(/^func\s+access\s*\(/m);
     expect(accessSource).toMatch(/^func\s+access\s*\(/m);
   });
+
+  it("keeps serve command implementation in serve.go", async () => {
+    const [rootSources, serveSource] = await Promise.all([
+      directGoSources(cliRoot, "serve.go"),
+      readFile(join(cliRoot, "serve.go"), "utf8").catch(() => ""),
+    ]);
+
+    expect(rootSources).not.toMatch(/^func\s+serve\s*\(/m);
+    expect(serveSource).toMatch(/^func\s+serve\s*\(/m);
+  });
 });
