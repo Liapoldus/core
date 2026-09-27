@@ -1,9 +1,13 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
+	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 )
@@ -41,6 +45,53 @@ func (server *Server) caddyHandlerDependencies() handlers.CaddyDependencies {
 		Management:          server.Management,
 		WriteCatalogProblem: server.writeCatalogProblem,
 	}
+}
+
+func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
+	server.mu.RLock()
+	pluginInventory := append([]any(nil), server.Plugins...)
+	adminSurfaces := handlers.CloneAdminSurfaces(server.AdminSurfaces)
+	server.mu.RUnlock()
+
+	dependencies := handlers.PluginDependencies{
+		Management:             server.Management,
+		PluginIDField:          server.PluginIDField,
+		Plugins:                pluginInventory,
+		AdminSurfaces:          adminSurfaces,
+		Operations:             server.Operations,
+		CookiePolicies:         server.CookiePolicies,
+		CookiePolicyVersion:    server.Management.CookiePolicy.Version,
+		RestartPlugin:          server.RestartPlugin,
+		DecodeCookiePolicy:     decodePluginCookiePolicy,
+		WriteJSON:              server.writeJSON,
+		WriteProblem:           server.writeProblem,
+		WriteCatalogProblem:    server.writeCatalogProblem,
+		WriteCookiePolicyError: server.writeCookiePolicyFailure,
+		WritePage:              server.writePage,
+	}
+	if server.AdminDispatcher != nil {
+		dependencies.DispatchAdmin = func(ctx context.Context, instance, page, action, method, requestID, actor string, input json.RawMessage) (handlers.PluginAdminResult, error) {
+			result, err := server.AdminDispatcher.Dispatch(ctx, instance, plugins.RequestContext{
+				Instance: instance, Page: page, Action: action, Method: method,
+				RequestID: requestID, Actor: actor, Input: input,
+			})
+			return handlers.PluginAdminResult{
+				Status: result.Status, ContentType: result.ContentType, Body: []byte(result.Body),
+			}, err
+		}
+	}
+	return dependencies
+}
+
+func decodePluginCookiePolicy(encoded []byte) (models.PluginCookiePolicy, error) {
+	policy, err := plugins.DecodeCookiePolicy(encoded)
+	if err != nil {
+		return models.PluginCookiePolicy{}, err
+	}
+	return models.PluginCookiePolicy{
+		InstanceID: policy.InstanceID, Capability: policy.Capability,
+		AllowedNames: policy.AllowedNames,
+	}, nil
 }
 
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
@@ -95,8 +146,9 @@ func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, requ
 		handlers.GroupCreate(server.groupHandlerDependencies(), response, request, requestID, actor)
 		return true
 	}
-	if server.isPluginCookiePolicyPath(path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put) {
-		server.handlePluginCookiePolicy(response, request, path, requestID, actor)
+	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsPluginCookiePolicyPath(pluginDependencies, path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put) {
+		handlers.PluginCookiePolicy(pluginDependencies, response, request, path, requestID, actor)
 		return true
 	}
 	return false
@@ -128,18 +180,16 @@ func (server *Server) dispatchGroupReleases(response http.ResponseWriter, reques
 
 func (server *Server) dispatchPluginCollections(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
 	if path == server.Management.Paths.Plugins && request.Method == http.MethodGet {
-		server.writePage(response, server.Plugins, request, requestID)
+		handlers.PluginList(server.pluginHandlerDependencies(), response, request, requestID)
 		return true
 	}
 	if path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet {
-		server.mu.RLock()
-		surfaces := handlers.CloneAdminSurfaces(server.AdminSurfaces)
-		server.mu.RUnlock()
-		server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: surfaces, server.Management.JSON.RequestID: requestID})
+		handlers.AdminSurfaceList(server.pluginHandlerDependencies(), response, requestID)
 		return true
 	}
-	if server.isPluginDetailPath(path) && request.Method == server.Management.Methods.Get {
-		server.handlePluginDetail(response, path, requestID)
+	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsPluginDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.PluginDetail(pluginDependencies, response, path, requestID)
 		return true
 	}
 	return false
@@ -155,11 +205,11 @@ func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.
 
 func (server *Server) dispatchPluginActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
-		server.handlePluginAdmin(response, request, path, requestID)
+		handlers.PluginAdmin(server.pluginHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost {
-		server.handlePluginRestart(response, request, path, requestID, actor)
+		handlers.PluginRestart(server.pluginHandlerDependencies(), response, request, path, requestID, actor)
 		return true
 	}
 	return false

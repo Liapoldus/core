@@ -125,7 +125,8 @@
   эти объявления в `adapter.go`. Management API characterization, ownership,
   structure и function-budget suite прошли (6 файлов / 23 теста), также прошли
   `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
-  Перенос plugin/Caddy handlers в целевую подпапку остаётся открытым.
+  Перенос Caddy и plugin handlers в целевую подпапку выполнен отдельными
+  D3.3 increments ниже.
 
 - D3.3 API response: JSON/problem/shared writers, catalog error mapping,
   cookie-policy failure mapping, pagination response и `recordAudit` выделены из
@@ -172,11 +173,19 @@
   перемещены в `api/handlers/caddy.go` и вызываются router напрямую через
   `CaddyDependencies`; `api.Server` не менялся, handlers не импортирует API root.
   Red ownership test `d6bb6dd`; Caddy admin checkpoint, response
-  characterization и Management API прошли (4 файла / 9 тестов), vet,
-  staticcheck, arch-lint и последовательный `go build ./...` прошли. Во время
-  предыдущих параллельных linker-процессов были временные ошибки свободного места
-  и cache trim; после их завершения изолированный build завершился с exit 0.
-  Кэш и артефакты не удалялись.
+  characterization и Management API прошли (4 файла / 9 тестов), `go build
+  ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` прошли.
+
+- D3.3 API plugins: plugin inventory/admin surfaces, instance detail, restart,
+  cookie policy и plugin admin action принадлежат `api/handlers/plugins.go`.
+  Router передаёт operation/cookie services, inventory snapshots, response
+  writers и узкие callbacks для plugin dispatcher и protocol cookie validator;
+  handler leaf не импортирует API root или infrastructure/plugin transport.
+  DTO cookie policy также переехал из `api/codec.go` к владельцу endpoint.
+  `api.Server` и observable route/status/response behavior не менялись. Red
+  ownership test `bd0a01a`; exact Node v22.21.1 focused suite прошёл (22 файла /
+  42 теста), `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
+  `make arch-lint` прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

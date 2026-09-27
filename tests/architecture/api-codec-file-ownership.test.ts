@@ -7,10 +7,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const apiRoot = join(root, "internal", "presentation", "api");
 
 describe("API codec ownership", () => {
-  it("keeps plugin-cookie payload DTOs and slice projection in codec.go", async () => {
+  it("keeps pagination slice projection in codec.go", async () => {
     const source = await readFile(join(apiRoot, "codec.go"), "utf8").catch(() => "");
 
-    expect(source).toMatch(/^type pluginCookiePolicyInput struct \{/m);
     expect(source).toMatch(/^func sliceValues\(/m);
   });
 

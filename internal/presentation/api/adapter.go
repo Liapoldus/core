@@ -5,16 +5,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -98,46 +94,6 @@ func (server *Server) handleAuditList(response http.ResponseWriter, request *htt
 	server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
 }
 
-func (server *Server) handlePluginRestart(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
-	if server.RestartPlugin == nil {
-		server.writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
-		return
-	}
-	instance := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.Plugins+"/"), "/"+server.Management.Paths.Restart)
-	if len(instance) == 0 || strings.Contains(instance, "/") {
-		server.writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
-		return
-	}
-	if server.Operations.Store == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	op, err := server.RestartPlugin(request.Context(), instance)
-	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	if op.ID == "" || op.Kind == "" || (op.State != server.Management.Statuses.Pending && op.State != server.Management.Statuses.Running) {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	op.RequestID = requestID
-	op.Actor = actor
-	op.Resource = instance
-	if op.CreatedAt.IsZero() {
-		op.CreatedAt = time.Now().UTC()
-	}
-	if err := server.Operations.Create(request.Context(), op); err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	server.writeJSON(response, http.StatusAccepted, map[string]any{
-		server.Management.JSON.OperationID: op.ID,
-		server.Management.JSON.State:       op.State,
-		server.Management.JSON.RequestID:   requestID,
-	})
-}
-
 func (server *Server) handleOperationGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
 	id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
 	if server.Operations.Store == nil {
@@ -167,203 +123,6 @@ func (server *Server) handleOperationGet(response http.ResponseWriter, request *
 	server.writeJSON(response, http.StatusOK, result)
 }
 
-func (server *Server) isPluginDetailPath(path string) bool {
-	separator := server.Management.Paths.GroupIDSeparator
-	if server.Management.Paths.Plugins == "" || separator == "" {
-		return false
-	}
-	prefix := server.Management.Paths.Plugins + separator
-	instanceID := strings.TrimPrefix(path, prefix)
-	return instanceID != path && instanceID != "" && !strings.Contains(instanceID, separator)
-}
-
-func (server *Server) handlePluginDetail(response http.ResponseWriter, path, requestID string) {
-	separator := server.Management.Paths.GroupIDSeparator
-	instanceID := strings.TrimPrefix(path, server.Management.Paths.Plugins+separator)
-	if server.PluginIDField == "" {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-
-	var matched map[string]any
-	server.mu.RLock()
-	for _, item := range server.Plugins {
-		plugin, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if candidateID, ok := plugin[server.PluginIDField].(string); ok && candidateID == instanceID {
-			matched = plugin
-			break
-		}
-	}
-	server.mu.RUnlock()
-	if matched == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.PluginNotFound, requestID)
-		return
-	}
-	server.writeJSON(response, http.StatusOK, matched)
-}
-
-func (server *Server) isPluginCookiePolicyPath(path string) bool {
-	separator := server.Management.Paths.GroupIDSeparator
-	if separator == "" || server.Management.Paths.PluginCookiePolicies == "" || server.Management.Paths.CookiePoliciesSuffix == "" {
-		return false
-	}
-	prefix := strings.TrimSuffix(server.Management.Paths.PluginCookiePolicies, separator) + separator
-	rest := strings.TrimPrefix(path, prefix)
-	if rest == path {
-		return false
-	}
-	suffix := server.Management.Paths.CookiePoliciesSuffix
-	index := strings.Index(rest, suffix)
-	if index <= 0 || !strings.HasPrefix(rest[index:], suffix) {
-		return false
-	}
-	capability := rest[index+len(suffix):]
-	return capability != "" && !strings.Contains(capability, separator) && !strings.Contains(rest[:index], separator)
-}
-
-func (server *Server) handlePluginCookiePolicy(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
-	if server.CookiePolicies == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
-		return
-	}
-	instanceID, capability, ok := server.pluginCookiePolicyResource(path)
-	if !ok {
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyNotFound, requestID)
-		return
-	}
-	if request.Method == server.Management.Methods.Get {
-		policy, err := server.CookiePolicies.Get(request.Context(), instanceID, capability)
-		if err != nil {
-			server.writeCookiePolicyFailure(response, err, requestID)
-			return
-		}
-		response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(policy.Revision))
-		server.writeJSON(response, http.StatusOK, policy)
-		return
-	}
-	rawETag := request.Header.Get(server.Management.Headers.IfMatch)
-	if rawETag == "" {
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyPreconditionRequired, requestID)
-		return
-	}
-	expected, valid := parseCookiePolicyETag(rawETag)
-	if !valid {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-		return
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, server.Management.CookiePolicy.MaximumBodyBytes))
-	decoder.DisallowUnknownFields()
-	var input pluginCookiePolicyInput
-	if err := decoder.Decode(&input); err != nil || input.AllowedNames == nil || decoder.Decode(&struct{}{}) != io.EOF {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
-		return
-	}
-	policy := plugins.CookiePolicy{
-		Version: server.Management.CookiePolicy.Version, InstanceID: instanceID,
-		Capability: capability, AllowedNames: input.AllowedNames,
-	}
-	encoded, err := json.Marshal(policy)
-	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	validated, err := plugins.DecodeCookiePolicy(encoded)
-	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
-		return
-	}
-	result, err := server.CookiePolicies.Replace(request.Context(), expected, models.PluginCookiePolicy{
-		InstanceID: validated.InstanceID, Capability: validated.Capability, AllowedNames: validated.AllowedNames,
-	}, actor, requestID)
-	if err != nil {
-		server.writeCookiePolicyFailure(response, err, requestID)
-		return
-	}
-	response.Header().Set(server.Management.Headers.ETag, cookiePolicyETag(result.Revision))
-	server.writeJSON(response, http.StatusOK, result)
-}
-
-func (server *Server) pluginCookiePolicyResource(path string) (string, string, bool) {
-	separator := server.Management.Paths.GroupIDSeparator
-	prefix := strings.TrimSuffix(server.Management.Paths.PluginCookiePolicies, separator) + separator
-	rest := strings.TrimPrefix(path, prefix)
-	if rest == path {
-		return "", "", false
-	}
-	suffix := server.Management.Paths.CookiePoliciesSuffix
-	index := strings.Index(rest, suffix)
-	if index <= 0 || !strings.HasPrefix(rest[index:], suffix) {
-		return "", "", false
-	}
-	instanceID, capability := rest[:index], rest[index+len(suffix):]
-	if capability == "" || strings.Contains(capability, separator) || strings.Contains(instanceID, separator) {
-		return "", "", false
-	}
-	return instanceID, capability, true
-}
-
-func cookiePolicyETag(revision int64) string {
-	return strconv.Quote(strconv.FormatInt(revision, 10))
-}
-
-func parseCookiePolicyETag(value string) (int64, bool) {
-	decoded, err := strconv.Unquote(value)
-	if err != nil || decoded == "" {
-		return 0, false
-	}
-	revision, err := strconv.ParseInt(decoded, 10, 64)
-	return revision, err == nil && revision >= 0 && strconv.FormatInt(revision, 10) == decoded
-}
-
-func (server *Server) handlePluginAdmin(response http.ResponseWriter, request *http.Request, path, requestID string) {
-	if server.AdminDispatcher == nil {
-		server.writeProblem(response, 503, "plugin_unavailable", "plugin admin surface is unavailable", requestID)
-		return
-	}
-	instanceAndRoute := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
-	instance, route, found := strings.Cut(instanceAndRoute, "/")
-	pagePrefix := server.Management.Paths.AdminPages + "/"
-	if !found || instance == "" || !strings.HasPrefix(route, pagePrefix) {
-		server.writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
-		return
-	}
-	pageAndAction := strings.TrimPrefix(route, pagePrefix)
-	parts := strings.Split(pageAndAction, "/")
-	if len(parts) > 2 || parts[0] == "" || (len(parts) == 2 && parts[1] == "") {
-		server.writeProblem(response, 404, "not_found", "plugin admin resource not found", requestID)
-		return
-	}
-	page := parts[0]
-	action := ""
-	if len(parts) == 2 {
-		action = parts[1]
-	}
-	var input json.RawMessage
-	if request.Method == http.MethodPost {
-		defer request.Body.Close()
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil && err.Error() != "EOF" {
-			server.writeProblem(response, 400, "invalid_input", "request body must be JSON", requestID)
-			return
-		}
-	}
-	result, err := server.AdminDispatcher.Dispatch(request.Context(), instance, plugins.RequestContext{Instance: instance, Page: page, Action: action, Method: request.Method, RequestID: requestID, Actor: "management", Input: input})
-	if err != nil {
-		server.writeProblem(response, 502, "plugin_error", err.Error(), requestID)
-		return
-	}
-	if result.Status == 0 {
-		result.Status = 200
-	}
-	if result.ContentType == "" {
-		result.ContentType = server.Management.ContentTypes.JSON
-	}
-	response.Header().Set("Content-Type", result.ContentType)
-	response.WriteHeader(result.Status)
-	_, _ = response.Write(result.Body)
-}
 func randomID() string {
 	bytes := make([]byte, 8)
 	if _, err := rand.Read(bytes); err != nil {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/Liapoldus/core/internal/application"
@@ -36,4 +37,28 @@ type CaddyDependencies struct {
 	AdminWords          config.AdminMutationWords
 	Management          config.ManagementWords
 	WriteCatalogProblem func(http.ResponseWriter, string, string)
+}
+
+type PluginDependencies struct {
+	Management             config.ManagementWords
+	PluginIDField          string
+	Plugins                []any
+	AdminSurfaces          []AdminSurface
+	Operations             application.OperationService
+	CookiePolicies         *application.PluginCookiePolicyService
+	CookiePolicyVersion    int
+	RestartPlugin          func(context.Context, string) (models.Operation, error)
+	DispatchAdmin          func(context.Context, string, string, string, string, string, string, json.RawMessage) (PluginAdminResult, error)
+	DecodeCookiePolicy     func([]byte) (models.PluginCookiePolicy, error)
+	WriteJSON              func(http.ResponseWriter, int, any)
+	WriteProblem           func(http.ResponseWriter, int, string, string, string)
+	WriteCatalogProblem    func(http.ResponseWriter, string, string)
+	WriteCookiePolicyError func(http.ResponseWriter, error, string)
+	WritePage              func(http.ResponseWriter, any, *http.Request, string)
+}
+
+type PluginAdminResult struct {
+	Status      int
+	ContentType string
+	Body        []byte
 }
