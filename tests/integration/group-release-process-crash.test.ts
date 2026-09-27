@@ -91,6 +91,14 @@ async function readEvents(path: string): Promise<FixtureEvent[]> {
   return contents.split("\n").filter(Boolean).map((line) => JSON.parse(line) as FixtureEvent);
 }
 
+function trackFixtureProcesses(events: FixtureEvent[], pids: Set<number>): void {
+  for (const event of events) {
+    if (event.name !== "started") continue;
+    pids.add(event.pid);
+    if (event.childPid !== undefined) pids.add(event.childPid);
+  }
+}
+
 async function processState(fixture: string, database: string, artifacts: string, operationID: string, staged?: ProcessState): Promise<ProcessState> {
   const args = [fixture, "inspect", database, artifacts, operationID];
   if (staged !== undefined) args.push(staged.caddyfilePath, staged.artifactPath);
@@ -182,6 +190,7 @@ describe("Gateway process group-release crash recovery", () => {
         execFileAsync("go", ["build", "-o", stateFixture, "./tests/fixtures/group-release-process-state"], { cwd: coreRoot }),
       ]);
       const buildIdentity = (await execFileAsync(caddyBinary, ["version"])).stdout.trim();
+      expect(buildIdentity).toContain("liapoldus-external-caddy-fixture");
       const modules = (await execFileAsync(caddyBinary, ["list-modules"])).stdout;
       expect(modules).toContain("http.handlers.liapoldus");
       expect(modules).toContain("layer4.handlers.liapoldus_plugin");
@@ -219,12 +228,7 @@ describe("Gateway process group-release crash recovery", () => {
       try {
         await waitFor(async () => {
         const events = await readEvents(eventsPath);
-        for (const event of events) {
-          if (event.name === "started") {
-            orphanedCaddyPids.add(event.pid);
-            if (event.childPid !== undefined) orphanedCaddyPids.add(event.childPid);
-          }
-        }
+        trackFixtureProcesses(events, orphanedCaddyPids);
         return events.find((event) => event.name === "ready");
         }, "initial external Caddy readiness", 10_000);
       } catch (error) {
@@ -244,14 +248,11 @@ describe("Gateway process group-release crash recovery", () => {
 
       const blockedActivation = await waitFor(async () => {
         const events = await readEvents(eventsPath);
-        for (const event of events) {
-          if (event.name === "started") {
-            orphanedCaddyPids.add(event.pid);
-            if (event.childPid !== undefined) orphanedCaddyPids.add(event.childPid);
-          }
-        }
+        trackFixtureProcesses(events, orphanedCaddyPids);
         return events.find((event) => event.name === "activation-blocked" && event.detail === activationToken);
       }, "real Caddy post-load/pre-response barrier", 15_000);
+      expect(typeof blockedActivation.childPid).toBe("number");
+      expect(blockedActivation.childPid).not.toBe(blockedActivation.pid);
       orphanedCaddyPids.add(blockedActivation.pid);
       if (blockedActivation.childPid !== undefined) orphanedCaddyPids.add(blockedActivation.childPid);
 
@@ -287,7 +288,7 @@ describe("Gateway process group-release crash recovery", () => {
       await waitFor(async () => (await managementRequest(managementAddress, "/healthz", token)).status === 200 || undefined, "restarted Gateway Management API");
       await waitFor(async () => {
         const events = await readEvents(eventsPath);
-        for (const event of events) if (event.name === "started") orphanedCaddyPids.add(event.pid);
+        trackFixtureProcesses(events, orphanedCaddyPids);
         return events.filter((event) => event.name === "ready").length >= 2 ? true : undefined;
       }, "recovered external Caddy readiness");
 
@@ -311,7 +312,7 @@ describe("Gateway process group-release crash recovery", () => {
       await rm(activationBarrierPath, { force: true });
       if (gateway !== undefined) await gateway.stop();
       const events = await readEvents(eventsPath);
-      for (const event of events) if (event.name === "started") orphanedCaddyPids.add(event.pid);
+      trackFixtureProcesses(events, orphanedCaddyPids);
       await stopFixtureChildren(orphanedCaddyPids);
       await waitPortReleased(publicAddress);
       await rm(directory, { recursive: true, force: true });

@@ -38,11 +38,14 @@
   release reservations в SQLite и только после успешного recovery активирует
   Caddy через lazy runtime. TS E2E инъектирует ошибку durable transition и
   подтверждает `recovery-required` при закрытом public listener. Новый TS E2E
-  запускает реальный Gateway `serve` process с external-Caddy fixture: fixture
-  принимает `/load`, начинает обслуживать candidate и блокирует Admin response;
-  Gateway убивается до commit, затем restart восстанавливает старую композицию.
-  Это не проверяет поведение настоящего Caddy binary и не закрывает полный
-  external Caddy process conformance gate.
+  запускает реальный Gateway `serve` с собранным custom Caddy, содержащим
+  Liapoldus HTTP/L4 modules. Только тестовая Unix Admin proxy оборачивает Caddy:
+  она пропускает `/load`, ждёт успешный ответ настоящего Admin API и удерживает
+  его до SIGKILL Gateway. E2E дополнительно подтверждает candidate через публичный
+  listener и `pending` в SQLite до kill; после restart Caddy отдаёт старую
+  композицию, operation/journal завершены как failed, staging удалён. Этот
+  сценарий закрывает указанную границу process crash, но не весь crash recovery
+  и не общий external-Caddy conformance gate.
 - `/api/groups` и `/api/groups/{id}` читают SQLite. `POST /api/groups` создаёт
   application group, проверяет опубликованные ID/idempotency constraints,
   возвращает `201`, `400 invalid_request` или `409 group_already_exists`.
@@ -327,11 +330,14 @@
   SQLite current composition, failed operation/journal, неизменность
   current/previous и удаление staged Caddyfile/archive. Отдельный
   `group-release-process-crash.test.ts` убивает реальный Gateway process после
-  external-Caddy fixture `/load` применил candidate и начал его отдавать, пока
-  Admin response заблокирован до SQLite commit; после перезапуска проверяет старые
-  pointers/публичный snapshot, terminal failure journal и отсутствие pending или
-  staged artifact. В тесте Caddy runtime заменён fixture, поэтому поведение
-  настоящего Caddy binary и полный crash recovery v1 остаются открытыми.
+  собранный `external-caddy-custom` применил candidate через свой настоящий
+  Admin API и публично его отдаёт. Test-only Unix Admin proxy задерживает успешный
+  `/load` response, поэтому Gateway ещё не дошёл до SQLite commit; до kill тест
+  читает pending operation/journal и проверяет неизменные pointers. После
+  перезапуска проверяются старый public snapshot, terminal failure journal и
+  отсутствие pending или staged artifact. Тест доказывает этот process-crash
+  boundary на настоящем Caddy, но не закрывает остальные crash points и полный
+  v1 recovery/conformance gate.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
   до каждой mutation, drift detection, group publish block, explicit checkpoint
   restore и full-composition reconcile с If-Match.
