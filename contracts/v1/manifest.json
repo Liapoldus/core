@@ -2,11 +2,11 @@
   "version": "liapoldus.gateway.v1",
   "source": "https://liapoldus.github.io/spec/",
   "files": {
-    "errors.json": "sha256:cbadf4625acd44ebae8c317ef027918f7ec96cdb0451aa8d88d1783efbf58579",
+    "errors.json": "sha256:8c0447aedd2aebeb3e93a7da7daa8dd5abadae8a53ba848b9ef85438ce4767a5",
     "gateway.schema.json": "sha256:af1594e700c8fa63affc818da1c7007019f5a548ab268522f17f4d697673436f",
     "golden-vectors.json": "sha256:b31d62101496e7256793a62aaf45050326598ce52eea89645beef32c14b67fad",
     "http-runtime.json": "sha256:a44305156b1919c3bb78be23d384d942e85b95f9bc810c6523454421d20ee0e0",
-    "management-fields.yaml": "sha256:b1526662cae26afa092b2d931c4102c405b4231a8f6ce298cf16138b6db54612",
+    "management-fields.yaml": "sha256:0b0e956090855bb8a17cd0d1c3bc299294ffe6ba511d3f2a2bc485b9456808a5",
     "management.openapi.yaml": "sha256:c68ee4877e7ed0273b0f140fe376d963c88e9198c32e3bbb13a9e508d09e324b",
     "security-runtime.json": "sha256:ca07625d474dca512214f70f26e226876e5e8a54d2853098fcd694b06a8489d5"
   }
