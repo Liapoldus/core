@@ -14,7 +14,7 @@ describe("API response helper ownership", () => {
     expect(source).toMatch(/^func \(server \*Server\) writeCookiePolicyFailure\(/m);
     expect(source).toMatch(/^func \(server \*Server\) writePage\(/m);
     expect(source).toMatch(/^func \(server \*Server\) recordAudit\(/m);
-    expect(source).toMatch(/^func sliceValues\(/m);
+    expect(source).not.toMatch(/^func sliceValues\(/m);
   });
 
   it("does not leave response helpers in the legacy adapter file", async () => {
@@ -24,6 +24,5 @@ describe("API response helper ownership", () => {
     expect(source).not.toMatch(/^func \(server \*Server\) writeCookiePolicyFailure\(/m);
     expect(source).not.toMatch(/^func \(server \*Server\) writePage\(/m);
     expect(source).not.toMatch(/^func \(server \*Server\) recordAudit\(/m);
-    expect(source).not.toMatch(/^func sliceValues\(/m);
   });
 });
