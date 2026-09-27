@@ -39,11 +39,20 @@
   приложения про «ровно две» функции неполна — `serveBootstrap` также превышал
   общий предел; `readGroupReleaseMultipart` уже укладывается в 80 строк и не
   менялся. Сохранены порядок регистрации `defer`, route/status precedence,
-  Management response characterization и 27-полевая форма `api.Server`.
+  Management response characterization и текущая форма `api.Server`.
   Полный `make check` на Node v22.21.1 прошёл (72 файла / 129 тестов, build и
   Docker arch-lint); отдельно прошли `go vet ./...` и
   `make staticcheck-u1000`. Следующий этап — D5, затем разрешённые D3.3 package
   moves; production-изменения остаются только в `internal/presentation/`.
+
+- Correction к исходной инвентаризации presentation: актуальный `api.Server`
+  имеет 27 экспортированных и 2 неэкспортированных поля; TypeScript guard
+  фиксирует имена и порядок всего набора. Перечень «9 fixture fields» из
+  вложенного плана не совпадает с текущим source (например, `Store` не является
+  полем `api.Server`), а `tests/fixtures/management-api-characterization`
+  напрямую использует дополнительный экспорт `api.AdminSurface`. D5 проверка
+  намеренно остаётся красной по этому экспорту до его переноса в
+  `api/handlers/` на шаге D3.3; форму и имена полей `Server` сохраняем.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
