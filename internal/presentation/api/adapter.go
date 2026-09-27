@@ -4,7 +4,6 @@ package api
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -636,25 +635,6 @@ func parseCookiePolicyETag(value string) (int64, bool) {
 	return revision, err == nil && revision >= 0 && strconv.FormatInt(revision, 10) == decoded
 }
 
-func (server *Server) writeCookiePolicyFailure(response http.ResponseWriter, err error, requestID string) {
-	var notFound models.PluginCookiePolicyNotFound
-	var conflict models.PluginCookiePolicyRevisionConflict
-	var invalid models.PluginCookiePolicyValidationError
-	var unavailable models.PluginCookiePolicyUnavailable
-	switch {
-	case errors.As(err, &notFound):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyNotFound, requestID)
-	case errors.As(err, &conflict):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyRevisionConflict, requestID)
-	case errors.As(err, &invalid):
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
-	case errors.As(err, &unavailable):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
-	default:
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
-	}
-}
-
 func (server *Server) handleGroupList(response http.ResponseWriter, request *http.Request, requestID string) {
 	if server.GroupService.Store == nil {
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
@@ -1186,45 +1166,6 @@ func (server *Server) groupResponse(group models.Group) map[string]any {
 	}
 }
 
-func (server *Server) writePage(response http.ResponseWriter, values any, request *http.Request, requestID string) {
-	// Lists are kept as typed slices internally; pagination is an opaque offset cursor.
-	limit := server.Management.Pagination.LimitDefault
-	if raw := request.URL.Query().Get(server.Management.JSON.Limit); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil {
-			limit = parsed
-		}
-	}
-	if limit < server.Management.Pagination.LimitMin || limit > server.Management.Pagination.LimitMax {
-		server.writeProblem(response, 400, "invalid_pagination", "limit must be between 1 and 100", requestID)
-		return
-	}
-	offset := 0
-	if cursor := request.URL.Query().Get(server.Management.JSON.Cursor); cursor != "" {
-		decoded, err := base64.RawURLEncoding.DecodeString(cursor)
-		parsed, parseErr := strconv.Atoi(string(decoded))
-		if err != nil || parseErr != nil || parsed < 0 {
-			server.writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
-			return
-		} else {
-			offset = parsed
-		}
-	}
-	items := sliceValues(values)
-	if offset > len(items) {
-		server.writeProblem(response, 400, "invalid_cursor", "cursor is invalid", requestID)
-		return
-	}
-	end := offset + limit
-	if end > len(items) {
-		end = len(items)
-	}
-	var next any
-	if end < len(items) {
-		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
-	}
-	server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: items[offset:end], server.Management.JSON.NextCursor: next, server.Management.JSON.RequestID: requestID})
-}
-
 func sliceValues(values any) []any {
 	switch typed := values.(type) {
 	case []any:
@@ -1238,15 +1179,6 @@ func sliceValues(values any) []any {
 	default:
 		return nil
 	}
-}
-
-func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, requestID string) {
-	problem, exists := server.Errors.Lookup(code)
-	if !exists {
-		server.writeProblem(response, http.StatusInternalServerError, "config_invalid", "management error contract is invalid", requestID)
-		return
-	}
-	server.writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
 }
 
 func ascii(value string) bool {
@@ -1329,21 +1261,4 @@ func (server *Server) authenticate(ctx context.Context, value string) (string, b
 		}
 	}
 	return "", false, nil
-}
-
-func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) error {
-	if server.Audit == nil || action == "" || actor == "" {
-		return nil
-	}
-	record := models.AuditRecord{
-		Timestamp:    time.Now().UTC(),
-		Actor:        actor,
-		Action:       action,
-		Resource:     resource,
-		Result:       result,
-		RequestID:    requestID,
-		DigestBefore: digestBefore,
-		DigestAfter:  digestAfter,
-	}
-	return server.Audit.Record(ctx, record)
 }

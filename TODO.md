@@ -128,12 +128,14 @@
   Декомпозиция response/codec/router и перенос plugin/group/service-key/Caddy
   handlers в целевую подпапку остаются открытыми.
 
-- D3.3 API response: `writeJSON`, `writeProblem` и общий `writeResponse`
-  выделены из legacy `adapter.go` в `api/respond.go` без изменения body/status/
-  headers. Red ownership test `42595e7` фиксирует целевое размещение; Management
-  response characterization и ownership suite прошли (6 файлов / 19 тестов),
-  `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`
-  также прошли.
+- D3.3 API response: JSON/problem/shared writers, catalog error mapping,
+  cookie-policy failure mapping, pagination response и `recordAudit` выделены из
+  legacy `adapter.go` в `api/respond.go` без изменения response behavior. Red
+  ownership tests `42595e7`, `26a04f9` закрепили эти границы; test correction
+  `51c6af4` уточнила, что `sliceValues` принадлежит `codec.go` и временно
+  остаётся в `adapter.go`, как и `groupResponse`. P0 response characterization и
+  ownership suite прошли (8 файлов / 26 тестов), `go build ./...`, `go vet
+  ./...`, `make staticcheck-u1000` и `make arch-lint` также прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
