@@ -2,6 +2,7 @@ selectIdempotency: "SELECT request_digest, operation_id FROM idempotency WHERE a
 deleteExpiredIdempotency: "DELETE FROM idempotency WHERE actor = ? AND scope = ? AND key_digest = ? AND expires_at <= ?"
 selectOperation: "SELECT id, kind, state, created_at, updated_at, request_id, actor, resource FROM operations WHERE id = ?"
 selectCurrent: "SELECT current_revision_id FROM group_pointers WHERE group_id = ?"
+selectPendingGroup: "SELECT EXISTS(SELECT 1 FROM group_release_journal WHERE group_id = ? AND state = ?)"
 insertOperation: "INSERT INTO operations(id, kind, state, request_id, actor, resource, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
 insertIdempotency: "INSERT INTO idempotency(actor, scope, key_digest, request_digest, operation_id, created_at, expires_at) VALUES(?, ?, ?, ?, ?, ?, ?)"
 insertJournal: "INSERT INTO group_release_journal(operation_id, group_id, expected_current_revision_id, revision_id, caddyfile_digest, artifact_digest, caddyfile_path, artifact_path, actor, request_id, state, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"

@@ -67,8 +67,9 @@
   path depth/byte length, entry-count, compression-ratio и compressed/uncompressed
   byte limits. Byte-limit vectors уменьшают порог только внутри fixture, не
   создавая сотни MiB; превышение uncompressed entry size возвращает
-  `artifact_too_large`. Сериализация concurrent same-CAS reservations и startup
-  crash-recovery открыты.
+  `artifact_too_large`. Отдельный concurrent HTTP/SQLite E2E теперь подтверждает
+  same-key deduplication и per-group exclusion для pending same-CAS releases;
+  production crash-recovery между activation/commit остаётся открытым.
 - Подтверждён TS E2E для `file:` config-secret refs: oversized regular file и
   directory отклоняются до запуска plugin, диагностика не содержит путь или
   содержимое. Прямое доказательство очистки всех копий secret buffers ещё
@@ -224,13 +225,17 @@
   previous. Текущий вертикальный срез принимает multipart, проверяет Caddy
   adaptation, CAS/idempotency в SQLite, сохраняет revision/operation и активирует
   composed snapshot через Caddy activator. Archive staging/manifest, rollback API
-  и SQLite pointer swap реализованы и проверяются focused E2E. Не доказаны unique
-  in-flight CAS reservation и production crash recovery между activation/commit.
+  и SQLite pointer swap реализованы и проверяются focused E2E. Отдельный
+  concurrent HTTP E2E проверяет единственную pending reservation на группу:
+  одинаковый idempotency retry возвращает ту же operation/revision, а другая
+  публикация с тем же stale CAS получает conflict до второй активации. Production
+  crash recovery между activation/commit остаётся недоказанным.
 - [x] TS integration фиксирует multipart
   `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
   Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
-  SQLite; archive/rollback покрыты отдельными focused tests. Production traffic
-  activation остаётся за пределами API-fixture activator.
+  SQLite; отдельный concurrent test фиксирует same-key deduplication и
+  per-group pending CAS exclusion. Archive/rollback покрыты focused tests.
+  Production traffic activation остаётся за пределами API-fixture activator.
 - [x] TS integration red-tests проверяют traversal rejection `422
   artifact_invalid` до activation и positive safe `.tar.gz` staging, archive
   digest и frontend manifest digest.

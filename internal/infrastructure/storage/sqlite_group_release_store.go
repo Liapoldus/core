@@ -17,6 +17,7 @@ type sqliteGroupReleaseStoreContract struct {
 	DeleteExpiredIdempotency string `yaml:"deleteExpiredIdempotency"`
 	SelectOperation          string `yaml:"selectOperation"`
 	SelectCurrent            string `yaml:"selectCurrent"`
+	SelectPendingGroup       string `yaml:"selectPendingGroup"`
 	InsertOperation          string `yaml:"insertOperation"`
 	InsertIdempotency        string `yaml:"insertIdempotency"`
 	InsertJournal            string `yaml:"insertJournal"`
@@ -53,7 +54,7 @@ func NewSQLiteGroupReleaseStore(database *sql.DB) (*SQLiteGroupReleaseStore, err
 	if err := yaml.Unmarshal(contents, &contract); err != nil {
 		return nil, err
 	}
-	if database == nil || contract.SelectIdempotency == "" || contract.DeleteExpiredIdempotency == "" || contract.SelectOperation == "" || contract.SelectCurrent == "" || contract.InsertOperation == "" || contract.InsertIdempotency == "" || contract.InsertJournal == "" || contract.InsertRevision == "" || contract.AdvancePointers == "" || contract.UpdateOperation == "" || contract.UpdateJournal == "" || contract.SelectPending == "" || contract.GroupExists == "" || contract.GroupNotFound == "" || contract.OperationNotFound == "" || contract.RevisionConflict == "" || contract.IdempotencyConflict == "" || contract.InvalidContract == "" || contract.TimestampLayout == "" || contract.PendingState == "" || contract.FailedState == "" {
+	if database == nil || contract.SelectIdempotency == "" || contract.DeleteExpiredIdempotency == "" || contract.SelectOperation == "" || contract.SelectCurrent == "" || contract.SelectPendingGroup == "" || contract.InsertOperation == "" || contract.InsertIdempotency == "" || contract.InsertJournal == "" || contract.InsertRevision == "" || contract.AdvancePointers == "" || contract.UpdateOperation == "" || contract.UpdateJournal == "" || contract.SelectPending == "" || contract.GroupExists == "" || contract.GroupNotFound == "" || contract.OperationNotFound == "" || contract.RevisionConflict == "" || contract.IdempotencyConflict == "" || contract.InvalidContract == "" || contract.TimestampLayout == "" || contract.PendingState == "" || contract.FailedState == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
 	audit, err := NewSQLiteAuditStore(database)
@@ -103,6 +104,14 @@ func (store *SQLiteGroupReleaseStore) Reserve(ctx context.Context, reservation m
 		return models.Operation{}, false, err
 	}
 	if !sameOptionalString(reservation.ExpectedCurrentRevision, current) {
+		actual := nullableString(current)
+		return models.Operation{}, false, models.GroupRevisionConflict{Expected: reservation.ExpectedCurrentRevision, Actual: actual, Message: store.contract.RevisionConflict}
+	}
+	var pending bool
+	if err := transaction.QueryRowContext(ctx, store.contract.SelectPendingGroup, reservation.GroupID, store.contract.PendingState).Scan(&pending); err != nil {
+		return models.Operation{}, false, err
+	}
+	if pending {
 		actual := nullableString(current)
 		return models.Operation{}, false, models.GroupRevisionConflict{Expected: reservation.ExpectedCurrentRevision, Actual: actual, Message: store.contract.RevisionConflict}
 	}
