@@ -202,9 +202,13 @@
   conformance остаются открыты.
 - [ ] Зафиксировать Caddy/xcaddy/module versions, build identity/module
   manifest, supply-chain verification и общий parity matrix.
-- [x] Caddy-L4 TCP/UDP plugin dispatch прошёл focused E2E; общий parity gate
-  embedded/external variants на macOS/Linux остаётся обязательным. Провал
-  блокирует v1, Go net/gnet fallback не разрешать.
+- [x] Caddy-L4 TCP/UDP plugin dispatch прошёл focused E2E для embedded и
+  supervised external custom Caddy. `external-caddy-l4-plugin-dispatch.test.ts`
+  поднимает реальный child Caddy с Caddy-L4/Liapoldus modules через закрытый
+  Admin `/load`, проверяет прямую TCP-передачу байтов и отдельные UDP streams
+  для нескольких datagrams. Общий parity gate embedded/external variants на
+  macOS/Linux остаётся обязательным. Провал блокирует v1, Go net/gnet fallback
+  не разрешать.
 - [ ] Довести native Caddyfile validation/adaptation, system group и стабильную
   composition application groups до production startup/recovery без Gateway
   route DSL.
