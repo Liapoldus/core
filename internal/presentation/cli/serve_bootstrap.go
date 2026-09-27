@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -28,6 +27,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
+	bootstrapruntime "github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
 	"github.com/Liapoldus/core/internal/presentation/cli/caddyruntime"
 )
 
@@ -58,7 +58,7 @@ func access(options options) int {
 	if err != nil {
 		return configValidationFailure(options.output, err)
 	}
-	database, err := openBootstrapDatabase(context.Background(), bootstrap.StatePath)
+	database, err := bootstrapruntime.OpenDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable
@@ -145,7 +145,7 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
-	database, err := openBootstrapDatabase(context.Background(), bootstrap.StatePath)
+	database, err := bootstrapruntime.OpenDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable
@@ -355,7 +355,7 @@ func loadManagementInputs(options options, bootstrap config.BootstrapConfig) (ma
 	if inputs.errorCatalog, err = config.LoadErrorCatalog(); err != nil {
 		return inputs, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
 	}
-	if inputs.tlsConfiguration, err = managementTLS(bootstrap); err != nil {
+	if inputs.tlsConfiguration, err = bootstrapruntime.ManagementTLS(bootstrap, words.Diagnostics.ConfigInvalid); err != nil {
 		return inputs, failBootstrap(options, words.Exits.Validation, words.Diagnostics.ConfigInvalid)
 	}
 	return inputs, words.Exits.OK
@@ -519,54 +519,6 @@ func presentPluginInventory(records []storage.PluginInstanceRecord, contract con
 		})
 	}
 	return items, nil
-}
-
-func openBootstrapDatabase(ctx context.Context, path string) (*sql.DB, error) {
-	contract, err := config.LoadSQLiteContract()
-	if err != nil {
-		return nil, err
-	}
-	return storage.OpenSQLite(ctx, path, storage.SQLiteOptions{
-		Driver:                 contract.Driver,
-		ParentDirectoryMode:    contract.ParentDirectoryMode,
-		DatabaseFileMode:       contract.DatabaseFileMode,
-		MaxOpenConnections:     contract.MaxOpenConnections,
-		MaxIdleConnections:     contract.MaxIdleConnections,
-		SchemaVersion:          contract.SchemaVersion,
-		HasMigrationTableQuery: contract.HasMigrationTableQuery,
-		MigrationVersionQuery:  contract.MigrationVersionQuery,
-		SchemaVersionError:     contract.SchemaVersionError,
-		Pragmas:                contract.Pragmas,
-	}, contract.Schema)
-}
-
-func managementTLS(bootstrap config.BootstrapConfig) (*tls.Config, error) {
-	certificatePEM, err := os.ReadFile(bootstrap.ManagementCertificate)
-	if err != nil {
-		return nil, err
-	}
-	keyPEM, err := os.ReadFile(bootstrap.ManagementKey)
-	if err != nil {
-		return nil, err
-	}
-	certificate, err := tls.X509KeyPair(certificatePEM, keyPEM)
-	if err != nil {
-		return nil, err
-	}
-	result := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate}}
-	if bootstrap.ManagementClientCA != "" {
-		caPEM, err := os.ReadFile(bootstrap.ManagementClientCA)
-		if err != nil {
-			return nil, err
-		}
-		roots := x509.NewCertPool()
-		if !roots.AppendCertsFromPEM(caPEM) {
-			return nil, errors.New(words.Diagnostics.ConfigInvalid)
-		}
-		result.ClientCAs = roots
-		result.ClientAuth = tls.RequireAndVerifyClientCert
-	}
-	return result, nil
 }
 
 func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding) (string, string, func() error, CaddyRuntime) {

@@ -81,6 +81,18 @@
   импортирует CLI. Ownership suite (5 файлов / 18 тестов), `go build ./...`,
   `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` прошли.
 
+- D4 bootstrap package начал переноситься по вертикальным increments. Red
+  ownership assertions зафиксировали, что Management TLS setup и открытие
+  SQLite принадлежат `cli/bootstrap`, а не root `cli`. Эти две функции уже
+  перенесены в `bootstrap/tls.go` и `bootstrap/stores.go`; CLI сохраняет их
+  прежнее поведение и передаёт только asset-backed diagnostic value. Причина
+  перенести два реальных владельца до промежуточного green: architecture gate
+  запрещает однофайловые вложенные Go packages. Проверки bootstrap loader,
+  relative paths и serving groups вместе с ownership/boundary/budget suite
+  прошли (7 файлов / 18 тестов, Node v22.21.1); также прошли `go build ./...`,
+  `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`. Остальные
+  bootstrap responsibilities ещё предстоит разнести по целевым файлам.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
