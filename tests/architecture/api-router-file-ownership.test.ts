@@ -15,12 +15,9 @@ const routerMethods = [
   "dispatchPluginActions",
   "dispatchOperations",
 ];
-const requestBoundaryMethods = [
-  "handleHealthz",
+const managementHandlers = ["Healthz", "Readiness", "AuditList", "OperationGet"];
+const authorizationMethods = [
   "authorizeManagementRequest",
-  "handleReadiness",
-  "handleAuditList",
-  "handleOperationGet",
   "authenticate",
 ];
 
@@ -41,15 +38,26 @@ describe("API router ownership", () => {
     }
   });
 
-  it("owns remaining request-boundary handlers in router.go and retires adapter.go", async () => {
+  it("keeps management endpoint bodies in handlers/management.go", async () => {
+    const management = await readFile(join(apiRoot, "handlers", "management.go"), "utf8").catch(() => "");
     const router = await readFile(join(apiRoot, "router.go"), "utf8").catch(() => "");
+
+    for (const handler of managementHandlers) {
+      expect(management).toMatch(new RegExp(`^func ${handler}\\(`, "m"));
+      expect(router).toMatch(new RegExp(`handlers\\.${handler}\\(`));
+    }
+  });
+
+  it("keeps authorization in router, request ID generation in codec, and removes adapter.go", async () => {
+    const router = await readFile(join(apiRoot, "router.go"), "utf8").catch(() => "");
+    const codec = await readFile(join(apiRoot, "codec.go"), "utf8").catch(() => "");
     const adapter = await readFile(join(apiRoot, "adapter.go"), "utf8").catch(() => "");
 
-    for (const method of requestBoundaryMethods) {
-      expect(router).toMatch(new RegExp(`^func (?:\\(server \\*Server\\) )?${method}\\(`, "m"));
-      expect(adapter).not.toMatch(new RegExp(`^func (?:\\(server \\*Server\\) )?${method}\\(`, "m"));
+    for (const method of authorizationMethods) {
+      expect(router).toMatch(new RegExp(`^func \\(server \\*Server\\) ${method}\\(`, "m"));
+      expect(adapter).not.toMatch(new RegExp(`^func \\(server \\*Server\\) ${method}\\(`, "m"));
     }
-    expect(router).toMatch(/^func randomID\(/m);
+    expect(codec).toMatch(/^func randomID\(/m);
     expect(adapter).not.toMatch(/^func randomID\(/m);
     expect(adapter).toBe("");
   });
