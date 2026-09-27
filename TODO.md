@@ -6,6 +6,16 @@
 
 ## Актуальный прогресс — 27.09.2026
 
+- Начато структурирование `internal/presentation`: D0 сделал семь source-text
+  guards path-agnostic через рекурсивный просмотр Go-пакетов `api/` и `cli/`;
+  негативные мутации в будущих вложенных путях подтвердили, что assertions
+  продолжают ловить соответствующие нарушения. D1 добавил явные go-arch-lint
+  components для `api/handlers`, `cli/caddyruntime` и `cli/bootstrap`; временные
+  запрещённые импорты Caddy и `pluginprotocol` в каждом из трёх подпакетов
+  отклонены линтером. Дальше: зафиксировать presentation U1000 baseline,
+  выполнить characterization и продолжить переносы по утверждённой
+  последовательности; форму `api.Server` не менять.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию

@@ -17,7 +17,10 @@ components:
   infrastructureArtifacts: { in: internal/infrastructure/artifacts }
   infrastructureCaddy: { in: internal/infrastructure/caddy }
   presentationAPI: { in: internal/presentation/api }
+  presentationAPIHandlers: { in: internal/presentation/api/handlers }
   presentationCLI: { in: internal/presentation/cli }
+  presentationCLICaddyRuntime: { in: internal/presentation/cli/caddyruntime }
+  presentationCLIBootstrap: { in: internal/presentation/cli/bootstrap }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
@@ -70,5 +73,14 @@ deps:
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts]
     canUse: [bcrypt]
+  presentationAPIHandlers:
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
+    canUse: []
   presentationCLI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPI]
+  presentationCLICaddyRuntime:
+    mayDependOn: [domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
+    canUse: []
+  presentationCLIBootstrap:
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureArtifacts, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, presentationAPI, presentationCLICaddyRuntime]
+    canUse: []
