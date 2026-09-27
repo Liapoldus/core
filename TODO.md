@@ -137,25 +137,31 @@
 - [x] Удалить недоступные legacy config/site/release handlers и связанные с
   ними неиспользуемые модели/контрактные поля. Целевые group release, plugin,
   TLS и Caddy Admin surfaces остаются незавершёнными задачами ниже.
-- [ ] Продолжать отдельные TypeScript unit/integration/E2E suites под tests для
-  bootstrap rejection, SQLite, group multipart, native Caddyfile adaptation,
-  external-Caddy lifecycle, Caddy Admin checkpoint/drift/reconcile, direct
-  Caddy-to-plugin dispatch и crash recovery. Уже есть исполняемые tests для
-  Management auth/bootstrap rejection, group publish/archive/rollback,
-  Caddy-L4 TCP/UDP, HTTP Stream/WebSocket/SSE и external-Caddy restart/status.
+- [x] TS unit/integration/E2E suites покрывают bootstrap rejection, SQLite,
+  group multipart/archive/rollback, native Caddyfile adaptation, external-Caddy
+  lifecycle и direct Caddy-to-plugin dispatch. Отдельный real-child-process
+  external Caddy-L4 тест проверяет TCP и UDP dispatch; embedded Caddy-L4,
+  HTTP Stream/WebSocket/SSE и external restart/status также имеют исполняемые
+  сценарии.
+- [ ] Продолжать TS conformance для Caddy Admin checkpoint/drift/reconcile,
+  production crash recovery, remote plugin replica barriers и общего
+  embedded/external parity gate.
   Владелец утвердил cookie-policy control plane: отдельная SQLite policy на
   instance/capability и `GET`/`PUT` Management API с ETag/If-Match CAS и audit;
-  `PUT` активирует candidate dispatch generation до SQLite commit и восстанавливает
-  прежнее поколение при сбое. External Caddy остаётся недоступен для такой
-  mutation до dispatch snapshot sync. Реализация частичная; production
-  child-process E2E остаётся открытым.
-- [ ] Добавить TS red/green coverage до расширения целевого data/control-plane:
-  multipart group publish/rollback, Caddy adapt/load and atomic snapshot,
-  external Caddy process, plugin replica readiness/DispatchApply, Admin API
-  checkpoint/reconcile и crash recovery. Cookie boundary red/green coverage
-  имеется для изолированного Caddy `call` slice; его production composition
-  остаётся незавершённой. Legacy runtime suites удалены, а не объявлены
-  эквивалентом этих ещё не написанных проверок.
+  `PUT` синхронно активирует candidate dispatch generation до SQLite commit и
+  восстанавливает прежнее поколение при сбое. External Caddy возвращает 503
+  для этой mutation, пока private dispatch snapshot sync не может подтвердить
+  candidate. Embedded production `serve` child-process E2E уже проверяет
+  восстановление policy, cookie allow-list, обычные и HttpOnly response actions
+  и атомарный отказ без частичного `Set-Cookie`; оставшиеся gates — external
+  snapshot sync и совместная конкуренция cookie PUT с group activation.
+- [x] До реализации добавлены отдельные TS red/green suites для уже закрытых
+  срезов multipart group publish/rollback, Caddy adapt/load, external Caddy
+  lifecycle/direct dispatch, cookie boundary и stream/L4 dispatch. Удалённые
+  legacy runtime suites не считаются эквивалентом нового покрытия.
+- [ ] До оставшихся изменений добавлять TS red-tests в `tests/` для remote
+  replica readiness/DispatchApply, Admin API checkpoint/reconcile, production
+  crash recovery и каждого нового cookie/external-snapshot lifecycle перехода.
 
 ## Bootstrap, persistence и Management API
 
