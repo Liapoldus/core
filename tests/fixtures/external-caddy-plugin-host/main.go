@@ -72,6 +72,12 @@ func run(arguments []string) error {
 			return err
 		case next := <-commands:
 			switch next.Action {
+			case "validate":
+				candidate, readErr := os.ReadFile(next.Path)
+				valid := readErr == nil && runtime.Validate(context.Background(), candidate) == nil
+				if err := encoder.Encode(map[string]any{"action": next.Action, "valid": valid}); err != nil {
+					return err
+				}
 			case "activate":
 				candidate, readErr := os.ReadFile(next.Path)
 				active := readErr == nil && runtime.Activate(context.Background(), candidate) == nil

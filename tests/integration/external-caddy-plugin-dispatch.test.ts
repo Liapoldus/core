@@ -72,8 +72,10 @@ describe("supervised custom external Caddy plugin dispatch", () => {
     const hostBinary = join(directory, "external-caddy-host");
     const initialCaddyfile = join(directory, "initial.Caddyfile");
     const rejectedCandidate = join(directory, "rejected.Caddyfile");
+    const mismatchedModeCandidate = join(directory, "mismatched-mode.Caddyfile");
     const initial = `http://${publicAddress} {\n  liapoldus_plugin fixture forms.submit call\n}\n`;
     const candidate = `http://${publicAddress} {\n  liapoldus_plugin fixture forms.not-declared call\n}\n`;
+    const mismatchedMode = `http://${publicAddress} {\n  liapoldus_plugin fixture forms.submit websocket\n}\n`;
     let plugin: ChildProcess | undefined;
     let host: ChildProcess | undefined;
     let pluginStderr = "";
@@ -88,6 +90,7 @@ describe("supervised custom external Caddy plugin dispatch", () => {
       ]);
       await writeFile(initialCaddyfile, initial, "utf8");
       await writeFile(rejectedCandidate, candidate, "utf8");
+      await writeFile(mismatchedModeCandidate, mismatchedMode, "utf8");
       const externalWrapper = join(directory, "liapoldus-caddy-wrapper");
       await writeFile(externalWrapper, [
         "#!/bin/sh",
@@ -120,6 +123,16 @@ describe("supervised custom external Caddy plugin dispatch", () => {
         method: "POST",
         path: "/submission",
         body: "{\"sample\":\"external\"}",
+      });
+
+      protocol.send({ action: "validate", path: mismatchedModeCandidate });
+      expect(await protocol.next()).toMatchObject({ action: "validate", valid: false });
+
+      const responseAfterRejectedPreflight = await fetch(`http://${publicAddress}/retained-after-preflight`);
+      expect(responseAfterRejectedPreflight.status).toBe(200);
+      expect(await responseAfterRejectedPreflight.json()).toMatchObject({
+        method: "GET",
+        path: "/retained-after-preflight",
       });
 
       protocol.send({ action: "activate", path: rejectedCandidate });
