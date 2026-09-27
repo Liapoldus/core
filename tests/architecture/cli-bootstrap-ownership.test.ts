@@ -63,4 +63,15 @@ describe("CLI bootstrap ownership", () => {
     expect(bootstrapSources).toMatch(/^func\s+CookiePolicyManagementService\s*\(/m);
     expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
+
+  it("moves bootstrap phase orchestration out of the CLI package", async () => {
+    const cliSources = await directGoSources(cliRoot);
+    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+    const cliEntries = await readdir(cliRoot, { withFileTypes: true });
+
+    expect(cliSources).not.toMatch(/^func\s+serveBootstrap\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+Serve\s*\(/m);
+    expect(bootstrapSources).toMatch(/^type\s+RunOptions\s+struct\s*\{/m);
+    expect(cliEntries.some((entry) => entry.name === "serve_bootstrap.go")).toBe(false);
+  });
 });

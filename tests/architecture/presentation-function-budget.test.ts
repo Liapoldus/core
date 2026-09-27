@@ -24,7 +24,7 @@ describe("presentation function decomposition budget", () => {
     ["api", "handleGroupPublish"],
     ["api", "handleGroupRollback"],
     ["api", "readGroupReleaseMultipart"],
-    ["cli", "serveBootstrap"],
+    ["cli/bootstrap", "Serve"],
   ])("keeps %s.%s at or below the agreed function budget", async (packageName, functionName) => {
     const source = await readGoPackageSources(root, `internal/presentation/${packageName}`);
 
