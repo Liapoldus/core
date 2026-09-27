@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -256,9 +257,14 @@ func run(arguments []string) error {
 	if err := appendEvent(eventsPath, event{Name: "started", PID: os.Getpid(), AdminListen: configuration.Admin.Listen}); err != nil {
 		return err
 	}
+	var configurationMu sync.RWMutex
 	for _, server := range configuration.Apps.HTTP.Servers {
 		for _, address := range server.Listen {
-			if err := servePublic(address, holdPath); err != nil {
+			if err := servePublic(address, holdPath, func() string {
+				configurationMu.RLock()
+				defer configurationMu.RUnlock()
+				return responseBody(configuration.FixtureGeneration)
+			}); err != nil {
 				_ = appendEvent(eventsPath, event{Name: "public-listener-failed", PID: os.Getpid(), AdminListen: configuration.Admin.Listen, Detail: "listener unavailable"})
 			}
 		}
@@ -284,7 +290,10 @@ func run(arguments []string) error {
 	admin := &http.Server{Handler: http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/config/" {
 			response.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(response).Encode(configuration)
+			configurationMu.RLock()
+			current := configuration
+			configurationMu.RUnlock()
+			_ = json.NewEncoder(response).Encode(current)
 			return
 		}
 		if request.URL.Path == "/load" && request.Method == http.MethodPost {
@@ -299,7 +308,20 @@ func run(arguments []string) error {
 				http.Error(response, "invalid", http.StatusBadRequest)
 				return
 			}
+			configurationMu.Lock()
 			configuration = candidate
+			configurationMu.Unlock()
+			barrierPath := os.Getenv("LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_BARRIER")
+			activationToken := os.Getenv("LIAPOLDUS_TEST_EXTERNAL_CADDY_ACTIVATION_TOKEN")
+			if activationToken != "" && strings.Contains(candidate.FixtureGeneration, activationToken) && fileExists(barrierPath) {
+				if err := appendEvent(eventsPath, event{Name: "activation-blocked", PID: os.Getpid(), AdminListen: candidate.Admin.Listen, Detail: activationToken}); err != nil {
+					http.Error(response, "fixture barrier failed", http.StatusInternalServerError)
+					return
+				}
+				for fileExists(barrierPath) {
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
 			response.WriteHeader(http.StatusOK)
 			return
 		}
@@ -321,7 +343,7 @@ func run(arguments []string) error {
 	return nil
 }
 
-func servePublic(address, holdPath string) error {
+func servePublic(address, holdPath string, body func() string) error {
 	address = strings.TrimPrefix(address, "tcp/")
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -329,13 +351,21 @@ func servePublic(address, holdPath string) error {
 	}
 	server := &http.Server{Handler: http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/" && !fileExists(holdPath) {
-			_, _ = response.Write([]byte("external-active"))
+			_, _ = response.Write([]byte(body()))
 			return
 		}
 		http.NotFound(response, request)
 	})}
 	go func() { _ = server.Serve(listener) }()
 	return nil
+}
+
+func responseBody(caddyfile string) string {
+	match := regexp.MustCompile(`(?m)\brespond\s+"([^"]*)"`).FindStringSubmatch(caddyfile)
+	if len(match) == 2 {
+		return match[1]
+	}
+	return "external-active"
 }
 
 func unixAddress(value string) (string, string, bool) {

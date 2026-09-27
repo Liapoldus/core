@@ -21,9 +21,12 @@
 - При старте с существующей revision `serve` теперь сначала разрешает pending
   release reservations в SQLite и только после успешного recovery активирует
   Caddy через lazy runtime. TS E2E инъектирует ошибку durable transition и
-  подтверждает `recovery-required` при закрытом public listener. Исполняемый
-  process-kill/crash recovery и external Caddy process conformance всё ещё
-  требуют отдельного gate.
+  подтверждает `recovery-required` при закрытом public listener. Новый TS E2E
+  запускает реальный Gateway `serve` process с external-Caddy fixture: fixture
+  принимает `/load`, начинает обслуживать candidate и блокирует Admin response;
+  Gateway убивается до commit, затем restart восстанавливает старую композицию.
+  Это не проверяет поведение настоящего Caddy binary и не закрывает полный
+  external Caddy process conformance gate.
 - `/api/groups` и `/api/groups/{id}` читают SQLite. `POST /api/groups` создаёт
   application group, проверяет опубликованные ID/idempotency constraints,
   возвращает `201`, `400 invalid_request` или `409 group_already_exists`.
@@ -69,7 +72,8 @@
   создавая сотни MiB; превышение uncompressed entry size возвращает
   `artifact_too_large`. Отдельный concurrent HTTP/SQLite E2E теперь подтверждает
   same-key deduplication и per-group exclusion для pending same-CAS releases;
-  production crash-recovery между activation/commit остаётся открытым.
+  process-level crash boundary дополнительно проверяет отдельный TS E2E через
+  external-Caddy fixture; настоящая Caddy conformance остаётся открытой.
 - Подтверждён TS E2E для `file:` config-secret refs: oversized regular file и
   directory отклоняются до запуска plugin, диагностика не содержит путь или
   содержимое. Прямое доказательство очистки всех копий secret buffers ещё
@@ -228,8 +232,12 @@
   и SQLite pointer swap реализованы и проверяются focused E2E. Отдельный
   concurrent HTTP E2E проверяет единственную pending reservation на группу:
   одинаковый idempotency retry возвращает ту же operation/revision, а другая
-  публикация с тем же stale CAS получает conflict до второй активации. Production
-  crash recovery между activation/commit остаётся недоказанным.
+  публикация с тем же stale CAS получает conflict до второй активации. Новый
+  `group-release-process-crash.test.ts` проверяет kill/restart реального Gateway
+  между fixture-подтверждением Caddy `/load` и SQLite commit, включая публичный
+  candidate response, неизменность current/previous, failed operation/journal и
+  удаление staged файлов. Fixture эмулирует external Admin/data plane; это не
+  заменяет conformance настоящего Caddy процесса и production Caddy activation.
 - [x] TS integration фиксирует multipart
   `POST /api/groups/{id}/releases`, durable `OperationReference`, invalid
   Caddyfile, stale current revision, idempotent retry/conflicting key и reopen
@@ -264,9 +272,13 @@
   `Recover`: fixture создаёт durable reservation, активирует кандидат в fake
   activator, закрывает и повторно открывает SQLite, затем проверяет восстановление
   SQLite current composition, failed operation/journal, неизменность
-  current/previous и удаление staged Caddyfile/archive. Это не моделирует аварийное
-  завершение production Gateway/Caddy и не доказывает полный crash recovery между
-  реальной Caddy activation и SQLite commit; пункт остаётся открытым.
+  current/previous и удаление staged Caddyfile/archive. Отдельный
+  `group-release-process-crash.test.ts` убивает реальный Gateway process после
+  external-Caddy fixture `/load` применил candidate и начал его отдавать, пока
+  Admin response заблокирован до SQLite commit; после перезапуска проверяет старые
+  pointers/публичный snapshot, terminal failure journal и отсутствие pending или
+  staged artifact. В тесте Caddy runtime заменён fixture, поэтому поведение
+  настоящего Caddy binary и полный crash recovery v1 остаются открытыми.
 - [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
   до каждой mutation, drift detection, group publish block, explicit checkpoint
   restore и full-composition reconcile с If-Match.
