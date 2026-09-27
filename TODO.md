@@ -386,8 +386,10 @@
   поэтому production-изменение не потребовалось.
   Route concurrency guard уже есть, но configurable per-instance shared limit,
   idle-timeout и max-duration остаются TODO выше. Local `call` dispatch через
-  embedded Caddy подключён к supervised child; dispatch generations, local TLS
-  settings, config-scoped grants and remote-replica fan-out ещё не подключены.
+  embedded Caddy подключён к supervised child; candidate dispatch snapshots
+  применяются для cookie-policy и group activation, но общего управления
+  generation при dynamic instance lifecycle, local TLS settings и remote-replica
+  fan-out ещё нет.
 - [x] Добавить real-child-process smoke для локальных сборок captcha,
   forms-db и identity: Gateway `serve` выполняет Bootstrap/ConfigApply,
   запускает три процесса с inherited listener FD и передаёт capability-вызовы
@@ -445,15 +447,21 @@
   реализация; Go test files в production packages не добавлять.
 - [ ] Для milestones запускать make check, go vet ./..., go build ./...,
   macOS/Linux builds и подходящие Docker/Caddy variant smoke suites.
-- [ ] Добавить immutable dispatch generations и external-Caddy private Admin
-  API/IPC synchronization; failure сохраняет прежний runtime generation.
+- [ ] Обобщить immutable dispatch generations на plugin lifecycle и remote
+  replicas. Сейчас group/cookie-policy mutations синхронизируют candidate в
+  embedded либо supervised external Caddy через private Admin `/load`, а ошибка
+  preflight/load сохраняет прежний runtime; remote replica `DispatchApply`
+  barrier и совместный crash/recovery gate остаются незавершёнными.
 - [ ] Завершить capability→modes pre-activation validation для обоих вариантов.
   Embedded Caddy теперь вызывает non-starting `caddy.Validate`, provisions
   candidate dispatch app и проверяет route mode по live Manifest до Reserve;
   TS integration подтверждает синхронный отказ без operation/revision/pointer
-  изменений и успешный matching `CALL`. Временные plugin clients закрываются
-  через Caddy `CleanerUpper`. External `Validate` пока только готовит Caddyfile,
-  а external plugin dispatch snapshot/readiness barrier ещё не подключены.
+  изменений и успешный matching `CALL`. External Caddy запускает штатный
+  `caddy validate` над candidate JSON; real child-process E2E проверяет, что
+  Liapoldus module provision читает live Manifest и несовместимый route mode
+  отклоняется до `/load`, сохраняя прежний public snapshot. Временные plugin
+  clients закрываются через Caddy `CleanerUpper`. Remote replica
+  `DispatchApply` readiness barrier до activation пока не подключён.
 - [ ] Расширять исполняемые golden-vector conformance: сейчас семнадцать из
   двадцати одного vector исполняются через интеграционные фикстуры: bootstrap
   rejection, Management authentication, одиннадцать archive cases и три group
