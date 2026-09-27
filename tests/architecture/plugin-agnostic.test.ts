@@ -10,7 +10,6 @@ describe("plugin-agnostic Gateway core", () => {
     const files = [
       "assets/contracts/gateway.schema.json",
       "assets/contracts/errors.json",
-      "contracts/v1/plugin-contracts.json",
       "contracts/v1/http-runtime.json",
       "contracts/v1/security-runtime.json",
       "internal/infrastructure/config/bootstrap.go",
@@ -22,6 +21,7 @@ describe("plugin-agnostic Gateway core", () => {
     ];
     const source = (await Promise.all(files.map((file) => readFile(join(coreRoot, file), "utf8")))).join("\n");
     expect(source).not.toMatch(/captcha|forms\.(submit|list|delete)|tls\.(issue|renew|revoke)|identity-subject|WAFChallenge|DispatchIdentity|IdentityRequest|IdentityAction/);
+    expect(source).not.toMatch(/WAFContext|WAFDecision|wafDecision|json:\"waf/);
     expect(source).not.toMatch(/TLS issuer|TlsIssuer|Issuer:|\/api\/tls\/\{issuer\}/i);
   });
 });

@@ -25,13 +25,11 @@ describe("Gateway v1 Caddy control-plane contracts", () => {
     expect(openapi).not.toContain("/api/sites/{slug}/publish:");
   });
 
-  it("defines direct Caddy-to-plugin dispatch and every v1 Stream mode", async () => {
+  it("defines the Gateway-owned direct Caddy dispatch boundary", async () => {
     const runtime = JSON.parse(await readFile(contract("http-runtime.json"), "utf8"));
-    const plugins = JSON.parse(await readFile(contract("plugin-contracts.json"), "utf8"));
     expect(runtime.pluginDataProtocol.call).toContain("directly");
-    expect(plugins.capabilityInvocationModes.gatewayValidation).toContain("before activation");
-    expect(plugins.streamContract.modes).toEqual(["http-stream", "websocket", "sse", "tcp", "udp"]);
-    expect(plugins.streamContract.websocket).toContain("subprotocol");
+    expect(runtime.pluginDataProtocol.managementApiInRequestPath).toBe(false);
+    expect(runtime.pluginDataProtocol.externalDispatch).toContain("immutable");
   });
 
   it("keeps external Caddy snapshots private and GrantBroker out of the traffic proxy path", async () => {

@@ -16,6 +16,7 @@ describe("removed unreferenced legacy artifacts", () => {
       "internal/domain/models/actor.go",
       "internal/domain/interfaces/authorizer.go",
       "internal/application/management_service.go",
+      "contracts/v1/plugin-contracts.json",
       "internal/infrastructure/storage/management.go",
       "internal/infrastructure/storage/audit.go",
       "tests/fixtures/plugin-grant/main.go",
