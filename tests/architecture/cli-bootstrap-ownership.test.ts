@@ -48,4 +48,19 @@ describe("CLI bootstrap ownership", () => {
     expect(bootstrapSources).toMatch(/^func\s+PresentPluginInventory\s*\(/m);
     expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
+
+  it("places runtime service composition in the services leaf", async () => {
+    const cliSources = await directGoSources(cliRoot);
+    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+
+    expect(cliSources).not.toMatch(/^func\s+newAdminMutationService\s*\(/m);
+    expect(cliSources).not.toMatch(/^func\s+newGroupReleaseService\s*\(/m);
+    expect(cliSources).not.toMatch(/^func\s+activateCurrentGroupRelease\s*\(/m);
+    expect(cliSources).not.toMatch(/^func\s+cookiePolicyManagementService\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+NewAdminMutationService\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+NewGroupReleaseService\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+ActivateCurrentGroupRelease\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+CookiePolicyManagementService\s*\(/m);
+    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+  });
 });
