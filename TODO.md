@@ -92,8 +92,18 @@
   serving groups и Management characterization вместе с ownership/boundary/
   budget suite прошли (8 файлов / 21 тест, Node v22.21.1); также прошли
   `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
-  Основные bootstrap orchestration и остальные responsibilities ещё предстоит
-  перенести в целевые файлы.
+  Основная bootstrap orchestration перенесена в `bootstrap/bootstrap.go`, старый
+  `cli/serve_bootstrap.go` удалён после перевода единственного caller в
+  `cli/serve.go`. Экспортированный `bootstrap.Serve` принимает `RunOptions` с
+  CLI words/output/writer и Caddy runtime bindings; CLI-парсер и поведение
+  команды не изменены. Проверено точное сохранение регистрации defer: SQLite
+  close → plugin runtime stop → optional Caddy stop → signal-context stop, то
+  есть порядок cleanup остаётся прежним по LIFO. Структурный guard фиксирует
+  только целевые вложенные пути: `api/handlers`, `cli/bootstrap` и
+  `cli/caddyruntime`; произвольные package directories запрещены. Focused suite
+  прошёл (9 файлов / 25 тестов), затем `make check` прошёл на Node v22.21.1
+  (76 файлов / 144 теста, Go build и Docker arch-lint); отдельно прошли
+  `go vet ./...` и `make staticcheck-u1000`.
 
 - D4 CLI surface: команда `access bootstrap` перенесена без изменений из
   `serve_bootstrap.go` в `cli/access.go`; target entrypoint test сканирует root
@@ -104,10 +114,10 @@
   `6a1d523`.
 
 - D4 CLI surface: `serve` отделён от bootstrap orchestration и находится в
-  `cli/serve.go`; команда продолжает вызывать прежний `serveBootstrap` с теми
-  же аргументами. Ownership suite и bootstrap/service-key E2E прошли (9 файлов /
-  24 теста, Node v22.21.1), как и `go build ./...`, `go vet ./...`,
-  `make staticcheck-u1000` и `make arch-lint`. Red commit: `970e16a`.
+  `cli/serve.go`; команда передаёт bootstrap-композицию в leaf package
+  `cli/bootstrap` через `Serve`, не меняя CLI аргументы или runtime bindings.
+  Red commit `970e16a` закрепил extraction `serve`, а `6ae1e15` — перенос
+  orchestration boundary.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

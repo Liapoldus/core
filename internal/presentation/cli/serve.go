@@ -1,6 +1,7 @@
 package cli
 
 import "github.com/Liapoldus/core/internal/infrastructure/config"
+import bootstrapruntime "github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
 
 func serve(options options, runtime RuntimeBindings) int {
 	path, _, err := discoverConfig(options)
@@ -12,5 +13,7 @@ func serve(options options, runtime RuntimeBindings) int {
 	if err != nil {
 		return configValidationFailure(options.output, err)
 	}
-	return serveBootstrap(options, bootstrap, runtime)
+	return bootstrapruntime.Serve(bootstrap, bootstrapruntime.RunOptions{
+		Output: options.output, Words: words, RuntimeBindings: runtime, WriteFailure: writeFailure,
+	})
 }

@@ -54,8 +54,13 @@ describe("Gateway architecture", () => {
     ]);
   });
 
-  it("limits presentation to api and cli and keeps one command root", async () => {
+  it("limits presentation to approved API and CLI package paths", async () => {
     expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
+    expect(await directories(join(root, "internal", "presentation", "api"))).toEqual(["handlers"]);
+    expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual([
+      "bootstrap",
+      "caddyruntime",
+    ]);
     expect(await directories(join(root, "cmd"))).toEqual(["gateway"]);
   });
 
