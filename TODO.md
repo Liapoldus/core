@@ -103,6 +103,12 @@
   `make arch-lint`. Red commits: `a0a5446` и тестовый source-scan fix
   `6a1d523`.
 
+- D4 CLI surface: `serve` отделён от bootstrap orchestration и находится в
+  `cli/serve.go`; команда продолжает вызывать прежний `serveBootstrap` с теми
+  же аргументами. Ownership suite и bootstrap/service-key E2E прошли (9 файлов /
+  24 теста, Node v22.21.1), как и `go build ./...`, `go vet ./...`,
+  `make staticcheck-u1000` и `make arch-lint`. Red commit: `970e16a`.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
