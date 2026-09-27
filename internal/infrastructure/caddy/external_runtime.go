@@ -33,6 +33,7 @@ type ExternalOptions struct {
 type externalContract struct {
 	VersionArgs  []string `json:"versionArgs"`
 	AdaptArgs    []string `json:"adaptArgs"`
+	ValidateArgs []string `json:"validateArgs"`
 	RunArgs      []string `json:"runArgs"`
 	Placeholders struct {
 		Caddyfile string `json:"caddyfile"`
@@ -225,8 +226,11 @@ func ValidateExternalCaddyfileWithPlugins(ctx context.Context, binary string, ca
 		socketPath:      filepath.Join(directory, contract.Files.AdminSocket),
 		pluginInstances: clonePluginInstances(instances),
 	}
-	_, err = runtime.prepare(ctx, caddyfile, runtime.pluginInstances)
-	return err
+	prepared, err := runtime.prepare(ctx, caddyfile, runtime.pluginInstances)
+	if err != nil {
+		return err
+	}
+	return runtime.validatePrepared(ctx, prepared)
 }
 
 func (runtime *ExternalRuntime) Validate(ctx context.Context, caddyfile []byte) error {
@@ -236,8 +240,48 @@ func (runtime *ExternalRuntime) Validate(ctx context.Context, caddyfile []byte) 
 	runtime.mu.Lock()
 	instances := clonePluginInstances(runtime.pluginInstances)
 	runtime.mu.Unlock()
-	_, err := runtime.prepare(ctx, caddyfile, instances)
-	return err
+	prepared, err := runtime.prepare(ctx, caddyfile, instances)
+	if err != nil {
+		return err
+	}
+	return runtime.validatePrepared(ctx, prepared)
+}
+
+func (runtime *ExternalRuntime) validatePrepared(ctx context.Context, configuration []byte) error {
+	if ctx == nil || runtime == nil {
+		if runtime == nil {
+			return nilExternalRuntimeError()
+		}
+		return errors.New(runtime.contract.Diagnostics.InvalidContract)
+	}
+	temporary, err := os.CreateTemp(runtime.directory, runtime.contract.Files.CandidateConfigurationPattern)
+	if err != nil {
+		return errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+	}
+	configurationPath := temporary.Name()
+	defer os.Remove(configurationPath)
+	if err := temporary.Chmod(os.FileMode(runtime.contract.Modes.Configuration)); err != nil {
+		_ = temporary.Close()
+		return errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+	}
+	if _, err := temporary.Write(configuration); err != nil {
+		_ = temporary.Close()
+		return errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+	}
+	if err := temporary.Close(); err != nil {
+		return errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+	}
+	arguments := expandExternalArgs(runtime.contract.ValidateArgs, runtime.contract.Placeholders.Config, configurationPath)
+	command := exec.CommandContext(ctx, runtime.binary, arguments...)
+	command.Stdout = io.Discard
+	command.Stderr = io.Discard
+	if err := command.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
+	}
+	return nil
 }
 
 func (runtime *ExternalRuntime) Activate(ctx context.Context, caddyfile []byte) error {
@@ -641,7 +685,7 @@ func loadExternalContract() (externalContract, error) {
 }
 
 func validateExternalContract(contract externalContract) error {
-	if len(contract.VersionArgs) == 0 || len(contract.AdaptArgs) == 0 || len(contract.RunArgs) == 0 ||
+	if len(contract.VersionArgs) == 0 || len(contract.AdaptArgs) == 0 || len(contract.ValidateArgs) == 0 || len(contract.RunArgs) == 0 ||
 		contract.Placeholders.Caddyfile == "" || contract.Placeholders.Config == "" ||
 		contract.Configuration.Apps == "" || contract.Configuration.Admin == "" || contract.Configuration.Disabled == "" || contract.Configuration.Listen == "" ||
 		contract.Configuration.AdminConfig == "" || contract.Configuration.Persist == "" || contract.Configuration.UnixPrefix == "" ||

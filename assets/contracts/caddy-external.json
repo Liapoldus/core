@@ -1,6 +1,7 @@
 {
   "versionArgs": ["version"],
   "adaptArgs": ["adapt", "--config", "{{caddyfile}}", "--adapter", "caddyfile", "--pretty"],
+  "validateArgs": ["validate", "--config", "{{config}}"],
   "runArgs": ["run", "--config", "{{config}}"],
   "placeholders": {
     "caddyfile": "{{caddyfile}}",

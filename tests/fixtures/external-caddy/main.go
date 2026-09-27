@@ -66,6 +66,12 @@ func main() {
 			return
 		}
 	}
+	if len(os.Args) > 1 && os.Args[1] == "validate" {
+		if err := validateConfig(os.Args[2:]); err != nil {
+			fatal(err)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "adapt" {
 		if err := adapt(os.Args[2:]); err != nil {
 			fatal(err)
@@ -75,6 +81,31 @@ func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fatal(err)
 	}
+}
+
+func validateConfig(arguments []string) error {
+	configPath := ""
+	for index := 0; index+1 < len(arguments); index++ {
+		if arguments[index] == "--config" {
+			configPath = arguments[index+1]
+			break
+		}
+	}
+	if configPath == "" {
+		return fmt.Errorf("Caddy validation fixture requires the standard config argument")
+	}
+	contents, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+	var configuration map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &configuration); err != nil {
+		return err
+	}
+	if len(configuration) == 0 {
+		return fmt.Errorf("Caddy validation fixture received an empty configuration")
+	}
+	return nil
 }
 
 func adapt(arguments []string) error {

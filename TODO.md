@@ -231,6 +231,10 @@
   startup/restart/status и сохранение прежнего snapshot при отказе `/load`.
   Embedded/external parity, module/build identity и полная deployment
   conformance остаются открыты.
+- [x] External Caddy preflight вызывает штатный `caddy validate` для собранного
+  candidate JSON до reservation/activation. Настоящий child-process E2E
+  подтверждает, что несовместимый `capability → mode` отклоняется при
+  provision Liapoldus-модуля и активный snapshot продолжает отвечать.
 - [ ] Зафиксировать Caddy/xcaddy/module versions, build identity/module
   manifest, supply-chain verification и общий parity matrix.
 - [x] Caddy-L4 TCP/UDP plugin dispatch прошёл focused E2E для embedded и
