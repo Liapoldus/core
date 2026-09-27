@@ -30,4 +30,13 @@ describe("CLI bootstrap ownership", () => {
     expect(bootstrapSources).toMatch(/^func\s+ManagementTLS\s*\(/m);
     expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
+
+  it("places SQLite bootstrap opening in the stores leaf", async () => {
+    const cliSources = await directGoSources(cliRoot);
+    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+
+    expect(cliSources).not.toMatch(/^func\s+openBootstrapDatabase\s*\(/m);
+    expect(bootstrapSources).toMatch(/^func\s+OpenDatabase\s*\(/m);
+    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+  });
 });
