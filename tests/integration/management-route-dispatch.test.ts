@@ -40,7 +40,7 @@ describe("Management API route/method dispatch characterization", () => {
       serviceKeyDelete: { status: 404, code: "not_found" },
       auditPost: { status: 404, code: "not_found" },
       operationPost: { status: 404, code: "not_found" },
-      statusHead: { status: 404, code: "not_found" },
+      statusHead: { status: 404, code: null },
       caddyAdminDelete: { status: 503, code: "management_unavailable" },
     });
   }, 30_000);

@@ -107,6 +107,25 @@ func main() {
 		{name: "retiredConfigRoute", method: http.MethodGet, path: "/api/config", token: "characterization-token"},
 		{name: "unsupportedMethod", method: http.MethodDelete, path: management.Paths.Groups, token: "characterization-token"},
 	}
+	if len(os.Args) > 1 && os.Args[1] == "route-matrix" {
+		cases = []requestCase{
+			{name: "groupCollectionPost", method: http.MethodPost, path: management.Paths.Groups, token: "characterization-token", body: `{"id":"new-group","idempotencyKey":"0123456789abcdef"}`},
+			{name: "groupCollectionDelete", method: http.MethodDelete, path: management.Paths.Groups, token: "characterization-token"},
+			{name: "groupDetailPost", method: http.MethodPost, path: group, token: "characterization-token"},
+			{name: "pluginListPost", method: http.MethodPost, path: management.Paths.Plugins, token: "characterization-token"},
+			{name: "pluginDetailPut", method: http.MethodPut, path: plugin, token: "characterization-token"},
+			{name: "pluginCookiePolicyPut", method: http.MethodPut, path: management.Paths.PluginCookiePolicies + "/fixture-a" + management.Paths.CookiePoliciesSuffix + "forms.submit", token: "characterization-token"},
+			{name: "pluginCookiePolicyPost", method: http.MethodPost, path: management.Paths.PluginCookiePolicies + "/fixture-a" + management.Paths.CookiePoliciesSuffix + "forms.submit", token: "characterization-token"},
+			{name: "pluginAdminPatch", method: http.MethodPatch, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
+			{name: "pluginRestartGet", method: http.MethodGet, path: plugin + "/" + management.Paths.Restart, token: "characterization-token"},
+			{name: "adminSurfacesPost", method: http.MethodPost, path: management.Paths.AdminSurfaces, token: "characterization-token"},
+			{name: "serviceKeyDelete", method: http.MethodDelete, path: management.Paths.ServiceKeys, token: "characterization-token"},
+			{name: "auditPost", method: http.MethodPost, path: management.Paths.Audit, token: "characterization-token"},
+			{name: "operationPost", method: http.MethodPost, path: management.Paths.Operations + "/missing", token: "characterization-token"},
+			{name: "statusHead", method: http.MethodHead, path: management.Paths.Status, token: "characterization-token"},
+			{name: "caddyAdminDelete", method: http.MethodDelete, path: strings.TrimSuffix(adminWords.Paths.ManagementPrefix, "/") + "/config/", token: "characterization-token"},
+		}
+	}
 
 	client := serverForRequests.Client()
 	mtlsClient := serverForMTLS.Client()
