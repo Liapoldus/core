@@ -67,6 +67,14 @@
   CLI→bootstrap edges, а bootstrap→caddyruntime; файлы этих CLI пакетов ещё
   предстоит перенести по D4.
 
+- D4 red: `tests/architecture/cli-caddyruntime-ownership.test.ts` фиксирует
+  целевые `cli/caddyruntime/{bindings,activator,cookie_policy,system}.go`,
+  проверяет, что реализации runtime покинули CLI root, и запрещает обратную
+  зависимость от CLI. Два экспортируемых типа и runtime interface должны
+  определяться в leaf package; для неизменённого `cmd/gateway/main.go` оставить
+  ровно три подтверждённых type aliases в `cli` (`RuntimeBindings`,
+  `PluginDispatchBinding`, `CaddyRuntime`) — новые aliases не вводить.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
