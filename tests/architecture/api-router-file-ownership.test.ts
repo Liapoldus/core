@@ -15,6 +15,14 @@ const routerMethods = [
   "dispatchPluginActions",
   "dispatchOperations",
 ];
+const requestBoundaryMethods = [
+  "handleHealthz",
+  "authorizeManagementRequest",
+  "handleReadiness",
+  "handleAuditList",
+  "handleOperationGet",
+  "authenticate",
+];
 
 describe("API router ownership", () => {
   it("keeps request routing and path/method dispatch in api/router.go", async () => {
@@ -31,5 +39,18 @@ describe("API router ownership", () => {
     for (const method of routerMethods) {
       expect(source).not.toMatch(new RegExp(`^func \\(server \\*Server\\) ${method}\\(`, "m"));
     }
+  });
+
+  it("owns remaining request-boundary handlers in router.go and retires adapter.go", async () => {
+    const router = await readFile(join(apiRoot, "router.go"), "utf8").catch(() => "");
+    const adapter = await readFile(join(apiRoot, "adapter.go"), "utf8").catch(() => "");
+
+    for (const method of requestBoundaryMethods) {
+      expect(router).toMatch(new RegExp(`^func (?:\\(server \\*Server\\) )?${method}\\(`, "m"));
+      expect(adapter).not.toMatch(new RegExp(`^func (?:\\(server \\*Server\\) )?${method}\\(`, "m"));
+    }
+    expect(router).toMatch(/^func randomID\(/m);
+    expect(adapter).not.toMatch(/^func randomID\(/m);
+    expect(adapter).toBe("");
   });
 });
