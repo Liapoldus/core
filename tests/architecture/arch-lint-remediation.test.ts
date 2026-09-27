@@ -7,6 +7,25 @@ import { readGoPackageSources } from "../support/presentation-source";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 describe("architecture lint boundaries", () => {
+  it("defines explicit boundaries for the planned presentation subpackages", async () => {
+    const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
+    const dependencies = architecture.slice(architecture.indexOf("deps:"));
+    const packages = [
+      ["presentationAPIHandlers", "internal/presentation/api/handlers"],
+      ["presentationCLICaddyRuntime", "internal/presentation/cli/caddyruntime"],
+      ["presentationCLIBootstrap", "internal/presentation/cli/bootstrap"],
+    ];
+
+    for (const [component, directory] of packages) {
+      expect(architecture).toMatch(new RegExp(`${component}: \\{ in: ${directory.replaceAll("/", "\\/")} \\}`));
+      const block = dependencies.match(new RegExp(`${component}:[\\s\\S]*?(?=\\n  [\\w]+:|$)`))?.[0] ?? "";
+      expect(block, `${component} must define mayDependOn`).toMatch(/mayDependOn: \[[^\]]*\]/);
+      expect(block, `${component} must define canUse`).toMatch(/canUse: \[[^\]]*\]/);
+      expect(block).not.toContain("infrastructureCaddy");
+      expect(block).not.toContain("pluginprotocol");
+    }
+  });
+
   it("keeps infrastructure adapters explicit about their vendor dependencies", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
