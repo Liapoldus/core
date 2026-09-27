@@ -322,6 +322,7 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		CaddyBuildID:    runtimeBindings.CaddyBuildID,
 		CaddyModules:    runtimeBindings.CaddyModules,
 		Plugins:         pluginInventory,
+		PluginIDField:   pluginInventoryContract.JSON.ID,
 		DataPlaneState:  readiness,
 		DataPlaneReason: reason,
 		DataPlaneReadiness: func(requestContext context.Context) (string, string) {

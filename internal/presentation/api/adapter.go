@@ -35,6 +35,7 @@ type Server struct {
 	AdminSurfaces            []AdminSurface
 	AdminDispatcher          *plugins.Dispatcher
 	Plugins                  []any
+	PluginIDField            string
 	RestartPlugin            func(context.Context, string) (models.Operation, error)
 	Audit                    *application.AuditService
 	GroupService             application.GroupService
@@ -163,6 +164,13 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		server.handleGroupGet(response, request, path, requestID)
 	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
 		server.writePage(response, server.Plugins, request, requestID)
+	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
+		server.mu.RLock()
+		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
+		server.mu.RUnlock()
+		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
+	case server.isPluginDetailPath(path) && request.Method == server.Management.Methods.Get:
+		server.handlePluginDetail(response, path, requestID)
 	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
 		if server.Audit == nil {
 			writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
@@ -188,11 +196,6 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
-	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
-		server.mu.RLock()
-		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
-		server.mu.RUnlock()
-		writeJSON(response, 200, map[string]any{"items": surfaces, "requestId": requestID})
 	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
 		server.handlePluginAdmin(response, request, path, requestID)
 	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost:
@@ -267,6 +270,44 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 
 type pluginCookiePolicyInput struct {
 	AllowedNames []string `json:"allowedNames"`
+}
+
+func (server *Server) isPluginDetailPath(path string) bool {
+	separator := server.Management.Paths.GroupIDSeparator
+	if server.Management.Paths.Plugins == "" || separator == "" {
+		return false
+	}
+	prefix := server.Management.Paths.Plugins + separator
+	instanceID := strings.TrimPrefix(path, prefix)
+	return instanceID != path && instanceID != "" && !strings.Contains(instanceID, separator)
+}
+
+func (server *Server) handlePluginDetail(response http.ResponseWriter, path, requestID string) {
+	separator := server.Management.Paths.GroupIDSeparator
+	instanceID := strings.TrimPrefix(path, server.Management.Paths.Plugins+separator)
+	if server.PluginIDField == "" {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+
+	var matched map[string]any
+	server.mu.RLock()
+	for _, item := range server.Plugins {
+		plugin, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if candidateID, ok := plugin[server.PluginIDField].(string); ok && candidateID == instanceID {
+			matched = plugin
+			break
+		}
+	}
+	server.mu.RUnlock()
+	if matched == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.PluginNotFound, requestID)
+		return
+	}
+	writeJSON(response, http.StatusOK, matched)
 }
 
 func (server *Server) isPluginCookiePolicyPath(path string) bool {

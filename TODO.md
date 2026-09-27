@@ -4,7 +4,15 @@
 [Перепроектирование Gateway v1](https://liapoldus.github.io/gateway/architecture/v1-migration-roadmap).
 Здесь перечислены только незавершённые задачи core.
 
-## Актуальный прогресс — 26.09.2026
+## Актуальный прогресс — 27.09.2026
+
+- `GET /api/plugins/{pluginId}` возвращает тот же redacted inventory object,
+  что и список, не раскрывая settings, endpoint, launch path или grants;
+  неизвестный instance отвечает canonical `plugin_not_found`. TypeScript
+  child-process integration проверяет detail, redaction и 404; сохранённый
+  `/api/plugins/admin-surfaces` проверяется тем же тестом после явного
+  разрешения route precedence. Create/update/delete plugin instance пока не
+  реализованы.
 
 - Production `serve` использует bootstrap + SQLite, а Management API защищён
   SQLite-backed Bearer verifier. Пути state/artifacts разрешаются относительно
@@ -356,13 +364,16 @@
   Остаются production conformance для rollback-failure fencing и совместной
   сериализации cookie PUT с group-release activation; fixture не наблюдает
   точку ожидания общего lock без production test hook.
-- [ ] Подключить документированный generic plugin-instance Management CRUD:
-  [`management.openapi.yaml`](https://github.com/Liapoldus/liapoldus.github.io/blob/main/public/spec/management.openapi.yaml)
-  описывает `GET`/`POST`/`PUT`/`DELETE /api/plugins`, но core сейчас
-  маршрутизирует только `GET`. Пока CRUD отсутствует, cookie-policy API нельзя
-  пройти на чистой установке через Management API: текущая production E2E
-  намеренно подготавливает instance/manifest/launch row непосредственно во
-  временной SQLite базе. Реализация должна оставаться generic и plugin-agnostic.
+- [ ] Завершить generic plugin-instance Management CRUD по
+  [`management.openapi.yaml`](https://github.com/Liapoldus/liapoldus.github.io/blob/main/public/spec/management.openapi.yaml).
+  Safe list и `GET /api/plugins/{pluginId}` реализованы из redacted in-memory
+  inventory и проверяются child-process TypeScript E2E; ответы не содержат
+  settings, endpoint или launch details. Остаются `POST`/`PUT`/`DELETE`, их
+  version/CAS, lifecycle orchestration, audit и согласование с immutable
+  dispatch generation. Пока write API отсутствует, cookie-policy API нельзя
+  пройти на чистой установке: production E2E подготавливает instance/manifest/
+  launch row во временной SQLite базе. Реализация должна оставаться generic и
+  plugin-agnostic.
 
 - Caddy handler валидирует capability invocation modes `call`, `http-stream`,
   `websocket`, `sse`, `tcp` и `udp`; mode capability tests есть. HTTP Stream,

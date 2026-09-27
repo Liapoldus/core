@@ -125,6 +125,7 @@ type ManagementWords struct {
 		ManagementMTLSRequired           string `yaml:"managementMTLSRequired"`
 		IdempotencyConflict              string `yaml:"idempotencyConflict"`
 		PluginUnavailable                string `yaml:"pluginUnavailable"`
+		PluginNotFound                   string `yaml:"pluginNotFound"`
 		GroupNotFound                    string `yaml:"groupNotFound"`
 		GroupAlreadyExists               string `yaml:"groupAlreadyExists"`
 		InvalidRequest                   string `yaml:"invalidRequest"`

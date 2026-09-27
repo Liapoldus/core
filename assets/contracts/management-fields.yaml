@@ -132,6 +132,7 @@ codes:
   managementUnavailable: management_unavailable
   managementMTLSRequired: management_mtls_required
   pluginUnavailable: plugin_unavailable
+  pluginNotFound: plugin_not_found
   groupNotFound: group_not_found
   groupAlreadyExists: group_already_exists
   invalidRequest: invalid_request

@@ -9,6 +9,7 @@
     {"code":"caddy_build_incompatible","status":422,"title":"Несовместимая сборка Caddy","detail":"Вариант Caddy не содержит требуемые Liapoldus modules или Caddy-L4."},
     {"code":"caddy_adapt_failed","status":422,"title":"Ошибка Caddyfile","detail":"Caddy не смог адаптировать или проверить candidate Caddyfile."},
     {"code":"group_not_found","status":404,"title":"Группа не найдена","detail":"Указанная группа не существует."},
+    {"code":"plugin_not_found","status":404,"title":"Плагин не найден","detail":"Указанный plugin instance не существует."},
     {"code":"group_already_exists","status":409,"title":"Группа уже существует","detail":"Идентификатор группы уже занят."},
     {"code":"group_revision_conflict","status":409,"title":"Конфликт версии группы","detail":"Current revision изменилась после чтения."},
     {"code":"group_drift_blocked","status":409,"title":"Runtime расходится с группами","detail":"Публикация заблокирована до явного reconcile или checkpoint restore."},
