@@ -456,8 +456,11 @@
   по `manifest.json`, SHA-256 каждого файла, отсутствие неописанных файлов и
   корректность путей вместо неподходящего фиксированного количества файлов.
 - [ ] Завершить прямой Caddy gRPC `Call`/`Stream` production composition:
-  HTTP bidi, WebSocket, SSE и L4 focused handler/E2E slices уже есть, но full
-  serve generation lifecycle, cancellation/backpressure/limits и deployment
-  parity остаются не закрыты end-to-end.
+  настоящий supervised external Caddy child-process E2E теперь проверяет HTTP
+  request/response chunks, WebSocket handshake/subprotocol/messages, SSE
+  serialization, а отдельный сценарий — TCP/UDP L4 relay; embedded handler
+  tests покрывают те же HTTP stream modes. Full serve generation lifecycle,
+  cancellation/backpressure/limits, remote replicas и общий deployment parity
+  остаются не закрыты end-to-end.
 - [ ] Не объявлять v1 готовым без полного cross-variant HTTP/TLS/ACME/L4/plugin/
   SQLite/recovery/security/admin-proxy conformance.
