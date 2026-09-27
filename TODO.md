@@ -63,9 +63,9 @@
   красным; вне `api/`/`cli/` каталог сделал красным structure guard. Все
   мутации удалены/откачены, focused architecture + characterization прогон
   зелёный (4 файла / 15 тестов), `go build ./...` и `make arch-lint` прошли.
-  `.go-arch-lint.yml` заранее разрешает только направленные CLI→caddyruntime и
-  CLI→bootstrap edges, а bootstrap→caddyruntime; файлы этих CLI пакетов ещё
-  предстоит перенести по D4.
+  `.go-arch-lint.yml` разрешает только направленные CLI→caddyruntime и
+  CLI→bootstrap edges, а bootstrap→caddyruntime; реальные package moves
+  выполняются отдельными D4 increments.
 
 - D4 red: `tests/architecture/cli-caddyruntime-ownership.test.ts` фиксирует
   целевые `cli/caddyruntime/{bindings,activator,cookie_policy,system}.go`,
@@ -82,16 +82,17 @@
   `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` прошли.
 
 - D4 bootstrap package начал переноситься по вертикальным increments. Red
-  ownership assertions зафиксировали, что Management TLS setup и открытие
-  SQLite принадлежат `cli/bootstrap`, а не root `cli`. Эти две функции уже
-  перенесены в `bootstrap/tls.go` и `bootstrap/stores.go`; CLI сохраняет их
-  прежнее поведение и передаёт только asset-backed diagnostic value. Причина
-  перенести два реальных владельца до промежуточного green: architecture gate
-  запрещает однофайловые вложенные Go packages. Проверки bootstrap loader,
-  relative paths и serving groups вместе с ownership/boundary/budget suite
-  прошли (7 файлов / 18 тестов, Node v22.21.1); также прошли `go build ./...`,
-  `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`. Остальные
-  bootstrap responsibilities ещё предстоит разнести по целевым файлам.
+  ownership assertions зафиксировали, что Management TLS setup, SQLite opening
+  и plugin inventory projection принадлежат `cli/bootstrap`, а не root `cli`.
+  Эти три функции перенесены в `bootstrap/tls.go`, `bootstrap/stores.go` и
+  `bootstrap/inventory.go`; CLI сохраняет прежнее поведение и передаёт только
+  asset-backed diagnostic value. Первые два файла вошли в один green increment,
+  потому что architecture gate запрещает однофайловые вложенные Go packages.
+  Проверки bootstrap loader, relative paths и serving groups вместе с
+  ownership/boundary/budget suite прошли (7 файлов / 19 тестов, Node v22.21.1);
+  также прошли `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
+  `make arch-lint`. Остальные bootstrap responsibilities ещё предстоит разнести
+  по целевым файлам.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

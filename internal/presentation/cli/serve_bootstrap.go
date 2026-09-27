@@ -272,7 +272,7 @@ func loadBootstrapInventory(options options, database *sql.DB) (bootstrapInvento
 	if inventory.cookiePolicies, err = inventory.cookiePolicyStore.List(context.Background()); err != nil {
 		return inventory, failBootstrap(options, words.Exits.Unavailable, words.Diagnostics.ConfigInvalid)
 	}
-	if inventory.view, err = presentPluginInventory(inventory.records, inventory.contract); err != nil {
+	if inventory.view, err = bootstrapruntime.PresentPluginInventory(inventory.records, inventory.contract); err != nil {
 		return inventory, failBootstrap(options, words.Exits.Validation, words.Diagnostics.ConfigInvalid)
 	}
 	return inventory, words.Exits.OK
@@ -493,32 +493,6 @@ func cookiePolicyManagementService(bootstrap config.BootstrapConfig, store inter
 		Invalid:          management.Codes.InvalidCookiePolicy,
 		RevisionConflict: management.Codes.CookiePolicyRevisionConflict,
 	}
-}
-
-func presentPluginInventory(records []storage.PluginInstanceRecord, contract config.PluginInventoryContract) ([]any, error) {
-	items := make([]any, 0, len(records))
-	for _, record := range records {
-		manifest, err := plugins.ParseManifestInventory(record.ID, record.ManifestJSON)
-		if err != nil {
-			return nil, errors.New(contract.Diagnostics.InvalidManifest)
-		}
-		descriptors := make([]map[string]any, 0, len(manifest.Descriptors))
-		for _, descriptor := range manifest.Descriptors {
-			descriptors = append(descriptors, map[string]any{
-				contract.JSON.DescriptorCapability: descriptor.Capability,
-				contract.JSON.DescriptorModes:      descriptor.Modes,
-			})
-		}
-		items = append(items, map[string]any{
-			contract.JSON.ID:                    record.ID,
-			contract.JSON.Mode:                  record.Mode,
-			contract.JSON.State:                 record.State,
-			contract.JSON.Revision:              record.Revision,
-			contract.JSON.Capabilities:          manifest.Capabilities,
-			contract.JSON.CapabilityDescriptors: descriptors,
-		})
-	}
-	return items, nil
 }
 
 func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding) (string, string, func() error, CaddyRuntime) {
