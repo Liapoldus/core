@@ -105,6 +105,39 @@ func access(options options) int {
 	return words.Exits.OK
 }
 
+type bootstrapStores struct {
+	groupStore       *storage.SQLiteGroupStore
+	auditStore       *storage.SQLiteAuditStore
+	keyStore         *storage.SQLiteServiceKeyStore
+	operationStore   *storage.SQLiteOperationStore
+	adminWords       config.AdminMutationWords
+	checkpointStore  *storage.SQLiteCaddyCheckpointStore
+	checkpointFiles  *artifacts.CaddyCheckpointArtifacts
+	releaseStore     *storage.SQLiteGroupReleaseStore
+	releasePolicy    models.GroupReleasePolicy
+	releaseArtifacts artifacts.GroupReleaseArtifacts
+}
+
+type bootstrapInventory struct {
+	management        config.ManagementWords
+	contract          config.PluginInventoryContract
+	records           []storage.PluginInstanceRecord
+	cookiePolicyStore *storage.SQLitePluginCookiePolicyStore
+	cookiePolicies    []models.PluginCookiePolicy
+	view              []any
+}
+
+type pluginLaunchSetup struct {
+	contract  config.PluginRuntimeContract
+	instances map[string]models.PluginInstance
+}
+
+type managementInputs struct {
+	auditWords       config.AuditWords
+	errorCatalog     config.ErrorCatalog
+	tlsConfiguration *tls.Config
+}
+
 func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings) int {
 	sqliteContract, err := config.LoadSQLiteContract()
 	if err != nil {
@@ -117,281 +150,44 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return words.Exits.Unavailable
 	}
 	defer database.Close()
-	if err := os.MkdirAll(bootstrap.ArtifactsPath, os.FileMode(sqliteContract.ArtifactsDirectoryMode)); err != nil {
-		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Unavailable
+	stores, exitCode := loadBootstrapStores(options, bootstrap, database, sqliteContract)
+	if exitCode != words.Exits.OK {
+		return exitCode
 	}
-	groupStore, err := storage.NewSQLiteGroupStore(database)
+	inventory, exitCode := loadBootstrapInventory(options, database)
+	if exitCode != words.Exits.OK {
+		return exitCode
+	}
+	pluginLaunch, exitCode := prepareLocalPlugins(options, inventory.records)
+	if exitCode != words.Exits.OK {
+		return exitCode
+	}
+	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginLaunch.instances, nil)
 	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	auditStore, err := storage.NewSQLiteAuditStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	keyStore, err := storage.NewSQLiteServiceKeyStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	operationStore, err := storage.NewSQLiteOperationStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	adminWords, err := config.LoadAdminMutation()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	checkpointStore, err := storage.NewSQLiteCaddyCheckpointStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	checkpointArtifacts, err := artifacts.NewCaddyCheckpointArtifacts(bootstrap.ArtifactsPath, artifacts.CaddyCheckpointOptions{
-		Directory: adminWords.Paths.CheckpointDirectory, CheckpointSuffix: adminWords.Paths.CheckpointSuffix,
-		TemporarySuffix: adminWords.Paths.TemporarySuffix, DirectoryMode: adminWords.Modes.Directory,
-		FileMode: adminWords.Modes.File, InvalidConfiguration: adminWords.Diagnostics.InvalidConfiguration,
-	})
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	releaseStore, err := storage.NewSQLiteGroupReleaseStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	releasePolicy, err := config.LoadGroupRelease()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	releaseArtifacts, err := artifacts.NewGroupReleaseArtifacts(bootstrap.ArtifactsPath)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	managementWords, err := config.LoadManagement()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	pluginInventoryContract, err := config.LoadPluginInventoryContract()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	pluginRecords, err := storage.ListPluginInstances(context.Background(), database, storage.PluginInstanceQuery{
-		SelectInstances: pluginInventoryContract.SelectInstances,
-		ValidModes:      pluginInventoryContract.ValidModes,
-		ValidStates:     pluginInventoryContract.ValidStates,
-		InvalidContract: pluginInventoryContract.Diagnostics.InvalidContract,
-		InvalidRecord:   pluginInventoryContract.Diagnostics.InvalidRecord,
-	})
-	if err != nil {
-		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Unavailable
-	}
-	cookiePolicyStore, err := storage.NewSQLitePluginCookiePolicyStore(database)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	configuredCookiePolicies, err := cookiePolicyStore.List(context.Background())
-	if err != nil {
-		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Unavailable
-	}
-	pluginInventory, err := presentPluginInventory(pluginRecords, pluginInventoryContract)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Validation
-	}
-	pluginRuntimeContract, err := config.LoadPluginRuntimeContract()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	pluginLaunchSchema, err := config.LoadPluginLaunchSchema()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	fileReferencePrefix, err := config.LoadFileReferencePrefix()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	localRecords := make([]plugins.LocalInstanceRecord, 0, len(pluginRecords))
-	for _, record := range pluginRecords {
-		localRecords = append(localRecords, plugins.LocalInstanceRecord{
-			ID: record.ID, Mode: record.Mode, Revision: record.Revision, LaunchJSON: record.LaunchJSON,
-			SettingsJSON: record.SettingsJSON, ManifestJSON: record.ManifestJSON,
-		})
-	}
-	pluginRuntimeInstances, err := plugins.BuildLocalInstances(localRecords, plugins.LocalRuntimeContract{
-		LocalMode: pluginRuntimeContract.Modes.Local, BinaryField: pluginRuntimeContract.LaunchFields.Binary,
-		MaximumSecretBytes:  pluginRuntimeContract.ConfigSecrets.MaximumBytes,
-		SecretGrantPurpose:  pluginRuntimeContract.ConfigSecrets.GrantPurpose,
-		FileReferencePrefix: fileReferencePrefix, LaunchSchema: pluginLaunchSchema,
-		CallTimeout:            pluginRuntimeContract.Defaults.CallTimeout,
-		StartTimeout:           pluginRuntimeContract.Defaults.StartTimeout,
-		MaxConcurrentCalls:     pluginRuntimeContract.Defaults.MaxConcurrentCalls,
-		RestartEnabled:         pluginRuntimeContract.Defaults.RestartEnabled,
-		RestartInitialBackoff:  pluginRuntimeContract.Defaults.RestartInitialBackoff,
-		RestartMaximumBackoff:  pluginRuntimeContract.Defaults.RestartMaximumBackoff,
-		HealthProbeInterval:    pluginRuntimeContract.Defaults.HealthProbeInterval,
-		HealthFailureThreshold: pluginRuntimeContract.Defaults.HealthFailureThreshold,
-		MemoryProbeInterval:    pluginRuntimeContract.Defaults.MemoryProbeInterval,
-		MemoryLimitBytes:       pluginRuntimeContract.Defaults.MemoryLimitBytes,
-		InvalidContract:        pluginRuntimeContract.Diagnostics.InvalidContract,
-		InvalidLaunch:          pluginRuntimeContract.Diagnostics.InvalidLaunch,
-	})
-	if err != nil {
-		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, pluginRuntimeContract.Diagnostics.InvalidLaunch)
-		return words.Exits.Validation
-	}
-	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginRuntimeInstances, nil)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, pluginRuntimeContract.Diagnostics.StartupFailed)
-		return words.Exits.Unavailable
+		return failBootstrap(options, words.Exits.Unavailable, pluginLaunch.contract.Diagnostics.StartupFailed)
 	}
 	defer func() { _ = pluginRuntime.Stop(context.Background()) }()
-	pluginBindings := make([]PluginDispatchBinding, 0, len(pluginRuntime.DispatchBindings()))
-	for _, binding := range pluginRuntime.DispatchBindings() {
-		pluginBindings = append(pluginBindings, PluginDispatchBinding{
-			Name: binding.Name, Endpoint: binding.Endpoint,
-			Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
-			MaxConcurrentCalls: binding.MaxConcurrentCalls,
-		})
+	pluginBindings, exitCode := buildPluginDispatchBindings(options, pluginRuntime, inventory.cookiePolicies, inventory.management)
+	if exitCode != words.Exits.OK {
+		return exitCode
 	}
-	for _, policy := range configuredCookiePolicies {
-		encoded, encodeErr := json.Marshal(plugins.CookiePolicy{
-			Version: managementWords.CookiePolicy.Version, InstanceID: policy.InstanceID,
-			Capability: policy.Capability, AllowedNames: policy.AllowedNames,
-		})
-		if encodeErr != nil {
-			writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-			return words.Exits.Internal
-		}
-		for index := range pluginBindings {
-			if pluginBindings[index].Name == policy.InstanceID {
-				pluginBindings[index].CookiePolicies = append(pluginBindings[index].CookiePolicies, encoded)
-			}
-		}
+	managementInputs, exitCode := loadManagementInputs(options, bootstrap)
+	if exitCode != words.Exits.OK {
+		return exitCode
 	}
-	auditWords, err := config.LoadAudit()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	errorCatalog, err := config.LoadErrorCatalog()
-	if err != nil {
-		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Internal
-	}
-	tlsConfiguration, err := managementTLS(bootstrap)
-	if err != nil {
-		writeFailure(options.output, words.Exits.Validation, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
-		return words.Exits.Validation
-	}
-	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings, pluginBindings)
-	adminClient, _ := caddyRuntime.(interfaces.CaddyAdminClient)
-	adminMutationService := &application.AdminMutationService{
-		Admin: adminClient, Checkpoints: checkpointStore, Artifacts: checkpointArtifacts,
-		Policy: application.AdminMutationPolicy{
-			MutationMethods:       adminWords.Methods.Mutating,
-			SuccessStatusMinimum:  adminWords.Statuses.SuccessMinimum,
-			SuccessStatusMaximum:  adminWords.Statuses.SuccessMaximum,
-			MaximumSnapshotBytes:  adminWords.Limits.SnapshotBytes,
-			OperationKind:         adminWords.Operation.Kind,
-			OperationRunning:      adminWords.Operation.Running,
-			OperationSucceeded:    adminWords.Operation.Succeeded,
-			OperationFailed:       adminWords.Operation.Failed,
-			AuditAction:           adminWords.Audit.Action,
-			AuditResource:         adminWords.Audit.Resource,
-			AuditStarted:          adminWords.Audit.Started,
-			AuditSucceeded:        adminWords.Audit.Succeeded,
-			AuditFailed:           adminWords.Audit.Failed,
-			InvalidConfiguration:  adminWords.Diagnostics.InvalidConfiguration,
-			SnapshotUnavailable:   adminWords.Diagnostics.SnapshotUnavailable,
-			CheckpointUnavailable: adminWords.Diagnostics.CheckpointUnavailable,
-			AdminUnavailable:      adminWords.Diagnostics.AdminUnavailable,
-		},
-	}
+	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(stores.groupStore, bootstrap, inventory.management, runtimeBindings, pluginBindings)
+	adminMutationService := newAdminMutationService(caddyRuntime, stores)
 	if stopRuntime != nil {
 		defer stopRuntime()
 	}
-	groupReleaseService := &application.GroupReleaseService{
-		Store: groupStore, Releases: releaseStore,
-		ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
-		Artifacts:     releaseArtifacts, Activator: caddyRuntime, DriftGuard: adminMutationService, Policy: releasePolicy,
-	}
-	if caddyRuntime != nil {
-		if err := groupReleaseService.Recover(context.Background()); err != nil {
-			readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
-		} else if reason != managementWords.Statuses.SystemReleaseRequired {
-			lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
-			if !deferred || !lazy.Active() {
-				if err := groupReleaseService.ActivateCurrent(context.Background()); err != nil {
-					readiness, reason = managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired
-				}
-			}
-		}
-	}
-	management := &api.Server{
-		GroupService: application.GroupService{
-			Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
-		},
-		Operations:     application.OperationService{Store: operationStore},
-		GroupReleases:  groupReleaseService,
-		AdminMutations: adminMutationService,
-		AdminWords:     adminWords,
-		CookiePolicies: cookiePolicyManagementService(bootstrap, cookiePolicyStore, caddyRuntime, auditWords, managementWords),
-		Audit: &application.AuditService{
-			Store: auditStore, RetentionDays: auditWords.Audit.RetentionDays,
-			MinimumLimit: managementWords.Pagination.LimitMin, DefaultLimit: managementWords.Pagination.LimitDefault,
-			MaximumLimit: managementWords.Pagination.LimitMax, InvalidLimit: auditWords.Audit.InvalidLimit,
-		},
-		AccessService:   &application.AccessService{Store: keyStore, Compare: security.CompareServiceKey},
-		AuditWords:      auditWords,
-		Management:      managementWords,
-		Errors:          errorCatalog,
-		TLSConfig:       tlsConfiguration,
-		CaddyVariant:    bootstrap.CaddyVariant,
-		CaddyBuildID:    runtimeBindings.CaddyBuildID,
-		CaddyModules:    runtimeBindings.CaddyModules,
-		Plugins:         pluginInventory,
-		PluginIDField:   pluginInventoryContract.JSON.ID,
-		DataPlaneState:  readiness,
-		DataPlaneReason: reason,
-		DataPlaneReadiness: func(requestContext context.Context) (string, string) {
-			lazy, deferred := caddyRuntime.(*lazyCaddyActivator)
-			if deferred && !lazy.Active() {
-				if readiness == managementWords.Statuses.Ready {
-					return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable
-				}
-				return readiness, reason
-			}
-			if readiness != managementWords.Statuses.Ready {
-				if !deferred {
-					return readiness, reason
-				}
-			}
-			probe, ok := caddyRuntime.(interface{ Ready(context.Context) error })
-			if !ok || probe.Ready(requestContext) == nil {
-				if deferred {
-					return managementWords.Statuses.Ready, ""
-				}
-				return readiness, reason
-			}
-			return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable
-		},
-	}
+	groupReleaseService := newGroupReleaseService(bootstrap, stores, caddyRuntime, adminMutationService)
+	readiness, reason = activateCurrentGroupRelease(groupReleaseService, caddyRuntime, inventory.management, readiness, reason)
+	management := newManagementServer(managementServerDependencies{
+		bootstrap: bootstrap, runtimeBindings: runtimeBindings, stores: stores,
+		inventory: inventory, managementInputs: managementInputs,
+		groupReleaseService: groupReleaseService, adminMutationService: adminMutationService,
+		caddyRuntime: caddyRuntime, readiness: readiness, reason: reason,
+	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := management.Listen(ctx, bootstrap.ManagementListen); err != nil && !errors.Is(err, net.ErrClosed) {
@@ -399,6 +195,287 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return words.Exits.Unavailable
 	}
 	return words.Exits.OK
+}
+
+func failBootstrap(options options, exitCode int, detail string) int {
+	writeFailure(options.output, exitCode, words.Codes.ConfigInvalid, detail)
+	return exitCode
+}
+
+func loadBootstrapStores(options options, bootstrap config.BootstrapConfig, database *sql.DB, sqliteContract config.SQLiteContract) (bootstrapStores, int) {
+	var stores bootstrapStores
+	if err := os.MkdirAll(bootstrap.ArtifactsPath, os.FileMode(sqliteContract.ArtifactsDirectoryMode)); err != nil {
+		return stores, failBootstrap(options, words.Exits.Unavailable, words.Diagnostics.ConfigInvalid)
+	}
+	var err error
+	if stores.groupStore, err = storage.NewSQLiteGroupStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.auditStore, err = storage.NewSQLiteAuditStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.keyStore, err = storage.NewSQLiteServiceKeyStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.operationStore, err = storage.NewSQLiteOperationStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.adminWords, err = config.LoadAdminMutation(); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.checkpointStore, err = storage.NewSQLiteCaddyCheckpointStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	stores.checkpointFiles, err = artifacts.NewCaddyCheckpointArtifacts(bootstrap.ArtifactsPath, artifacts.CaddyCheckpointOptions{
+		Directory: stores.adminWords.Paths.CheckpointDirectory, CheckpointSuffix: stores.adminWords.Paths.CheckpointSuffix,
+		TemporarySuffix: stores.adminWords.Paths.TemporarySuffix, DirectoryMode: stores.adminWords.Modes.Directory,
+		FileMode: stores.adminWords.Modes.File, InvalidConfiguration: stores.adminWords.Diagnostics.InvalidConfiguration,
+	})
+	if err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.releaseStore, err = storage.NewSQLiteGroupReleaseStore(database); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.releasePolicy, err = config.LoadGroupRelease(); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if stores.releaseArtifacts, err = artifacts.NewGroupReleaseArtifacts(bootstrap.ArtifactsPath); err != nil {
+		return stores, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	return stores, words.Exits.OK
+}
+
+func loadBootstrapInventory(options options, database *sql.DB) (bootstrapInventory, int) {
+	var inventory bootstrapInventory
+	var err error
+	if inventory.management, err = config.LoadManagement(); err != nil {
+		return inventory, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if inventory.contract, err = config.LoadPluginInventoryContract(); err != nil {
+		return inventory, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	inventory.records, err = storage.ListPluginInstances(context.Background(), database, storage.PluginInstanceQuery{
+		SelectInstances: inventory.contract.SelectInstances,
+		ValidModes:      inventory.contract.ValidModes,
+		ValidStates:     inventory.contract.ValidStates,
+		InvalidContract: inventory.contract.Diagnostics.InvalidContract,
+		InvalidRecord:   inventory.contract.Diagnostics.InvalidRecord,
+	})
+	if err != nil {
+		return inventory, failBootstrap(options, words.Exits.Unavailable, words.Diagnostics.ConfigInvalid)
+	}
+	if inventory.cookiePolicyStore, err = storage.NewSQLitePluginCookiePolicyStore(database); err != nil {
+		return inventory, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if inventory.cookiePolicies, err = inventory.cookiePolicyStore.List(context.Background()); err != nil {
+		return inventory, failBootstrap(options, words.Exits.Unavailable, words.Diagnostics.ConfigInvalid)
+	}
+	if inventory.view, err = presentPluginInventory(inventory.records, inventory.contract); err != nil {
+		return inventory, failBootstrap(options, words.Exits.Validation, words.Diagnostics.ConfigInvalid)
+	}
+	return inventory, words.Exits.OK
+}
+
+func prepareLocalPlugins(options options, records []storage.PluginInstanceRecord) (pluginLaunchSetup, int) {
+	var setup pluginLaunchSetup
+	var err error
+	if setup.contract, err = config.LoadPluginRuntimeContract(); err != nil {
+		return setup, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	launchSchema, err := config.LoadPluginLaunchSchema()
+	if err != nil {
+		return setup, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	fileReferencePrefix, err := config.LoadFileReferencePrefix()
+	if err != nil {
+		return setup, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	localRecords := make([]plugins.LocalInstanceRecord, 0, len(records))
+	for _, record := range records {
+		localRecords = append(localRecords, plugins.LocalInstanceRecord{
+			ID: record.ID, Mode: record.Mode, Revision: record.Revision, LaunchJSON: record.LaunchJSON,
+			SettingsJSON: record.SettingsJSON, ManifestJSON: record.ManifestJSON,
+		})
+	}
+	setup.instances, err = plugins.BuildLocalInstances(localRecords, plugins.LocalRuntimeContract{
+		LocalMode: setup.contract.Modes.Local, BinaryField: setup.contract.LaunchFields.Binary,
+		MaximumSecretBytes: setup.contract.ConfigSecrets.MaximumBytes, SecretGrantPurpose: setup.contract.ConfigSecrets.GrantPurpose,
+		FileReferencePrefix: fileReferencePrefix, LaunchSchema: launchSchema,
+		CallTimeout: setup.contract.Defaults.CallTimeout, StartTimeout: setup.contract.Defaults.StartTimeout,
+		MaxConcurrentCalls: setup.contract.Defaults.MaxConcurrentCalls, RestartEnabled: setup.contract.Defaults.RestartEnabled,
+		RestartInitialBackoff:  setup.contract.Defaults.RestartInitialBackoff,
+		RestartMaximumBackoff:  setup.contract.Defaults.RestartMaximumBackoff,
+		HealthProbeInterval:    setup.contract.Defaults.HealthProbeInterval,
+		HealthFailureThreshold: setup.contract.Defaults.HealthFailureThreshold,
+		MemoryProbeInterval:    setup.contract.Defaults.MemoryProbeInterval,
+		MemoryLimitBytes:       setup.contract.Defaults.MemoryLimitBytes,
+		InvalidContract:        setup.contract.Diagnostics.InvalidContract,
+		InvalidLaunch:          setup.contract.Diagnostics.InvalidLaunch,
+	})
+	if err != nil {
+		return setup, failBootstrap(options, words.Exits.Validation, setup.contract.Diagnostics.InvalidLaunch)
+	}
+	return setup, words.Exits.OK
+}
+
+func buildPluginDispatchBindings(options options, runtime *plugins.Runtime, policies []models.PluginCookiePolicy, management config.ManagementWords) ([]PluginDispatchBinding, int) {
+	bindings := make([]PluginDispatchBinding, 0, len(runtime.DispatchBindings()))
+	for _, binding := range runtime.DispatchBindings() {
+		bindings = append(bindings, PluginDispatchBinding{
+			Name: binding.Name, Endpoint: binding.Endpoint,
+			Timeout: binding.Timeout, StartTimeout: binding.StartTimeout,
+			MaxConcurrentCalls: binding.MaxConcurrentCalls,
+		})
+	}
+	for _, policy := range policies {
+		encoded, err := json.Marshal(plugins.CookiePolicy{
+			Version: management.CookiePolicy.Version, InstanceID: policy.InstanceID,
+			Capability: policy.Capability, AllowedNames: policy.AllowedNames,
+		})
+		if err != nil {
+			return nil, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+		}
+		for index := range bindings {
+			if bindings[index].Name == policy.InstanceID {
+				bindings[index].CookiePolicies = append(bindings[index].CookiePolicies, encoded)
+			}
+		}
+	}
+	return bindings, words.Exits.OK
+}
+
+func loadManagementInputs(options options, bootstrap config.BootstrapConfig) (managementInputs, int) {
+	var inputs managementInputs
+	var err error
+	if inputs.auditWords, err = config.LoadAudit(); err != nil {
+		return inputs, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if inputs.errorCatalog, err = config.LoadErrorCatalog(); err != nil {
+		return inputs, failBootstrap(options, words.Exits.Internal, words.Diagnostics.ConfigInvalid)
+	}
+	if inputs.tlsConfiguration, err = managementTLS(bootstrap); err != nil {
+		return inputs, failBootstrap(options, words.Exits.Validation, words.Diagnostics.ConfigInvalid)
+	}
+	return inputs, words.Exits.OK
+}
+
+func newAdminMutationService(runtime CaddyRuntime, stores bootstrapStores) *application.AdminMutationService {
+	adminClient, _ := runtime.(interfaces.CaddyAdminClient)
+	return &application.AdminMutationService{
+		Admin: adminClient, Checkpoints: stores.checkpointStore, Artifacts: stores.checkpointFiles,
+		Policy: application.AdminMutationPolicy{
+			MutationMethods:       stores.adminWords.Methods.Mutating,
+			SuccessStatusMinimum:  stores.adminWords.Statuses.SuccessMinimum,
+			SuccessStatusMaximum:  stores.adminWords.Statuses.SuccessMaximum,
+			MaximumSnapshotBytes:  stores.adminWords.Limits.SnapshotBytes,
+			OperationKind:         stores.adminWords.Operation.Kind,
+			OperationRunning:      stores.adminWords.Operation.Running,
+			OperationSucceeded:    stores.adminWords.Operation.Succeeded,
+			OperationFailed:       stores.adminWords.Operation.Failed,
+			AuditAction:           stores.adminWords.Audit.Action,
+			AuditResource:         stores.adminWords.Audit.Resource,
+			AuditStarted:          stores.adminWords.Audit.Started,
+			AuditSucceeded:        stores.adminWords.Audit.Succeeded,
+			AuditFailed:           stores.adminWords.Audit.Failed,
+			InvalidConfiguration:  stores.adminWords.Diagnostics.InvalidConfiguration,
+			SnapshotUnavailable:   stores.adminWords.Diagnostics.SnapshotUnavailable,
+			CheckpointUnavailable: stores.adminWords.Diagnostics.CheckpointUnavailable,
+			AdminUnavailable:      stores.adminWords.Diagnostics.AdminUnavailable,
+		},
+	}
+}
+
+func newGroupReleaseService(bootstrap config.BootstrapConfig, stores bootstrapStores, runtime CaddyRuntime, driftGuard *application.AdminMutationService) *application.GroupReleaseService {
+	return &application.GroupReleaseService{
+		Store: stores.groupStore, Releases: stores.releaseStore,
+		ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
+		Artifacts:     stores.releaseArtifacts, Activator: runtime, DriftGuard: driftGuard, Policy: stores.releasePolicy,
+	}
+}
+
+func activateCurrentGroupRelease(service *application.GroupReleaseService, runtime CaddyRuntime, management config.ManagementWords, readiness, reason string) (string, string) {
+	if runtime == nil {
+		return readiness, reason
+	}
+	if err := service.Recover(context.Background()); err != nil {
+		return management.Statuses.NotReady, management.Statuses.RecoveryRequired
+	}
+	if reason == management.Statuses.SystemReleaseRequired {
+		return readiness, reason
+	}
+	lazy, deferred := runtime.(*lazyCaddyActivator)
+	if deferred && lazy.Active() {
+		return readiness, reason
+	}
+	if err := service.ActivateCurrent(context.Background()); err != nil {
+		return management.Statuses.NotReady, management.Statuses.RecoveryRequired
+	}
+	return readiness, reason
+}
+
+type managementServerDependencies struct {
+	bootstrap            config.BootstrapConfig
+	runtimeBindings      RuntimeBindings
+	stores               bootstrapStores
+	inventory            bootstrapInventory
+	managementInputs     managementInputs
+	groupReleaseService  *application.GroupReleaseService
+	adminMutationService *application.AdminMutationService
+	caddyRuntime         CaddyRuntime
+	readiness            string
+	reason               string
+}
+
+func newManagementServer(dependencies managementServerDependencies) *api.Server {
+	stores, inventory, inputs := dependencies.stores, dependencies.inventory, dependencies.managementInputs
+	management := inventory.management
+	audit := inputs.auditWords
+	return &api.Server{
+		GroupService: application.GroupService{
+			Store: stores.groupStore, ContentReader: artifacts.GroupRevisionReader{Root: dependencies.bootstrap.ArtifactsPath},
+		},
+		Operations:     application.OperationService{Store: stores.operationStore},
+		GroupReleases:  dependencies.groupReleaseService,
+		AdminMutations: dependencies.adminMutationService,
+		AdminWords:     stores.adminWords,
+		CookiePolicies: cookiePolicyManagementService(dependencies.bootstrap, inventory.cookiePolicyStore, dependencies.caddyRuntime, audit, management),
+		Audit: &application.AuditService{
+			Store: stores.auditStore, RetentionDays: audit.Audit.RetentionDays,
+			MinimumLimit: management.Pagination.LimitMin, DefaultLimit: management.Pagination.LimitDefault,
+			MaximumLimit: management.Pagination.LimitMax, InvalidLimit: audit.Audit.InvalidLimit,
+		},
+		AccessService: &application.AccessService{Store: stores.keyStore, Compare: security.CompareServiceKey},
+		AuditWords:    audit, Management: management, Errors: inputs.errorCatalog,
+		TLSConfig: inputs.tlsConfiguration, CaddyVariant: dependencies.bootstrap.CaddyVariant,
+		CaddyBuildID: dependencies.runtimeBindings.CaddyBuildID, CaddyModules: dependencies.runtimeBindings.CaddyModules,
+		Plugins: inventory.view, PluginIDField: inventory.contract.JSON.ID,
+		DataPlaneState: dependencies.readiness, DataPlaneReason: dependencies.reason,
+		DataPlaneReadiness: func(requestContext context.Context) (string, string) {
+			return dataPlaneReadiness(dependencies.caddyRuntime, management, dependencies.readiness, dependencies.reason, requestContext)
+		},
+	}
+}
+
+func dataPlaneReadiness(runtime CaddyRuntime, management config.ManagementWords, readiness, reason string, requestContext context.Context) (string, string) {
+	lazy, deferred := runtime.(*lazyCaddyActivator)
+	if deferred && !lazy.Active() {
+		if readiness == management.Statuses.Ready {
+			return management.Statuses.NotReady, management.Statuses.CaddyUnavailable
+		}
+		return readiness, reason
+	}
+	if readiness != management.Statuses.Ready && !deferred {
+		return readiness, reason
+	}
+	probe, ok := runtime.(interface{ Ready(context.Context) error })
+	if !ok || probe.Ready(requestContext) == nil {
+		if deferred {
+			return management.Statuses.Ready, ""
+		}
+		return readiness, reason
+	}
+	return management.Statuses.NotReady, management.Statuses.CaddyUnavailable
 }
 
 func cookiePolicyManagementService(bootstrap config.BootstrapConfig, store interfaces.PluginCookiePolicyStore, runtime CaddyRuntime, audit config.AuditWords, management config.ManagementWords) *application.PluginCookiePolicyService {

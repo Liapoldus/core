@@ -107,177 +107,280 @@ func (server *Server) Listen(ctx context.Context, address string) error {
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
-	if request.URL.Path == server.Management.Paths.Healthz {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
-			return
-		}
-		server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Status: server.Management.Statuses.OK, server.Management.JSON.RequestID: requestID})
+	if server.handleHealthz(response, request, requestID) {
 		return
 	}
-	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementMTLSRequired, requestID)
-		return
-	}
-	actor, authorized, authErr := server.authenticate(request.Context(), request.Header.Get("Authorization"))
-	if authErr != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
+	actor, authorized := server.authorizeManagementRequest(response, request, requestID)
 	if !authorized {
-		server.writeCatalogProblem(response, server.Management.Codes.BearerRequired, requestID)
 		return
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
-	switch {
-	case path == server.Management.Paths.Status && request.Method == http.MethodGet:
-		server.mu.RLock()
-		state, reason := server.DataPlaneState, server.DataPlaneReason
-		provider := server.DataPlaneReadiness
-		server.mu.RUnlock()
-		if provider != nil {
-			state, reason = provider(request.Context())
-		}
-		readiness := map[string]any{server.Management.JSON.State: state}
-		if state == server.Management.Statuses.NotReady {
-			readiness[server.Management.JSON.Reason] = reason
-		}
-		server.writeJSON(response, 200, map[string]any{
-			server.Management.JSON.Caddy: map[string]any{
-				server.Management.JSON.Variant: server.CaddyVariant,
-				server.Management.JSON.BuildID: server.CaddyBuildID,
-				server.Management.JSON.Modules: server.CaddyModules,
-			},
-			server.Management.JSON.Drift:              false,
-			server.Management.JSON.DataPlaneReadiness: readiness,
-			server.Management.JSON.RequestID:          requestID,
-		})
-	case strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix):
+	if server.dispatchReadinessAndAdmin(response, request, path, requestID, actor) ||
+		server.dispatchAccessAndGroups(response, request, path, requestID, actor) ||
+		server.dispatchGroupReleases(response, request, path, requestID, actor) ||
+		server.dispatchPluginCollections(response, request, path, requestID) ||
+		server.dispatchAudit(response, request, path, requestID) ||
+		server.dispatchPluginActions(response, request, path, requestID, actor) ||
+		server.dispatchOperations(response, request, path, requestID) {
+		return
+	}
+	server.writeProblem(response, 404, "not_found", "resource not found", requestID)
+}
+
+func (server *Server) handleHealthz(response http.ResponseWriter, request *http.Request, requestID string) bool {
+	if request.URL.Path != server.Management.Paths.Healthz {
+		return false
+	}
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "health endpoint accepts GET and HEAD", requestID)
+		return true
+	}
+	server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Status: server.Management.Statuses.OK, server.Management.JSON.RequestID: requestID})
+	return true
+}
+
+func (server *Server) authorizeManagementRequest(response http.ResponseWriter, request *http.Request, requestID string) (string, bool) {
+	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementMTLSRequired, requestID)
+		return "", false
+	}
+	actor, authorized, err := server.authenticate(request.Context(), request.Header.Get("Authorization"))
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return "", false
+	}
+	if !authorized {
+		server.writeCatalogProblem(response, server.Management.Codes.BearerRequired, requestID)
+		return "", false
+	}
+	return actor, true
+}
+
+func (server *Server) dispatchReadinessAndAdmin(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if path == server.Management.Paths.Status && request.Method == http.MethodGet {
+		server.handleReadiness(response, request, requestID)
+		return true
+	}
+	if strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix) {
 		server.handleCaddyAdmin(response, request, requestID, actor)
-	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post:
+		return true
+	}
+	return false
+}
+
+func (server *Server) handleReadiness(response http.ResponseWriter, request *http.Request, requestID string) {
+	server.mu.RLock()
+	state, reason := server.DataPlaneState, server.DataPlaneReason
+	provider := server.DataPlaneReadiness
+	server.mu.RUnlock()
+	if provider != nil {
+		state, reason = provider(request.Context())
+	}
+	readiness := map[string]any{server.Management.JSON.State: state}
+	if state == server.Management.Statuses.NotReady {
+		readiness[server.Management.JSON.Reason] = reason
+	}
+	server.writeJSON(response, 200, map[string]any{
+		server.Management.JSON.Caddy: map[string]any{
+			server.Management.JSON.Variant: server.CaddyVariant,
+			server.Management.JSON.BuildID: server.CaddyBuildID,
+			server.Management.JSON.Modules: server.CaddyModules,
+		},
+		server.Management.JSON.Drift:              false,
+		server.Management.JSON.DataPlaneReadiness: readiness,
+		server.Management.JSON.RequestID:          requestID,
+	})
+}
+
+func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post {
 		server.handleServiceKeyCreate(response, request, requestID, actor)
-	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get:
+		return true
+	}
+	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get {
 		server.handleServiceKeyList(response, request, requestID)
-	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get:
+		return true
+	}
+	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get {
 		server.handleGroupList(response, request, requestID)
-	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
+		return true
+	}
+	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post {
 		server.handleGroupCreate(response, request, requestID, actor)
-	case server.isPluginCookiePolicyPath(path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put):
+		return true
+	}
+	if server.isPluginCookiePolicyPath(path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put) {
 		server.handlePluginCookiePolicy(response, request, path, requestID, actor)
-	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post:
+		return true
+	}
+	return false
+}
+
+func (server *Server) dispatchGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post {
 		server.handleGroupPublish(response, request, path, requestID, actor)
-	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get:
+		return true
+	}
+	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get {
 		server.handleGroupReleases(response, request, path, requestID)
-	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get:
+		return true
+	}
+	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get {
 		server.handleGroupRelease(response, request, path, requestID)
-	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback) && request.Method == server.Management.Methods.Post:
+		return true
+	}
+	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback) && request.Method == server.Management.Methods.Post {
 		server.handleGroupRollback(response, request, path, requestID, actor)
-	case strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get:
+		return true
+	}
+	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get {
 		server.handleGroupGet(response, request, path, requestID)
-	case path == server.Management.Paths.Plugins && request.Method == http.MethodGet:
+		return true
+	}
+	return false
+}
+
+func (server *Server) dispatchPluginCollections(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if path == server.Management.Paths.Plugins && request.Method == http.MethodGet {
 		server.writePage(response, server.Plugins, request, requestID)
-	case path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet:
+		return true
+	}
+	if path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet {
 		server.mu.RLock()
 		surfaces := append([]AdminSurface(nil), server.AdminSurfaces...)
 		server.mu.RUnlock()
 		server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: surfaces, server.Management.JSON.RequestID: requestID})
-	case server.isPluginDetailPath(path) && request.Method == server.Management.Methods.Get:
-		server.handlePluginDetail(response, path, requestID)
-	case path == server.Management.Paths.Audit && request.Method == http.MethodGet:
-		if server.Audit == nil {
-			server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
-			return
-		}
-		limit := server.Management.Pagination.LimitDefault
-		if rawLimit := request.URL.Query().Get(server.Management.JSON.Limit); rawLimit != "" {
-			parsed, err := strconv.Atoi(rawLimit)
-			if err != nil {
-				server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-				return
-			}
-			limit = parsed
-		}
-		page, err := server.Audit.Records(request.Context(), request.URL.Query().Get(server.Management.JSON.Cursor), limit)
-		if err != nil {
-			var pageError models.AuditPageError
-			if errors.As(err, &pageError) {
-				server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-				return
-			}
-			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
-			return
-		}
-		server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
-	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost):
-		server.handlePluginAdmin(response, request, path, requestID)
-	case strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost:
-		if server.RestartPlugin == nil {
-			server.writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
-			return
-		}
-		instance := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.Plugins+"/"), "/"+server.Management.Paths.Restart)
-		if len(instance) == 0 || strings.Contains(instance, "/") {
-			server.writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
-			return
-		}
-		if server.Operations.Store == nil {
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		op, err := server.RestartPlugin(request.Context(), instance)
-		if err != nil {
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		if op.ID == "" || op.Kind == "" || (op.State != server.Management.Statuses.Pending && op.State != server.Management.Statuses.Running) {
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		op.RequestID = requestID
-		op.Actor = actor
-		op.Resource = instance
-		if op.CreatedAt.IsZero() {
-			op.CreatedAt = time.Now().UTC()
-		}
-		if err := server.Operations.Create(request.Context(), op); err != nil {
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		server.writeJSON(response, http.StatusAccepted, map[string]any{
-			server.Management.JSON.OperationID: op.ID,
-			server.Management.JSON.State:       op.State,
-			server.Management.JSON.RequestID:   requestID,
-		})
-	case strings.HasPrefix(path, server.Management.Paths.Operations+"/") && request.Method == http.MethodGet:
-		id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
-		if server.Operations.Store == nil {
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		operation, err := server.Operations.Get(request.Context(), id)
-		if err != nil {
-			var notFound models.OperationNotFound
-			if errors.As(err, &notFound) {
-				server.writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
-				return
-			}
-			server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-			return
-		}
-		result := map[string]any{
-			server.Management.JSON.ID:        operation.ID,
-			server.Management.JSON.Kind:      operation.Kind,
-			server.Management.JSON.State:     operation.State,
-			server.Management.JSON.CreatedAt: operation.CreatedAt,
-			server.Management.JSON.RequestID: operation.RequestID,
-		}
-		if operation.UpdatedAt != nil {
-			result[server.Management.JSON.UpdatedAt] = *operation.UpdatedAt
-		}
-		server.writeJSON(response, http.StatusOK, result)
-	default:
-		server.writeProblem(response, 404, "not_found", "resource not found", requestID)
+		return true
 	}
+	if server.isPluginDetailPath(path) && request.Method == server.Management.Methods.Get {
+		server.handlePluginDetail(response, path, requestID)
+		return true
+	}
+	return false
+}
+
+func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if path != server.Management.Paths.Audit || request.Method != http.MethodGet {
+		return false
+	}
+	server.handleAuditList(response, request, requestID)
+	return true
+}
+
+func (server *Server) handleAuditList(response http.ResponseWriter, request *http.Request, requestID string) {
+	if server.Audit == nil {
+		server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: []models.AuditRecord{}, server.Management.JSON.NextCursor: nil, server.Management.JSON.RequestID: requestID})
+		return
+	}
+	limit := server.Management.Pagination.LimitDefault
+	if rawLimit := request.URL.Query().Get(server.Management.JSON.Limit); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil {
+			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		limit = parsed
+	}
+	page, err := server.Audit.Records(request.Context(), request.URL.Query().Get(server.Management.JSON.Cursor), limit)
+	if err != nil {
+		var pageError models.AuditPageError
+		if errors.As(err, &pageError) {
+			server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+		return
+	}
+	server.writeJSON(response, http.StatusOK, map[string]any{server.Management.JSON.Items: page.Items, server.Management.JSON.NextCursor: page.NextCursor, server.Management.JSON.RequestID: requestID})
+}
+
+func (server *Server) dispatchPluginActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
+		server.handlePluginAdmin(response, request, path, requestID)
+		return true
+	}
+	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost {
+		server.handlePluginRestart(response, request, path, requestID, actor)
+		return true
+	}
+	return false
+}
+
+func (server *Server) handlePluginRestart(response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+	if server.RestartPlugin == nil {
+		server.writeProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
+		return
+	}
+	instance := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.Plugins+"/"), "/"+server.Management.Paths.Restart)
+	if len(instance) == 0 || strings.Contains(instance, "/") {
+		server.writeProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
+		return
+	}
+	if server.Operations.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	op, err := server.RestartPlugin(request.Context(), instance)
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	if op.ID == "" || op.Kind == "" || (op.State != server.Management.Statuses.Pending && op.State != server.Management.Statuses.Running) {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	op.RequestID = requestID
+	op.Actor = actor
+	op.Resource = instance
+	if op.CreatedAt.IsZero() {
+		op.CreatedAt = time.Now().UTC()
+	}
+	if err := server.Operations.Create(request.Context(), op); err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	server.writeJSON(response, http.StatusAccepted, map[string]any{
+		server.Management.JSON.OperationID: op.ID,
+		server.Management.JSON.State:       op.State,
+		server.Management.JSON.RequestID:   requestID,
+	})
+}
+
+func (server *Server) dispatchOperations(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if !strings.HasPrefix(path, server.Management.Paths.Operations+"/") || request.Method != http.MethodGet {
+		return false
+	}
+	server.handleOperationGet(response, request, path, requestID)
+	return true
+}
+
+func (server *Server) handleOperationGet(response http.ResponseWriter, request *http.Request, path, requestID string) {
+	id := strings.TrimPrefix(path, server.Management.Paths.Operations+"/")
+	if server.Operations.Store == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	operation, err := server.Operations.Get(request.Context(), id)
+	if err != nil {
+		var notFound models.OperationNotFound
+		if errors.As(err, &notFound) {
+			server.writeProblem(response, http.StatusNotFound, server.Management.Codes.OperationNotFound, server.Management.Diagnostics.OperationNotFound, requestID)
+			return
+		}
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	result := map[string]any{
+		server.Management.JSON.ID:        operation.ID,
+		server.Management.JSON.Kind:      operation.Kind,
+		server.Management.JSON.State:     operation.State,
+		server.Management.JSON.CreatedAt: operation.CreatedAt,
+		server.Management.JSON.RequestID: operation.RequestID,
+	}
+	if operation.UpdatedAt != nil {
+		result[server.Management.JSON.UpdatedAt] = *operation.UpdatedAt
+	}
+	server.writeJSON(response, http.StatusOK, result)
 }
 
 func (server *Server) handleServiceKeyList(response http.ResponseWriter, request *http.Request, requestID string) {
@@ -852,15 +955,27 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
+	groupID, metadata, caddyfile, artifact, ok := server.readGroupPublishRequest(response, request, path, requestID)
+	if !ok {
+		return
+	}
+	operation, ok := server.acceptGroupPublish(response, request, requestID, actor, groupID, metadata, caddyfile, artifact)
+	if !ok {
+		return
+	}
+	server.writeGroupOperationAccepted(response, operation, requestID)
+}
+
+func (server *Server) readGroupPublishRequest(response http.ResponseWriter, request *http.Request, path, requestID string) (string, groupReleaseMetadata, []byte, []byte, bool) {
 	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupReleases)
 	if groupID == "" || strings.Contains(groupID, server.Management.Paths.GroupIDSeparator) {
 		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
-		return
+		return "", groupReleaseMetadata{}, nil, nil, false
 	}
 	contentType, parameters, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if err != nil || contentType != server.GroupReleasePolicy.MultipartContentType || parameters["boundary"] == "" {
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", groupReleaseMetadata{}, nil, nil, false
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, server.GroupReleasePolicy.RequestLimitBytes)
 	metadata, caddyfile, artifact, err := readGroupReleaseMultipart(multipart.NewReader(request.Body, parameters["boundary"]), server.GroupReleasePolicy, server.Management)
@@ -868,20 +983,24 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
-			return
+			return "", groupReleaseMetadata{}, nil, nil, false
 		}
 		var archiveError models.GroupReleaseArchiveError
 		if errors.As(err, &archiveError) {
 			if archiveError.TooLarge {
 				server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
-				return
+				return "", groupReleaseMetadata{}, nil, nil, false
 			}
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactInvalidCode, requestID)
-			return
+			return "", groupReleaseMetadata{}, nil, nil, false
 		}
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", groupReleaseMetadata{}, nil, nil, false
 	}
+	return groupID, metadata, caddyfile, artifact, true
+}
+
+func (server *Server) acceptGroupPublish(response http.ResponseWriter, request *http.Request, requestID, actor, groupID string, metadata groupReleaseMetadata, caddyfile, artifact []byte) (models.Operation, bool) {
 	operation, _, err := server.GroupReleases.Accept(request.Context(), models.GroupReleaseCommand{
 		GroupID: groupID, Actor: actor, RequestID: requestID,
 		IdempotencyKey:          metadata.IdempotencyKey,
@@ -894,40 +1013,44 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		var driftBlocked models.GroupDriftBlocked
 		if errors.As(err, &driftBlocked) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.DriftBlockedCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var conflict models.GroupRevisionConflict
 		if errors.As(err, &conflict) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.RevisionConflictCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var idempotencyConflict models.IdempotencyConflict
 		if errors.As(err, &idempotencyConflict) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.IdempotencyConflictCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var groupNotFound models.GroupNotFound
 		if errors.As(err, &groupNotFound) {
 			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var validation models.GroupReleaseValidationError
 		if errors.As(err, &validation) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.CaddyAdaptFailedCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var archiveError models.GroupReleaseArchiveError
 		if errors.As(err, &archiveError) {
 			if archiveError.TooLarge {
 				server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
-				return
+				return models.Operation{}, false
 			}
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactInvalidCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
+		return models.Operation{}, false
 	}
+	return operation, true
+}
+
+func (server *Server) writeGroupOperationAccepted(response http.ResponseWriter, operation models.Operation, requestID string) {
 	state := operation.State
 	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
 		state = server.GroupReleasePolicy.PendingState
@@ -944,15 +1067,27 @@ func (server *Server) handleGroupRollback(response http.ResponseWriter, request 
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
+	groupID, idempotencyKey, expected, ok := server.readGroupRollbackRequest(response, request, path, requestID)
+	if !ok {
+		return
+	}
+	operation, ok := server.acceptGroupRollback(response, request, requestID, actor, groupID, idempotencyKey, expected)
+	if !ok {
+		return
+	}
+	server.writeGroupOperationAccepted(response, operation, requestID)
+}
+
+func (server *Server) readGroupRollbackRequest(response http.ResponseWriter, request *http.Request, path, requestID string) (string, string, *string, bool) {
 	groupID := strings.TrimSuffix(strings.TrimPrefix(path, server.Management.Paths.GroupByID), server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback)
 	if groupID == "" || strings.Contains(groupID, server.Management.Paths.GroupIDSeparator) {
 		server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
-		return
+		return "", "", nil, false
 	}
 	contentType, _, contentTypeErr := mime.ParseMediaType(request.Header.Get("Content-Type"))
 	if contentTypeErr != nil || contentType != server.GroupReleasePolicy.MetadataContentType {
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", "", nil, false
 	}
 	request.Body = http.MaxBytesReader(response, request.Body, server.GroupReleasePolicy.RequestLimitBytes)
 	fields := make(map[string]json.RawMessage)
@@ -961,15 +1096,15 @@ func (server *Server) handleGroupRollback(response http.ResponseWriter, request 
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.ArtifactTooLargeCode, requestID)
-			return
+			return "", "", nil, false
 		}
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", "", nil, false
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", "", nil, false
 	}
 	keyJSON, hasKey := fields[server.Management.JSON.IdempotencyKey]
 	expectedJSON, hasExpected := fields[server.GroupReleasePolicy.ExpectedCurrentRevisionField]
@@ -977,15 +1112,19 @@ func (server *Server) handleGroupRollback(response http.ResponseWriter, request 
 	var expected *string
 	if !hasKey || !hasExpected || json.Unmarshal(keyJSON, &idempotencyKey) != nil || len(idempotencyKey) < server.Management.Idempotency.KeyMin || len(idempotencyKey) > server.Management.Idempotency.KeyChars || !ascii(idempotencyKey) || json.Unmarshal(expectedJSON, &expected) != nil {
 		server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-		return
+		return "", "", nil, false
 	}
 	if expected != nil {
 		valid, err := regexp.MatchString(server.GroupReleasePolicy.RevisionIDPattern, *expected)
 		if err != nil || !valid {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.InvalidRequestCode, requestID)
-			return
+			return "", "", nil, false
 		}
 	}
+	return groupID, idempotencyKey, expected, true
+}
+
+func (server *Server) acceptGroupRollback(response http.ResponseWriter, request *http.Request, requestID, actor, groupID, idempotencyKey string, expected *string) (models.Operation, bool) {
 	operation, _, err := server.GroupReleases.Rollback(request.Context(), models.GroupRollbackCommand{
 		GroupID: groupID, Actor: actor, RequestID: requestID,
 		IdempotencyKey:          idempotencyKey,
@@ -996,40 +1135,32 @@ func (server *Server) handleGroupRollback(response http.ResponseWriter, request 
 		var conflict models.GroupRevisionConflict
 		if errors.As(err, &conflict) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.RevisionConflictCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var idempotencyConflict models.IdempotencyConflict
 		if errors.As(err, &idempotencyConflict) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.IdempotencyConflictCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var groupNotFound models.GroupNotFound
 		if errors.As(err, &groupNotFound) {
 			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var revisionNotFound models.GroupRevisionNotFound
 		if errors.As(err, &revisionNotFound) {
 			server.writeCatalogProblem(response, server.Management.Codes.GroupNotFound, requestID)
-			return
+			return models.Operation{}, false
 		}
 		var validation models.GroupReleaseValidationError
 		if errors.As(err, &validation) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.CaddyAdaptFailedCode, requestID)
-			return
+			return models.Operation{}, false
 		}
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
+		return models.Operation{}, false
 	}
-	state := operation.State
-	if state != server.GroupReleasePolicy.PendingState && state != server.GroupReleasePolicy.RunningState {
-		state = server.GroupReleasePolicy.PendingState
-	}
-	server.writeJSON(response, http.StatusAccepted, map[string]any{
-		server.Management.JSON.OperationID: operation.ID,
-		server.Management.JSON.State:       state,
-		server.Management.JSON.RequestID:   requestID,
-	})
+	return operation, true
 }
 
 type groupReleaseMetadata struct {

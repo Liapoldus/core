@@ -32,7 +32,18 @@
   как требует порядок миграции. P4 red/green закрепил ownership rule: API root
   может зависеть от `api/handlers`, обратный edge запрещён; `.go-arch-lint.yml`
   обновлён. Файловые переносы остаются в D3.3 после D5; форму `api.Server` не
-  менять.
+  менять. P5 red/green применил предел ≤80 строк ко всем фактическим
+  превышениям: `api.handle`, `api.handleGroupPublish`,
+  `api.handleGroupRollback` и `cli.serveBootstrap`; все прошли рекурсивный
+  TypeScript budget test. Инвентаризация скорректирована: формулировка
+  приложения про «ровно две» функции неполна — `serveBootstrap` также превышал
+  общий предел; `readGroupReleaseMultipart` уже укладывается в 80 строк и не
+  менялся. Сохранены порядок регистрации `defer`, route/status precedence,
+  Management response characterization и 27-полевая форма `api.Server`.
+  Полный `make check` на Node v22.21.1 прошёл (72 файла / 129 тестов, build и
+  Docker arch-lint); отдельно прошли `go vet ./...` и
+  `make staticcheck-u1000`. Следующий этап — D5, затем разрешённые D3.3 package
+  moves; production-изменения остаются только в `internal/presentation/`.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
