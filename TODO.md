@@ -95,6 +95,14 @@
   Основные bootstrap orchestration и остальные responsibilities ещё предстоит
   перенести в целевые файлы.
 
+- D4 CLI surface: команда `access bootstrap` перенесена без изменений из
+  `serve_bootstrap.go` в `cli/access.go`; target entrypoint test сканирует root
+  package отдельно от целевого файла. После исправления тестовой выборки он
+  прошёл вместе с bootstrap и service-key E2E (9 файлов / 23 теста, Node
+  v22.21.1), `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
+  `make arch-lint`. Red commits: `a0a5446` и тестовый source-scan fix
+  `6a1d523`.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
