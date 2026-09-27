@@ -132,6 +132,22 @@ describe("serve plugin runtime composition", () => {
       expect(pluginList.body).not.toContain("fixture-private-value");
       expect(pluginList.body).not.toContain("settings_json");
 
+      const pluginDetail = await request(address, "/api/plugins/serve-fixture", token);
+      expect(pluginDetail.status).toBe(200);
+      expect(JSON.parse(pluginDetail.body)).toMatchObject({
+        id: "serve-fixture",
+        mode: "local",
+        state: "configured",
+        revision: 1,
+        capabilities: ["test.lifecycle"],
+      });
+      expect(pluginDetail.body).not.toContain("fixture-private-value");
+      expect(pluginDetail.body).not.toContain("127.0.0.1:45678");
+
+      const unknownPlugin = await request(address, "/api/plugins/unknown-fixture", token);
+      expect(unknownPlugin.status).toBe(404);
+      expect(JSON.parse(unknownPlugin.body)).toMatchObject({ code: "not_found" });
+
       const surfaces = await request(address, "/api/plugins/admin-surfaces", token);
       expect(surfaces.status).toBe(200);
       expect(JSON.parse(surfaces.body).items).not.toEqual(expect.arrayContaining([
