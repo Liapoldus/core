@@ -361,9 +361,7 @@ func cookiePolicyManagementService(bootstrap config.BootstrapConfig, store inter
 		return nil
 	}
 	var activator interfaces.PluginCookiePolicyActivator
-	if bootstrap.CaddyVariant == bootstrap.CaddyEmbeddedVariant {
-		activator, _ = runtime.(interfaces.PluginCookiePolicyActivator)
-	}
+	activator, _ = runtime.(interfaces.PluginCookiePolicyActivator)
 	return &application.PluginCookiePolicyService{
 		Store: store, Activator: activator,
 		AuditAction:      audit.Audit.Actions.PluginCookiePolicyReplace,
@@ -494,6 +492,13 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 
 func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, unavailable string, policyVersion int) *lazyCaddyActivator {
 	var activator *lazyCaddyActivator
+	var replace func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error
+	switch bootstrap.CaddyVariant {
+	case bootstrap.CaddyEmbeddedVariant:
+		replace = runtimeBindings.ReplaceEmbeddedCaddy
+	case bootstrap.CaddyExternalVariant:
+		replace = runtimeBindings.ReplaceExternalCaddy
+	}
 	validate := func(source []byte) error {
 		switch bootstrap.CaddyVariant {
 		case bootstrap.CaddyEmbeddedVariant:
@@ -526,7 +531,7 @@ func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings R
 			return nil, errors.New(unavailable)
 		}
 	}
-	activator = newLazyCaddyActivator(validate, start, unavailable, pluginBindings, runtimeBindings.ReplaceEmbeddedCaddy, policyVersion)
+	activator = newLazyCaddyActivator(validate, start, unavailable, pluginBindings, replace, policyVersion)
 	return activator
 }
 

@@ -46,6 +46,17 @@
   invalid cursor/limit, retention, restart и атомарный rollback при audit error.
   Остальные mutations, durable-operation transitions и общая политика ошибок
   audit store остаются незавершёнными.
+- Cookie-policy PUT теперь поддерживает и supervised external Caddy: Gateway
+  строит полный candidate Caddy config с обновлённым Liapoldus plugin dispatch
+  app, применяет его через закрытый Admin Unix socket и только после успешного
+  `/load` фиксирует SQLite CAS/audit. При ошибке CAS предыдущий dispatch snapshot
+  отправляется обратно. Новый red/green TS E2E запускает реальный custom Caddy
+  child process, меняет allow-list через Management API и после ответа проверяет
+  входящие cookie на публичном запросе. Полный `make check` прошёл: 60 файлов /
+  109 тестов, Go build и Docker arch-lint; `go vet ./...`, Staticcheck U1000,
+  Linux amd64/macOS arm64 builds и `git diff --check` также прошли. Полная
+  cross-variant parity, crash recovery и rollback-failure fencing остаются
+  отдельными gates.
 - `OperationStore` подключён через domain port, application service и SQLite
   adapter. Restart operation и `GET /api/operations/{operationId}` используют
   durable store; TS integration проверяет закрытие/повторное открытие SQLite,
@@ -154,12 +165,16 @@
   Владелец утвердил cookie-policy control plane: отдельная SQLite policy на
   instance/capability и `GET`/`PUT` Management API с ETag/If-Match CAS и audit;
   `PUT` синхронно активирует candidate dispatch generation до SQLite commit и
-  восстанавливает прежнее поколение при сбое. External Caddy возвращает 503
-  для этой mutation, пока private dispatch snapshot sync не может подтвердить
-  candidate. Embedded production `serve` child-process E2E уже проверяет
+  восстанавливает прежнее поколение при сбое. External Caddy подтверждает
+  candidate через private Admin `/load` до durable commit. Embedded production
+  `serve` child-process E2E уже проверяет
   восстановление policy, cookie allow-list, обычные и HttpOnly response actions
-  и атомарный отказ без частичного `Set-Cookie`; оставшиеся gates — external
-  snapshot sync и совместная конкуренция cookie PUT с group activation.
+  и атомарный отказ без частичного `Set-Cookie`; отдельный real custom external
+  Caddy E2E проверяет successful PUT и новое allow-list на активном public
+  запросе. Совместная конкуренция cookie PUT с group activation не имеет
+  детерминированной тестовой точки: fixture не может наблюдать момент ожидания
+  второго запроса на общем lock; таймерная проверка и production hook не
+  добавлялись.
 - [x] До реализации добавлены отдельные TS red/green suites для уже закрытых
   срезов multipart group publish/rollback, Caddy adapt/load, external Caddy
   lifecycle/direct dispatch, cookie boundary и stream/L4 dispatch. Удалённые
@@ -307,26 +322,29 @@
   пройден. Остаются: remote mTLS identity/revocation и endpoint sets;
   DispatchApply readiness barrier для remote replicas; management CRUD для
   launch settings; configurable restart/resource/grant policy. External Caddy
-  передаёт local dispatch bindings в custom module через private Admin `/load`;
-  external cookie-policy mutation, remote dispatch barriers и общий
+  передаёт local dispatch bindings и актуальную cookie policy в custom module
+  через private Admin `/load`; remote dispatch barriers и общий
   embedded/external parity gate остаются открыты.
 - HTTP `Stream` contract/handler фиксирует route concurrency, но отсутствуют
   configurable per-instance shared concurrency, idle-timeout и max-duration
   controls. Добавить их отдельным protocol/runtime contract + TS conformance;
   unary timeout не использовать для долгоживущих streams.
-- [x] Cookie-policy embedded slice: SQLite schema v3, per-instance/
+- [x] Cookie-policy production slice: SQLite schema v3, per-instance/
   capability CAS-store с audit в той же транзакции, Management `GET`/`PUT`,
-  ETag/If-Match, schema validation и embedded-Caddy dispatch generation
+  ETag/If-Match, schema validation и embedded/external Caddy dispatch generation
   activation с rollback при storage failure. Stream-only HTTP capabilities
-  принимаются, TCP/UDP-only capabilities отвергаются. External Caddy намеренно
-  отвечает unavailable до private snapshot synchronization. Production `serve`
-  E2E закрывает восстановление сохранённой policy при старте embedded Caddy,
+  принимаются, TCP/UDP-only capabilities отвергаются. External Caddy получает
+  полный candidate config через private Admin `/load` до SQLite commit.
+  Production `serve` E2E закрывает восстановление сохранённой policy при старте embedded Caddy,
   реальный запрос через supervised child-plugin с allow-list, ordinary и
   HttpOnly response actions, а также атомарный отказ набора cookie actions без
   частичного `Set-Cookie`; тестовый seeder подготавливает только изолированную
   временную SQLite inventory и не затрагивает пользовательский Gateway.
+  Отдельный real custom external-Caddy `serve` E2E подтверждает успешный PUT и
+  новое allow-list правило на активном public request.
   Остаются production conformance для rollback-failure fencing и совместной
-  сериализации cookie PUT с group-release activation.
+  сериализации cookie PUT с group-release activation; fixture не наблюдает
+  точку ожидания общего lock без production test hook.
 - [ ] Подключить документированный generic plugin-instance Management CRUD:
   [`management.openapi.yaml`](https://github.com/Liapoldus/liapoldus.github.io/blob/main/public/spec/management.openapi.yaml)
   описывает `GET`/`POST`/`PUT`/`DELETE /api/plugins`, но core сейчас

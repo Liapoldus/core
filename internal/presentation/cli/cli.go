@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,7 +30,8 @@ type options struct {
 
 type RuntimeBindings struct {
 	StartEmbeddedCaddy    func([]byte, []PluginDispatchBinding) (CaddyRuntime, error)
-	ReplaceEmbeddedCaddy  func(CaddyRuntime, []byte, []PluginDispatchBinding) error
+	ReplaceEmbeddedCaddy  func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error
+	ReplaceExternalCaddy  func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error
 	StartExternalCaddy    func(binary, expectedBuildID, stateDirectory string, source []byte, bindings []PluginDispatchBinding) (CaddyRuntime, error)
 	ValidateEmbeddedCaddy func([]byte, []PluginDispatchBinding) error
 	ValidateExternalCaddy func(binary string, source []byte, bindings []PluginDispatchBinding) error

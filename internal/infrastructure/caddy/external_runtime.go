@@ -167,7 +167,7 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 		done: make(chan struct{}),
 	}
 	runtime.client = runtime.makeAdminClient()
-	prepared, err := runtime.prepare(ctx, initialCaddyfile)
+	prepared, err := runtime.prepare(ctx, initialCaddyfile, runtime.pluginInstances)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -225,27 +225,64 @@ func ValidateExternalCaddyfileWithPlugins(ctx context.Context, binary string, ca
 		socketPath:      filepath.Join(directory, contract.Files.AdminSocket),
 		pluginInstances: clonePluginInstances(instances),
 	}
-	_, err = runtime.prepare(ctx, caddyfile)
+	_, err = runtime.prepare(ctx, caddyfile, runtime.pluginInstances)
 	return err
 }
 
 func (runtime *ExternalRuntime) Validate(ctx context.Context, caddyfile []byte) error {
-	_, err := runtime.prepare(ctx, caddyfile)
+	if runtime == nil {
+		return nilExternalRuntimeError()
+	}
+	runtime.mu.Lock()
+	instances := clonePluginInstances(runtime.pluginInstances)
+	runtime.mu.Unlock()
+	_, err := runtime.prepare(ctx, caddyfile, instances)
 	return err
 }
 
 func (runtime *ExternalRuntime) Activate(ctx context.Context, caddyfile []byte) error {
 	if runtime == nil {
-		contract, err := loadExternalContract()
-		if err != nil {
-			return err
-		}
-		return errors.New(contract.Diagnostics.RuntimeStopped)
+		return nilExternalRuntimeError()
 	}
-	candidate, err := runtime.prepare(ctx, caddyfile)
+	runtime.mu.Lock()
+	instances := clonePluginInstances(runtime.pluginInstances)
+	runtime.mu.Unlock()
+	candidate, err := runtime.prepare(ctx, caddyfile, instances)
 	if err != nil {
 		return err
 	}
+	return runtime.activatePrepared(ctx, candidate, instances, false)
+}
+
+func (runtime *ExternalRuntime) ReplaceSnapshotWithPlugins(ctx context.Context, caddyfile []byte, instances []PluginInstance) error {
+	if runtime == nil {
+		return nilExternalRuntimeError()
+	}
+	candidateInstances := clonePluginInstances(instances)
+	candidate, err := runtime.prepare(ctx, caddyfile, candidateInstances)
+	if err != nil {
+		return err
+	}
+	return runtime.activatePrepared(ctx, candidate, candidateInstances, true)
+}
+
+func ReplaceExternalSnapshotWithPlugins(ctx context.Context, value any, caddyfile []byte, instances []PluginInstance) error {
+	runtime, ok := value.(*ExternalRuntime)
+	if !ok {
+		return nilExternalRuntimeError()
+	}
+	return runtime.ReplaceSnapshotWithPlugins(ctx, caddyfile, instances)
+}
+
+func nilExternalRuntimeError() error {
+	contract, err := loadExternalContract()
+	if err != nil {
+		return err
+	}
+	return errors.New(contract.Diagnostics.RuntimeStopped)
+}
+
+func (runtime *ExternalRuntime) activatePrepared(ctx context.Context, candidate []byte, instances []PluginInstance, replaceInstances bool) error {
 	requestContext, cancel := context.WithTimeout(ctx, runtime.startTimeout)
 	defer cancel()
 	runtime.mu.Lock()
@@ -273,6 +310,9 @@ func (runtime *ExternalRuntime) Activate(ctx context.Context, caddyfile []byte) 
 		return errors.New(runtime.contract.Diagnostics.ActivationFailed)
 	}
 	runtime.activeConfig = append(runtime.activeConfig[:0], candidate...)
+	if replaceInstances {
+		runtime.pluginInstances = clonePluginInstances(instances)
+	}
 	runtime.fenced = false
 	return nil
 }
@@ -462,7 +502,7 @@ func (runtime *ExternalRuntime) startChild(configuration []byte) (*exec.Cmd, err
 	return child, nil
 }
 
-func (runtime *ExternalRuntime) prepare(ctx context.Context, caddyfile []byte) ([]byte, error) {
+func (runtime *ExternalRuntime) prepare(ctx context.Context, caddyfile []byte, instances []PluginInstance) ([]byte, error) {
 	if runtime == nil || len(caddyfile) == 0 {
 		if runtime == nil {
 			contract, err := loadExternalContract()
@@ -502,8 +542,8 @@ func (runtime *ExternalRuntime) prepare(ctx context.Context, caddyfile []byte) (
 	if err := json.Unmarshal(output.Bytes(), &configuration); err != nil {
 		return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
 	}
-	if len(runtime.pluginInstances) > 0 {
-		appName, appConfig, appErr := pluginDispatchAppConfig(runtime.pluginInstances)
+	if len(instances) > 0 {
+		appName, appConfig, appErr := pluginDispatchAppConfig(instances)
 		if appErr != nil {
 			return nil, errors.New(runtime.contract.Diagnostics.InvalidConfiguration)
 		}

@@ -18,11 +18,11 @@ type lazyCaddyActivator struct {
 	unavailable   string
 	bindings      []PluginDispatchBinding
 	source        []byte
-	replace       func(CaddyRuntime, []byte, []PluginDispatchBinding) error
+	replace       func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error
 	policyVersion int
 }
 
-func newLazyCaddyActivator(validate func([]byte) error, start func([]byte) (CaddyRuntime, error), unavailable string, bindings []PluginDispatchBinding, replace func(CaddyRuntime, []byte, []PluginDispatchBinding) error, policyVersion int) *lazyCaddyActivator {
+func newLazyCaddyActivator(validate func([]byte) error, start func([]byte) (CaddyRuntime, error), unavailable string, bindings []PluginDispatchBinding, replace func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error, policyVersion int) *lazyCaddyActivator {
 	return &lazyCaddyActivator{validate: validate, start: start, unavailable: unavailable, bindings: clonePluginDispatchBindings(bindings), replace: replace, policyVersion: policyVersion}
 }
 
@@ -104,7 +104,7 @@ func (activator *lazyCaddyActivator) ActivatePluginCookiePolicy(ctx context.Cont
 	if !found {
 		return nil, errors.New(activator.unavailable)
 	}
-	if err := activator.replace(activator.active, activator.source, candidate); err != nil {
+	if err := activator.replace(ctx, activator.active, activator.source, candidate); err != nil {
 		return nil, err
 	}
 	activator.bindings = candidate
@@ -114,7 +114,7 @@ func (activator *lazyCaddyActivator) ActivatePluginCookiePolicy(ctx context.Cont
 		if activator.active == nil || activator.replace == nil {
 			return errors.New(activator.unavailable)
 		}
-		if err := activator.replace(activator.active, activator.source, previous); err != nil {
+		if err := activator.replace(rollbackContext, activator.active, activator.source, previous); err != nil {
 			stopErr := activator.active.Stop()
 			activator.active = nil
 			activator.bindings = clonePluginDispatchBindings(previous)

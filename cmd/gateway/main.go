@@ -29,7 +29,7 @@ func main() {
 			}
 			return runtime, nil
 		},
-		ReplaceEmbeddedCaddy: func(current cli.CaddyRuntime, source []byte, bindings []cli.PluginDispatchBinding) error {
+		ReplaceEmbeddedCaddy: func(_ context.Context, current cli.CaddyRuntime, source []byte, bindings []cli.PluginDispatchBinding) error {
 			instances := make([]caddyadapter.PluginInstance, 0, len(bindings))
 			for _, binding := range bindings {
 				instances = append(instances, caddyadapter.PluginInstance{
@@ -40,6 +40,9 @@ func main() {
 				})
 			}
 			return caddyadapter.ReplaceCaddyfileWithPlugins(current, source, instances)
+		},
+		ReplaceExternalCaddy: func(ctx context.Context, current cli.CaddyRuntime, source []byte, bindings []cli.PluginDispatchBinding) error {
+			return caddyadapter.ReplaceExternalSnapshotWithPlugins(ctx, current, source, pluginInstances(bindings))
 		},
 		StartExternalCaddy: func(binary, expectedBuildID, stateDirectory string, source []byte, bindings []cli.PluginDispatchBinding) (cli.CaddyRuntime, error) {
 			return caddyadapter.StartExternal(context.Background(), caddyadapter.ExternalOptions{
