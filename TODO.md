@@ -128,6 +128,13 @@
   Декомпозиция response/codec/router и перенос plugin/group/service-key/Caddy
   handlers в целевую подпапку остаются открытыми.
 
+- D3.3 API response: `writeJSON`, `writeProblem` и общий `writeResponse`
+  выделены из legacy `adapter.go` в `api/respond.go` без изменения body/status/
+  headers. Red ownership test `42595e7` фиксирует целевое размещение; Management
+  response characterization и ownership suite прошли (6 файлов / 19 тестов),
+  `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`
+  также прошли.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
