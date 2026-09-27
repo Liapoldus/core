@@ -52,8 +52,12 @@
   `/load` фиксирует SQLite CAS/audit. При ошибке CAS предыдущий dispatch snapshot
   отправляется обратно. Новый red/green TS E2E запускает реальный custom Caddy
   child process, меняет allow-list через Management API и после ответа проверяет
-  входящие cookie на публичном запросе. Полный `make check` прошёл: 60 файлов /
-  109 тестов, Go build и Docker arch-lint; `go vet ./...`, Staticcheck U1000,
+  входящие cookie на публичном запросе. Его fault-injection продолжение
+  заставляет SQLite отклонить CAS после принятого Caddy `/load`: API возвращает
+  `503`, ETag/DB policy остаются прежними, а следующий public request видит
+  восстановленный allow-list. Полный `make check` после обоих external-Caddy
+  сценариев прошёл: 60 файлов / 109 тестов, Go build и Docker arch-lint;
+  `go vet ./...`, Staticcheck U1000,
   Linux amd64/macOS arm64 builds и `git diff --check` также прошли. Полная
   cross-variant parity, crash recovery и rollback-failure fencing остаются
   отдельными gates.
@@ -170,8 +174,9 @@
   `serve` child-process E2E уже проверяет
   восстановление policy, cookie allow-list, обычные и HttpOnly response actions
   и атомарный отказ без частичного `Set-Cookie`; отдельный real custom external
-  Caddy E2E проверяет successful PUT и новое allow-list на активном public
-  запросе. Совместная конкуренция cookie PUT с group activation не имеет
+  Caddy E2E проверяет successful PUT, новое allow-list на активном public
+  запросе и восстановление предыдущего поколения при SQLite CAS failure.
+  Совместная конкуренция cookie PUT с group activation не имеет
   детерминированной тестовой точки: fixture не может наблюдать момент ожидания
   второго запроса на общем lock; таймерная проверка и production hook не
   добавлялись.
@@ -341,7 +346,9 @@
   частичного `Set-Cookie`; тестовый seeder подготавливает только изолированную
   временную SQLite inventory и не затрагивает пользовательский Gateway.
   Отдельный real custom external-Caddy `serve` E2E подтверждает успешный PUT и
-  новое allow-list правило на активном public request.
+  новое allow-list правило на активном public request, а также SQLite trigger
+  fault injection и восстановление прежней policy/snapshot после durable write
+  failure.
   Остаются production conformance для rollback-failure fencing и совместной
   сериализации cookie PUT с group-release activation; fixture не наблюдает
   точку ожидания общего lock без production test hook.
