@@ -26,6 +26,7 @@ type sqliteAccessContract struct {
 type SQLiteServiceKeyStore struct {
 	database *sql.DB
 	contract sqliteAccessContract
+	audit    *SQLiteAuditStore
 }
 
 var _ interfaces.ServiceKeyStore = (*SQLiteServiceKeyStore)(nil)
@@ -42,7 +43,26 @@ func NewSQLiteServiceKeyStore(database *sql.DB) (*SQLiteServiceKeyStore, error) 
 	if database == nil || contract.BeginImmediate == "" || contract.Commit == "" || contract.Rollback == "" || contract.SelectActiveKey == "" || contract.InsertKey == "" || contract.SelectActiveVerifiers == "" || contract.BootstrapName == "" || contract.InvalidContract == "" || contract.ActiveKeyConflict == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
-	return &SQLiteServiceKeyStore{database: database, contract: contract}, nil
+	audit, err := NewSQLiteAuditStore(database)
+	if err != nil {
+		return nil, err
+	}
+	return &SQLiteServiceKeyStore{database: database, contract: contract, audit: audit}, nil
+}
+
+func (store *SQLiteServiceKeyStore) Create(ctx context.Context, key models.ServiceKey, record models.AuditRecord) error {
+	transaction, err := store.database.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback()
+	if _, err := transaction.ExecContext(ctx, store.contract.InsertKey, key.ID, key.Name, key.Verifier, key.Role); err != nil {
+		return err
+	}
+	if err := store.audit.append(ctx, transaction, record); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 func (store *SQLiteServiceKeyStore) Bootstrap(ctx context.Context, id string, verifier []byte, role string) error {

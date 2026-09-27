@@ -5,9 +5,11 @@ audit:
   actions:
     groupCreate: group.create
     pluginCookiePolicyReplace: plugin.cookie_policy.replace
+    serviceKeyCreate: service_key.create
   resources:
     groups: groups
     pluginCookiePolicies: plugin-cookie-policies
+    serviceKeys: service-keys
   results:
     succeeded: succeeded
     failed: failed

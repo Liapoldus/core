@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
+	"github.com/Liapoldus/core/internal/domain/models"
 )
 
 type AccessService struct {
@@ -13,6 +14,10 @@ type AccessService struct {
 
 func (service AccessService) Bootstrap(ctx context.Context, id string, verifier []byte, role string) error {
 	return service.Store.Bootstrap(ctx, id, verifier, role)
+}
+
+func (service AccessService) Create(ctx context.Context, key models.ServiceKey, record models.AuditRecord) error {
+	return service.Store.Create(ctx, key, record)
 }
 
 func (service AccessService) Authenticate(ctx context.Context, token string) (string, bool, error) {

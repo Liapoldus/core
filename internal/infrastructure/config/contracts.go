@@ -119,6 +119,11 @@ type ManagementWords struct {
 		Version          int   `yaml:"version"`
 		MaximumBodyBytes int64 `yaml:"maximumBodyBytes"`
 	} `yaml:"cookiePolicy"`
+	ServiceKeys struct {
+		NameMinLength int `yaml:"nameMinLength"`
+		NameMaxLength int `yaml:"nameMaxLength"`
+		CreatedStatus int `yaml:"createdStatus"`
+	} `yaml:"serviceKeys"`
 	Codes struct {
 		BearerRequired                   string `yaml:"bearerRequired"`
 		ManagementUnavailable            string `yaml:"managementUnavailable"`
@@ -157,6 +162,7 @@ type ManagementWords struct {
 		Revoke               string `yaml:"revoke"`
 		Operations           string `yaml:"operations"`
 		Audit                string `yaml:"audit"`
+		ServiceKeys          string `yaml:"serviceKeys"`
 		Groups               string `yaml:"groups"`
 		GroupByID            string `yaml:"groupByID"`
 		GroupReleases        string `yaml:"groupReleases"`
@@ -208,6 +214,8 @@ type ManagementWords struct {
 		DigestBefore       string `yaml:"digestBefore"`
 		DigestAfter        string `yaml:"digestAfter"`
 		Name               string `yaml:"name"`
+		Role               string `yaml:"role"`
+		Token              string `yaml:"token"`
 		Type               string `yaml:"type"`
 		Address            string `yaml:"address"`
 		ActiveConnections  string `yaml:"activeConnections"`
@@ -320,10 +328,12 @@ type AuditWords struct {
 		Actions struct {
 			GroupCreate               string `yaml:"groupCreate"`
 			PluginCookiePolicyReplace string `yaml:"pluginCookiePolicyReplace"`
+			ServiceKeyCreate          string `yaml:"serviceKeyCreate"`
 		} `yaml:"actions"`
 		Resources struct {
 			Groups               string `yaml:"groups"`
 			PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
+			ServiceKeys          string `yaml:"serviceKeys"`
 		} `yaml:"resources"`
 		Results struct {
 			Succeeded string `yaml:"succeeded"`

@@ -6,6 +6,14 @@
 
 ## Актуальный прогресс — 27.09.2026
 
+- `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
+  символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
+  verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
+  `/api/status`. Создание ключа и успешная audit-запись — одна SQLite transaction;
+  TS child-process E2E проверяет отсутствие token в DB/WAL/SHM и последующих
+  Management responses, а также что отказ audit не выдаёт credential и не
+  оставляет запись ключа. Key list/rotate/revoke остаются незавершёнными.
+
 - `GET /api/plugins/{pluginId}` возвращает тот же redacted inventory object,
   что и список, не раскрывая settings, endpoint, launch path или grants;
   неизвестный instance отвечает canonical `plugin_not_found`. TypeScript
@@ -227,10 +235,14 @@
   Caddyfile/plugin settings revisions и большие artifacts остаются immutable
   files. На старте строить immutable in-memory RuntimeSnapshot; request path не
   читает SQLite/config files. Запретить dangling revision/artifact refs.
+- [x] Выпускать service key через `POST /api/access/service-keys`: raw token
+  возвращается только в исходном успешном ответе; verifier и metadata
+  сохраняются вместе с audit row атомарно. Ошибка storage/audit возвращает
+  только безопасную problem response.
 - [ ] Реализовать Management API security: private-network web backend доступ
   по mTLS + per-Gateway Bearer `platform-admin`; loopback/SSH-forwarded access
   по Bearer с TLS server verification. Gateway не реализует Constructor users
-  или RBAC. Обеспечить one-time token reveal/rotation/revocation и redaction.
+  или RBAC. Реализовать list/rotation/revocation и дальнейшую redaction policy.
 - [ ] Обновить CLI: bootstrap status/migrations, service-key lifecycle,
   group inspect/rollback, Caddy build identity, drift/checkpoint/restore и
   reconcile.
