@@ -30,3 +30,10 @@ type GroupDependencies struct {
 	WriteProblem        func(http.ResponseWriter, int, string, string, string)
 	WriteCatalogProblem func(http.ResponseWriter, string, string)
 }
+
+type CaddyDependencies struct {
+	AdminMutations      *application.AdminMutationService
+	AdminWords          config.AdminMutationWords
+	Management          config.ManagementWords
+	WriteCatalogProblem func(http.ResponseWriter, string, string)
+}

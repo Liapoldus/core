@@ -34,6 +34,15 @@ func (server *Server) groupHandlerDependencies() handlers.GroupDependencies {
 	}
 }
 
+func (server *Server) caddyHandlerDependencies() handlers.CaddyDependencies {
+	return handlers.CaddyDependencies{
+		AdminMutations:      server.AdminMutations,
+		AdminWords:          server.AdminWords,
+		Management:          server.Management,
+		WriteCatalogProblem: server.writeCatalogProblem,
+	}
+}
+
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
@@ -63,7 +72,7 @@ func (server *Server) dispatchReadinessAndAdmin(response http.ResponseWriter, re
 		return true
 	}
 	if strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix) {
-		server.handleCaddyAdmin(response, request, requestID, actor)
+		handlers.CaddyAdmin(server.caddyHandlerDependencies(), response, request, requestID, actor)
 		return true
 	}
 	return false

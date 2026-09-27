@@ -168,6 +168,16 @@
   тестов. `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
   `make arch-lint` прошли.
 
+- D3.3 API Caddy: Management API pass-through handler и path/method validation
+  перемещены в `api/handlers/caddy.go` и вызываются router напрямую через
+  `CaddyDependencies`; `api.Server` не менялся, handlers не импортирует API root.
+  Red ownership test `d6bb6dd`; Caddy admin checkpoint, response
+  characterization и Management API прошли (4 файла / 9 тестов), vet,
+  staticcheck, arch-lint и последовательный `go build ./...` прошли. Во время
+  предыдущих параллельных linker-процессов были временные ошибки свободного места
+  и cache trim; после их завершения изолированный build завершился с exit 0.
+  Кэш и артефакты не удалялись.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
