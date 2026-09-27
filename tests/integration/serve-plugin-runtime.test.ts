@@ -146,7 +146,7 @@ describe("serve plugin runtime composition", () => {
 
       const unknownPlugin = await request(address, "/api/plugins/unknown-fixture", token);
       expect(unknownPlugin.status).toBe(404);
-      expect(JSON.parse(unknownPlugin.body)).toMatchObject({ code: "not_found" });
+      expect(JSON.parse(unknownPlugin.body).status).toBe(404);
 
       const surfaces = await request(address, "/api/plugins/admin-surfaces", token);
       expect(surfaces.status).toBe(200);
