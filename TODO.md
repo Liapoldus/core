@@ -28,11 +28,11 @@
   `writeResponse`; структурная проверка общего writer и P0 matrix зелёные.
   P3 добавил дополнительную route/method/status matrix для 15 path/method
   сочетаний; негативная mutation POST→PUT дала ожидаемый 503→404, затем была
-  откатана. Извлечение route dispatcher в `router.go` отложено до D3.3 после D5,
-  как требует порядок миграции. P4 red/green закрепил ownership rule: API root
+  откатана. Route dispatcher перемещён в `api/router.go` отдельным D3.3
+  increment после D5. P4 red/green закрепил ownership rule: API root
   может зависеть от `api/handlers`, обратный edge запрещён; `.go-arch-lint.yml`
-  обновлён. Файловые переносы остаются в D3.3 после D5; форму `api.Server` не
-  менять. P5 red/green применил предел ≤80 строк ко всем фактическим
+  обновлён. После D5 файловые переносы идут отдельными D3.3/D4 increments;
+  форму `api.Server` не менять. P5 red/green применил предел ≤80 строк ко всем фактическим
   превышениям: `api.handle`, `api.handleGroupPublish`,
   `api.handleGroupRollback` и `cli.serveBootstrap`; все прошли рекурсивный
   TypeScript budget test. Инвентаризация скорректирована: формулировка
@@ -125,8 +125,8 @@
   эти объявления в `adapter.go`. Management API characterization, ownership,
   structure и function-budget suite прошли (6 файлов / 23 теста), также прошли
   `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
-  Декомпозиция response/codec/router и перенос plugin/group/service-key/Caddy
-  handlers в целевую подпапку остаются открытыми.
+  Перенос plugin/group/service-key/Caddy handlers в целевую подпапку остаётся
+  открытым.
 
 - D3.3 API response: JSON/problem/shared writers, catalog error mapping,
   cookie-policy failure mapping, pagination response и `recordAudit` выделены из
@@ -144,6 +144,14 @@
   `adapter.go`. Management/group-release conformance и ownership suite прошли
   (12 файлов / 32 теста), `go build ./...`, `go vet ./...`,
   `make staticcheck-u1000` и `make arch-lint` прошли.
+
+- D3.3 API router: `handle` и семь path/method dispatch-функций перемещены в
+  `api/router.go`; порядок маршрутизации и условия dispatch не изменялись.
+  Отдельный red ownership test `de9c850` требует все восемь объявлений в
+  `router.go` и запрещает их дублирование в `adapter.go`. Router ownership,
+  response/codec ownership, Server boundary и Management route/response
+  characterization прошли (7 файлов / 17 тестов). `go build ./...`, `go vet
+  ./...`, `make staticcheck-u1000` и `make arch-lint` завершились с exit 0.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
