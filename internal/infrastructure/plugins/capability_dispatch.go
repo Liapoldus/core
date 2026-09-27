@@ -25,7 +25,6 @@ type HTTPRequest struct {
 	RemoteAddr string                       `json:"remoteAddr,omitempty"`
 	GrantNames []string                     `json:"-"`
 	Context    map[string]string            `json:"context,omitempty"`
-	WAF        *WAFContext                  `json:"waf,omitempty"`
 	Host       string                       `json:"-"`
 }
 
@@ -54,20 +53,6 @@ type HTTPResponse struct {
 	Cookies          []plugincontracts.CookieAction `json:"cookies,omitempty"`
 	Body             []byte                         `json:"body,omitempty"`
 	SetCookieHeaders []string                       `json:"-"`
-}
-
-// WAFContext contains request facts needed by a configured policy capability.
-// Credential headers are removed before this value is constructed.
-type WAFContext struct {
-	Headers     map[string][]string `json:"headers,omitempty"`
-	Query       map[string][]string `json:"query,omitempty"`
-	RequestSize uint64              `json:"requestSize"`
-}
-
-// WAFDecision is the generic continuation/response boundary for WAF plugins.
-type WAFDecision struct {
-	Continue bool          `json:"continue"`
-	Response *HTTPResponse `json:"response,omitempty"`
 }
 
 // L4Request carries a bounded datagram/stream chunk. A plugin never receives
@@ -137,26 +122,6 @@ func (c *CapabilityClient) HTTP(ctx context.Context, capability string, request 
 		body = []byte(*action.Body)
 	}
 	return HTTPResponse{Status: action.Status, Headers: action.Headers, Cookies: action.Cookies, Body: body, SetCookieHeaders: setCookieHeaders}, nil
-}
-
-func (c *CapabilityClient) WAF(ctx context.Context, capability string, request HTTPRequest) (WAFDecision, error) {
-	if err := c.validateCapability(capability); err != nil {
-		return WAFDecision{}, err
-	}
-	if strings.TrimSpace(request.Method) == "" || strings.TrimSpace(request.Path) == "" || request.WAF == nil {
-		return WAFDecision{}, errors.New("plugin WAF request is invalid")
-	}
-	var decision WAFDecision
-	if err := c.callJSON(ctx, capability, request, &decision, request.GrantNames); err != nil {
-		return WAFDecision{}, err
-	}
-	if decision.Continue == (decision.Response != nil) {
-		return WAFDecision{}, errors.New("plugin WAF decision is invalid")
-	}
-	if decision.Response != nil && (decision.Response.Status < 100 || decision.Response.Status > 599) {
-		return WAFDecision{}, errors.New("plugin WAF response status is invalid")
-	}
-	return decision, nil
 }
 
 func (c *CapabilityClient) callJSON(ctx context.Context, capability string, request, response any, grantNames []string) error {

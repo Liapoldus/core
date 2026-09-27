@@ -109,6 +109,12 @@
 - По разрешённому cleanup удалены старый `internal/infrastructure/network`,
   CompiledGraph/config DSL compiler и renderer, site/release registry и snapshot
   stores, их CLI/account store, GeoIP/MMDB runtime и telemetry exporters.
+  В этом проходе также удалены неиспользуемые `WAFContext`, `WAFDecision`,
+  `CapabilityClient.WAF` и соответствующая test-fixture ветка: вызовов не было,
+  а generic HTTP response boundary уже обслуживает Caddy dispatch. Удалена
+  локальная `contracts/v1/plugin-contracts.json` как дублирующая plugin IPC
+  schema; единственный владелец этих контрактов — `pluginprotocol`. Исполняемый
+  `OpenL4Stream` сохранён: его напрямую вызывает Caddy-L4 adapter.
   Дополнительно удалены неиспользуемые domain-модели `Action`, `Capability`,
   `ClientAuth`, `Revision`, `RegistryLockConflict`, пустой `ManagementStore`,
   незадействованный filesystem `FilesystemAuditStore` и неисполняемая fixture
