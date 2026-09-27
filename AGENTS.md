@@ -66,16 +66,39 @@ proxy user request/response bodies.
 
 - All test code lives under `tests/` and is TypeScript run by Vitest + tsx.
   Do not add Go `*_test.go` files or test helpers under production packages.
-- For every implementation increment, create a separate **red test commit**
-  first, then a minimal implementation commit that turns that increment green.
+- Write the failing TypeScript test before its implementation, then implement
+  the behavior until the test is green. Keep the temporary red state local:
+  commit the test and implementation together only after the increment is green;
+  never create a separate red-test commit or leave a red commit between changes.
+- An increment is a completed vertical slice of approximately 30–150 lines of
+  implementation together with its tests. Do not split work into micro-steps
+  such as one JSON key or one assertion; keep the slice cohesive and usable.
+- During development, run only the focused suite, for example
+  `npx vitest run tests/<path>`. Do not run full gates at every micro-step.
+  Once the increment is complete, run `make check`, `go vet ./...`, and
+  `make staticcheck-u1000` exactly once at the end, before its single green
+  commit. The candidate tree must contain only the completed increment, with no
+  partial/red test state or unrelated changes. Fix any failures before starting
+  another increment.
+- Preserve the passing `contract-publication`, `arch-lint`, `dead-artifacts`,
+  and `approved-orphan-symbols` gates. Do not weaken or rewrite these gates to
+  accommodate unrelated refactoring. Add architecture tests only when a new
+  functional task introduces a new architectural requirement; do not expand
+  architecture coverage as a standalone task.
+- Prioritize closing documented gaps in the roadmap and `TODO.md` over adding
+  more coverage for behavior that is already implemented and green.
+- Create exactly one commit per completed increment, with a message in the form
+  `feat(core): <concise change>`; the commit must contain both the tests and
+  implementation for that increment.
 - `tests/unit/` exercises deterministic public behaviour through the CLI and
   controlled fixtures. `tests/integration/` runs the compiled Gateway process
   and covers HTTP, TCP, UDP, TLS, filesystem state, and Management API.
 - Test contracts are fetched from `Liapoldus/liapoldus.github.io` `main` until
   Gateway v1 is complete, as agreed. A network failure must fail contract
   verification loudly rather than using an untracked fallback.
-- Each increment must run its focused TS suite; milestone completion requires
-  the full suite, race checks, and the applicable golden vectors.
+- Run the focused TS suite while implementing. At milestone completion,
+  additionally run race checks and the applicable golden vectors; the full
+  `make check`, vet, and staticcheck cadence is defined above.
 
 ## Architecture gate
 
