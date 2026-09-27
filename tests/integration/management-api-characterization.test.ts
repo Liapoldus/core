@@ -112,6 +112,7 @@ describe("Management API response characterization matrix", () => {
       pluginNotFound: problem(404, "plugin_not_found", "Указанный plugin instance не существует."),
       cookiePolicyUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       pluginAdminUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
+      pluginAdminPostUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
       pluginRestartUnavailable: problem(501, "not_implemented", "plugin restart is unavailable"),
       caddyAdminUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       operationUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),

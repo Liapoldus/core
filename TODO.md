@@ -14,8 +14,13 @@
   запрещённые импорты Caddy и `pluginprotocol` в каждом из трёх подпакетов
   отклонены линтером. Presentation baseline `GOTOOLCHAIN=go1.26.0 go tool
   staticcheck -checks=U1000 ./internal/presentation/...` — 0 orphan diagnostics.
-  Следующий шаг: characterization и переносы по утверждённой
-  последовательности; форму `api.Server` не менять.
+  P0 зафиксировал 29 response cases Management API в отдельной TS
+  characterization-матрице и минимальной Go fixture: до любого split/refactor
+  сохраняются status, content type, request ID и точный body. Контролируемая
+  mutation `writeProblem` (все статусы заменены на 200) сделала тест красным;
+  production source mutation полностью откатана, focused baseline зелёный.
+  Следующий шаг — дальнейшие переносы по утверждённой последовательности;
+  форму `api.Server` не менять.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
