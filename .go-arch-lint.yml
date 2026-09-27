@@ -71,7 +71,7 @@ deps:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructurePlugins]
     canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, caddyfile, googleUUID, pluginprotocol, websocket]
   presentationAPI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPIHandlers]
     canUse: [bcrypt]
   presentationAPIHandlers:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]

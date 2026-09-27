@@ -29,8 +29,10 @@
   P3 добавил дополнительную route/method/status matrix для 15 path/method
   сочетаний; негативная mutation POST→PUT дала ожидаемый 503→404, затем была
   откатана. Извлечение route dispatcher в `router.go` отложено до D3.3 после D5,
-  как требует порядок миграции. P4 должен разложить файлы без изменения API;
-  форму `api.Server` не менять.
+  как требует порядок миграции. P4 red/green закрепил ownership rule: API root
+  может зависеть от `api/handlers`, обратный edge запрещён; `.go-arch-lint.yml`
+  обновлён. Файловые переносы остаются в D3.3 после D5; форму `api.Server` не
+  менять.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
