@@ -134,6 +134,7 @@ type ManagementWords struct {
 		GroupNotFound                    string `yaml:"groupNotFound"`
 		GroupAlreadyExists               string `yaml:"groupAlreadyExists"`
 		InvalidRequest                   string `yaml:"invalidRequest"`
+		ArtifactTooLarge                 string `yaml:"artifactTooLarge"`
 		OperationNotFound                string `yaml:"operationNotFound"`
 		CookiePolicyNotFound             string `yaml:"cookiePolicyNotFound"`
 		CookiePolicyRevisionConflict     string `yaml:"cookiePolicyRevisionConflict"`

@@ -145,6 +145,7 @@ codes:
   groupNotFound: group_not_found
   groupAlreadyExists: group_already_exists
   invalidRequest: invalid_request
+  artifactTooLarge: artifact_too_large
   operationNotFound: not_found
   cookiePolicyNotFound: not_found
   cookiePolicyRevisionConflict: cookie_policy_revision_conflict

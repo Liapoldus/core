@@ -1,0 +1,65 @@
+{
+  "paths": {
+    "managementPrefix": "/api/caddy/",
+    "snapshot": "/config/",
+    "pathSeparator": "/",
+    "leadingSlash": "/",
+    "querySeparator": "?",
+    "forbiddenPathCharacters": ["\\", "\u0000"],
+    "checkpointDirectory": "caddy-checkpoints",
+    "checkpointSuffix": ".json",
+    "temporarySuffix": ".tmp",
+    "unixPrefix": "unix//",
+    "unixNetwork": "unix",
+    "urlScheme": "http",
+    "urlHost": "caddy"
+  },
+  "methods": {
+    "readOnly": ["GET", "HEAD"],
+    "mutating": ["POST", "PUT", "PATCH", "DELETE"]
+  },
+  "headers": {
+    "forwardRequest": ["Content-Type", "If-Match"],
+    "forwardResponse": ["Content-Type", "ETag", "Location", "Cache-Control"]
+  },
+  "limits": {
+    "requestBodyBytes": 1048576,
+    "snapshotBytes": 16777216,
+    "responseBodyBytes": 16777216
+  },
+  "timeouts": {
+    "request": "10s"
+  },
+  "modes": {
+    "directory": 448,
+    "file": 384,
+    "socket": 384
+  },
+  "socket": {
+    "directoryPrefix": "liapoldus-",
+    "name": "admin.sock"
+  },
+  "operation": {
+    "kind": "caddy_admin_mutation",
+    "running": "running",
+    "succeeded": "succeeded",
+    "failed": "failed"
+  },
+  "audit": {
+    "action": "caddy.admin.mutate",
+    "resource": "caddy-admin",
+    "started": "started",
+    "succeeded": "succeeded",
+    "failed": "failed"
+  },
+  "statuses": {
+    "successMinimum": 200,
+    "successMaximum": 400
+  },
+  "diagnostics": {
+    "invalidConfiguration": "Caddy Admin mutation contract is invalid.",
+    "snapshotUnavailable": "Caddy configuration snapshot is unavailable.",
+    "checkpointUnavailable": "Caddy mutation checkpoint is unavailable.",
+    "adminUnavailable": "Caddy Admin API is unavailable."
+  }
+}

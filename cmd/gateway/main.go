@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"time"
 
 	caddyadapter "github.com/Liapoldus/core/internal/infrastructure/caddy"
+	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/presentation/cli"
 	caddycore "github.com/caddyserver/caddy/v2"
 )
@@ -23,7 +25,11 @@ func main() {
 					CookiePolicies:     append([]json.RawMessage(nil), binding.CookiePolicies...),
 				})
 			}
-			runtime, _, err := caddyadapter.StartCaddyfileWithPlugins(source, instances)
+			adminOptions, err := loadAdminRuntimeOptions()
+			if err != nil {
+				return nil, err
+			}
+			runtime, _, err := caddyadapter.StartCaddyfileWithPluginsAndAdmin(source, instances, adminOptions)
 			if err != nil {
 				return nil, err
 			}
@@ -45,9 +51,13 @@ func main() {
 			return caddyadapter.ReplaceExternalSnapshotWithPlugins(ctx, current, source, pluginInstances(bindings))
 		},
 		StartExternalCaddy: func(binary, expectedBuildID, stateDirectory string, source []byte, bindings []cli.PluginDispatchBinding) (cli.CaddyRuntime, error) {
+			adminOptions, err := loadAdminRuntimeOptions()
+			if err != nil {
+				return nil, err
+			}
 			return caddyadapter.StartExternal(context.Background(), caddyadapter.ExternalOptions{
 				Binary: binary, ExpectedBuildID: expectedBuildID, StateDirectory: stateDirectory,
-				PluginInstances: pluginInstances(bindings),
+				PluginInstances: pluginInstances(bindings), Admin: adminOptions,
 			}, source)
 		},
 		ValidateEmbeddedCaddy: func(source []byte, bindings []cli.PluginDispatchBinding) error {
@@ -68,6 +78,31 @@ func main() {
 		CaddyBuildID: version,
 		CaddyModules: caddycore.Modules(),
 	}))
+}
+
+func loadAdminRuntimeOptions() (caddyadapter.AdminRuntimeOptions, error) {
+	words, err := config.LoadAdminMutation()
+	if err != nil {
+		return caddyadapter.AdminRuntimeOptions{}, err
+	}
+	timeout, err := time.ParseDuration(words.Timeouts.Request)
+	if err != nil {
+		return caddyadapter.AdminRuntimeOptions{}, err
+	}
+	return caddyadapter.AdminRuntimeOptions{
+		Client: caddyadapter.AdminClientOptions{
+			SnapshotPath: words.Paths.Snapshot, PathPrefix: words.Paths.LeadingSlash,
+			RequestBodyBytes: words.Limits.RequestBodyBytes, SnapshotBytes: words.Limits.SnapshotBytes,
+			ResponseBodyBytes: words.Limits.ResponseBodyBytes, RequestTimeout: timeout,
+			ForwardRequestHeaders: words.Headers.ForwardRequest, ForwardResponseHeaders: words.Headers.ForwardResponse,
+			InvalidConfiguration: words.Diagnostics.InvalidConfiguration,
+			SnapshotUnavailable:  words.Diagnostics.SnapshotUnavailable, AdminUnavailable: words.Diagnostics.AdminUnavailable,
+		},
+		UnixPrefix: words.Paths.UnixPrefix, UnixNetwork: words.Paths.UnixNetwork,
+		URLScheme: words.Paths.URLScheme, URLHost: words.Paths.URLHost,
+		SocketDirectoryPrefix: words.Socket.DirectoryPrefix, SocketName: words.Socket.Name,
+		DirectoryMode: words.Modes.Directory, SocketMode: words.Modes.Socket,
+	}, nil
 }
 
 func pluginInstances(bindings []cli.PluginDispatchBinding) []caddyadapter.PluginInstance {

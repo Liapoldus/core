@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 
 	caddyassets "github.com/Liapoldus/core"
+	"github.com/Liapoldus/core/internal/domain/models"
 	caddycore "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 )
@@ -21,9 +25,14 @@ type buildContract struct {
 }
 
 type Runtime struct {
-	active  bool
-	plugins []PluginInstance
-	source  []byte
+	active         bool
+	plugins        []PluginInstance
+	source         []byte
+	adminDirectory string
+	adminSocket    string
+	adminClient    *AdminClient
+	adminHTTP      *http.Client
+	adminOptions   *AdminRuntimeOptions
 }
 
 var processRuntime = struct {
@@ -32,14 +41,22 @@ var processRuntime = struct {
 }{}
 
 func StartCaddyfile(source []byte) (*Runtime, []caddyconfig.Warning, error) {
-	return startCaddyfile(source, nil)
+	return startCaddyfile(source, nil, nil)
 }
 
 func StartCaddyfileWithPlugins(source []byte, instances []PluginInstance) (*Runtime, []caddyconfig.Warning, error) {
-	return startCaddyfile(source, instances)
+	return startCaddyfile(source, instances, nil)
 }
 
-func startCaddyfile(source []byte, instances []PluginInstance) (*Runtime, []caddyconfig.Warning, error) {
+func StartCaddyfileWithAdmin(source []byte, options AdminRuntimeOptions) (*Runtime, []caddyconfig.Warning, error) {
+	return startCaddyfile(source, nil, &options)
+}
+
+func StartCaddyfileWithPluginsAndAdmin(source []byte, instances []PluginInstance, options AdminRuntimeOptions) (*Runtime, []caddyconfig.Warning, error) {
+	return startCaddyfile(source, instances, &options)
+}
+
+func startCaddyfile(source []byte, instances []PluginInstance, adminOptions *AdminRuntimeOptions) (*Runtime, []caddyconfig.Warning, error) {
 	processRuntime.Lock()
 	defer processRuntime.Unlock()
 	if processRuntime.active != nil {
@@ -50,14 +67,59 @@ func startCaddyfile(source []byte, instances []PluginInstance) (*Runtime, []cadd
 		return nil, nil, errors.New(contract.Diagnostics.RuntimeAlreadyActive)
 	}
 
-	configuration, warnings, err := adaptCaddyfile(source, instances)
+	adminDirectory := ""
+	adminSocket := ""
+	adminListen := ""
+	var err error
+	if adminOptions != nil {
+		if err := validateAdminRuntimeOptions(*adminOptions); err != nil {
+			return nil, nil, err
+		}
+		adminDirectory, err = os.MkdirTemp(os.TempDir(), adminOptions.SocketDirectoryPrefix)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := os.Chmod(adminDirectory, os.FileMode(adminOptions.DirectoryMode)); err != nil {
+			_ = os.RemoveAll(adminDirectory)
+			return nil, nil, err
+		}
+		adminSocket = filepath.Join(adminDirectory, adminOptions.SocketName)
+		adminListen = adminOptions.UnixPrefix + adminSocket
+	}
+	configuration, warnings, err := adaptCaddyfileWithAdmin(source, instances, adminListen)
 	if err != nil {
+		if adminDirectory != "" {
+			_ = os.RemoveAll(adminDirectory)
+		}
 		return nil, nil, err
 	}
 	if err := caddycore.Load(configuration, true); err != nil {
+		if adminDirectory != "" {
+			_ = os.RemoveAll(adminDirectory)
+		}
 		return nil, nil, err
 	}
-	runtime := &Runtime{active: true, plugins: append([]PluginInstance(nil), instances...), source: append([]byte(nil), source...)}
+	if adminOptions == nil {
+		runtime := &Runtime{active: true, plugins: append([]PluginInstance(nil), instances...), source: append([]byte(nil), source...)}
+		processRuntime.active = runtime
+		return runtime, warnings, nil
+	}
+	if err := os.Chmod(adminSocket, os.FileMode(adminOptions.SocketMode)); err != nil {
+		_ = caddycore.Stop()
+		_ = os.RemoveAll(adminDirectory)
+		return nil, nil, err
+	}
+	adminClient, adminHTTP, err := NewUnixAdminClient(adminSocket, *adminOptions)
+	if err != nil {
+		_ = caddycore.Stop()
+		_ = os.RemoveAll(adminDirectory)
+		return nil, nil, err
+	}
+	runtime := &Runtime{
+		active: true, plugins: append([]PluginInstance(nil), instances...), source: append([]byte(nil), source...),
+		adminDirectory: adminDirectory, adminSocket: adminSocket, adminClient: adminClient,
+		adminHTTP: adminHTTP, adminOptions: adminOptions,
+	}
 	processRuntime.active = runtime
 	return runtime, warnings, nil
 }
@@ -86,7 +148,7 @@ func (runtime *Runtime) replaceCaddyfile(source []byte, instances []PluginInstan
 	if replacePlugins {
 		instancesForSnapshot = instances
 	}
-	configuration, warnings, err := adaptCaddyfile(source, instancesForSnapshot)
+	configuration, warnings, err := adaptCaddyfileWithAdmin(source, instancesForSnapshot, runtime.adminListen())
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +172,7 @@ func (runtime *Runtime) Validate(_ context.Context, source []byte) error {
 		}
 		return errors.New(contract.Diagnostics.RuntimeNotActive)
 	}
-	configuration, _, err := adaptCaddyfile(source, runtime.plugins)
+	configuration, _, err := adaptCaddyfileWithAdmin(source, runtime.plugins, runtime.adminListen())
 	if err != nil {
 		return err
 	}
@@ -155,6 +217,10 @@ func ReplaceCaddyfileWithPlugins(runtime any, source []byte, instances []PluginI
 }
 
 func adaptCaddyfile(source []byte, instances []PluginInstance) ([]byte, []caddyconfig.Warning, error) {
+	return adaptCaddyfileWithAdmin(source, instances, "")
+}
+
+func adaptCaddyfileWithAdmin(source []byte, instances []PluginInstance, adminListen string) ([]byte, []caddyconfig.Warning, error) {
 	contract, err := loadBuildContract()
 	if err != nil {
 		return nil, nil, err
@@ -183,7 +249,8 @@ func adaptCaddyfile(source []byte, instances []PluginInstance) ([]byte, []caddyc
 	}
 	persistConfig := false
 	adapted.Admin = &caddycore.AdminConfig{
-		Disabled: true,
+		Disabled: adminListen == "",
+		Listen:   adminListen,
 		Config:   &caddycore.ConfigSettings{Persist: &persistConfig},
 	}
 	configuration, err = json.Marshal(adapted)
@@ -206,8 +273,59 @@ func (runtime *Runtime) Stop() error {
 	if err := caddycore.Stop(); err != nil {
 		return err
 	}
+	if runtime.adminHTTP != nil {
+		if transport, ok := runtime.adminHTTP.Transport.(*http.Transport); ok {
+			transport.CloseIdleConnections()
+		}
+	}
 	runtime.active = false
 	processRuntime.active = nil
+	if runtime.adminDirectory != "" {
+		return os.RemoveAll(runtime.adminDirectory)
+	}
+	return nil
+}
+
+func (runtime *Runtime) Snapshot(ctx context.Context) ([]byte, error) {
+	if runtime == nil || runtime.adminClient == nil {
+		return nil, errors.New(runtime.notActive())
+	}
+	return runtime.adminClient.Snapshot(ctx)
+}
+
+func (runtime *Runtime) Request(ctx context.Context, request models.CaddyAdminRequest) (models.CaddyAdminResponse, error) {
+	if runtime == nil || runtime.adminClient == nil {
+		return models.CaddyAdminResponse{}, errors.New(runtime.notActive())
+	}
+	return runtime.adminClient.Request(ctx, request)
+}
+
+func (runtime *Runtime) notActive() string {
+	if runtime == nil {
+		contract, err := loadBuildContract()
+		if err != nil {
+			return ""
+		}
+		return contract.Diagnostics.RuntimeNotActive
+	}
+	contract, err := loadBuildContract()
+	if err != nil {
+		return ""
+	}
+	return contract.Diagnostics.RuntimeNotActive
+}
+
+func (runtime *Runtime) adminListen() string {
+	if runtime == nil || runtime.adminOptions == nil {
+		return ""
+	}
+	return runtime.adminOptions.UnixPrefix + runtime.adminSocket
+}
+
+func validateAdminRuntimeOptions(options AdminRuntimeOptions) error {
+	if options.Client.SnapshotPath == "" || options.Client.PathPrefix == "" || options.Client.RequestBodyBytes < 1 || options.Client.SnapshotBytes < 1 || options.Client.ResponseBodyBytes < 1 || options.Client.RequestTimeout <= 0 || options.Client.InvalidConfiguration == "" || options.Client.AdminUnavailable == "" || options.Client.SnapshotUnavailable == "" || options.UnixPrefix == "" || options.UnixNetwork == "" || options.URLScheme == "" || options.URLHost == "" || options.SocketDirectoryPrefix == "" || options.SocketName == "" || options.DirectoryMode == 0 || options.SocketMode == 0 {
+		return errors.New(options.Client.InvalidConfiguration)
+	}
 	return nil
 }
 

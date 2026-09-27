@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	assets "github.com/Liapoldus/core"
+	"github.com/Liapoldus/core/internal/domain/models"
 )
 
 type ExternalOptions struct {
@@ -28,6 +30,7 @@ type ExternalOptions struct {
 	RestartMinimum  time.Duration
 	RestartMaximum  time.Duration
 	HealthPoll      time.Duration
+	Admin           AdminRuntimeOptions
 }
 
 type externalContract struct {
@@ -103,6 +106,8 @@ type ExternalRuntime struct {
 	restartMaximum  time.Duration
 	healthPoll      time.Duration
 	client          *http.Client
+	adminClient     *AdminClient
+	adminOptions    AdminRuntimeOptions
 	ctx             context.Context
 	cancel          context.CancelFunc
 	done            chan struct{}
@@ -118,6 +123,9 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 	}
 	if err := validateExternalContract(contract); err != nil {
 		return nil, err
+	}
+	if err := validateAdminRuntimeOptions(options.Admin); err != nil {
+		return nil, errors.New(contract.Diagnostics.InvalidContract)
 	}
 	startTimeout, err := durationOrDefault(options.StartTimeout, contract.Timeouts.Start)
 	if err != nil {
@@ -167,7 +175,14 @@ func StartExternal(ctx context.Context, options ExternalOptions, initialCaddyfil
 		restartMaximum: restartMaximum, healthPoll: healthPoll, ctx: runtimeContext, cancel: cancel,
 		done: make(chan struct{}),
 	}
-	runtime.client = runtime.makeAdminClient()
+	runtime.adminOptions = options.Admin
+	runtime.client = runtime.makeAdminClient(options.Admin.Client.RequestTimeout)
+	adminEndpoint := (&url.URL{Scheme: options.Admin.URLScheme, Host: options.Admin.URLHost}).String()
+	runtime.adminClient, err = NewAdminClient(adminEndpoint, runtime.client, options.Admin.Client)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 	prepared, err := runtime.prepare(ctx, initialCaddyfile, runtime.pluginInstances)
 	if err != nil {
 		cancel()
@@ -403,6 +418,20 @@ func (runtime *ExternalRuntime) AdminSocketPath() string {
 	return runtime.socketPath
 }
 
+func (runtime *ExternalRuntime) Snapshot(ctx context.Context) ([]byte, error) {
+	if runtime == nil || runtime.adminClient == nil {
+		return nil, nilExternalRuntimeError()
+	}
+	return runtime.adminClient.Snapshot(ctx)
+}
+
+func (runtime *ExternalRuntime) Request(ctx context.Context, request models.CaddyAdminRequest) (models.CaddyAdminResponse, error) {
+	if runtime == nil || runtime.adminClient == nil {
+		return models.CaddyAdminResponse{}, nilExternalRuntimeError()
+	}
+	return runtime.adminClient.Request(ctx, request)
+}
+
 func (runtime *ExternalRuntime) Stop() error {
 	if runtime == nil {
 		return nil
@@ -633,7 +662,7 @@ func (runtime *ExternalRuntime) adminURL(path string) string {
 	return runtime.contract.Configuration.HTTPScheme + "://" + runtime.contract.Configuration.HTTPHost + path
 }
 
-func (runtime *ExternalRuntime) makeAdminClient() *http.Client {
+func (runtime *ExternalRuntime) makeAdminClient(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{}
 	transport := &http.Transport{
 		DisableKeepAlives: true,
@@ -641,7 +670,7 @@ func (runtime *ExternalRuntime) makeAdminClient() *http.Client {
 			return dialer.DialContext(ctx, "unix", runtime.socketPath)
 		},
 	}
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport, Timeout: timeout}
 }
 
 func (runtime *ExternalRuntime) writeActiveConfig(configuration []byte) error {

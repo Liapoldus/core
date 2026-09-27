@@ -43,6 +43,8 @@ type Server struct {
 	GroupReleases            *application.GroupReleaseService
 	CookiePolicies           *application.PluginCookiePolicyService
 	GroupReleasePolicy       models.GroupReleasePolicy
+	AdminMutations           *application.AdminMutationService
+	AdminWords               config.AdminMutationWords
 	AccessService            *application.AccessService
 	CaddyVariant             string
 	CaddyBuildID             string
@@ -72,6 +74,9 @@ func (server *Server) Handler() http.Handler {
 			server.Management, _ = config.LoadManagement()
 		}
 		server.Errors, _ = config.LoadErrorCatalog()
+		if server.AdminWords.Paths.ManagementPrefix == "" {
+			server.AdminWords, _ = config.LoadAdminMutation()
+		}
 		if server.GroupReleasePolicy.OperationKind == "" {
 			server.GroupReleasePolicy, _ = config.LoadGroupRelease()
 		}
@@ -147,6 +152,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 			server.Management.JSON.DataPlaneReadiness: readiness,
 			server.Management.JSON.RequestID:          requestID,
 		})
+	case strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix):
+		server.handleCaddyAdmin(response, request, requestID, actor)
 	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post:
 		server.handleServiceKeyCreate(response, request, requestID, actor)
 	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get:
@@ -298,6 +305,93 @@ func (server *Server) handleServiceKeyList(response http.ResponseWriter, request
 		server.Management.JSON.Items:     items,
 		server.Management.JSON.RequestID: requestID,
 	})
+}
+
+func (server *Server) handleCaddyAdmin(response http.ResponseWriter, request *http.Request, requestID, actor string) {
+	if server.AdminMutations == nil || server.AdminWords.Paths.ManagementPrefix == "" {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	allowed := containsString(server.AdminWords.Methods.ReadOnly, request.Method) || containsString(server.AdminWords.Methods.Mutating, request.Method)
+	if !allowed {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	path := request.URL.Path
+	if !strings.HasPrefix(path, server.AdminWords.Paths.ManagementPrefix) {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	suffix := strings.TrimPrefix(path, server.AdminWords.Paths.ManagementPrefix)
+	if suffix == "" || containsAnyString(suffix, server.AdminWords.Paths.ForbiddenPathCharacters) || invalidCaddyPathSegment(suffix, server.AdminWords.Paths.PathSeparator) {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	adminPath := server.AdminWords.Paths.LeadingSlash + suffix
+	if request.URL.RawQuery != "" {
+		adminPath += server.AdminWords.Paths.QuerySeparator + request.URL.RawQuery
+	}
+	body, err := io.ReadAll(io.LimitReader(request.Body, server.AdminWords.Limits.RequestBodyBytes+1))
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if int64(len(body)) > server.AdminWords.Limits.RequestBodyBytes {
+		server.writeCatalogProblem(response, server.Management.Codes.ArtifactTooLarge, requestID)
+		return
+	}
+	headers := make(map[string][]string)
+	for _, name := range server.AdminWords.Headers.ForwardRequest {
+		if values := request.Header.Values(name); len(values) > 0 {
+			headers[name] = append([]string(nil), values...)
+		}
+	}
+	result, err := server.AdminMutations.Handle(request.Context(), models.AdminMutationCommand{
+		Request: models.CaddyAdminRequest{
+			Method: request.Method, Path: adminPath, Headers: headers, Body: body,
+		},
+		Actor: actor, RequestID: requestID,
+	})
+	if err != nil || result.Status < http.StatusContinue || result.Status > http.StatusNetworkAuthenticationRequired {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	for _, name := range server.AdminWords.Headers.ForwardResponse {
+		for _, value := range result.Headers[name] {
+			response.Header().Add(name, value)
+		}
+	}
+	response.WriteHeader(result.Status)
+	if request.Method != http.MethodHead {
+		_, _ = response.Write(result.Body)
+	}
+}
+
+func invalidCaddyPathSegment(value, separator string) bool {
+	for _, segment := range strings.Split(value, separator) {
+		if segment == "." || segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAnyString(value string, needles []string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, value string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func (server *Server) handleServiceKeyCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {

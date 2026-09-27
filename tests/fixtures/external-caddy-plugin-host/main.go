@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/infrastructure/caddy"
+	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
 
 type command struct {
@@ -33,8 +34,13 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
+	adminOptions, err := externalAdminOptions()
+	if err != nil {
+		return err
+	}
 	runtime, err := caddy.StartExternal(context.Background(), caddy.ExternalOptions{
 		Binary: arguments[0], ExpectedBuildID: arguments[3], StateDirectory: arguments[1],
+		Admin: adminOptions,
 		PluginInstances: []caddy.PluginInstance{{
 			Name: "fixture", Endpoint: arguments[4], Timeout: 3 * time.Second,
 			StartTimeout: 3 * time.Second, MaxConcurrentCalls: 8,
@@ -93,4 +99,29 @@ func run(arguments []string) error {
 			}
 		}
 	}
+}
+
+func externalAdminOptions() (caddy.AdminRuntimeOptions, error) {
+	words, err := config.LoadAdminMutation()
+	if err != nil {
+		return caddy.AdminRuntimeOptions{}, err
+	}
+	timeout, err := time.ParseDuration(words.Timeouts.Request)
+	if err != nil {
+		return caddy.AdminRuntimeOptions{}, err
+	}
+	return caddy.AdminRuntimeOptions{
+		Client: caddy.AdminClientOptions{
+			SnapshotPath: words.Paths.Snapshot, PathPrefix: words.Paths.LeadingSlash,
+			RequestBodyBytes: words.Limits.RequestBodyBytes, SnapshotBytes: words.Limits.SnapshotBytes,
+			ResponseBodyBytes: words.Limits.ResponseBodyBytes, RequestTimeout: timeout,
+			ForwardRequestHeaders: words.Headers.ForwardRequest, ForwardResponseHeaders: words.Headers.ForwardResponse,
+			InvalidConfiguration: words.Diagnostics.InvalidConfiguration,
+			SnapshotUnavailable:  words.Diagnostics.SnapshotUnavailable, AdminUnavailable: words.Diagnostics.AdminUnavailable,
+		},
+		UnixPrefix: words.Paths.UnixPrefix, UnixNetwork: words.Paths.UnixNetwork,
+		URLScheme: words.Paths.URLScheme, URLHost: words.Paths.URLHost,
+		SocketDirectoryPrefix: words.Socket.DirectoryPrefix, SocketName: words.Socket.Name,
+		DirectoryMode: words.Modes.Directory, SocketMode: words.Modes.Socket,
+	}, nil
 }

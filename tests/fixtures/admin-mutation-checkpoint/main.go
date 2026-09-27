@@ -8,9 +8,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
+	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
+	"github.com/Liapoldus/core/internal/infrastructure/caddy"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -64,6 +69,59 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	adminWords, err := config.LoadAdminMutation()
+	if err != nil {
+		panic(err)
+	}
+	adminTimeout, err := time.ParseDuration(adminWords.Timeouts.Request)
+	if err != nil {
+		panic(err)
+	}
+	adminClient, err := caddy.NewAdminClient(admin.URL, admin.Client(), caddy.AdminClientOptions{
+		SnapshotPath: adminWords.Paths.Snapshot, PathPrefix: adminWords.Paths.LeadingSlash,
+		RequestBodyBytes: adminWords.Limits.RequestBodyBytes, SnapshotBytes: adminWords.Limits.SnapshotBytes,
+		ResponseBodyBytes: adminWords.Limits.ResponseBodyBytes, RequestTimeout: adminTimeout,
+		ForwardRequestHeaders: adminWords.Headers.ForwardRequest, ForwardResponseHeaders: adminWords.Headers.ForwardResponse,
+		InvalidConfiguration: adminWords.Diagnostics.InvalidConfiguration,
+		SnapshotUnavailable:  adminWords.Diagnostics.SnapshotUnavailable, AdminUnavailable: adminWords.Diagnostics.AdminUnavailable,
+	})
+	if err != nil {
+		panic(err)
+	}
+	checkpointStore, err := storage.NewSQLiteCaddyCheckpointStore(database)
+	if err != nil {
+		panic(err)
+	}
+	checkpointArtifacts, err := artifacts.NewCaddyCheckpointArtifacts(filepath.Dir(os.Args[1]), artifacts.CaddyCheckpointOptions{
+		Directory: adminWords.Paths.CheckpointDirectory, CheckpointSuffix: adminWords.Paths.CheckpointSuffix,
+		TemporarySuffix: adminWords.Paths.TemporarySuffix, DirectoryMode: adminWords.Modes.Directory,
+		FileMode: adminWords.Modes.File, InvalidConfiguration: adminWords.Diagnostics.InvalidConfiguration,
+	})
+	if err != nil {
+		panic(err)
+	}
+	adminMutationService := &application.AdminMutationService{
+		Admin: adminClient, Checkpoints: checkpointStore, Artifacts: checkpointArtifacts,
+		Policy: application.AdminMutationPolicy{
+			MutationMethods:       adminWords.Methods.Mutating,
+			SuccessStatusMinimum:  adminWords.Statuses.SuccessMinimum,
+			SuccessStatusMaximum:  adminWords.Statuses.SuccessMaximum,
+			MaximumSnapshotBytes:  adminWords.Limits.SnapshotBytes,
+			OperationKind:         adminWords.Operation.Kind,
+			OperationRunning:      adminWords.Operation.Running,
+			OperationSucceeded:    adminWords.Operation.Succeeded,
+			OperationFailed:       adminWords.Operation.Failed,
+			AuditAction:           adminWords.Audit.Action,
+			AuditResource:         adminWords.Audit.Resource,
+			AuditStarted:          adminWords.Audit.Started,
+			AuditSucceeded:        adminWords.Audit.Succeeded,
+			AuditFailed:           adminWords.Audit.Failed,
+			InvalidConfiguration:  adminWords.Diagnostics.InvalidConfiguration,
+			SnapshotUnavailable:   adminWords.Diagnostics.SnapshotUnavailable,
+			CheckpointUnavailable: adminWords.Diagnostics.CheckpointUnavailable,
+			AdminUnavailable:      adminWords.Diagnostics.AdminUnavailable,
+		},
+	}
 	auditWords, err := config.LoadAudit()
 	if err != nil {
 		panic(err)
@@ -71,6 +129,7 @@ func main() {
 	server := (&api.Server{
 		Token: "fixture-management-token", Management: management,
 		Errors: errorCatalog, AuditWords: auditWords,
+		AdminWords: adminWords, AdminMutations: adminMutationService,
 	}).Handler()
 	request := httptest.NewRequest(http.MethodPut, "/api/caddy/config/apps/http/servers/srv0", strings.NewReader(`{"value":"`+sensitivePayload+`"}`))
 	request.Header.Set("Authorization", "Bearer fixture-management-token")
@@ -101,9 +160,9 @@ func main() {
 	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"status": response.Code, "adminRequests": adminRequests.Load(),
 		"checkpointCountAtForward": checkpointCountAtForward.Load(),
-		"auditCountAtForward": auditCountAtForward.Load(),
-		"checkpointCountAfter": count(database, `SELECT COUNT(*) FROM caddy_checkpoints`),
-		"auditBodyStored": auditBodyStored,
+		"auditCountAtForward":      auditCountAtForward.Load(),
+		"checkpointCountAfter":     count(database, `SELECT COUNT(*) FROM caddy_checkpoints`),
+		"auditBodyStored":          auditBodyStored,
 	}); err != nil {
 		panic(err)
 	}

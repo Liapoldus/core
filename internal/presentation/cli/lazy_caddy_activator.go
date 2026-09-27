@@ -156,6 +156,32 @@ func (activator *lazyCaddyActivator) Ready(ctx context.Context) error {
 	return probe.Ready(ctx)
 }
 
+func (activator *lazyCaddyActivator) Snapshot(ctx context.Context) ([]byte, error) {
+	activator.mu.RLock()
+	active := activator.active
+	activator.mu.RUnlock()
+	admin, ok := active.(interface {
+		Snapshot(context.Context) ([]byte, error)
+	})
+	if !ok {
+		return nil, errors.New(activator.unavailable)
+	}
+	return admin.Snapshot(ctx)
+}
+
+func (activator *lazyCaddyActivator) Request(ctx context.Context, request models.CaddyAdminRequest) (models.CaddyAdminResponse, error) {
+	activator.mu.RLock()
+	active := activator.active
+	activator.mu.RUnlock()
+	admin, ok := active.(interface {
+		Request(context.Context, models.CaddyAdminRequest) (models.CaddyAdminResponse, error)
+	})
+	if !ok {
+		return models.CaddyAdminResponse{}, errors.New(activator.unavailable)
+	}
+	return admin.Request(ctx, request)
+}
+
 func clonePluginDispatchBindings(bindings []PluginDispatchBinding) []PluginDispatchBinding {
 	cloned := make([]PluginDispatchBinding, len(bindings))
 	for index, binding := range bindings {

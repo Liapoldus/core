@@ -31,6 +31,8 @@ const (
 	CaddyPlugin                = "caddy-plugin.json"
 	CaddyExternal              = "caddy-external.json"
 	CaddyL4Plugin              = "caddy-l4-plugin.json"
+	CaddyAdminMutation         = "caddy-admin-mutation.json"
+	SQLiteCaddyCheckpoints     = "sqlite-caddy-checkpoints.yaml"
 )
 
 //go:embed assets/contracts

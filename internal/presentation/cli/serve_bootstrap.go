@@ -141,6 +141,25 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Internal
 	}
+	adminWords, err := config.LoadAdminMutation()
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	checkpointStore, err := storage.NewSQLiteCaddyCheckpointStore(database)
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
+	checkpointArtifacts, err := artifacts.NewCaddyCheckpointArtifacts(bootstrap.ArtifactsPath, artifacts.CaddyCheckpointOptions{
+		Directory: adminWords.Paths.CheckpointDirectory, CheckpointSuffix: adminWords.Paths.CheckpointSuffix,
+		TemporarySuffix: adminWords.Paths.TemporarySuffix, DirectoryMode: adminWords.Modes.Directory,
+		FileMode: adminWords.Modes.File, InvalidConfiguration: adminWords.Diagnostics.InvalidConfiguration,
+	})
+	if err != nil {
+		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
+		return words.Exits.Internal
+	}
 	releaseStore, err := storage.NewSQLiteGroupReleaseStore(database)
 	if err != nil {
 		writeFailure(options.output, words.Exits.Internal, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
@@ -281,6 +300,29 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return words.Exits.Validation
 	}
 	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(groupStore, bootstrap, managementWords, runtimeBindings, pluginBindings)
+	adminClient, _ := caddyRuntime.(interfaces.CaddyAdminClient)
+	adminMutationService := &application.AdminMutationService{
+		Admin: adminClient, Checkpoints: checkpointStore, Artifacts: checkpointArtifacts,
+		Policy: application.AdminMutationPolicy{
+			MutationMethods:       adminWords.Methods.Mutating,
+			SuccessStatusMinimum:  adminWords.Statuses.SuccessMinimum,
+			SuccessStatusMaximum:  adminWords.Statuses.SuccessMaximum,
+			MaximumSnapshotBytes:  adminWords.Limits.SnapshotBytes,
+			OperationKind:         adminWords.Operation.Kind,
+			OperationRunning:      adminWords.Operation.Running,
+			OperationSucceeded:    adminWords.Operation.Succeeded,
+			OperationFailed:       adminWords.Operation.Failed,
+			AuditAction:           adminWords.Audit.Action,
+			AuditResource:         adminWords.Audit.Resource,
+			AuditStarted:          adminWords.Audit.Started,
+			AuditSucceeded:        adminWords.Audit.Succeeded,
+			AuditFailed:           adminWords.Audit.Failed,
+			InvalidConfiguration:  adminWords.Diagnostics.InvalidConfiguration,
+			SnapshotUnavailable:   adminWords.Diagnostics.SnapshotUnavailable,
+			CheckpointUnavailable: adminWords.Diagnostics.CheckpointUnavailable,
+			AdminUnavailable:      adminWords.Diagnostics.AdminUnavailable,
+		},
+	}
 	if stopRuntime != nil {
 		defer stopRuntime()
 	}
@@ -307,6 +349,8 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		},
 		Operations:     application.OperationService{Store: operationStore},
 		GroupReleases:  groupReleaseService,
+		AdminMutations: adminMutationService,
+		AdminWords:     adminWords,
 		CookiePolicies: cookiePolicyManagementService(bootstrap, cookiePolicyStore, caddyRuntime, auditWords, managementWords),
 		Audit: &application.AuditService{
 			Store: auditStore, RetentionDays: auditWords.Audit.RetentionDays,
