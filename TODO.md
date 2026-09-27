@@ -82,17 +82,18 @@
   `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` прошли.
 
 - D4 bootstrap package начал переноситься по вертикальным increments. Red
-  ownership assertions зафиксировали, что Management TLS setup, SQLite opening
-  и plugin inventory projection принадлежат `cli/bootstrap`, а не root `cli`.
-  Эти три функции перенесены в `bootstrap/tls.go`, `bootstrap/stores.go` и
-  `bootstrap/inventory.go`; CLI сохраняет прежнее поведение и передаёт только
-  asset-backed diagnostic value. Первые два файла вошли в один green increment,
-  потому что architecture gate запрещает однофайловые вложенные Go packages.
-  Проверки bootstrap loader, relative paths и serving groups вместе с
-  ownership/boundary/budget suite прошли (7 файлов / 19 тестов, Node v22.21.1);
-  также прошли `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
-  `make arch-lint`. Остальные bootstrap responsibilities ещё предстоит разнести
-  по целевым файлам.
+  ownership assertions зафиксировали, что Management TLS setup, SQLite opening,
+  plugin inventory projection и runtime service composition принадлежат
+  `cli/bootstrap`, а не root `cli`. Функции перенесены в
+  `bootstrap/{tls,stores,inventory,services}.go`; CLI сохраняет прежнее
+  поведение и передаёт только asset-backed diagnostic value. TLS и SQLite
+  вошли в один green increment, потому что architecture gate запрещает
+  однофайловые вложенные Go packages. Проверки bootstrap loader, relative paths,
+  serving groups и Management characterization вместе с ownership/boundary/
+  budget suite прошли (8 файлов / 21 тест, Node v22.21.1); также прошли
+  `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
+  Основные bootstrap orchestration и остальные responsibilities ещё предстоит
+  перенести в целевые файлы.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

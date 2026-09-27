@@ -19,7 +19,6 @@ import (
 	"syscall"
 
 	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/artifacts"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
@@ -177,12 +176,12 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 		return exitCode
 	}
 	readiness, reason, stopRuntime, caddyRuntime := systemDataPlane(stores.groupStore, bootstrap, inventory.management, runtimeBindings, pluginBindings)
-	adminMutationService := newAdminMutationService(caddyRuntime, stores)
+	adminMutationService := bootstrapruntime.NewAdminMutationService(caddyRuntime, stores.checkpointStore, stores.checkpointFiles, stores.adminWords)
 	if stopRuntime != nil {
 		defer stopRuntime()
 	}
-	groupReleaseService := newGroupReleaseService(bootstrap, stores, caddyRuntime, adminMutationService)
-	readiness, reason = activateCurrentGroupRelease(groupReleaseService, caddyRuntime, inventory.management, readiness, reason)
+	groupReleaseService := bootstrapruntime.NewGroupReleaseService(bootstrap.ArtifactsPath, stores.groupStore, stores.releaseStore, stores.releaseArtifacts, stores.releasePolicy, caddyRuntime, adminMutationService)
+	readiness, reason = bootstrapruntime.ActivateCurrentGroupRelease(groupReleaseService, caddyRuntime, inventory.management, readiness, reason)
 	management := newManagementServer(managementServerDependencies{
 		bootstrap: bootstrap, runtimeBindings: runtimeBindings, stores: stores,
 		inventory: inventory, managementInputs: managementInputs,
@@ -361,60 +360,6 @@ func loadManagementInputs(options options, bootstrap config.BootstrapConfig) (ma
 	return inputs, words.Exits.OK
 }
 
-func newAdminMutationService(runtime CaddyRuntime, stores bootstrapStores) *application.AdminMutationService {
-	adminClient, _ := runtime.(interfaces.CaddyAdminClient)
-	return &application.AdminMutationService{
-		Admin: adminClient, Checkpoints: stores.checkpointStore, Artifacts: stores.checkpointFiles,
-		Policy: application.AdminMutationPolicy{
-			MutationMethods:       stores.adminWords.Methods.Mutating,
-			SuccessStatusMinimum:  stores.adminWords.Statuses.SuccessMinimum,
-			SuccessStatusMaximum:  stores.adminWords.Statuses.SuccessMaximum,
-			MaximumSnapshotBytes:  stores.adminWords.Limits.SnapshotBytes,
-			OperationKind:         stores.adminWords.Operation.Kind,
-			OperationRunning:      stores.adminWords.Operation.Running,
-			OperationSucceeded:    stores.adminWords.Operation.Succeeded,
-			OperationFailed:       stores.adminWords.Operation.Failed,
-			AuditAction:           stores.adminWords.Audit.Action,
-			AuditResource:         stores.adminWords.Audit.Resource,
-			AuditStarted:          stores.adminWords.Audit.Started,
-			AuditSucceeded:        stores.adminWords.Audit.Succeeded,
-			AuditFailed:           stores.adminWords.Audit.Failed,
-			InvalidConfiguration:  stores.adminWords.Diagnostics.InvalidConfiguration,
-			SnapshotUnavailable:   stores.adminWords.Diagnostics.SnapshotUnavailable,
-			CheckpointUnavailable: stores.adminWords.Diagnostics.CheckpointUnavailable,
-			AdminUnavailable:      stores.adminWords.Diagnostics.AdminUnavailable,
-		},
-	}
-}
-
-func newGroupReleaseService(bootstrap config.BootstrapConfig, stores bootstrapStores, runtime CaddyRuntime, driftGuard *application.AdminMutationService) *application.GroupReleaseService {
-	return &application.GroupReleaseService{
-		Store: stores.groupStore, Releases: stores.releaseStore,
-		ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
-		Artifacts:     stores.releaseArtifacts, Activator: runtime, DriftGuard: driftGuard, Policy: stores.releasePolicy,
-	}
-}
-
-func activateCurrentGroupRelease(service *application.GroupReleaseService, runtime CaddyRuntime, management config.ManagementWords, readiness, reason string) (string, string) {
-	if runtime == nil {
-		return readiness, reason
-	}
-	if err := service.Recover(context.Background()); err != nil {
-		return management.Statuses.NotReady, management.Statuses.RecoveryRequired
-	}
-	if reason == management.Statuses.SystemReleaseRequired {
-		return readiness, reason
-	}
-	lazy, deferred := runtime.(interface{ Active() bool })
-	if deferred && lazy.Active() {
-		return readiness, reason
-	}
-	if err := service.ActivateCurrent(context.Background()); err != nil {
-		return management.Statuses.NotReady, management.Statuses.RecoveryRequired
-	}
-	return readiness, reason
-}
-
 type managementServerDependencies struct {
 	bootstrap            config.BootstrapConfig
 	runtimeBindings      RuntimeBindings
@@ -440,7 +385,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		GroupReleases:  dependencies.groupReleaseService,
 		AdminMutations: dependencies.adminMutationService,
 		AdminWords:     stores.adminWords,
-		CookiePolicies: cookiePolicyManagementService(dependencies.bootstrap, inventory.cookiePolicyStore, dependencies.caddyRuntime, audit, management),
+		CookiePolicies: bootstrapruntime.CookiePolicyManagementService(inventory.cookiePolicyStore, dependencies.caddyRuntime, audit, management),
 		Audit: &application.AuditService{
 			Store: stores.auditStore, RetentionDays: audit.Audit.RetentionDays,
 			MinimumLimit: management.Pagination.LimitMin, DefaultLimit: management.Pagination.LimitDefault,
@@ -477,22 +422,6 @@ func dataPlaneReadiness(runtime CaddyRuntime, management config.ManagementWords,
 		return readiness, reason
 	}
 	return management.Statuses.NotReady, management.Statuses.CaddyUnavailable
-}
-
-func cookiePolicyManagementService(bootstrap config.BootstrapConfig, store interfaces.PluginCookiePolicyStore, runtime CaddyRuntime, audit config.AuditWords, management config.ManagementWords) *application.PluginCookiePolicyService {
-	if store == nil {
-		return nil
-	}
-	var activator interfaces.PluginCookiePolicyActivator
-	activator, _ = runtime.(interfaces.PluginCookiePolicyActivator)
-	return &application.PluginCookiePolicyService{
-		Store: store, Activator: activator,
-		AuditAction:      audit.Audit.Actions.PluginCookiePolicyReplace,
-		Resource:         audit.Audit.Resources.PluginCookiePolicies,
-		Success:          audit.Audit.Results.Succeeded,
-		Invalid:          management.Codes.InvalidCookiePolicy,
-		RevisionConflict: management.Codes.CookiePolicyRevisionConflict,
-	}
 }
 
 func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.BootstrapConfig, managementWords config.ManagementWords, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding) (string, string, func() error, CaddyRuntime) {
