@@ -338,23 +338,16 @@
   отсутствие pending или staged artifact. Тест доказывает этот process-crash
   boundary на настоящем Caddy, но не закрывает остальные crash points и полный
   v1 recovery/conformance gate.
-- [ ] Реализовать полный Admin API pass-through к loopback/local IPC; checkpoint
-  до каждой mutation, drift detection, group publish block, explicit checkpoint
-  restore и full-composition reconcile с If-Match.
-- [ ] Перед `GET /api/caddy-state` и Admin mutations согласовать/реализовать
-  общий trust boundary чтения фактической активной Caddy-конфигурации для
-  embedded и external вариантов, canonical digest для обоих вариантов и
-  SQLite-порт чтения/создания checkpoint metadata. Сейчас embedded Admin API
-  отключён, публичный `caddy.ActiveContext` не отдаёт полный effective config,
-  external runtime обращается к Admin `/config/` только как readiness probe и
-  отбрасывает body, не инспектируя и не сравнивая effective config; таблица
-  `caddy_checkpoints` не имеет production repository. Обнаружено расхождение:
-  текущий `GET /api/status`
-  безусловно выдаёт `drift: false`, хотя фактический runtime drift пока нельзя
-  вычислить; до реализации trust boundary нужно убрать это ложное утверждение
-  согласованным способом обновления API-контракта. Не возвращать фиктивные
-  `drift: false`, digest или checkpoint ID; до закрытия prerequisites
-  `/api/caddy-state` и mutation proxy остаются заблокированы.
+- [x] Реализовать authenticated Admin API pass-through к закрытому Caddy Admin
+  API, checkpoint перед каждой mutation, persistent checkpoint metadata и
+  сравнение фактического runtime digest с последним checkpoint. Любой drift
+  возвращает `409 group_drift_blocked` до staging group release; generation
+  повторно проверяется непосредственно перед activation под общей блокировкой.
+  TS integration доказывает, что failed publish не меняет current revision и
+  число revision.
+- [ ] Реализовать explicit checkpoint restore и full-composition reconcile с
+  If-Match; group mutations остаются заблокированы при drift до одной из этих
+  явных операций.
 - [ ] Не обещать обратную генерацию Caddyfile из произвольного native Caddy JSON.
 
 ## Plugins, TLS и Constructor boundary
@@ -489,15 +482,13 @@
   отклоняется до `/load`, сохраняя прежний public snapshot. Временные plugin
   clients закрываются через Caddy `CleanerUpper`. Remote replica
   `DispatchApply` readiness barrier до activation пока не подключён.
-- [ ] Расширять исполняемые golden-vector conformance: сейчас семнадцать из
+- [ ] Расширять исполняемые golden-vector conformance: сейчас двадцать из
   двадцати одного vector исполняются через интеграционные фикстуры: bootstrap
-  rejection, Management authentication, одиннадцать archive cases и три group
+  rejection, Management authentication, одиннадцать archive cases, три group
   publish cases (idempotency/single activation, idempotency-key conflict без
-  смены revision и stale-CAS без смены pointer), а также activation failure
-  (operation помечается failed, current/previous pointers и runtime остаются
-  прежними). Четыре оставшихся вектора требуют соответствующих production
-  slices: Admin checkpoint/drift, remote-plugin no-downgrade и one-time
-  credential reveal.
+  смены revision и stale-CAS без смены pointer), activation failure, Admin
+  checkpoint и drift-blocked group publish. Остаются remote-plugin
+  no-downgrade и one-time credential reveal.
 - [x] Исправить release workflow: пакетирование проверяет точный состав payload
   по `manifest.json`, SHA-256 каждого файла, отсутствие неописанных файлов и
   корректность путей вместо неподходящего фиксированного количества файлов.

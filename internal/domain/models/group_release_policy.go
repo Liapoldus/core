@@ -48,6 +48,8 @@ type GroupReleasePolicy struct {
 	ArtifactInvalidCode            string
 	ArtifactTooLargeCode           string
 	ActivationFailedCode           string
+	DriftBlockedCode               string
+	DriftBlockedMessage            string
 	MetadataIdempotencyKeyField    string
 	MetadataExpectedRevisionField  string
 	ExpectedCurrentRevisionField   string

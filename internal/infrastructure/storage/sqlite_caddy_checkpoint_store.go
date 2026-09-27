@@ -16,6 +16,7 @@ type sqliteCaddyCheckpointContract struct {
 	InsertOperation  string `yaml:"insertOperation"`
 	InsertCheckpoint string `yaml:"insertCheckpoint"`
 	UpdateOperation  string `yaml:"updateOperation"`
+	SelectLatest     string `yaml:"selectLatestCheckpoint"`
 	TimestampLayout  string `yaml:"timestampLayout"`
 	InvalidContract  string `yaml:"invalidContract"`
 }
@@ -37,7 +38,7 @@ func NewSQLiteCaddyCheckpointStore(database *sql.DB) (*SQLiteCaddyCheckpointStor
 	if err := yaml.Unmarshal(contents, &contract); err != nil {
 		return nil, err
 	}
-	if database == nil || contract.InsertOperation == "" || contract.InsertCheckpoint == "" || contract.UpdateOperation == "" || contract.TimestampLayout == "" || contract.InvalidContract == "" {
+	if database == nil || contract.InsertOperation == "" || contract.InsertCheckpoint == "" || contract.UpdateOperation == "" || contract.SelectLatest == "" || contract.TimestampLayout == "" || contract.InvalidContract == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
 	audit, err := NewSQLiteAuditStore(database)
@@ -105,4 +106,27 @@ func (store *SQLiteCaddyCheckpointStore) CompleteMutation(ctx context.Context, o
 		return err
 	}
 	return transaction.Commit()
+}
+
+func (store *SQLiteCaddyCheckpointStore) Latest(ctx context.Context) (models.CaddyCheckpoint, bool, error) {
+	if store == nil {
+		return models.CaddyCheckpoint{}, false, sql.ErrConnDone
+	}
+	var checkpoint models.CaddyCheckpoint
+	var createdAt string
+	err := store.database.QueryRowContext(ctx, store.contract.SelectLatest).Scan(
+		&checkpoint.ID, &checkpoint.RuntimeDigest, &checkpoint.SnapshotPath,
+		&checkpoint.OperationID, &checkpoint.Actor, &createdAt, &checkpoint.OperationState,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.CaddyCheckpoint{}, false, nil
+	}
+	if err != nil {
+		return models.CaddyCheckpoint{}, false, err
+	}
+	checkpoint.CreatedAt, err = time.Parse(store.contract.TimestampLayout, createdAt)
+	if err != nil {
+		return models.CaddyCheckpoint{}, false, err
+	}
+	return checkpoint, true, nil
 }

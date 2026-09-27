@@ -49,6 +49,8 @@ func (service *AdminMutationService) Handle(ctx context.Context, command models.
 	if service.Checkpoints == nil || service.Artifacts == nil {
 		return models.CaddyAdminResponse{}, errors.New(service.Policy.InvalidConfiguration)
 	}
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
 	snapshot, err := service.Admin.Snapshot(ctx)
 	if err != nil || len(snapshot) == 0 || int64(len(snapshot)) > service.Policy.MaximumSnapshotBytes {
 		return models.CaddyAdminResponse{}, errors.New(service.Policy.SnapshotUnavailable)
@@ -103,6 +105,28 @@ func (service *AdminMutationService) Handle(ctx context.Context, command models.
 		return models.CaddyAdminResponse{}, errors.New(service.Policy.AdminUnavailable)
 	}
 	return response, nil
+}
+
+func (service *AdminMutationService) Drifted(ctx context.Context) (bool, error) {
+	if service.Admin == nil || service.Checkpoints == nil {
+		return false, errors.New(service.Policy.InvalidConfiguration)
+	}
+	checkpoint, exists, err := service.Checkpoints.Latest(ctx)
+	if err != nil {
+		return false, errors.New(service.Policy.CheckpointUnavailable)
+	}
+	if !exists {
+		return false, nil
+	}
+	if checkpoint.OperationState == service.Policy.OperationRunning {
+		return true, nil
+	}
+	snapshot, err := service.Admin.Snapshot(ctx)
+	if err != nil || len(snapshot) == 0 || int64(len(snapshot)) > service.Policy.MaximumSnapshotBytes {
+		return false, errors.New(service.Policy.SnapshotUnavailable)
+	}
+	digest := sha256.Sum256(snapshot)
+	return hex.EncodeToString(digest[:]) != checkpoint.RuntimeDigest, nil
 }
 
 func containsAdminMethod(methods []string, method string) bool {

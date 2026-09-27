@@ -9,4 +9,5 @@ import (
 type CaddyCheckpointStore interface {
 	CreateMutation(context.Context, models.CaddyCheckpoint, models.Operation, models.AuditRecord) error
 	CompleteMutation(context.Context, string, string, models.AuditRecord) error
+	Latest(context.Context) (models.CaddyCheckpoint, bool, error)
 }

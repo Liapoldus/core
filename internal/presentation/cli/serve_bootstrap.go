@@ -329,7 +329,7 @@ func serveBootstrap(options options, bootstrap config.BootstrapConfig, runtimeBi
 	groupReleaseService := &application.GroupReleaseService{
 		Store: groupStore, Releases: releaseStore,
 		ContentReader: artifacts.GroupRevisionReader{Root: bootstrap.ArtifactsPath},
-		Artifacts:     releaseArtifacts, Activator: caddyRuntime, Policy: releasePolicy,
+		Artifacts:     releaseArtifacts, Activator: caddyRuntime, DriftGuard: adminMutationService, Policy: releasePolicy,
 	}
 	if caddyRuntime != nil {
 		if err := groupReleaseService.Recover(context.Background()); err != nil {

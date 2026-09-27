@@ -891,6 +891,11 @@ func (server *Server) handleGroupPublish(response http.ResponseWriter, request *
 		Caddyfile:               caddyfile, Artifact: artifact,
 	})
 	if err != nil {
+		var driftBlocked models.GroupDriftBlocked
+		if errors.As(err, &driftBlocked) {
+			server.writeCatalogProblem(response, server.GroupReleasePolicy.DriftBlockedCode, requestID)
+			return
+		}
 		var conflict models.GroupRevisionConflict
 		if errors.As(err, &conflict) {
 			server.writeCatalogProblem(response, server.GroupReleasePolicy.RevisionConflictCode, requestID)

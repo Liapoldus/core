@@ -185,7 +185,7 @@ func main() {
 		server.GroupReleases = &application.GroupReleaseService{
 			Store: groupStore, Releases: releaseStore,
 			ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])},
-			Artifacts:     releaseArtifacts, Activator: &fixtureDriftActivator{}, Policy: releasePolicy,
+			Artifacts:     releaseArtifacts, Activator: &fixtureDriftActivator{}, DriftGuard: adminMutationService, Policy: releasePolicy,
 		}
 		server.GroupReleasePolicy = releasePolicy
 		server.GroupService = application.GroupService{Store: groupStore, ContentReader: artifacts.GroupRevisionReader{Root: filepath.Dir(os.Args[1])}}

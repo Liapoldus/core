@@ -55,6 +55,8 @@ type GroupReleaseWords struct {
 	ArtifactInvalidCode            string `yaml:"artifactInvalidCode"`
 	ArtifactTooLargeCode           string `yaml:"artifactTooLargeCode"`
 	ActivationFailedCode           string `yaml:"activationFailedCode"`
+	DriftBlockedCode               string `yaml:"driftBlockedCode"`
+	DriftBlockedMessage            string `yaml:"driftBlockedMessage"`
 	MetadataIdempotencyKeyField    string `yaml:"metadataIdempotencyKeyField"`
 	MetadataExpectedRevisionField  string `yaml:"metadataExpectedRevisionField"`
 	ExpectedCurrentRevisionField   string `yaml:"expectedCurrentRevisionField"`
@@ -70,7 +72,7 @@ func LoadGroupRelease() (models.GroupReleasePolicy, error) {
 	if err := yaml.Unmarshal(contents, &words); err != nil {
 		return models.GroupReleasePolicy{}, err
 	}
-	if words.OperationKind == "" || words.RollbackOperationKind == "" || words.ScopePrefix == "" || words.ScopeSuffix == "" || words.RollbackScopeSuffix == "" || words.AuditAction == "" || words.RollbackAuditAction == "" || words.SuccessResult == "" || words.FailureResult == "" || words.PendingState == "" || words.RunningState == "" || words.SucceededState == "" || words.FailedState == "" || words.JournalPendingState == "" || words.JournalCompleteState == "" || words.JournalFailedState == "" || words.FragmentSeparator == "" || words.IdempotencyWindow == "" || words.InvalidContract == "" || words.SystemGroupKind == "" || words.InvalidConfiguration == "" || words.MetadataPart == "" || words.CaddyfilePart == "" || words.ArtifactPart == "" || words.MultipartContentType == "" || words.RequestLimitBytes <= 0 || words.InvalidRequestCode == "" || words.RevisionConflictCode == "" || words.IdempotencyConflictCode == "" || words.CaddyAdaptFailedCode == "" || words.ArtifactInvalidCode == "" || words.ArtifactTooLargeCode == "" || words.ActivationFailedCode == "" || words.MetadataIdempotencyKeyField == "" || words.MetadataExpectedRevisionField == "" || words.ExpectedCurrentRevisionField == "" || words.RevisionIDPattern == "" || words.CompressedArtifactLimitBytes <= 0 || words.UncompressedArtifactLimitBytes <= 0 || words.ArtifactEntryLimit <= 0 || words.CompressionRatioLimit <= 0 || words.ArtifactPathByteLimit <= 0 || words.ArtifactPathDepthLimit <= 0 || words.ArtifactSuffix == "" || words.MetadataContentType == "" || words.CaddyfileContentType == "" || words.ArtifactContentType == "" || words.ArtifactFileMode == 0 || words.ArtifactDirectoryMode == 0 {
+	if words.OperationKind == "" || words.RollbackOperationKind == "" || words.ScopePrefix == "" || words.ScopeSuffix == "" || words.RollbackScopeSuffix == "" || words.AuditAction == "" || words.RollbackAuditAction == "" || words.SuccessResult == "" || words.FailureResult == "" || words.PendingState == "" || words.RunningState == "" || words.SucceededState == "" || words.FailedState == "" || words.JournalPendingState == "" || words.JournalCompleteState == "" || words.JournalFailedState == "" || words.FragmentSeparator == "" || words.IdempotencyWindow == "" || words.InvalidContract == "" || words.SystemGroupKind == "" || words.InvalidConfiguration == "" || words.MetadataPart == "" || words.CaddyfilePart == "" || words.ArtifactPart == "" || words.MultipartContentType == "" || words.RequestLimitBytes <= 0 || words.InvalidRequestCode == "" || words.RevisionConflictCode == "" || words.IdempotencyConflictCode == "" || words.CaddyAdaptFailedCode == "" || words.ArtifactInvalidCode == "" || words.ArtifactTooLargeCode == "" || words.ActivationFailedCode == "" || words.DriftBlockedCode == "" || words.DriftBlockedMessage == "" || words.MetadataIdempotencyKeyField == "" || words.MetadataExpectedRevisionField == "" || words.ExpectedCurrentRevisionField == "" || words.RevisionIDPattern == "" || words.CompressedArtifactLimitBytes <= 0 || words.UncompressedArtifactLimitBytes <= 0 || words.ArtifactEntryLimit <= 0 || words.CompressionRatioLimit <= 0 || words.ArtifactPathByteLimit <= 0 || words.ArtifactPathDepthLimit <= 0 || words.ArtifactSuffix == "" || words.MetadataContentType == "" || words.CaddyfileContentType == "" || words.ArtifactContentType == "" || words.ArtifactFileMode == 0 || words.ArtifactDirectoryMode == 0 {
 		return models.GroupReleasePolicy{}, errors.New(words.InvalidContract)
 	}
 	window, err := time.ParseDuration(words.IdempotencyWindow)
@@ -102,7 +104,8 @@ func LoadGroupRelease() (models.GroupReleasePolicy, error) {
 		InvalidRequestCode: words.InvalidRequestCode, RevisionConflictCode: words.RevisionConflictCode,
 		IdempotencyConflictCode: words.IdempotencyConflictCode, CaddyAdaptFailedCode: words.CaddyAdaptFailedCode,
 		ArtifactInvalidCode: words.ArtifactInvalidCode, ArtifactTooLargeCode: words.ArtifactTooLargeCode,
-		ActivationFailedCode:          words.ActivationFailedCode,
+		ActivationFailedCode: words.ActivationFailedCode, DriftBlockedCode: words.DriftBlockedCode,
+		DriftBlockedMessage:           words.DriftBlockedMessage,
 		MetadataIdempotencyKeyField:   words.MetadataIdempotencyKeyField,
 		MetadataExpectedRevisionField: words.MetadataExpectedRevisionField,
 		ExpectedCurrentRevisionField:  words.ExpectedCurrentRevisionField,

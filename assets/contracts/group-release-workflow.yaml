@@ -43,6 +43,8 @@ caddyAdaptFailedCode: caddy_adapt_failed
 artifactInvalidCode: artifact_invalid
 artifactTooLargeCode: artifact_too_large
 activationFailedCode: activation_failed
+driftBlockedCode: group_drift_blocked
+driftBlockedMessage: "Состояние Caddy runtime отличается от последнего контрольного снимка."
 metadataIdempotencyKeyField: idempotencyKey
 metadataExpectedRevisionField: expectedCurrentRevision
 expectedCurrentRevisionField: expectedCurrentRevision

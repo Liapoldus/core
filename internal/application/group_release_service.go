@@ -19,6 +19,7 @@ type GroupReleaseService struct {
 	ContentReader interfaces.GroupRevisionContentReader
 	Artifacts     interfaces.GroupReleaseArtifactStore
 	Activator     interfaces.CaddySnapshotActivator
+	DriftGuard    interfaces.GroupReleaseDriftGuard
 	Policy        models.GroupReleasePolicy
 }
 
@@ -28,6 +29,9 @@ func (service *GroupReleaseService) Accept(ctx context.Context, command models.G
 	}
 	if service.Store == nil || service.Releases == nil || service.ContentReader == nil || service.Artifacts == nil || service.Activator == nil || command.GroupID == "" || command.Actor == "" || command.RequestID == "" || command.IdempotencyKey == "" || command.IdempotencyScope == "" || len(command.Caddyfile) == 0 {
 		return models.Operation{}, false, models.GroupReleaseValidationError{Cause: errors.New(service.Policy.InvalidConfiguration)}
+	}
+	if err := service.ensureNoDrift(ctx); err != nil {
+		return models.Operation{}, false, err
 	}
 	group, err := service.Store.GetGroup(ctx, command.GroupID)
 	if err != nil {
@@ -104,6 +108,22 @@ func (service *GroupReleaseService) Accept(ctx context.Context, command models.G
 	}
 	go service.execute(reservation, revision)
 	return operation, false, nil
+}
+
+func (service *GroupReleaseService) ensureNoDrift(ctx context.Context) error {
+	if service.DriftGuard == nil {
+		return nil
+	}
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
+	drifted, err := service.DriftGuard.Drifted(ctx)
+	if err != nil {
+		return err
+	}
+	if drifted {
+		return models.GroupDriftBlocked{Message: service.Policy.DriftBlockedMessage}
+	}
+	return nil
 }
 
 func (service *GroupReleaseService) Rollback(ctx context.Context, command models.GroupRollbackCommand) (models.Operation, bool, error) {
@@ -273,6 +293,13 @@ func (service *GroupReleaseService) execute(reservation models.GroupReleaseReser
 	ctx := context.Background()
 	SnapshotActivationLock.Lock()
 	defer SnapshotActivationLock.Unlock()
+	if service.DriftGuard != nil {
+		drifted, err := service.DriftGuard.Drifted(ctx)
+		if err != nil || drifted {
+			service.fail(ctx, reservation, nil)
+			return
+		}
+	}
 	candidate, err := service.compose(ctx, reservation.GroupID, &revision)
 	if err == nil {
 		err = service.Activator.Activate(ctx, candidate)
