@@ -4,8 +4,21 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 )
+
+func (server *Server) handlerDependencies() handlers.Dependencies {
+	return handlers.Dependencies{
+		AccessService:       server.AccessService,
+		Management:          server.Management,
+		AuditWords:          server.AuditWords,
+		GenerateServiceKey:  security.GenerateServiceKey,
+		WriteJSON:           server.writeJSON,
+		WriteProblem:        server.writeProblem,
+		WriteCatalogProblem: server.writeCatalogProblem,
+	}
+}
 
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
@@ -44,11 +57,11 @@ func (server *Server) dispatchReadinessAndAdmin(response http.ResponseWriter, re
 
 func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post {
-		server.handleServiceKeyCreate(response, request, requestID, actor)
+		handlers.ServiceKeyCreate(server.handlerDependencies(), response, request, requestID, actor)
 		return true
 	}
 	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get {
-		server.handleServiceKeyList(response, request, requestID)
+		handlers.ServiceKeyList(server.handlerDependencies(), response, request, requestID)
 		return true
 	}
 	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get {

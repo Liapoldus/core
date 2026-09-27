@@ -15,12 +15,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -173,33 +170,6 @@ func (server *Server) handleOperationGet(response http.ResponseWriter, request *
 	server.writeJSON(response, http.StatusOK, result)
 }
 
-func (server *Server) handleServiceKeyList(response http.ResponseWriter, request *http.Request, requestID string) {
-	if server.AccessService == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	metadata, err := server.AccessService.Metadata(request.Context())
-	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	items := make([]map[string]any, 0, len(metadata))
-	for _, item := range metadata {
-		items = append(items, map[string]any{
-			server.Management.JSON.ID:        item.ID,
-			server.Management.JSON.Name:      item.Name,
-			server.Management.JSON.Role:      item.Role,
-			server.Management.JSON.CreatedAt: item.CreatedAt,
-			server.Management.JSON.ExpiresAt: item.ExpiresAt,
-			server.Management.JSON.RevokedAt: item.RevokedAt,
-		})
-	}
-	server.writeJSON(response, http.StatusOK, map[string]any{
-		server.Management.JSON.Items:     items,
-		server.Management.JSON.RequestID: requestID,
-	})
-}
-
 func (server *Server) handleCaddyAdmin(response http.ResponseWriter, request *http.Request, requestID, actor string) {
 	if server.AdminMutations == nil || server.AdminWords.Paths.ManagementPrefix == "" {
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
@@ -285,68 +255,6 @@ func containsString(values []string, value string) bool {
 		}
 	}
 	return false
-}
-
-func (server *Server) handleServiceKeyCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {
-	if server.AccessService == nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	fields := make(map[string]json.RawMessage)
-	decoder := json.NewDecoder(request.Body)
-	if err := decoder.Decode(&fields); err != nil || len(fields) != 1 {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-		return
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-		return
-	}
-	rawName, exists := fields[server.Management.JSON.Name]
-	if !exists {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-		return
-	}
-	var name string
-	if err := json.Unmarshal(rawName, &name); err != nil || utf8.RuneCountInString(name) < server.Management.ServiceKeys.NameMinLength || utf8.RuneCountInString(name) > server.Management.ServiceKeys.NameMaxLength {
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidRequest, requestID)
-		return
-	}
-	words, err := config.LoadCLI()
-	if err != nil || words.ServiceKey.KeyBytes < 1 || words.ServiceKey.HashCost < 1 || words.ServiceKey.RolePlatformAdmin == "" || server.Management.ServiceKeys.CreatedStatus < 1 {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	id, token, verifier, err := security.GenerateServiceKey(words.ServiceKey.KeyBytes, words.ServiceKey.HashCost)
-	if err != nil {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	defer clear(verifier)
-	record := models.AuditRecord{
-		Actor: actor, Action: server.AuditWords.Audit.Actions.ServiceKeyCreate,
-		Resource: server.AuditWords.Audit.Resources.ServiceKeys,
-		Result:   server.AuditWords.Audit.Results.Succeeded, RequestID: requestID,
-	}
-	if err := server.AccessService.Create(request.Context(), models.ServiceKey{
-		ID: id, Name: name, Verifier: verifier, Role: words.ServiceKey.RolePlatformAdmin,
-	}, record); err != nil {
-		var auditFailure models.AuditAppendError
-		if errors.As(err, &auditFailure) {
-			server.writeProblem(response, http.StatusServiceUnavailable, server.AuditWords.Audit.StorageUnavailable.Code, server.AuditWords.Audit.StorageUnavailable.Detail, requestID)
-			return
-		}
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	server.writeJSON(response, server.Management.ServiceKeys.CreatedStatus, map[string]any{
-		server.Management.JSON.ID:        id,
-		server.Management.JSON.Name:      name,
-		server.Management.JSON.Role:      words.ServiceKey.RolePlatformAdmin,
-		server.Management.JSON.Token:     token,
-		server.Management.JSON.RequestID: requestID,
-	})
 }
 
 func (server *Server) isPluginDetailPath(path string) bool {

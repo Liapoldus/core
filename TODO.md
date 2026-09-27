@@ -125,8 +125,7 @@
   эти объявления в `adapter.go`. Management API characterization, ownership,
   structure и function-budget suite прошли (6 файлов / 23 теста), также прошли
   `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
-  Перенос plugin/group/service-key/Caddy handlers в целевую подпапку остаётся
-  открытым.
+  Перенос group/plugin/Caddy handlers в целевую подпапку остаётся открытым.
 
 - D3.3 API response: JSON/problem/shared writers, catalog error mapping,
   cookie-policy failure mapping, pagination response и `recordAudit` выделены из
@@ -152,6 +151,15 @@
   response/codec ownership, Server boundary и Management route/response
   characterization прошли (7 файлов / 17 тестов). `go build ./...`, `go vet
   ./...`, `make staticcheck-u1000` и `make arch-lint` завершились с exit 0.
+
+- D3.3 API service keys: list/create request handlers перемещены в
+  `api/handlers/servicekeys.go`; router вызывает функции leaf-пакета через узкий
+  `handlers.Dependencies`, не меняя форму `api.Server`. Для генератора credential
+  используется callback из API root, поэтому leaf не зависит от
+  `infrastructure/security` и не импортирует `api`. Red ownership test
+  `d571221`; ownership и service-key issuance/list E2E прошли (3 файла / 6
+  тестов), `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
+  `make arch-lint` прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
