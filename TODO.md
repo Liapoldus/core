@@ -33,14 +33,14 @@
   может зависеть от `api/handlers`, обратный edge запрещён; `.go-arch-lint.yml`
   обновлён. После D5 файловые переносы идут отдельными D3.3/D4 increments;
   форму `api.Server` не менять. P5 red/green применил предел ≤80 строк ко всем фактическим
-  превышениям: `api.handle`, `api.handleGroupPublish`,
-  `api.handleGroupRollback` и `cli.serveBootstrap`; все прошли рекурсивный
+  превышениям: `api.handle`, group publish/rollback endpoints (позже перенесены
+  в `api/handlers`) и `cli.serveBootstrap`; все прошли рекурсивный
   TypeScript budget test. Инвентаризация скорректирована: формулировка
   приложения про «ровно две» функции неполна — `serveBootstrap` также превышал
   общий предел; `readGroupReleaseMultipart` уже укладывается в 80 строк и не
   менялся. Сохранены порядок регистрации `defer`, route/status precedence,
   Management response characterization и текущая форма `api.Server`.
-  Полный `make check` на Node v22.21.1 прошёл (72 файла / 129 тестов, build и
+  Полный `make check` на Node v22.21.1 прошёл (85 файлов / 168 тестов, build и
   Docker arch-lint); отдельно прошли `go vet ./...` и
   `make staticcheck-u1000`. D5 package/ownership guards включены в `make check`;
   дальше идут раздельные D3.3 API и D4 CLI package moves. Production-изменения
@@ -137,10 +137,11 @@
   ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` также
   прошли.
 
-- D3.3 API codec: plugin-cookie payload DTO и pagination slice projection
-  находятся в `api/codec.go`. Red test `0120611` закрепляет ownership; после
-  переноса group endpoints group-specific DTO, multipart parser, response
-  projection и ASCII validation принадлежат `api/handlers/groups.go`.
+- D3.3 API codec: pagination slice projection находится в `api/codec.go`. Red
+  test `0120611` закрепляет ownership; plugin-cookie payload DTO позже перенесён
+  к владельцу endpoint в `api/handlers/plugins.go`. После переноса group
+  endpoints group-specific DTO, multipart parser, response projection и ASCII
+  validation принадлежат `api/handlers/groups.go`.
 
 - D3.3 API router: `handle` и семь path/method dispatch-функций перемещены в
   `api/router.go`; порядок маршрутизации и условия dispatch не изменялись.
@@ -186,6 +187,18 @@
   ownership test `bd0a01a`; exact Node v22.21.1 focused suite прошёл (22 файла /
   42 теста), `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
   `make arch-lint` прошли.
+
+- D3.3 API Management: Healthz, readiness, audit list и operation lookup
+  вынесены в `api/handlers/management.go`; router сохраняет только проверку
+  доступа и dispatch, а `randomID` принадлежит `api/codec.go`. После перевода
+  всех callers удалён `api/adapter.go`; список и порядок полей `api.Server`
+  сохранены. Router ownership test уточнён по целевым package boundaries
+  (`1b8fe22`, `56d4a85`); function-budget test теперь проверяет фактических
+  владельцев `GroupPublish`/`GroupRollback` и сохраняет тот же лимит. Focused
+  suite прошёл (28 файлов / 50 тестов, Node v22.21.1); после обновления двух
+  устаревших function-name assertions полный `make check` прошёл на Node
+  v22.21.1 (85 файлов / 168 тестов, build и Docker arch-lint). `go vet ./...`
+  и `make staticcheck-u1000` также прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

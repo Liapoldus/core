@@ -1,8 +1,19 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+
 	"github.com/Liapoldus/core/internal/domain/models"
 )
+
+func randomID() string {
+	bytes := make([]byte, 8)
+	if _, err := rand.Read(bytes); err != nil {
+		return "00000000"
+	}
+	return hex.EncodeToString(bytes)
+}
 
 func sliceValues(values any) []any {
 	switch typed := values.(type) {

@@ -10,6 +10,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api/handlers"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (server *Server) handlerDependencies() handlers.Dependencies {
@@ -83,6 +84,26 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 	return dependencies
 }
 
+func (server *Server) managementHandlerDependencies() handlers.ManagementDependencies {
+	server.mu.RLock()
+	defer server.mu.RUnlock()
+	return handlers.ManagementDependencies{
+		Audit:               server.Audit,
+		Operations:          server.Operations,
+		DataPlaneState:      server.DataPlaneState,
+		DataPlaneReason:     server.DataPlaneReason,
+		DataPlaneReadiness:  server.DataPlaneReadiness,
+		CaddyVariant:        server.CaddyVariant,
+		CaddyBuildID:        server.CaddyBuildID,
+		CaddyModules:        server.CaddyModules,
+		Management:          server.Management,
+		AuditWords:          server.AuditWords,
+		WriteJSON:           server.writeJSON,
+		WriteProblem:        server.writeProblem,
+		WriteCatalogProblem: server.writeCatalogProblem,
+	}
+}
+
 func decodePluginCookiePolicy(encoded []byte) (models.PluginCookiePolicy, error) {
 	policy, err := plugins.DecodeCookiePolicy(encoded)
 	if err != nil {
@@ -97,7 +118,7 @@ func decodePluginCookiePolicy(encoded []byte) (models.PluginCookiePolicy, error)
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
-	if server.handleHealthz(response, request, requestID) {
+	if handlers.Healthz(server.managementHandlerDependencies(), response, request, requestID) {
 		return
 	}
 	actor, authorized := server.authorizeManagementRequest(response, request, requestID)
@@ -117,9 +138,46 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	server.writeProblem(response, 404, "not_found", "resource not found", requestID)
 }
 
+func (server *Server) authorizeManagementRequest(response http.ResponseWriter, request *http.Request, requestID string) (string, bool) {
+	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementMTLSRequired, requestID)
+		return "", false
+	}
+	actor, authorized, err := server.authenticate(request.Context(), request.Header.Get("Authorization"))
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return "", false
+	}
+	if !authorized {
+		server.writeCatalogProblem(response, server.Management.Codes.BearerRequired, requestID)
+		return "", false
+	}
+	return actor, true
+}
+
+func (server *Server) authenticate(ctx context.Context, value string) (string, bool, error) {
+	if !strings.HasPrefix(value, "Bearer ") {
+		return "", false, nil
+	}
+	key := strings.TrimPrefix(value, "Bearer ")
+	if server.AccessService != nil {
+		actor, valid, err := server.AccessService.Authenticate(ctx, key)
+		return actor, valid, err
+	}
+	if server.Token != "" && key == server.Token {
+		return server.AuditWords.Audit.Actors.StaticToken, true, nil
+	}
+	for _, account := range server.ServiceAccounts {
+		if bcrypt.CompareHashAndPassword([]byte(account.KeyHash), []byte(key)) == nil {
+			return account.ID, true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func (server *Server) dispatchReadinessAndAdmin(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if path == server.Management.Paths.Status && request.Method == http.MethodGet {
-		server.handleReadiness(response, request, requestID)
+		handlers.Readiness(server.managementHandlerDependencies(), response, request, requestID)
 		return true
 	}
 	if strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix) {
@@ -199,7 +257,7 @@ func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.
 	if path != server.Management.Paths.Audit || request.Method != http.MethodGet {
 		return false
 	}
-	server.handleAuditList(response, request, requestID)
+	handlers.AuditList(server.managementHandlerDependencies(), response, request, requestID)
 	return true
 }
 
@@ -219,6 +277,6 @@ func (server *Server) dispatchOperations(response http.ResponseWriter, request *
 	if !strings.HasPrefix(path, server.Management.Paths.Operations+"/") || request.Method != http.MethodGet {
 		return false
 	}
-	server.handleOperationGet(response, request, path, requestID)
+	handlers.OperationGet(server.managementHandlerDependencies(), response, request, path, requestID)
 	return true
 }

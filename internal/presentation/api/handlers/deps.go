@@ -62,3 +62,19 @@ type PluginAdminResult struct {
 	ContentType string
 	Body        []byte
 }
+
+type ManagementDependencies struct {
+	Audit               *application.AuditService
+	Operations          application.OperationService
+	DataPlaneState      string
+	DataPlaneReason     string
+	DataPlaneReadiness  func(context.Context) (string, string)
+	CaddyVariant        string
+	CaddyBuildID        string
+	CaddyModules        []string
+	Management          config.ManagementWords
+	AuditWords          config.AuditWords
+	WriteJSON           func(http.ResponseWriter, int, any)
+	WriteProblem        func(http.ResponseWriter, int, string, string, string)
+	WriteCatalogProblem func(http.ResponseWriter, string, string)
+}
