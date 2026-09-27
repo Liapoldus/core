@@ -20,6 +20,20 @@ func (server *Server) handlerDependencies() handlers.Dependencies {
 	}
 }
 
+func (server *Server) groupHandlerDependencies() handlers.GroupDependencies {
+	return handlers.GroupDependencies{
+		GroupService:        server.GroupService,
+		GroupReleases:       server.GroupReleases,
+		GroupReleasePolicy:  server.GroupReleasePolicy,
+		Management:          server.Management,
+		AuditWords:          server.AuditWords,
+		RecordAudit:         server.recordAudit,
+		WriteJSON:           server.writeJSON,
+		WriteProblem:        server.writeProblem,
+		WriteCatalogProblem: server.writeCatalogProblem,
+	}
+}
+
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
 	requestID := "req_" + randomID()
 	response.Header().Set(server.Management.Headers.RequestID, requestID)
@@ -65,11 +79,11 @@ func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, requ
 		return true
 	}
 	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get {
-		server.handleGroupList(response, request, requestID)
+		handlers.GroupList(server.groupHandlerDependencies(), response, request, requestID)
 		return true
 	}
 	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post {
-		server.handleGroupCreate(response, request, requestID, actor)
+		handlers.GroupCreate(server.groupHandlerDependencies(), response, request, requestID, actor)
 		return true
 	}
 	if server.isPluginCookiePolicyPath(path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put) {
@@ -81,23 +95,23 @@ func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, requ
 
 func (server *Server) dispatchGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post {
-		server.handleGroupPublish(response, request, path, requestID, actor)
+		handlers.GroupPublish(server.groupHandlerDependencies(), response, request, path, requestID, actor)
 		return true
 	}
 	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get {
-		server.handleGroupReleases(response, request, path, requestID)
+		handlers.GroupReleases(server.groupHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get {
-		server.handleGroupRelease(response, request, path, requestID)
+		handlers.GroupRelease(server.groupHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback) && request.Method == server.Management.Methods.Post {
-		server.handleGroupRollback(response, request, path, requestID, actor)
+		handlers.GroupRollback(server.groupHandlerDependencies(), response, request, path, requestID, actor)
 		return true
 	}
 	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get {
-		server.handleGroupGet(response, request, path, requestID)
+		handlers.GroupGet(server.groupHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	return false

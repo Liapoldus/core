@@ -125,7 +125,7 @@
   эти объявления в `adapter.go`. Management API characterization, ownership,
   structure и function-budget suite прошли (6 файлов / 23 теста), также прошли
   `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
-  Перенос group/plugin/Caddy handlers в целевую подпапку остаётся открытым.
+  Перенос plugin/Caddy handlers в целевую подпапку остаётся открытым.
 
 - D3.3 API response: JSON/problem/shared writers, catalog error mapping,
   cookie-policy failure mapping, pagination response и `recordAudit` выделены из
@@ -136,13 +136,10 @@
   ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` также
   прошли.
 
-- D3.3 API codec: request DTOs, group-release multipart decoding, `groupResponse`,
-  slice projection и ASCII validation перемещены в `api/codec.go`; семантика
-  upload validation/limits и serialized group response не менялась. Red test
-  `0120611` фиксирует target ownership и отсутствие этих объявлений в
-  `adapter.go`. Management/group-release conformance и ownership suite прошли
-  (12 файлов / 32 теста), `go build ./...`, `go vet ./...`,
-  `make staticcheck-u1000` и `make arch-lint` прошли.
+- D3.3 API codec: plugin-cookie payload DTO и pagination slice projection
+  находятся в `api/codec.go`. Red test `0120611` закрепляет ownership; после
+  переноса group endpoints group-specific DTO, multipart parser, response
+  projection и ASCII validation принадлежат `api/handlers/groups.go`.
 
 - D3.3 API router: `handle` и семь path/method dispatch-функций перемещены в
   `api/router.go`; порядок маршрутизации и условия dispatch не изменялись.
@@ -159,6 +156,16 @@
   `infrastructure/security` и не импортирует `api`. Red ownership test
   `d571221`; ownership и service-key issuance/list E2E прошли (3 файла / 6
   тестов), `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
+  `make arch-lint` прошли.
+
+- D3.3 API groups: семь group endpoints и их request/CAS/rollback helpers
+  перемещены в `api/handlers/groups.go`, а `router.go` вызывает их через отдельный
+  `GroupDependencies`; shape `api.Server` сохранён, handlers не импортирует API
+  root. Group DTO, multipart parser, response projection и ASCII validation
+  перенесены туда же. Red test `ecc6f2e` закрепляет handler/router/codec
+  ownership; group Management, publish/archive, rollback и reservation-race
+  integration прошли (5 файлов / 10 тестов), architecture ownership — 2 файла / 5
+  тестов. `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и
   `make arch-lint` прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
