@@ -164,6 +164,27 @@ describe("external Caddy cookie policy activation", () => {
       });
       expect(after.status).toBe(200);
       expect(await after.json()).toEqual([{ name: "theme", value: "allowed" }]);
+
+      await execFileAsync("go", ["run", "./tests/fixtures/cookie-policy-write-failure", database], { cwd: coreRoot });
+      const rejected = await managementRequest(
+        managementAddress,
+        policyPath,
+        token,
+        "PUT",
+        { "If-Match": updated.headers.etag as string, "Content-Type": "application/json" },
+        JSON.stringify({ allowedNames: ["other"] }),
+      );
+      expect(rejected.status).toBe(503);
+
+      const retainedPolicy = await managementRequest(managementAddress, policyPath, token);
+      expect(retainedPolicy.status).toBe(200);
+      expect(retainedPolicy.headers.etag).toBe(updated.headers.etag);
+      expect(JSON.parse(retainedPolicy.body)).toMatchObject({ revision: 8, allowedNames: ["theme"] });
+      const retained = await fetch(`http://${publicAddress}/accepted`, {
+        headers: { cookie: "theme=still-allowed; other=blocked" },
+      });
+      expect(retained.status).toBe(200);
+      expect(await retained.json()).toEqual([{ name: "theme", value: "still-allowed" }]);
     } catch (error) {
       const externalDiagnostics = await readFile(externalLog, "utf8").catch(() => "");
       throw new Error(`Gateway exit: ${gateway?.process.exitCode ?? "running"}\nGateway stdout: ${gateway?.stdout ?? ""}\nGateway stderr: ${gateway?.stderr ?? ""}\nExternal Caddy stderr: ${externalDiagnostics}\n${String(error)}`);
