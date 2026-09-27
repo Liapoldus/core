@@ -18,6 +18,7 @@ type sqliteAccessContract struct {
 	SelectActiveKey       string `yaml:"selectActiveKey"`
 	InsertKey             string `yaml:"insertKey"`
 	SelectActiveVerifiers string `yaml:"selectActiveVerifiers"`
+	SelectKeyMetadata     string `yaml:"selectKeyMetadata"`
 	BootstrapName         string `yaml:"bootstrapName"`
 	InvalidContract       string `yaml:"invalidContract"`
 	ActiveKeyConflict     string `yaml:"activeKeyConflict"`
@@ -40,7 +41,7 @@ func NewSQLiteServiceKeyStore(database *sql.DB) (*SQLiteServiceKeyStore, error) 
 	if err := yaml.Unmarshal(contents, &contract); err != nil {
 		return nil, err
 	}
-	if database == nil || contract.BeginImmediate == "" || contract.Commit == "" || contract.Rollback == "" || contract.SelectActiveKey == "" || contract.InsertKey == "" || contract.SelectActiveVerifiers == "" || contract.BootstrapName == "" || contract.InvalidContract == "" || contract.ActiveKeyConflict == "" {
+	if database == nil || contract.BeginImmediate == "" || contract.Commit == "" || contract.Rollback == "" || contract.SelectActiveKey == "" || contract.InsertKey == "" || contract.SelectActiveVerifiers == "" || contract.SelectKeyMetadata == "" || contract.BootstrapName == "" || contract.InvalidContract == "" || contract.ActiveKeyConflict == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
 	audit, err := NewSQLiteAuditStore(database)
@@ -116,4 +117,31 @@ func (store *SQLiteServiceKeyStore) ActiveVerifiers(ctx context.Context) ([]mode
 		return nil, err
 	}
 	return verifiers, nil
+}
+
+func (store *SQLiteServiceKeyStore) Metadata(ctx context.Context) ([]models.ServiceKeyMetadata, error) {
+	rows, err := store.database.QueryContext(ctx, store.contract.SelectKeyMetadata)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	metadata := make([]models.ServiceKeyMetadata, 0)
+	for rows.Next() {
+		var item models.ServiceKeyMetadata
+		var expiresAt, revokedAt sql.NullString
+		if err := rows.Scan(&item.ID, &item.Name, &item.Role, &item.CreatedAt, &expiresAt, &revokedAt); err != nil {
+			return nil, err
+		}
+		if expiresAt.Valid {
+			item.ExpiresAt = &expiresAt.String
+		}
+		if revokedAt.Valid {
+			item.RevokedAt = &revokedAt.String
+		}
+		metadata = append(metadata, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return metadata, nil
 }

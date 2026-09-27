@@ -202,6 +202,8 @@ type ManagementWords struct {
 		CurrentRevision    string `yaml:"currentRevision"`
 		PreviousRevision   string `yaml:"previousRevision"`
 		CreatedAt          string `yaml:"createdAt"`
+		ExpiresAt          string `yaml:"expiresAt"`
+		RevokedAt          string `yaml:"revokedAt"`
 		UpdatedAt          string `yaml:"updatedAt"`
 		StartedAt          string `yaml:"startedAt"`
 		FinishedAt         string `yaml:"finishedAt"`

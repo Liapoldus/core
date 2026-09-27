@@ -50,6 +50,8 @@ json:
   currentRevision: currentRevision
   previousRevision: previousRevision
   createdAt: createdAt
+  expiresAt: expiresAt
+  revokedAt: revokedAt
   updatedAt: updatedAt
   startedAt: startedAt
   finishedAt: finishedAt

@@ -239,10 +239,13 @@
   возвращается только в исходном успешном ответе; verifier и metadata
   сохраняются вместе с audit row атомарно. Ошибка storage/audit возвращает
   только безопасную problem response.
+- [x] Читать metadata-only список service keys через
+  `GET /api/access/service-keys`; включать bootstrap и API-issued записи, не
+  раскрывать verifier или raw token.
 - [ ] Реализовать Management API security: private-network web backend доступ
   по mTLS + per-Gateway Bearer `platform-admin`; loopback/SSH-forwarded access
   по Bearer с TLS server verification. Gateway не реализует Constructor users
-  или RBAC. Реализовать list/rotation/revocation и дальнейшую redaction policy.
+  или RBAC. Реализовать rotation/revocation и дальнейшую redaction policy.
 - [ ] Обновить CLI: bootstrap status/migrations, service-key lifecycle,
   group inspect/rollback, Caddy build identity, drift/checkpoint/restore и
   reconcile.

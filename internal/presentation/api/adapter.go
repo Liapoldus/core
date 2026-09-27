@@ -149,6 +149,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		})
 	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post:
 		server.handleServiceKeyCreate(response, request, requestID, actor)
+	case path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get:
+		server.handleServiceKeyList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get:
 		server.handleGroupList(response, request, requestID)
 	case path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post:
@@ -269,6 +271,33 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	default:
 		writeProblem(response, 404, "not_found", "resource not found", requestID)
 	}
+}
+
+func (server *Server) handleServiceKeyList(response http.ResponseWriter, request *http.Request, requestID string) {
+	if server.AccessService == nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	metadata, err := server.AccessService.Metadata(request.Context())
+	if err != nil {
+		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	items := make([]map[string]any, 0, len(metadata))
+	for _, item := range metadata {
+		items = append(items, map[string]any{
+			server.Management.JSON.ID:        item.ID,
+			server.Management.JSON.Name:      item.Name,
+			server.Management.JSON.Role:      item.Role,
+			server.Management.JSON.CreatedAt: item.CreatedAt,
+			server.Management.JSON.ExpiresAt: item.ExpiresAt,
+			server.Management.JSON.RevokedAt: item.RevokedAt,
+		})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{
+		server.Management.JSON.Items:     items,
+		server.Management.JSON.RequestID: requestID,
+	})
 }
 
 func (server *Server) handleServiceKeyCreate(response http.ResponseWriter, request *http.Request, requestID, actor string) {

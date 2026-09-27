@@ -241,7 +241,7 @@ paths:
     get:
       operationId: listServiceKeys
       responses:
-        '200': { description: Key metadata only. }
+        '200': { description: Key metadata only; verifier and credential material are excluded., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceKeyList' } } } }
     post:
       operationId: createServiceKey
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceKeyInput' } } } }
@@ -314,4 +314,6 @@ components:
     AuditList: { type: object, required: [items, nextCursor, requestId], properties: { items: { type: array, items: { type: object, required: [timestamp, actor, action, result], properties: { timestamp: { type: string, format: date-time }, actor: { type: string }, action: { type: string }, resource: { type: string }, result: { enum: [succeeded, failed] } } } }, nextCursor: { type: [string, 'null'] }, requestId: { type: string } } }
     ServiceKeyInput: { type: object, additionalProperties: false, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 80 } } }
     CreatedServiceKey: { type: object, required: [id, name, role, token, requestId], properties: { id: { type: string }, name: { type: string }, role: { const: platform-admin }, token: { type: string, writeOnly: true }, requestId: { type: string } } }
+    ServiceKeyList: { type: object, additionalProperties: false, required: [items, requestId], properties: { items: { type: array, items: { $ref: '#/components/schemas/ServiceKeyMetadata' } }, requestId: { type: string } } }
+    ServiceKeyMetadata: { type: object, additionalProperties: false, required: [id, name, role, createdAt, expiresAt, revokedAt], properties: { id: { type: string }, name: { type: string }, role: { const: platform-admin }, createdAt: { type: string }, expiresAt: { type: [string, 'null'] }, revokedAt: { type: [string, 'null'] } } }
     Problem: { type: object, required: [type, title, status, code, detail, instance, requestId], properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, code: { type: string }, detail: { type: string }, instance: { type: string }, requestId: { type: string }, diagnostics: { type: array, items: { type: object } } } }

@@ -20,6 +20,10 @@ func (service AccessService) Create(ctx context.Context, key models.ServiceKey, 
 	return service.Store.Create(ctx, key, record)
 }
 
+func (service AccessService) Metadata(ctx context.Context) ([]models.ServiceKeyMetadata, error) {
+	return service.Store.Metadata(ctx)
+}
+
 func (service AccessService) Authenticate(ctx context.Context, token string) (string, bool, error) {
 	verifiers, err := service.Store.ActiveVerifiers(ctx)
 	if err != nil {
