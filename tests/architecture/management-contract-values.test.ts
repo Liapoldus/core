@@ -23,6 +23,9 @@ describe("Management API contract value ownership", () => {
       "cursor: cursor",
       "json: application/json",
       "problem: application/problem+json",
+      "limitDefault: 50",
+      "limitMin: 1",
+      "limitMax: 100",
     ]) {
       expect(fields).toContain(field);
     }
@@ -40,5 +43,8 @@ describe("Management API contract value ownership", () => {
     ]) {
       expect(source).not.toContain(`"${value}"`);
     }
+    expect(source).not.toMatch(/limit\s*:=\s*50/);
+    expect(source).not.toMatch(/limit\s*<\s*1/);
+    expect(source).not.toMatch(/limit\s*>\s*100/);
   });
 });
