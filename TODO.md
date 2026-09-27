@@ -74,6 +74,12 @@
   определяться в leaf package; для неизменённого `cmd/gateway/main.go` оставить
   ровно три подтверждённых type aliases в `cli` (`RuntimeBindings`,
   `PluginDispatchBinding`, `CaddyRuntime`) — новые aliases не вводить.
+  Green: типы, lazy activator, system factory и cookie-policy activation
+  перемещены в `caddyruntime`; старый `cli/lazy_caddy_activator.go` удалён после
+  переноса всех вызовов. Сигнатура и передача context сохранены. `cli` остался
+  фасадом только для трёх aliases, используемых `cmd/gateway`; leaf-пакет не
+  импортирует CLI. Ownership suite (5 файлов / 18 тестов), `go build ./...`,
+  `go vet ./...`, `make staticcheck-u1000` и `make arch-lint` прошли.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются

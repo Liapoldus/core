@@ -28,6 +28,7 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/core/internal/presentation/cli/caddyruntime"
 )
 
 func serve(options options, runtime RuntimeBindings) int {
@@ -404,7 +405,7 @@ func activateCurrentGroupRelease(service *application.GroupReleaseService, runti
 	if reason == management.Statuses.SystemReleaseRequired {
 		return readiness, reason
 	}
-	lazy, deferred := runtime.(*lazyCaddyActivator)
+	lazy, deferred := runtime.(interface{ Active() bool })
 	if deferred && lazy.Active() {
 		return readiness, reason
 	}
@@ -458,7 +459,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 }
 
 func dataPlaneReadiness(runtime CaddyRuntime, management config.ManagementWords, readiness, reason string, requestContext context.Context) (string, string) {
-	lazy, deferred := runtime.(*lazyCaddyActivator)
+	lazy, deferred := runtime.(interface{ Active() bool })
 	if deferred && !lazy.Active() {
 		if readiness == management.Statuses.Ready {
 			return management.Statuses.NotReady, management.Statuses.CaddyUnavailable
@@ -578,7 +579,7 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 		return managementWords.Statuses.NotReady, managementWords.Statuses.RecoveryRequired, nil, nil
 	}
 	if pointers.CurrentRevisionID == nil {
-		activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
+		activator := caddyruntime.NewSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
 		return managementWords.Statuses.NotReady, managementWords.Statuses.SystemReleaseRequired, activator.Stop, activator
 	}
 	revision, err := store.GetRevision(context.Background(), sqliteContract.SystemGroupID, *pointers.CurrentRevisionID)
@@ -608,53 +609,8 @@ func systemDataPlane(store *storage.SQLiteGroupStore, bootstrap config.Bootstrap
 	if bootstrap.CaddyVariant != bootstrap.CaddyEmbeddedVariant && bootstrap.CaddyVariant != bootstrap.CaddyExternalVariant {
 		return managementWords.Statuses.NotReady, managementWords.Statuses.CaddyUnavailable, nil, nil
 	}
-	activator := newSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
+	activator := caddyruntime.NewSystemCaddyActivator(bootstrap, runtimeBindings, pluginBindings, managementWords.Statuses.CaddyUnavailable, managementWords.CookiePolicy.Version)
 	return managementWords.Statuses.Ready, "", activator.Stop, activator
-}
-
-func newSystemCaddyActivator(bootstrap config.BootstrapConfig, runtimeBindings RuntimeBindings, pluginBindings []PluginDispatchBinding, unavailable string, policyVersion int) *lazyCaddyActivator {
-	var activator *lazyCaddyActivator
-	var replace func(context.Context, CaddyRuntime, []byte, []PluginDispatchBinding) error
-	switch bootstrap.CaddyVariant {
-	case bootstrap.CaddyEmbeddedVariant:
-		replace = runtimeBindings.ReplaceEmbeddedCaddy
-	case bootstrap.CaddyExternalVariant:
-		replace = runtimeBindings.ReplaceExternalCaddy
-	}
-	validate := func(source []byte) error {
-		switch bootstrap.CaddyVariant {
-		case bootstrap.CaddyEmbeddedVariant:
-			if runtimeBindings.ValidateEmbeddedCaddy == nil {
-				return errors.New(unavailable)
-			}
-			return runtimeBindings.ValidateEmbeddedCaddy(source, pluginBindings)
-		case bootstrap.CaddyExternalVariant:
-			if runtimeBindings.ValidateExternalCaddy == nil {
-				return errors.New(unavailable)
-			}
-			return runtimeBindings.ValidateExternalCaddy(bootstrap.CaddyBinary, source, pluginBindings)
-		default:
-			return errors.New(unavailable)
-		}
-	}
-	start := func(source []byte) (CaddyRuntime, error) {
-		switch bootstrap.CaddyVariant {
-		case bootstrap.CaddyEmbeddedVariant:
-			if runtimeBindings.StartEmbeddedCaddy == nil {
-				return nil, errors.New(unavailable)
-			}
-			return runtimeBindings.StartEmbeddedCaddy(source, activator.bindings)
-		case bootstrap.CaddyExternalVariant:
-			if bootstrap.CaddyBinary == "" || bootstrap.CaddyExpectedBuildID == "" || runtimeBindings.StartExternalCaddy == nil {
-				return nil, errors.New(unavailable)
-			}
-			return runtimeBindings.StartExternalCaddy(bootstrap.CaddyBinary, bootstrap.CaddyExpectedBuildID, filepath.Dir(bootstrap.StatePath), source, pluginBindings)
-		default:
-			return nil, errors.New(unavailable)
-		}
-	}
-	activator = newLazyCaddyActivator(validate, start, unavailable, pluginBindings, replace, policyVersion)
-	return activator
 }
 
 func withinDirectory(root, path string) bool {
