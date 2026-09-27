@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { readGoPackageSources } from "../support/presentation-source";
 
 describe("Management API v1", () => {
   it("exposes the documented control-plane resources", () => {
@@ -31,8 +32,8 @@ describe("Management API v1", () => {
     expect(contract).toContain("plugin.cookie_policy.replace");
   });
 
-  it("does not expose the retired Gateway config-DSL API", () => {
-    const source = readFileSync(resolve(process.cwd(), "../internal/presentation/api/adapter.go"), "utf8");
+  it("does not expose the retired Gateway config-DSL API", async () => {
+    const source = await readGoPackageSources(resolve(process.cwd(), ".."), "internal/presentation/api");
     expect(source).not.toContain("case path == server.Management.Paths.Config");
     expect(source).not.toContain("Paths.ConfigValidate &&");
     expect(source).not.toContain("Paths.Reload ||");

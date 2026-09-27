@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readGoPackageSources } from "../support/presentation-source";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -27,7 +28,7 @@ describe("architecture lint boundaries", () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const storage = await readFile(join(root, "internal/infrastructure/storage/sqlite_plugin_instances.go"), "utf8");
-    const cli = await readFile(join(root, "internal/presentation/cli/serve_bootstrap.go"), "utf8");
+    const cli = await readGoPackageSources(root, "internal/presentation/cli");
 
     expect(dependencies).toMatch(/infrastructureStorage:[\s\S]*?mayDependOn: \[[^\]]*\]/);
     const storageDependencies = dependencies.match(/infrastructureStorage:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";

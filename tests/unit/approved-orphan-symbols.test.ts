@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { readGoPackageSources } from "../support/presentation-source";
 
 const root = join(import.meta.dirname, "../..");
 
@@ -11,9 +12,9 @@ async function source(path: string): Promise<string> {
 describe("approved orphan symbol cleanup", () => {
   it("removes only the five confirmed unreferenced symbols", async () => {
     const [api, client, cli, runtime] = await Promise.all([
-      source("internal/presentation/api/adapter.go"),
+      readGoPackageSources(root, "internal/presentation/api"),
       source("internal/infrastructure/plugins/protocol.go"),
-      source("internal/presentation/cli/cli.go"),
+      readGoPackageSources(root, "internal/presentation/cli"),
       source("internal/infrastructure/plugins/runtime.go"),
     ]);
 
