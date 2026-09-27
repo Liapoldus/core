@@ -26,6 +26,16 @@ describe("architecture lint boundaries", () => {
     }
   });
 
+  it("allows API root to depend on handlers but forbids the reverse edge", async () => {
+    const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
+    const dependencies = architecture.slice(architecture.indexOf("deps:"));
+    const apiDependencies = dependencies.match(/presentationAPI:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
+    const handlerDependencies = dependencies.match(/presentationAPIHandlers:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
+
+    expect(apiDependencies).toContain("presentationAPIHandlers");
+    expect(handlerDependencies).not.toContain("presentationAPI");
+  });
+
   it("keeps infrastructure adapters explicit about their vendor dependencies", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
