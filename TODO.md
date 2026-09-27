@@ -12,8 +12,9 @@
   продолжают ловить соответствующие нарушения. D1 добавил явные go-arch-lint
   components для `api/handlers`, `cli/caddyruntime` и `cli/bootstrap`; временные
   запрещённые импорты Caddy и `pluginprotocol` в каждом из трёх подпакетов
-  отклонены линтером. Дальше: зафиксировать presentation U1000 baseline,
-  выполнить characterization и продолжить переносы по утверждённой
+  отклонены линтером. Presentation baseline `GOTOOLCHAIN=go1.26.0 go tool
+  staticcheck -checks=U1000 ./internal/presentation/...` — 0 orphan diagnostics.
+  Следующий шаг: characterization и переносы по утверждённой
   последовательности; форму `api.Server` не менять.
 
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
