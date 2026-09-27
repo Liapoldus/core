@@ -119,6 +119,15 @@
   Red commit `970e16a` закрепил extraction `serve`, а `6ae1e15` — перенос
   orchestration boundary.
 
+- D3.3 API: `Server`, `Handler` и `Listen` выделены из legacy `adapter.go` в
+  `api/server.go`; полный порядок и набор полей `Server` не менялись. Red
+  ownership test `c1e99da` требует именно этот файл и запрещает оставлять там
+  эти объявления в `adapter.go`. Management API characterization, ownership,
+  structure и function-budget suite прошли (6 файлов / 23 теста), также прошли
+  `go build ./...`, `go vet ./...`, `make staticcheck-u1000` и `make arch-lint`.
+  Декомпозиция response/codec/router и перенос plugin/group/service-key/Caddy
+  handlers в целевую подпапку остаются открытыми.
+
 - `POST /api/access/service-keys` выпускает service key с именем длиной 1–80
   символов: raw token возвращается только в ответе `201`, в SQLite сохраняются
   verifier и метаданные, а новая credential сразу проходит Bearer-аутентификацию
