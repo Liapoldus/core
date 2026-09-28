@@ -106,6 +106,29 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+func (c *Client) ApplyConfiguration(ctx context.Context, revision string, configuration []byte, grants []*pluginv1.ActiveGrant) error {
+	if revision == "" || !json.Valid(configuration) {
+		return ErrProtocolViolation
+	}
+	ctx, cancel := c.withDeadline(ctx)
+	defer cancel()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	result, err := c.client.Service().ConfigApply(ctx, &pluginv1.ConfigApplyRequest{
+		Config: configuration, SettingsRevision: revision, Grants: grants,
+	})
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return context.DeadlineExceeded
+		}
+		return ErrPluginUnavailable
+	}
+	if result == nil || !result.GetApplied() || result.GetSettingsRevision() != revision {
+		return ErrPluginUnavailable
+	}
+	return nil
+}
+
 func (c *Client) BootstrapAndHandshake(ctx context.Context, instanceID, grantBrokerEndpoint string, config []byte, settingsRevision string, grants []*pluginv1.ActiveGrant) (Handshake, error) {
 	ctx, cancel := context.WithDeadline(ctx, c.startDeadline)
 	defer cancel()

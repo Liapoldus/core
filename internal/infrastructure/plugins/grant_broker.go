@@ -65,9 +65,10 @@ func (b *grantBroker) issue(capability string, names []string) ([]*pluginv1.Acti
 		}
 		handle := base64.RawURLEncoding.EncodeToString(token[:])
 		b.mu.Lock()
+		revision := b.settingsRevision
 		b.active[handle] = activeGrant{
 			secret: []byte(secret.Value), scope: pluginv1.GrantScope_GRANT_SCOPE_CALL,
-			instanceID: b.instanceID, settingsRevision: b.settingsRevision,
+			instanceID: b.instanceID, settingsRevision: revision,
 			capability: capability, purpose: grant.Purpose,
 			domains: append([]string(nil), grant.Domains...), wildcardDomainPrefix: grant.WildcardDomainPrefix,
 		}
@@ -75,7 +76,7 @@ func (b *grantBroker) issue(capability string, names []string) ([]*pluginv1.Acti
 		issued = append(issued, &pluginv1.ActiveGrant{
 			Handle: handle, Purpose: grant.Purpose, Domains: append([]string(nil), grant.Domains...),
 			Capability: capability, Scope: pluginv1.GrantScope_GRANT_SCOPE_CALL,
-			InstanceId: b.instanceID, SettingsRevision: b.settingsRevision,
+			InstanceId: b.instanceID, SettingsRevision: revision,
 		})
 		handles = append(handles, handle)
 	}
@@ -83,10 +84,19 @@ func (b *grantBroker) issue(capability string, names []string) ([]*pluginv1.Acti
 }
 
 func (b *grantBroker) issueConfig() ([]*pluginv1.ActiveGrant, []string, error) {
-	issued := make([]*pluginv1.ActiveGrant, 0, len(b.configSecrets))
-	handles := make([]string, 0, len(b.configSecrets))
-	for reference, secret := range b.configSecrets {
-		if reference == "" || len(secret) == 0 || b.instanceID == "" || b.settingsRevision == "" || b.configPurpose == "" {
+	b.mu.Lock()
+	revision := b.settingsRevision
+	secrets := cloneConfigSecrets(b.configSecrets)
+	b.mu.Unlock()
+	defer clearConfigSecrets(secrets)
+	return b.issueConfigFor(revision, secrets)
+}
+
+func (b *grantBroker) issueConfigFor(revision string, secrets map[string][]byte) ([]*pluginv1.ActiveGrant, []string, error) {
+	issued := make([]*pluginv1.ActiveGrant, 0, len(secrets))
+	handles := make([]string, 0, len(secrets))
+	for reference, secret := range secrets {
+		if reference == "" || len(secret) == 0 || b.instanceID == "" || revision == "" || b.configPurpose == "" {
 			b.revoke(handles)
 			return nil, nil, ErrProtocolViolation
 		}
@@ -100,19 +110,34 @@ func (b *grantBroker) issueConfig() ([]*pluginv1.ActiveGrant, []string, error) {
 		b.mu.Lock()
 		b.active[handle] = activeGrant{
 			secret: secretCopy, scope: pluginv1.GrantScope_GRANT_SCOPE_CONFIG_APPLY,
-			instanceID: b.instanceID, settingsRevision: b.settingsRevision,
+			instanceID: b.instanceID, settingsRevision: revision,
 			secretReference: reference, purpose: b.configPurpose,
 		}
 		b.mu.Unlock()
 		issued = append(issued, &pluginv1.ActiveGrant{
 			Handle: handle, Purpose: b.configPurpose,
 			Scope:      pluginv1.GrantScope_GRANT_SCOPE_CONFIG_APPLY,
-			InstanceId: b.instanceID, SettingsRevision: b.settingsRevision,
+			InstanceId: b.instanceID, SettingsRevision: revision,
 			SecretReference: reference,
 		})
 		handles = append(handles, handle)
 	}
 	return issued, handles, nil
+}
+
+func (b *grantBroker) replaceConfiguration(revision string, secrets map[string][]byte) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	clearConfigSecrets(b.configSecrets)
+	b.configSecrets = cloneConfigSecrets(secrets)
+	b.settingsRevision = revision
+	for handle, grant := range b.active {
+		if grant.settingsRevision == revision {
+			continue
+		}
+		clear(grant.secret)
+		delete(b.active, handle)
+	}
 }
 
 func (b *grantBroker) revoke(handles []string) {

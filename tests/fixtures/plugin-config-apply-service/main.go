@@ -17,10 +17,14 @@ type applier struct {
 	config   []byte
 	revision string
 	reject   bool
+	cancel   context.CancelFunc
 }
 
 func (a *applier) ApplyConfiguration(_ context.Context, _ string, revision string, config []byte) error {
 	if a.reject {
+		if a.cancel != nil {
+			a.cancel()
+		}
 		return errors.New("apply rejected")
 	}
 	a.config = append(a.config[:0], config...)
@@ -75,6 +79,19 @@ func main() {
 	check(database.QueryRowContext(ctx, `SELECT state FROM plugin_config_revisions WHERE instance_id = ? AND revision = ?`, "fixture", 3).Scan(&failedState))
 	current, activePointers, err := store.Current(ctx, "fixture")
 	check(err)
+	cancelContext, cancel := context.WithCancel(ctx)
+	client.cancel = cancel
+	_, cancelled := service.Apply(cancelContext, application.ApplyPluginConfigurationCommand{
+		InstanceID: "fixture", ExpectedRevision: 2, SchemaVersion: 1,
+		SettingsJSON:   []byte(`{"origin":"cancelled"}`),
+		CandidateAudit: audit("configuration_candidate", "pending"),
+		AppliedAudit:   audit("configuration_applied", "succeeded"),
+		FailedAudit:    audit("configuration_failed", "failed"),
+	})
+	cancel()
+	client.cancel = nil
+	var cancelledState string
+	check(database.QueryRowContext(ctx, `SELECT state FROM plugin_config_revisions WHERE instance_id = ? AND revision = ?`, "fixture", 4).Scan(&cancelledState))
 	_, stale := service.Apply(ctx, application.ApplyPluginConfigurationCommand{
 		InstanceID: "fixture", ExpectedRevision: 1, SchemaVersion: 1,
 		SettingsJSON:   []byte(`{"origin":"stale"}`),
@@ -89,7 +106,8 @@ func main() {
 		"previousAfterApply": pointers.PreviousRevision, "acknowledgedConfig": string(client.config),
 		"failedRevision": 3, "activeAfterReject": activePointers.CurrentRevision,
 		"failedState": failedState, "staleRevisionRejected": errors.As(stale, new(models.PluginConfigurationConflict)),
-		"activeConfig": string(current.SettingsJSON),
+		"activeConfig": string(current.SettingsJSON), "cancelledApplyReturnedError": cancelled != nil,
+		"cancelledCandidateState": cancelledState, "currentAfterCancelledApply": activePointers.CurrentRevision,
 	}))
 }
 

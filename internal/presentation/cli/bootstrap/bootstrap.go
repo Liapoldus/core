@@ -63,8 +63,9 @@ type bootstrapInventory struct {
 }
 
 type pluginLaunchSetup struct {
-	contract  config.PluginRuntimeContract
-	instances map[string]models.PluginInstance
+	contract        config.PluginRuntimeContract
+	instances       map[string]models.PluginInstance
+	runtimeSettings plugins.RuntimeSettings
 }
 
 type managementInputs struct {
@@ -102,7 +103,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig, runtim
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
-	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginLaunch.instances, nil)
+	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginLaunch.instances, nil, pluginLaunch.runtimeSettings)
 	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, pluginLaunch.contract.Diagnostics.StartupFailed)
 	}
@@ -131,7 +132,8 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig, runtim
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	pluginConfigurationService := &application.PluginConfigurationService{
-		Store: stores.pluginConfigStore, Unavailable: inventory.management.Codes.ManagementUnavailable,
+		Store: stores.pluginConfigStore, Applier: pluginRuntime,
+		Unavailable: inventory.management.Codes.ManagementUnavailable,
 	}
 	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
@@ -236,6 +238,10 @@ func prepareLocalPlugins(options runContext, records []storage.PluginInstanceRec
 	fileReferencePrefix, err := config.LoadFileReferencePrefix()
 	if err != nil {
 		return setup, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	setup.runtimeSettings = plugins.RuntimeSettings{
+		FileReferencePrefix: fileReferencePrefix,
+		MaximumSecretBytes:  setup.contract.ConfigSecrets.MaximumBytes,
 	}
 	localRecords := make([]plugins.LocalInstanceRecord, 0, len(records))
 	for _, record := range records {

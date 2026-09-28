@@ -23,6 +23,9 @@ describe("plugin configuration ConfigApply workflow", () => {
         failedState: "failed",
         staleRevisionRejected: true,
         activeConfig: '{"origin":"new"}',
+        cancelledApplyReturnedError: true,
+        cancelledCandidateState: "failed",
+        currentAfterCancelledApply: 2,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

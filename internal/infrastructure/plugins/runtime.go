@@ -2,14 +2,17 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/netip"
 	"sort"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/pluginprotocol/transport"
 )
@@ -29,14 +32,24 @@ type runningInstance struct {
 	spec             Spec
 	done             <-chan error
 	resourceExceeded *atomic.Bool
+	configurationMu  *sync.Mutex
 }
 
 type Runtime struct {
+	mu          sync.RWMutex
 	supervisor  *Supervisor
 	instances   map[string]runningInstance
+	settings    RuntimeSettings
 	cancel      context.CancelFunc
 	watchCancel context.CancelFunc
 }
+
+type RuntimeSettings struct {
+	FileReferencePrefix string
+	MaximumSecretBytes  int64
+}
+
+var _ interfaces.PluginConfigurationApplier = (*Runtime)(nil)
 
 type DispatchBinding struct {
 	Name               string
@@ -46,7 +59,7 @@ type DispatchBinding struct {
 	MaxConcurrentCalls int
 }
 
-func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, secrets map[string]models.Secret) (*Runtime, error) {
+func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, secrets map[string]models.Secret, settings ...RuntimeSettings) (*Runtime, error) {
 	defer func() {
 		for name, instance := range configured {
 			clearConfigSecrets(instance.ConfigGrantSecrets)
@@ -57,6 +70,9 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 	processContext, cancel := context.WithCancel(context.Background())
 	watchContext, watchCancel := context.WithCancel(ctx)
 	runtime := &Runtime{supervisor: NewSupervisor(), instances: make(map[string]runningInstance, len(configured)), cancel: cancel, watchCancel: watchCancel}
+	if len(settings) > 0 {
+		runtime.settings = settings[0]
+	}
 	names := make([]string, 0, len(configured))
 	for name := range configured {
 		names = append(names, name)
@@ -155,7 +171,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}, func() {
 			_ = runtime.supervisor.Stop(name)
 		}, resourceExceeded)
-		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, broker: broker, listener: listener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded}
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, broker: broker, listener: listener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded, configurationMu: &sync.Mutex{}}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
@@ -246,12 +262,24 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 			return nil
 		case <-timer.C:
 		}
-		done, err := r.supervisor.StartWithExit(processContext, instance.spec)
+		current, exists := r.instance(instance.name)
+		if !exists {
+			return nil
+		}
+		lock := current.configurationMu
+		lock.Lock()
+		current, exists = r.instance(instance.name)
+		if !exists {
+			lock.Unlock()
+			return nil
+		}
+		done, err := r.supervisor.StartWithExit(processContext, current.spec)
 		if err == nil {
-			instance.resourceExceeded.Store(false)
-			configGrants, configHandles, grantErr := instance.broker.issueConfig()
+			current.resourceExceeded.Store(false)
+			configGrants, configHandles, grantErr := current.broker.issueConfig()
 			if grantErr != nil {
-				_ = r.supervisor.Stop(instance.name)
+				_ = r.supervisor.Stop(current.name)
+				lock.Unlock()
 				select {
 				case <-ctx.Done():
 					return nil
@@ -259,17 +287,20 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 				}
 				continue
 			}
-			reconnectErr := instance.client.Reconnect(ctx, instance.endpoint, instance.name, instance.grantListener.Addr().String(), instance.model.Settings, instance.model.SettingsRevision, configGrants, instance.name, instance.model.Capabilities)
-			instance.broker.revoke(configHandles)
+			reconnectErr := current.client.Reconnect(ctx, current.endpoint, current.name, current.grantListener.Addr().String(), current.model.Settings, current.model.SettingsRevision, configGrants, current.name, current.model.Capabilities)
+			current.broker.revoke(configHandles)
+			lock.Unlock()
 			if reconnectErr == nil {
 				return done
 			}
-			_ = r.supervisor.Stop(instance.name)
+			_ = r.supervisor.Stop(current.name)
 			select {
 			case <-ctx.Done():
 				return nil
 			case <-done:
 			}
+		} else {
+			lock.Unlock()
 		}
 		if ctx.Err() != nil {
 			return nil
@@ -294,6 +325,8 @@ func (r *Runtime) DispatchBindings() []DispatchBinding {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.instances))
 	for name := range r.instances {
 		names = append(names, name)
@@ -311,6 +344,54 @@ func (r *Runtime) DispatchBindings() []DispatchBinding {
 	return bindings
 }
 
+func (r *Runtime) ApplyConfiguration(ctx context.Context, instanceID, revision string, configuration []byte) error {
+	if r == nil || instanceID == "" || revision == "" || !json.Valid(configuration) {
+		return ErrProtocolViolation
+	}
+	instance, exists := r.instance(instanceID)
+	if !exists {
+		return ErrPluginUnavailable
+	}
+	instance.configurationMu.Lock()
+	defer instance.configurationMu.Unlock()
+	instance, exists = r.instance(instanceID)
+	if !exists {
+		return ErrPluginUnavailable
+	}
+	prepared, configSecrets, err := prepareRuntimeSettings(configuration, r.settings)
+	if err != nil {
+		return ErrProtocolViolation
+	}
+	grants, handles, err := instance.broker.issueConfigFor(revision, configSecrets)
+	if err != nil {
+		clearConfigSecrets(configSecrets)
+		return err
+	}
+	err = instance.client.ApplyConfiguration(ctx, revision, prepared, grants)
+	instance.broker.revoke(handles)
+	if err != nil {
+		clearConfigSecrets(configSecrets)
+		return err
+	}
+	instance.broker.replaceConfiguration(revision, configSecrets)
+	clearConfigSecrets(configSecrets)
+	instance.model.Settings = append([]byte(nil), prepared...)
+	instance.model.SettingsRevision = revision
+	r.mu.Lock()
+	if _, exists := r.instances[instanceID]; exists {
+		r.instances[instanceID] = instance
+	}
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *Runtime) instance(name string) (runningInstance, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	instance, exists := r.instances[name]
+	return instance, exists
+}
+
 func cloneConfigSecrets(secrets map[string][]byte) map[string][]byte {
 	if len(secrets) == 0 {
 		return nil
@@ -322,6 +403,17 @@ func cloneConfigSecrets(secrets map[string][]byte) map[string][]byte {
 	return cloned
 }
 
+func prepareRuntimeSettings(configuration []byte, settings RuntimeSettings) ([]byte, map[string][]byte, error) {
+	var document map[string]json.RawMessage
+	if json.Unmarshal(configuration, &document) != nil || document == nil {
+		return nil, nil, ErrProtocolViolation
+	}
+	if settings.FileReferencePrefix == "" {
+		return append([]byte(nil), configuration...), nil, nil
+	}
+	return preparePluginSettings(configuration, settings.FileReferencePrefix, settings.MaximumSecretBytes)
+}
+
 func (r *Runtime) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil
@@ -330,7 +422,14 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		r.watchCancel()
 	}
 	var failures []error
+	r.mu.RLock()
+	instances := make(map[string]runningInstance, len(r.instances))
 	for name, instance := range r.instances {
+		instances[name] = instance
+	}
+	r.mu.RUnlock()
+	for name, instance := range instances {
+		instance.configurationMu.Lock()
 		stopContext, cancel := context.WithTimeout(ctx, instance.model.Timeout)
 		_ = instance.client.Shutdown(stopContext)
 		cancel()
@@ -352,6 +451,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		if instance.listener != nil {
 			_ = instance.listener.Close()
 		}
+		instance.configurationMu.Unlock()
 	}
 	if r.cancel != nil {
 		r.cancel()

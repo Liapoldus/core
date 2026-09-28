@@ -59,7 +59,9 @@ func (p *plugin) Bootstrap(_ context.Context, request *pluginv1.BootstrapRequest
 
 func (p *plugin) ConfigApply(_ context.Context, request *pluginv1.ConfigApplyRequest) (*pluginv1.ConfigApplyResult, error) {
 	var settings struct {
-		Credential string `json:"credential"`
+		Credential    string `json:"credential"`
+		Reject        bool   `json:"reject"`
+		WrongRevision bool   `json:"wrongRevision"`
 	}
 	p.mu.RLock()
 	grantEndpoint := p.grantEndpoint
@@ -67,6 +69,12 @@ func (p *plugin) ConfigApply(_ context.Context, request *pluginv1.ConfigApplyReq
 	p.mu.RUnlock()
 	if json.Unmarshal(request.GetConfig(), &settings) != nil || grantEndpoint == "" {
 		return &pluginv1.ConfigApplyResult{}, nil
+	}
+	if settings.Reject {
+		return &pluginv1.ConfigApplyResult{SettingsRevision: request.GetSettingsRevision()}, nil
+	}
+	if settings.WrongRevision {
+		return &pluginv1.ConfigApplyResult{Applied: true, SettingsRevision: "different"}, nil
 	}
 	if settings.Credential == "" && len(request.GetGrants()) == 0 {
 		p.mu.Lock()

@@ -61,16 +61,17 @@ func (service *PluginConfigurationService) Apply(ctx context.Context, command Ap
 	if err != nil {
 		return models.PluginConfigurationRevision{}, err
 	}
+	transitionContext := context.WithoutCancel(ctx)
 	if err := service.Applier.ApplyConfiguration(ctx, command.InstanceID, strconv.FormatInt(candidate.Revision, 10), candidate.SettingsJSON); err != nil {
-		_, failErr := service.Store.FailCandidate(ctx, command.InstanceID, candidate.Revision, command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID))
+		_, failErr := service.Store.FailCandidate(transitionContext, command.InstanceID, candidate.Revision, command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID))
 		return models.PluginConfigurationRevision{}, errors.Join(err, failErr)
 	}
-	_, err = service.Store.ActivateCandidate(ctx, command.InstanceID, candidate.Revision, command.ExpectedRevision, withConfigurationAudit(command.AppliedAudit, command.InstanceID))
+	_, err = service.Store.ActivateCandidate(transitionContext, command.InstanceID, candidate.Revision, command.ExpectedRevision, withConfigurationAudit(command.AppliedAudit, command.InstanceID))
 	if err != nil {
-		rollbackErr := service.Applier.ApplyConfiguration(ctx, command.InstanceID, strconv.FormatInt(current.Revision, 10), current.SettingsJSON)
+		rollbackErr := service.Applier.ApplyConfiguration(transitionContext, command.InstanceID, strconv.FormatInt(current.Revision, 10), current.SettingsJSON)
 		return models.PluginConfigurationRevision{}, errors.Join(err, rollbackErr)
 	}
-	return service.Store.GetRevision(ctx, command.InstanceID, candidate.Revision)
+	return service.Store.GetRevision(transitionContext, command.InstanceID, candidate.Revision)
 }
 
 func withConfigurationAudit(audit models.AuditRecord, instanceID string) models.AuditRecord {
