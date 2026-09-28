@@ -6,12 +6,27 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type pluginConfigurationContextKey struct{}
+
+func WithPluginConfigurations(handler http.Handler, service *application.PluginConfigurationService) http.Handler {
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		ctx := context.WithValue(request.Context(), pluginConfigurationContextKey{}, service)
+		handler.ServeHTTP(response, request.WithContext(ctx))
+	})
+}
+
+func pluginConfigurationServiceFromContext(ctx context.Context) *application.PluginConfigurationService {
+	service, _ := ctx.Value(pluginConfigurationContextKey{}).(*application.PluginConfigurationService)
+	return service
+}
 
 func (server *Server) handlerDependencies() handlers.Dependencies {
 	return handlers.Dependencies{
@@ -246,6 +261,10 @@ func (server *Server) dispatchPluginCollections(response http.ResponseWriter, re
 		return true
 	}
 	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.PluginSettings(pluginDependencies, response, pluginConfigurationServiceFromContext(request.Context()), request.Context(), path, requestID)
+		return true
+	}
 	if handlers.IsPluginDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
 		handlers.PluginDetail(pluginDependencies, response, path, requestID)
 		return true

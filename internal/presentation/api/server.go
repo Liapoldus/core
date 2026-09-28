@@ -63,8 +63,12 @@ func (server *Server) Handler() http.Handler {
 	return http.HandlerFunc(server.handle)
 }
 
-func (server *Server) Listen(ctx context.Context, address string) error {
-	httpServer := &http.Server{Addr: address, Handler: server.Handler()}
+func (server *Server) Listen(ctx context.Context, address string, configurations ...*application.PluginConfigurationService) error {
+	handler := server.Handler()
+	if len(configurations) > 0 {
+		handler = WithPluginConfigurations(handler, configurations[0])
+	}
+	httpServer := &http.Server{Addr: address, Handler: handler}
 	result := make(chan error, 1)
 	go func() {
 		if server.TLSConfig != nil {

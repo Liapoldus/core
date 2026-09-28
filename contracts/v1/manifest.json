@@ -6,7 +6,7 @@
     "gateway.schema.json": "sha256:af1594e700c8fa63affc818da1c7007019f5a548ab268522f17f4d697673436f",
     "golden-vectors.json": "sha256:b31d62101496e7256793a62aaf45050326598ce52eea89645beef32c14b67fad",
     "http-runtime.json": "sha256:a44305156b1919c3bb78be23d384d942e85b95f9bc810c6523454421d20ee0e0",
-    "management-fields.yaml": "sha256:5521e555655925870ebd0b15eea612ae12c1b4bae4e0191c5c88c9712b0f8568",
+    "management-fields.yaml": "sha256:cd26ccbbb4c59f343eb2e19306171c03a1859067100de885350fcb75ec8dbdff",
     "management.openapi.yaml": "sha256:c68ee4877e7ed0273b0f140fe376d963c88e9198c32e3bbb13a9e508d09e324b",
     "security-runtime.json": "sha256:ca07625d474dca512214f70f26e226876e5e8a54d2853098fcd694b06a8489d5"
   }

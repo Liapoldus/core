@@ -2,6 +2,7 @@ paths:
   healthz: /healthz
   status: /api/status
   plugins: /api/plugins
+  pluginSettingsSuffix: /settings
   adminSurfaces: /api/plugins/admin-surfaces
   pluginCookiePolicies: /api/plugins
   cookiePoliciesSuffix: /cookie-policies/
@@ -96,6 +97,7 @@ json:
   capability: capability
   allowedNames: allowedNames
   revision: revision
+  config: config
 headers:
   ifMatch: If-Match
   etag: ETag

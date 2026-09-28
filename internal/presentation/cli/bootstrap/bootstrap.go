@@ -40,16 +40,17 @@ type runContext struct {
 }
 
 type bootstrapStores struct {
-	groupStore       *storage.SQLiteGroupStore
-	auditStore       *storage.SQLiteAuditStore
-	keyStore         *storage.SQLiteServiceKeyStore
-	operationStore   *storage.SQLiteOperationStore
-	adminWords       config.AdminMutationWords
-	checkpointStore  *storage.SQLiteCaddyCheckpointStore
-	checkpointFiles  *artifacts.CaddyCheckpointArtifacts
-	releaseStore     *storage.SQLiteGroupReleaseStore
-	releasePolicy    models.GroupReleasePolicy
-	releaseArtifacts artifacts.GroupReleaseArtifacts
+	groupStore        *storage.SQLiteGroupStore
+	auditStore        *storage.SQLiteAuditStore
+	keyStore          *storage.SQLiteServiceKeyStore
+	operationStore    *storage.SQLiteOperationStore
+	pluginConfigStore *storage.SQLitePluginConfigurationStore
+	adminWords        config.AdminMutationWords
+	checkpointStore   *storage.SQLiteCaddyCheckpointStore
+	checkpointFiles   *artifacts.CaddyCheckpointArtifacts
+	releaseStore      *storage.SQLiteGroupReleaseStore
+	releasePolicy     models.GroupReleasePolicy
+	releaseArtifacts  artifacts.GroupReleaseArtifacts
 }
 
 type bootstrapInventory struct {
@@ -129,7 +130,10 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig, runtim
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := management.Listen(ctx, bootstrap.ManagementListen); err != nil && !errors.Is(err, net.ErrClosed) {
+	pluginConfigurationService := &application.PluginConfigurationService{
+		Store: stores.pluginConfigStore, Unavailable: inventory.management.Codes.ManagementUnavailable,
+	}
+	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
 	}
@@ -157,6 +161,9 @@ func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, d
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.operationStore, err = storage.NewSQLiteOperationStore(database); err != nil {
+		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	if stores.pluginConfigStore, err = storage.NewSQLitePluginConfigurationStore(database); err != nil {
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.adminWords, err = config.LoadAdminMutation(); err != nil {

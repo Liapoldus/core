@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/models"
 )
 
 type pluginCookiePolicyInput struct {
@@ -15,6 +20,46 @@ type pluginCookiePolicyInput struct {
 
 func PluginList(deps PluginDependencies, response http.ResponseWriter, request *http.Request, requestID string) {
 	deps.WritePage(response, deps.Plugins, request, requestID)
+}
+
+func IsPluginSettingsPath(deps PluginDependencies, path string) bool {
+	separator := deps.Management.Paths.GroupIDSeparator
+	suffix := deps.Management.Paths.PluginSettingsSuffix
+	if separator == "" || suffix == "" || deps.Management.Paths.Plugins == "" {
+		return false
+	}
+	prefix := deps.Management.Paths.Plugins + separator
+	resource := strings.TrimPrefix(path, prefix)
+	if resource == path || !strings.HasSuffix(resource, suffix) {
+		return false
+	}
+	instanceID := strings.TrimSuffix(resource, suffix)
+	return instanceID != "" && !strings.Contains(instanceID, separator)
+}
+
+func PluginSettings(deps PluginDependencies, response http.ResponseWriter, service *application.PluginConfigurationService, ctx context.Context, path, requestID string) {
+	if service == nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	prefix := deps.Management.Paths.Plugins + deps.Management.Paths.GroupIDSeparator
+	instanceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), deps.Management.Paths.PluginSettingsSuffix)
+	revision, err := service.Current(ctx, instanceID)
+	if err != nil {
+		var missing models.PluginConfigurationNotFound
+		if errors.As(err, &missing) {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.PluginNotFound, requestID)
+			return
+		}
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	response.Header().Set(deps.Management.Headers.ETag, cookiePolicyETag(revision.Revision))
+	deps.WriteJSON(response, http.StatusOK, map[string]any{
+		deps.Management.JSON.Revision: strconv.FormatInt(revision.Revision, 10),
+		deps.Management.JSON.Digest:   revision.Digest,
+		deps.Management.JSON.Config:   json.RawMessage(revision.SettingsJSON),
+	})
 }
 
 func AdminSurfaceList(deps PluginDependencies, response http.ResponseWriter, requestID string) {

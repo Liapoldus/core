@@ -152,6 +152,7 @@ type ManagementWords struct {
 		Listeners            string `yaml:"listeners"`
 		Upstreams            string `yaml:"upstreams"`
 		Plugins              string `yaml:"plugins"`
+		PluginSettingsSuffix string `yaml:"pluginSettingsSuffix"`
 		AdminSurfaces        string `yaml:"adminSurfaces"`
 		PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
 		CookiePoliciesSuffix string `yaml:"cookiePoliciesSuffix"`
@@ -249,6 +250,7 @@ type ManagementWords struct {
 		Capability         string `yaml:"capability"`
 		AllowedNames       string `yaml:"allowedNames"`
 		Revision           string `yaml:"revision"`
+		Config             string `yaml:"config"`
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch    string `yaml:"ifMatch"`
