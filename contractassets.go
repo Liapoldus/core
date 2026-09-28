@@ -21,6 +21,7 @@ const (
 	SQLiteOperationStore       = "sqlite-operation-store.yaml"
 	SQLiteGroupReleaseStore    = "sqlite-group-release-store.yaml"
 	SQLitePluginInstances      = "sqlite-plugin-instances.yaml"
+	SQLitePluginConfiguration  = "sqlite-plugin-configuration.yaml"
 	SQLitePluginCookiePolicies = "sqlite-plugin-cookie-policies.yaml"
 	PluginLocalLaunchSchema    = "local-launch.schema.json"
 	PluginRuntime              = "plugin-runtime.json"

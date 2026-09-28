@@ -72,6 +72,32 @@ CREATE TABLE IF NOT EXISTS plugin_launch_settings (
     launch_json BLOB NOT NULL CHECK (json_valid(launch_json))
 );
 
+CREATE TABLE IF NOT EXISTS plugin_config_revisions (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+    digest TEXT NOT NULL,
+    settings_json BLOB NOT NULL CHECK (json_valid(settings_json) AND json_type(settings_json) = 'object'),
+    state TEXT NOT NULL CHECK (state IN ('active', 'candidate', 'superseded', 'failed')),
+    actor TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (instance_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS plugin_config_pointers (
+    instance_id TEXT PRIMARY KEY REFERENCES plugin_instances(id) ON DELETE CASCADE,
+    current_revision INTEGER,
+    previous_revision INTEGER,
+    pending_revision INTEGER,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instance_id, current_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT,
+    FOREIGN KEY (instance_id, previous_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT,
+    FOREIGN KEY (instance_id, pending_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS plugin_config_revisions_by_instance
+    ON plugin_config_revisions(instance_id, revision DESC);
+
 CREATE TABLE IF NOT EXISTS plugin_cookie_policies (
     instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
     capability TEXT NOT NULL,
@@ -140,6 +166,7 @@ CREATE TABLE IF NOT EXISTS caddy_checkpoints (
 );
 
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
 
 INSERT OR IGNORE INTO groups(id, kind, active)
 VALUES ('system', 'system', 1);

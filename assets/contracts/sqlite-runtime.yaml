@@ -3,7 +3,7 @@ parentDirectoryMode: 448
 databaseFileMode: 384
 maxOpenConnections: 1
 maxIdleConnections: 1
-schemaVersion: 3
+schemaVersion: 4
 systemGroupID: system
 artifactsDirectoryMode: 448
 hasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')"
