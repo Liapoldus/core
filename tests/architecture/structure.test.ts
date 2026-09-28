@@ -45,8 +45,6 @@ describe("Gateway architecture", () => {
   it("keeps application flat and infrastructure in approved groups", async () => {
     expect(await directories(join(root, "internal", "application"))).toEqual([]);
     expect(await directories(join(root, "internal", "infrastructure"))).toEqual([
-      "artifacts",
-      "caddy",
       "config",
       "plugins",
       "security",
@@ -57,10 +55,7 @@ describe("Gateway architecture", () => {
   it("limits presentation to approved API and CLI package paths", async () => {
     expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
     expect(await directories(join(root, "internal", "presentation", "api"))).toEqual(["handlers"]);
-    expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual([
-      "bootstrap",
-      "caddyruntime",
-    ]);
+    expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual(["bootstrap"]);
     expect(await directories(join(root, "cmd"))).toEqual(["gateway"]);
   });
 

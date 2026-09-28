@@ -25,6 +25,9 @@ describe("plugin Manifest capability invocation modes", () => {
       };
       const cases = [
         { manifest: valid, required: ["identity.login"], expected: true },
+        { manifest: { ...valid, capabilities: [], capabilityDescriptors: [] }, required: [], expected: true },
+        { manifest: { ...valid, capabilities: [], capabilityDescriptors: [] }, required: ["identity.login"], expected: false },
+        { manifest: { ...valid, capabilities: [""] }, required: [], expected: false },
         { manifest: { ...valid, capabilityDescriptors: valid.capabilityDescriptors.slice(0, 1) }, required: [], expected: false },
         { manifest: { ...valid, capabilities: ["identity.login"], capabilityDescriptors: [...valid.capabilityDescriptors, { capability: "identity.unknown", modes: ["INVOCATION_MODE_CALL"] }] }, required: [], expected: false },
         { manifest: { ...valid, capabilityDescriptors: [{ capability: "identity.login", modes: ["INVOCATION_MODE_UNSPECIFIED"] }, valid.capabilityDescriptors[1]] }, required: [], expected: false },

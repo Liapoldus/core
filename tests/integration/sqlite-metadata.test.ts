@@ -20,10 +20,7 @@ describe("SQLite control-plane state", () => {
         journalMode: "wal",
         foreignKeys: 1,
         migrationVersion: 4,
-        systemGroupExists: true,
-        systemPointerExists: true,
-        crossGroupPointerRejected: true,
-        requiredTables: expect.arrayContaining(["schema_migrations", "groups", "group_revisions", "group_pointers", "plugin_instances", "plugin_config_revisions", "plugin_config_pointers", "plugin_cookie_policies", "service_keys", "operations", "idempotency", "audit_events", "caddy_checkpoints"]),
+        requiredTables: expect.arrayContaining(["schema_migrations", "plugin_instances", "plugin_config_revisions", "plugin_config_pointers", "service_keys", "operations", "idempotency", "audit_events"]),
       });
       expect((await stat(database)).mode & 0o077).toBe(0);
       expect((await stat(join(directory, "state"))).mode & 0o077).toBe(0);

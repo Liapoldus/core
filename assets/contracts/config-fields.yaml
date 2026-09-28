@@ -1,12 +1,15 @@
 root:
   - state
   - artifacts
+  - execution
   - management
-  - caddy
+  - pluginCatalog
 state:
   - path
 artifacts:
   - path
+execution:
+  - profile
 management:
   - listen
   - tls
@@ -24,26 +27,18 @@ managementRequestLimits:
   - maxBodyBytes
   - headerTimeout
   - requestTimeout
-caddy:
-  - variant
-  - binary
-  - expectedBuildID
-caddyVariant:
-  embedded: embedded
-  external: external
+pluginCatalog:
+  - url
 secretReference:
   filePrefix: "file:"
 unknownFieldPolicy: reject
 semantics:
   minimalBootstrapOnly: |
-    Этот YAML содержит пути state/artifacts, Management API bind/TLS/trust и вариант Caddy. Traffic routes, sites, plugin settings и listener definitions задаются вне YAML.
+    Этот YAML содержит пути state/artifacts, профиль lifecycle, каталог пакетов и Management API bind/TLS/trust. Plugin settings и traffic configuration задаются через API.
   localStorageOnly: |
     SQLite и immutable artifact store размещаются на локальной файловой системе. Сетевые database mounts не поддерживаются.
   managementRemoteSecurity: |
     Вне loopback Management API требует private network/VPN, TLS, mTLS и Bearer service key роли platform-admin.
-  caddyVariant: |
-    External binary обязан иметь совместимый Liapoldus module manifest и Caddy-L4; несовместимая сборка отклоняется без downgrade.
 codes:
   unknownField: unknown_field
   bootstrapInvalid: bootstrap_invalid
-  caddyBuildIncompatible: caddy_build_incompatible

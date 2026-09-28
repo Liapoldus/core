@@ -11,9 +11,7 @@ describe("API response helper ownership", () => {
     const source = await readFile(join(apiRoot, "respond.go"), "utf8").catch(() => "");
 
     expect(source).toMatch(/^func \(server \*Server\) writeCatalogProblem\(/m);
-    expect(source).toMatch(/^func \(server \*Server\) writeCookiePolicyFailure\(/m);
     expect(source).toMatch(/^func \(server \*Server\) writePage\(/m);
-    expect(source).toMatch(/^func \(server \*Server\) recordAudit\(/m);
     expect(source).not.toMatch(/^func sliceValues\(/m);
   });
 
@@ -21,8 +19,6 @@ describe("API response helper ownership", () => {
     const source = await readFile(join(apiRoot, "adapter.go"), "utf8").catch(() => "");
 
     expect(source).not.toMatch(/^func \(server \*Server\) writeCatalogProblem\(/m);
-    expect(source).not.toMatch(/^func \(server \*Server\) writeCookiePolicyFailure\(/m);
     expect(source).not.toMatch(/^func \(server \*Server\) writePage\(/m);
-    expect(source).not.toMatch(/^func \(server \*Server\) recordAudit\(/m);
   });
 });

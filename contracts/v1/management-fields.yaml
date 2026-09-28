@@ -4,28 +4,16 @@ paths:
   plugins: /api/plugins
   pluginSettingsSuffix: /settings
   adminSurfaces: /api/plugins/admin-surfaces
-  pluginCookiePolicies: /api/plugins
-  cookiePoliciesSuffix: /cookie-policies/
+  pluginIDSeparator: "/"
   adminPages: admin/pages
   restart: restart
   operations: /api/operations
   audit: /api/audit
   serviceKeys: /api/access/service-keys
-  groups: /api/groups
-  groupByID: /api/groups/
-  groupReleases: releases
-  groupRollback: rollback
-  groupIDSeparator: "/"
-  groupIDPattern: '^[a-z][a-z0-9-]{0,62}$'
-cookiePolicy:
-  version: 1
-  maximumBodyBytes: 65536
 serviceKeys:
   nameMinLength: 1
   nameMaxLength: 80
   createdStatus: 201
-auditActions:
-  pluginCookiePolicyReplace: plugin.cookie_policy.replace
 methods:
   get: GET
   post: POST
@@ -37,19 +25,11 @@ json:
   items: items
   nextCursor: nextCursor
   id: id
-  groupId: groupId
-  caddyfile: caddyfile
-  caddyfileDigest: caddyfileDigest
-  artifactDigest: artifactDigest
   digest: digest
-  frontends: frontends
-  files: files
   idempotencyKey: idempotencyKey
   expectedCurrentRevision: expectedCurrentRevision
   replyTo: replyTo
   status: status
-  currentRevision: currentRevision
-  previousRevision: previousRevision
   createdAt: createdAt
   expiresAt: expiresAt
   revokedAt: revokedAt
@@ -84,10 +64,6 @@ json:
   cursor: cursor
   kind: kind
   active: active
-  caddy: caddy
-  variant: variant
-  buildId: buildId
-  modules: modules
   drift: drift
   runtimeDigest: runtimeDigest
   compositionDigest: compositionDigest
@@ -122,21 +98,17 @@ statuses:
   draining: draining
   failed: failed
   invalid: invalid
-  publishing: publishing
   healthy: healthy
   degraded: degraded
   unavailable: unavailable
   starting: starting
   unhealthy: unhealthy
   stopped: stopped
-  renewing: renewing
   pending: pending
   running: running
   succeeded: succeeded
   empty: empty
   notReady: not-ready
-  systemReleaseRequired: system-release-required
-  caddyUnavailable: caddy-unavailable
   recoveryRequired: recovery-required
 codes:
   bearerRequired: management_bearer_required
@@ -144,15 +116,8 @@ codes:
   managementMTLSRequired: management_mtls_required
   pluginUnavailable: plugin_unavailable
   pluginNotFound: plugin_not_found
-  groupNotFound: group_not_found
-  groupAlreadyExists: group_already_exists
   invalidRequest: invalid_request
   artifactTooLarge: artifact_too_large
   operationNotFound: not_found
-  cookiePolicyNotFound: not_found
-  cookiePolicyRevisionConflict: cookie_policy_revision_conflict
-  cookiePolicyPreconditionRequired: cookie_policy_precondition_required
-  cookiePolicyUnavailable: management_unavailable
-  invalidCookiePolicy: invalid_cookie_policy
 diagnostics:
   operationNotFound: The requested operation does not exist.

@@ -2,11 +2,7 @@
   "version": "liapoldus.gateway.v1",
   "description": "Behavioral vectors; legacy wire-frame hex vectors are not used by Gateway contracts.",
   "vectors": [
-    {"id":"bootstrap-rejects-traffic-dsl","input":{"keys":["state","artifacts","management","caddy","listeners"]},"expected":{"valid":false,"code":"unknown_field"}},
-    {"id":"group-publish-idempotent","input":{"actor":"key-a","idempotencyKey":"1234567890abcdef","digest":"sha256:abc"},"repeat":{"actor":"key-a","idempotencyKey":"1234567890abcdef","digest":"sha256:abc"},"expected":{"sameOperation":true,"activationCount":1}},
-    {"id":"group-publish-key-conflict","input":{"actor":"key-a","idempotencyKey":"1234567890abcdef","digest":"sha256:abc"},"repeat":{"actor":"key-a","idempotencyKey":"1234567890abcdef","digest":"sha256:def"},"expected":{"status":409,"code":"idempotency_conflict","activeRevisionChanged":false}},
-    {"id":"group-stale-revision","input":{"expectedCurrentRevision":"stale","actualCurrentRevision":"active"},"expected":{"status":409,"code":"group_revision_conflict","currentPointerUnchanged":true}},
-    {"id":"activation-failure-preserves-pointers","input":{"candidate":"r2","current":"r1","activation":"failed"},"expected":{"current":"r1","previous":"r0","runtime":"old-snapshot"}},
+    {"id":"bootstrap-rejects-product-runtime-settings","input":{"keys":["state","artifacts","execution","management","site"]},"expected":{"valid":false,"code":"unknown_field"}},
     {"id":"archive-traversal","input":{"entry":"frontends/x/../../outside"},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
     {"id":"archive-gzip-integrity","input":{"entries":[{"name":"frontends/ui/index.html","content":"valid file"}],"corruptGzip":true},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
     {"id":"archive-duplicate-path","input":{"entries":[{"name":"frontends/ui/index.html","content":"first"},{"name":"frontends/ui/index.html","content":"second"}]},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
@@ -18,8 +14,6 @@
     {"id":"archive-compression-ratio-limit","input":{"contentBytes":16384},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
     {"id":"archive-compressed-byte-limit","input":{"contentBytes":1024,"contentEntropy":true,"limits":{"compressedArtifactLimitBytes":256}},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
     {"id":"archive-uncompressed-byte-limit","input":{"contentBytes":257,"limits":{"uncompressedArtifactLimitBytes":256}},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
-    {"id":"admin-mutation-checkpoint-first","input":{"operation":"PUT","checkpoint":"created","forward":"failed"},"expected":{"checkpointRetained":true,"auditBodyStored":false}},
-    {"id":"admin-drift-blocks-group-publish","input":{"runtimeDigest":"manual-change","compositionDigest":"known"},"expected":{"drift":true,"publishStatus":409,"code":"group_drift_blocked"}},
     {"id":"remote-management-requires-both-factors","input":{"clientCertificate":true,"bearer":false},"expected":{"authorized":false}},
     {"id":"remote-plugin-no-downgrade","input":{"mode":"remote","certificate":"rejected"},"expected":{"connected":false,"fallback":"none"}},
     {"id":"credential-one-time-reveal","input":{"operation":"rotate"},"expected":{"rawTokenReturnedOnce":true,"storedValue":"verifier-only"}}

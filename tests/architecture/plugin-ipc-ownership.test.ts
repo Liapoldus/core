@@ -17,12 +17,4 @@ describe("plugin IPC contract ownership", () => {
     expect(manifest.files).not.toHaveProperty("plugin-contracts.json");
   });
 
-  it("does not retain the unconnected Gateway-specific WAF wire adapter", async () => {
-    const adapter = await readFile(join(coreRoot, "internal/infrastructure/plugins/capability_dispatch.go"), "utf8");
-    const fixture = await readFile(join(coreRoot, "tests/fixtures/plugin-grpc/main.go"), "utf8");
-
-    expect(adapter).not.toMatch(/WAFContext|WAFDecision|\.WAF\(/);
-    expect(adapter).not.toContain('json:"waf,omitempty"');
-    expect(fixture).not.toMatch(/WAF\s+\*struct|input\.WAF/);
-  });
 });

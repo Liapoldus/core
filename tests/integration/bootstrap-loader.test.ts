@@ -19,15 +19,15 @@ describe("typed bootstrap loading", () => {
         "  path: ./state/gateway.db",
         "artifacts:",
         "  path: ./state/artifacts",
+        "execution:",
+        "  profile: supervised",
         "management:",
         "  listen: 127.0.0.1:9443",
         "  tls:",
         "    certificate: file:/run/secrets/management.crt",
         "    key: file:/run/secrets/management.key",
-        "caddy:",
-        "  variant: external",
-        "  binary: /usr/local/bin/liapoldus-caddy",
-        "  expectedBuildID: caddy-module-set-1",
+        "pluginCatalog:",
+        "  url: https://plugins.example.invalid/metadata",
         "",
       ].join("\n"), "utf8");
       await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/bootstrap-loader"], { cwd: coreRoot });
@@ -39,9 +39,8 @@ describe("typed bootstrap loading", () => {
         ManagementListen: "127.0.0.1:9443",
         ManagementCertificate: "/run/secrets/management.crt",
         ManagementKey: "/run/secrets/management.key",
-        CaddyVariant: "external",
-        CaddyBinary: "/usr/local/bin/liapoldus-caddy",
-        CaddyExpectedBuildID: "caddy-module-set-1",
+        ExecutionProfile: "supervised",
+        PluginCatalogURL: "https://plugins.example.invalid/metadata",
       });
 
       const legacy = [
@@ -54,9 +53,12 @@ describe("typed bootstrap loading", () => {
         "  tls:",
         "    certificate: file:/run/secrets/management.crt",
         "    key: file:/run/secrets/management.key",
-        "caddy:",
-        "  variant: embedded",
-        "listeners: {}",
+        "execution:",
+        "  profile: supervised",
+        "pluginCatalog:",
+        "  url: https://plugins.example.invalid/metadata",
+        "legacyTrafficRuntime:",
+        "  mode: embedded",
         "",
       ].join("\n");
       await writeFile(gatewayConfig, legacy, "utf8");

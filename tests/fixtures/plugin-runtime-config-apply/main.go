@@ -21,7 +21,7 @@ func main() {
 		HealthProbeInterval: time.Hour, HealthFailureThreshold: 1,
 		MemoryProbeInterval: time.Hour, MemoryLimitBytes: ^uint64(0),
 	}
-	runtime, err := plugins.StartRuntime(context.Background(), map[string]models.PluginInstance{"fixture": instance}, nil)
+	runtime, err := plugins.StartRuntime(context.Background(), map[string]models.PluginInstance{"fixture": instance})
 	check(err)
 	defer runtime.Stop(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

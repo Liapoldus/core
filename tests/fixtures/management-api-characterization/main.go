@@ -38,20 +38,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	adminWords, err := config.LoadAdminMutation()
-	if err != nil {
-		panic(err)
-	}
 	server := &api.Server{
-		Token:           "characterization-token",
-		Management:      management,
-		AuditWords:      auditWords,
-		AdminWords:      adminWords,
-		CaddyVariant:    "embedded",
-		CaddyBuildID:    "fixture-build",
-		CaddyModules:    []string{"http", "layer4"},
-		DataPlaneState:  management.Statuses.NotReady,
-		DataPlaneReason: management.Statuses.SystemReleaseRequired,
+		Token:          "characterization-token",
+		Management:     management,
+		AuditWords:     auditWords,
+		DataPlaneState: management.Statuses.Ready,
 		Plugins: []any{
 			map[string]any{"id": "fixture-a", "name": "Alpha", "state": "ready"},
 			map[string]any{"id": "fixture-b", "name": "Beta", "state": "starting"},
@@ -66,7 +57,6 @@ func main() {
 		Token:                    "characterization-token",
 		Management:               management,
 		AuditWords:               auditWords,
-		AdminWords:               adminWords,
 		RequireClientCertificate: true,
 	}
 	serverForRequests := httptest.NewServer(server.Handler())
@@ -74,7 +64,6 @@ func main() {
 	serverForMTLS := httptest.NewServer(mtlsServer.Handler())
 	defer serverForMTLS.Close()
 
-	group := management.Paths.GroupByID + "missing"
 	plugin := management.Paths.Plugins + "/fixture-a"
 	cases := []requestCase{
 		{name: "healthGet", method: http.MethodGet, path: management.Paths.Healthz},
@@ -84,12 +73,6 @@ func main() {
 		{name: "statusAuthenticated", method: http.MethodGet, path: management.Paths.Status, token: "characterization-token"},
 		{name: "statusMTLSRequired", method: http.MethodGet, path: management.Paths.Status, token: "characterization-token", mtls: true},
 		{name: "healthBeforeMTLS", method: http.MethodGet, path: management.Paths.Healthz, mtls: true},
-		{name: "groupListUnavailable", method: http.MethodGet, path: management.Paths.Groups, token: "characterization-token"},
-		{name: "groupDetailUnavailable", method: http.MethodGet, path: group, token: "characterization-token"},
-		{name: "groupReleaseListUnavailable", method: http.MethodGet, path: group + "/" + management.Paths.GroupReleases, token: "characterization-token"},
-		{name: "groupReleaseDetailUnavailable", method: http.MethodGet, path: group + "/" + management.Paths.GroupReleases + "/revision", token: "characterization-token"},
-		{name: "groupPublishUnavailable", method: http.MethodPost, path: group + "/" + management.Paths.GroupReleases, token: "characterization-token"},
-		{name: "groupRollbackUnavailable", method: http.MethodPost, path: group + "/" + management.Paths.GroupRollback, token: "characterization-token"},
 		{name: "serviceKeyListUnavailable", method: http.MethodGet, path: management.Paths.ServiceKeys, token: "characterization-token"},
 		{name: "serviceKeyCreateUnavailable", method: http.MethodPost, path: management.Paths.ServiceKeys, token: "characterization-token", body: `{}`},
 		{name: "pluginList", method: http.MethodGet, path: management.Paths.Plugins + "?limit=1", token: "characterization-token"},
@@ -97,26 +80,19 @@ func main() {
 		{name: "adminSurfaces", method: http.MethodGet, path: management.Paths.AdminSurfaces, token: "characterization-token"},
 		{name: "pluginDetail", method: http.MethodGet, path: plugin, token: "characterization-token"},
 		{name: "pluginNotFound", method: http.MethodGet, path: management.Paths.Plugins + "/missing", token: "characterization-token"},
-		{name: "cookiePolicyUnavailable", method: http.MethodGet, path: management.Paths.PluginCookiePolicies + "/fixture-a" + management.Paths.CookiePoliciesSuffix + "forms.submit", token: "characterization-token"},
 		{name: "pluginAdminUnavailable", method: http.MethodGet, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
 		{name: "pluginAdminPostUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.AdminPages + "/records/delete", token: "characterization-token", body: `{}`},
 		{name: "pluginRestartUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.Restart, token: "characterization-token"},
-		{name: "caddyAdminUnavailable", method: http.MethodGet, path: strings.TrimSuffix(adminWords.Paths.ManagementPrefix, "/") + "/config/", token: "characterization-token"},
 		{name: "operationUnavailable", method: http.MethodGet, path: management.Paths.Operations + "/missing", token: "characterization-token"},
 		{name: "auditEmpty", method: http.MethodGet, path: management.Paths.Audit, token: "characterization-token"},
 		{name: "unknownRoute", method: http.MethodGet, path: "/api/unknown", token: "characterization-token"},
 		{name: "retiredConfigRoute", method: http.MethodGet, path: "/api/config", token: "characterization-token"},
-		{name: "unsupportedMethod", method: http.MethodDelete, path: management.Paths.Groups, token: "characterization-token"},
+		{name: "unsupportedPluginMethod", method: http.MethodDelete, path: management.Paths.Plugins, token: "characterization-token"},
 	}
 	if len(os.Args) > 1 && os.Args[1] == "route-matrix" {
 		cases = []requestCase{
-			{name: "groupCollectionPost", method: http.MethodPost, path: management.Paths.Groups, token: "characterization-token", body: `{"id":"new-group","idempotencyKey":"0123456789abcdef"}`},
-			{name: "groupCollectionDelete", method: http.MethodDelete, path: management.Paths.Groups, token: "characterization-token"},
-			{name: "groupDetailPost", method: http.MethodPost, path: group, token: "characterization-token"},
 			{name: "pluginListPost", method: http.MethodPost, path: management.Paths.Plugins, token: "characterization-token"},
 			{name: "pluginDetailPut", method: http.MethodPut, path: plugin, token: "characterization-token"},
-			{name: "pluginCookiePolicyPut", method: http.MethodPut, path: management.Paths.PluginCookiePolicies + "/fixture-a" + management.Paths.CookiePoliciesSuffix + "forms.submit", token: "characterization-token"},
-			{name: "pluginCookiePolicyPost", method: http.MethodPost, path: management.Paths.PluginCookiePolicies + "/fixture-a" + management.Paths.CookiePoliciesSuffix + "forms.submit", token: "characterization-token"},
 			{name: "pluginAdminPatch", method: http.MethodPatch, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
 			{name: "pluginRestartGet", method: http.MethodGet, path: plugin + "/" + management.Paths.Restart, token: "characterization-token"},
 			{name: "adminSurfacesPost", method: http.MethodPost, path: management.Paths.AdminSurfaces, token: "characterization-token"},
@@ -124,7 +100,6 @@ func main() {
 			{name: "auditPost", method: http.MethodPost, path: management.Paths.Audit, token: "characterization-token"},
 			{name: "operationPost", method: http.MethodPost, path: management.Paths.Operations + "/missing", token: "characterization-token"},
 			{name: "statusHead", method: http.MethodHead, path: management.Paths.Status, token: "characterization-token"},
-			{name: "caddyAdminDelete", method: http.MethodDelete, path: strings.TrimSuffix(adminWords.Paths.ManagementPrefix, "/") + "/config/", token: "characterization-token"},
 		}
 	}
 

@@ -2,29 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://liapoldus.github.io/spec/gateway.schema.json",
   "title": "Liapoldus Gateway bootstrap gateway.yaml",
-  "description": "Bootstrap contract only. Traffic listeners and routing are native Caddyfile group revisions and are intentionally outside this schema.",
+  "description": "Минимальная конфигурация единственного Core control-plane process. Plugin settings и traffic configuration хранятся Core в SQLite и доставляются по pluginprotocol ConfigApply.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["state", "artifacts", "management", "caddy"],
+  "required": ["state", "artifacts", "execution", "management"],
   "properties": {
     "state": { "$ref": "#/$defs/state" },
     "artifacts": { "$ref": "#/$defs/artifacts" },
+    "execution": { "$ref": "#/$defs/execution" },
     "management": { "$ref": "#/$defs/management" },
-    "caddy": { "$ref": "#/$defs/caddy" }
+    "pluginCatalog": { "$ref": "#/$defs/pluginCatalog" }
   },
   "$defs": {
     "fileReference": {
       "type": "string",
       "minLength": 7,
       "pattern": "^file:[^\\x00]+$",
-      "description": "External file reference. Inline secret values are forbidden."
+      "description": "External file reference; inline secret values are forbidden."
     },
     "state": {
       "type": "object",
       "additionalProperties": false,
       "required": ["path"],
       "properties": {
-        "path": { "type": "string", "minLength": 1, "description": "Local SQLite database file path." }
+        "path": { "type": "string", "minLength": 1, "description": "Local SQLite database file path; network filesystems are not supported." }
       }
     },
     "artifacts": {
@@ -32,7 +33,15 @@
       "additionalProperties": false,
       "required": ["path"],
       "properties": {
-        "path": { "type": "string", "minLength": 1, "description": "Local immutable artifact store root." }
+        "path": { "type": "string", "minLength": 1, "description": "Local immutable plugin package/release store root for supervised mode." }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile"],
+      "properties": {
+        "profile": { "enum": ["supervised", "external"], "description": "One global lifecycle profile for this single Core instance." }
       }
     },
     "management": {
@@ -48,9 +57,9 @@
           "properties": {
             "certificate": { "$ref": "#/$defs/fileReference" },
             "key": { "$ref": "#/$defs/fileReference" },
-            "clientCA": { "$ref": "#/$defs/fileReference", "description": "Required at runtime when listen is not a literal loopback IP; omit for loopback listeners reached via a restricted SSH tunnel." }
+            "clientCA": { "$ref": "#/$defs/fileReference", "description": "Required for web Controller non-loopback access; desktop uses restricted SSH forwarding to loopback." }
           },
-          "description": "TLS server identity is required for every Management listener. A non-loopback listener additionally requires clientCA for mTLS; a loopback listener omits clientCA and uses TLS server verification plus Bearer authorization through restricted SSH forwarding. Runtime validation classifies literal loopback IPs; hostnames and wildcard binds require clientCA."
+          "description": "Management TLS identity is required for every bind. Web Controller traffic additionally uses client mTLS and Bearer service credential."
         },
         "requestLimits": {
           "type": "object",
@@ -63,34 +72,32 @@
         }
       }
     },
-    "caddy": {
+    "pluginCatalog": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["variant"],
+      "required": ["url"],
       "properties": {
-        "variant": { "enum": ["embedded", "external"] },
-        "binary": { "type": "string", "minLength": 1 },
-        "expectedBuildID": { "type": "string", "pattern": "^[A-Za-z0-9._:+-]{1,128}$" }
+        "url": { "type": "string", "format": "uri", "minLength": 1, "description": "TUF metadata endpoint only; install requests select a signed publisher/name/version and cannot supply an arbitrary URL." }
       },
-      "allOf": [
-        {
-          "if": { "properties": { "variant": { "const": "embedded" } }, "required": ["variant"] },
-          "then": { "not": { "anyOf": [{ "required": ["binary"] }, { "required": ["expectedBuildID"] }] } }
-        },
-        {
-          "if": { "properties": { "variant": { "const": "external" } }, "required": ["variant"] },
-          "then": { "required": ["binary", "expectedBuildID"] }
-        }
-      ],
-      "description": "Both variants must contain/use the compatible Liapoldus Caddy app/modules and Caddy-L4. Stock Caddy is unsupported."
+      "description": "Optional for external profile; required when supervised profile installs packages. The first-party trust root ships with Core."
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "execution": { "properties": { "profile": { "const": "supervised" } }, "required": ["profile"] } }, "required": ["execution"] },
+      "then": { "required": ["pluginCatalog"] }
+    }
+  ],
   "x-liapoldus-invariants": [
-    "Only state, artifact paths, Management API transport/trust and Caddy variant are bootstrap settings.",
-    "Traffic listeners, sites, routes, upstreams, TLS sites, and L4 configuration are native Caddyfile group revisions.",
-    "Unknown properties, includes, site.yaml, and route DSL fields are rejected.",
-    "Every Management listener requires TLS server identity and Bearer authorization. Service-key verifiers and lifecycle metadata are stored in SQLite; local CLI bootstrap creates the first key and prints the raw token once; no active service key means fail-closed authorization. Loopback literal-IP binds omit clientCA and desktop SSH forwarding verifies the server identity. Any non-loopback, hostname, or wildcard bind requires private network/VPN, clientCA verification (mTLS), and Bearer authorization for the web Constructor backend.",
-    "Management trust roots and plugin workload trust roots are separate.",
-    "SQLite database and artifact store must use local storage; plaintext secret values are forbidden."
+    "Gateway Core is a single process and SQLite is the only durable source of desired plugin configuration.",
+    "The global execution profile is supervised or external; profiles cannot be mixed within one Core.",
+    "Plugin settings are not accepted in gateway.yaml, environment variables, argv, or plugin application-config files; Core pushes versioned JSON with ConfigApply.",
+    "Traffic listeners, sites, routes, and traffic-plugin runtime configuration are not part of gateway.yaml.",
+    "Traffic plugins own their runtime state on persistent local storage; Core remains implementation-agnostic.",
+    "Supervised installation verifies TUF metadata, package digest, platform and protocol compatibility; arbitrary package URLs are rejected.",
+    "External profile does not expose plugin install/start/stop/restart endpoints; process lifecycle belongs to the external operator.",
+    "Management TLS is always enabled. Management and plugin workload trust roots are separate.",
+    "SQLite, Core package paths, and plugin-owned runtime state use persistent local storage.",
+    "Plaintext secret values are forbidden in gateway.yaml and ConfigApply payloads."
   ]
 }

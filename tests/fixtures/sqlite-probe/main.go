@@ -10,14 +10,11 @@ import (
 )
 
 type report struct {
-	JournalMode               string   `json:"journalMode"`
-	ForeignKeys               int      `json:"foreignKeys"`
-	MigrationCount            int      `json:"migrationCount"`
-	Migration                 int      `json:"migrationVersion"`
-	CrossGroupPointerRejected bool     `json:"crossGroupPointerRejected"`
-	SystemGroupExists         bool     `json:"systemGroupExists"`
-	SystemPointerExists       bool     `json:"systemPointerExists"`
-	RequiredTables            []string `json:"requiredTables"`
+	JournalMode    string   `json:"journalMode"`
+	ForeignKeys    int      `json:"foreignKeys"`
+	MigrationCount int      `json:"migrationCount"`
+	Migration      int      `json:"migrationVersion"`
+	RequiredTables []string `json:"requiredTables"`
 }
 
 func main() {
@@ -51,20 +48,6 @@ func main() {
 	if err := database.QueryRowContext(context.Background(), "SELECT COUNT(*), COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&result.MigrationCount, &result.Migration); err != nil {
 		panic(err)
 	}
-	if err := database.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM groups WHERE id = ? AND kind = ? AND active = 1)", "system", "system").Scan(&result.SystemGroupExists); err != nil {
-		panic(err)
-	}
-	if err := database.QueryRowContext(context.Background(), "SELECT EXISTS(SELECT 1 FROM group_pointers WHERE group_id = ?)", "system").Scan(&result.SystemPointerExists); err != nil {
-		panic(err)
-	}
-	if _, err := database.ExecContext(context.Background(), "INSERT OR IGNORE INTO groups(id, kind) VALUES(?, ?), (?, ?)", "probe-a", "application", "probe-b", "application"); err != nil {
-		panic(err)
-	}
-	if _, err := database.ExecContext(context.Background(), "INSERT OR IGNORE INTO group_revisions(id, group_id, caddyfile_digest, caddyfile_path, actor) VALUES(?, ?, ?, ?, ?)", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "probe-a", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "probe.caddyfile", "test"); err != nil {
-		panic(err)
-	}
-	_, err = database.ExecContext(context.Background(), "INSERT INTO group_pointers(group_id, current_revision_id) VALUES(?, ?)", "probe-b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	result.CrossGroupPointerRejected = err != nil
 	rows, err := database.QueryContext(context.Background(), "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
 	if err != nil {
 		panic(err)

@@ -66,16 +66,7 @@ describe("presentation package ownership", () => {
       "PluginIDField",
       "RestartPlugin",
       "Audit",
-      "GroupService",
-      "GroupReleases",
-      "CookiePolicies",
-      "GroupReleasePolicy",
-      "AdminMutations",
-      "AdminWords",
       "AccessService",
-      "CaddyVariant",
-      "CaddyBuildID",
-      "CaddyModules",
       "DataPlaneState",
       "DataPlaneReason",
       "DataPlaneReadiness",
@@ -86,7 +77,7 @@ describe("presentation package ownership", () => {
       "RequireClientCertificate",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(27);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(18);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 
@@ -117,11 +108,7 @@ describe("presentation package ownership", () => {
 
     expect(mayDependOn("presentationAPI")).toContain("presentationAPIHandlers");
     expect(mayDependOn("presentationAPIHandlers")).not.toContain("presentationAPI");
-    expect(mayDependOn("presentationCLI")).toContain("presentationCLICaddyRuntime");
     expect(mayDependOn("presentationCLI")).toContain("presentationCLIBootstrap");
-    expect(mayDependOn("presentationCLIBootstrap")).toContain("presentationCLICaddyRuntime");
     expect(mayDependOn("presentationCLIBootstrap")).not.toContain("presentationCLI");
-    expect(mayDependOn("presentationCLICaddyRuntime")).not.toContain("presentationCLI");
-    expect(mayDependOn("presentationCLICaddyRuntime")).not.toContain("presentationCLIBootstrap");
   });
 });

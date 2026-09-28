@@ -9,12 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/presentation/cli/caddyruntime"
 )
-
-type RuntimeBindings = caddyruntime.RuntimeBindings
-type PluginDispatchBinding = caddyruntime.PluginDispatchBinding
-type CaddyRuntime = caddyruntime.CaddyRuntime
 
 var words = func() config.CLIWords {
 	loaded, err := config.LoadCLI()
@@ -30,13 +25,13 @@ type options struct {
 	command []string
 }
 
-func ExecuteWithRuntime(arguments []string, runtime RuntimeBindings) int {
+func Execute(arguments []string) int {
 	parsed, err := parseOptions(arguments)
 	if err != nil {
 		writeFailure(parsed.output, words.Exits.Arguments, words.Codes.ConfigInvalid, err.Error())
 		return words.Exits.Arguments
 	}
-	return run(parsed, runtime)
+	return run(parsed)
 }
 
 func parseOptions(arguments []string) (options, error) {
@@ -63,14 +58,14 @@ func parseOptions(arguments []string) (options, error) {
 	return result, nil
 }
 
-func run(options options, runtime RuntimeBindings) int {
+func run(options options) int {
 	if len(options.command) == 0 {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigInvalid, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments
 	}
 	switch options.command[0] {
 	case words.Commands.Serve:
-		return serve(options, runtime)
+		return serve(options)
 	case words.Commands.Access:
 		return access(options)
 	default:

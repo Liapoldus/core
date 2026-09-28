@@ -18,7 +18,7 @@ async function readGoTree(directory: string): Promise<string> {
 }
 
 describe("API plugin handler ownership", () => {
-  it("places plugin lifecycle, detail, cookie-policy, and admin handlers in handlers", async () => {
+  it("places plugin lifecycle, detail, and admin handlers in handlers", async () => {
     const handlers = await readGoTree(join(apiRoot, "handlers"));
     const dependencies = await readFile(join(apiRoot, "handlers", "deps.go"), "utf8");
 
@@ -28,14 +28,11 @@ describe("API plugin handler ownership", () => {
       "PluginRestart",
       "IsPluginDetailPath",
       "PluginDetail",
-      "IsPluginCookiePolicyPath",
-      "PluginCookiePolicy",
       "PluginAdmin",
     ]) {
       expect(handlers).toMatch(new RegExp(`^func ${handler}\\(`, "m"));
     }
     expect(dependencies).toMatch(/^type PluginDependencies struct \{/m);
-    expect(handlers).toMatch(/^type pluginCookiePolicyInput struct \{/m);
   });
 
   it("routes all plugin endpoints through the typed handlers boundary", async () => {
@@ -46,7 +43,6 @@ describe("API plugin handler ownership", () => {
       "AdminSurfaceList",
       "PluginRestart",
       "PluginDetail",
-      "PluginCookiePolicy",
       "PluginAdmin",
     ]) {
       expect(router).toMatch(new RegExp(`handlers\\.${handler}\\(`));
@@ -61,13 +57,9 @@ describe("API plugin handler ownership", () => {
       "handlePluginRestart",
       "isPluginDetailPath",
       "handlePluginDetail",
-      "isPluginCookiePolicyPath",
-      "handlePluginCookiePolicy",
-      "pluginCookiePolicyResource",
       "handlePluginAdmin",
     ]) {
       expect(adapter).not.toMatch(new RegExp(`^func \\(server \\*Server\\) ${method}\\(`, "m"));
     }
-    expect(codec).not.toMatch(/^type pluginCookiePolicyInput struct \{/m);
   });
 });

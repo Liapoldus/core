@@ -56,13 +56,13 @@ async function prepareGateway(directory: string) {
     `  path: ${database}`,
     "artifacts:",
     `  path: ${join(directory, "artifacts")}`,
+    "execution:",
+    "  profile: external",
     "management:",
     `  listen: ${address}`,
     "  tls:",
     `    certificate: file:${certificate}`,
     `    key: file:${privateKey}`,
-    "caddy:",
-    "  variant: embedded",
     "",
   ].join("\n"), "utf8");
   const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);

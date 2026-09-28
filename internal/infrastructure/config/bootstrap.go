@@ -18,11 +18,8 @@ type BootstrapConfig struct {
 	ManagementMaxBodyBytes   int64
 	ManagementHeaderTimeout  string
 	ManagementRequestTimeout string
-	CaddyVariant             string
-	CaddyBinary              string
-	CaddyExpectedBuildID     string
-	CaddyEmbeddedVariant     string
-	CaddyExternalVariant     string
+	ExecutionProfile         string
+	PluginCatalogURL         string
 }
 
 type managementBootstrapFields struct {
@@ -41,14 +38,11 @@ type managementBootstrapOptions struct {
 type bootstrapFieldLists struct {
 	State                   []string `yaml:"state"`
 	Artifacts               []string `yaml:"artifacts"`
+	Execution               []string `yaml:"execution"`
 	Management              []string `yaml:"management"`
 	ManagementTLS           []string `yaml:"managementTLS"`
 	ManagementRequestLimits []string `yaml:"managementRequestLimits"`
-	Caddy                   []string `yaml:"caddy"`
-	CaddyVariant            struct {
-		Embedded string `yaml:"embedded"`
-		External string `yaml:"external"`
-	} `yaml:"caddyVariant"`
+	PluginCatalog           []string `yaml:"pluginCatalog"`
 }
 
 // LoadBootstrap validates and decodes bootstrap configuration. Relative paths
@@ -75,19 +69,27 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err := yaml.Unmarshal(contents, &document); err != nil {
 		return BootstrapConfig{}, err
 	}
-	if len(document.Content) == 0 || len(loaded.Root) != 4 {
+	if len(document.Content) == 0 || len(loaded.Root) < 5 || len(fieldLists.Execution) != 1 || len(fieldLists.PluginCatalog) != 1 {
 		return BootstrapConfig{}, ErrInvalidDocument
 	}
 	root := document.Content[0]
 	state := mappingValue(root, loaded.Root[0])
 	artifacts := mappingValue(root, loaded.Root[1])
-	management := mappingValue(root, loaded.Root[2])
-	caddy := mappingValue(root, loaded.Root[3])
+	execution := mappingValue(root, loaded.Root[2])
+	management := mappingValue(root, loaded.Root[3])
 	statePath, err := onlyScalarValue(state, fieldLists.State)
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
 	artifactsPath, err := onlyScalarValue(artifacts, fieldLists.Artifacts)
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
+	executionProfile, err := onlyScalarValue(execution, fieldLists.Execution)
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
+	pluginCatalogURL, err := optionalScalarValue(mappingValue(mappingValue(root, loaded.Root[4]), fieldLists.PluginCatalog[0]))
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
@@ -120,22 +122,6 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 		return BootstrapConfig{}, err
 	}
 
-	if len(fieldLists.Caddy) != 3 {
-		return BootstrapConfig{}, ErrInvalidDocument
-	}
-	variant, err := scalarValue(mappingValue(caddy, fieldLists.Caddy[0]))
-	if err != nil {
-		return BootstrapConfig{}, err
-	}
-	binary, err := optionalScalarValue(mappingValue(caddy, fieldLists.Caddy[1]))
-	if err != nil {
-		return BootstrapConfig{}, err
-	}
-	buildID, err := optionalScalarValue(mappingValue(caddy, fieldLists.Caddy[2]))
-	if err != nil {
-		return BootstrapConfig{}, err
-	}
-
 	return BootstrapConfig{
 		StatePath:                resolveRelative(path, statePath),
 		ArtifactsPath:            resolveRelative(path, artifactsPath),
@@ -146,11 +132,8 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 		ManagementMaxBodyBytes:   requestLimits.MaxBodyBytes,
 		ManagementHeaderTimeout:  requestLimits.HeaderTimeout,
 		ManagementRequestTimeout: requestLimits.RequestTimeout,
-		CaddyVariant:             variant,
-		CaddyEmbeddedVariant:     fieldLists.CaddyVariant.Embedded,
-		CaddyExternalVariant:     fieldLists.CaddyVariant.External,
-		CaddyBinary:              resolveRelative(path, binary),
-		CaddyExpectedBuildID:     buildID,
+		ExecutionProfile:         executionProfile,
+		PluginCatalogURL:         pluginCatalogURL,
 	}, nil
 }
 

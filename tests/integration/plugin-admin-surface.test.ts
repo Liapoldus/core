@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
-const protocol = resolve(root, "../pluginprotocol");
+const plugins = resolve(root, "../plugins");
 
 describe("plugin supervisor и admin surface boundary", () => {
   it("имеет реалный supervisor с жизненным циклом процесса", () => {
@@ -24,8 +24,8 @@ describe("plugin supervisor и admin surface boundary", () => {
     expect(source).toContain("func (s AdminSurface) Namespace");
   });
 
-  it("берёт forms-db surface из канонического protocol repository", () => {
-    const contract = resolve(protocol, "contracts/forms-db/v1/admin-surface.json");
+  it("берёт forms-db surface из репозитория самого плагина", () => {
+    const contract = resolve(plugins, "forms-db/contracts/v1/admin-surface.json");
     expect(existsSync(contract)).toBe(true);
     const parsed = JSON.parse(readFileSync(contract, "utf8"));
     expect(parsed.plugin).toBe("forms-db");

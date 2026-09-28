@@ -112,35 +112,21 @@ func loadCLI() (CLIWords, error) {
 }
 
 type ManagementWords struct {
-	AuditActions struct {
-		PluginCookiePolicyReplace string `yaml:"pluginCookiePolicyReplace"`
-	} `yaml:"auditActions"`
-	CookiePolicy struct {
-		Version          int   `yaml:"version"`
-		MaximumBodyBytes int64 `yaml:"maximumBodyBytes"`
-	} `yaml:"cookiePolicy"`
 	ServiceKeys struct {
 		NameMinLength int `yaml:"nameMinLength"`
 		NameMaxLength int `yaml:"nameMaxLength"`
 		CreatedStatus int `yaml:"createdStatus"`
 	} `yaml:"serviceKeys"`
 	Codes struct {
-		BearerRequired                   string `yaml:"bearerRequired"`
-		ManagementUnavailable            string `yaml:"managementUnavailable"`
-		ManagementMTLSRequired           string `yaml:"managementMTLSRequired"`
-		IdempotencyConflict              string `yaml:"idempotencyConflict"`
-		PluginUnavailable                string `yaml:"pluginUnavailable"`
-		PluginNotFound                   string `yaml:"pluginNotFound"`
-		GroupNotFound                    string `yaml:"groupNotFound"`
-		GroupAlreadyExists               string `yaml:"groupAlreadyExists"`
-		InvalidRequest                   string `yaml:"invalidRequest"`
-		ArtifactTooLarge                 string `yaml:"artifactTooLarge"`
-		OperationNotFound                string `yaml:"operationNotFound"`
-		CookiePolicyNotFound             string `yaml:"cookiePolicyNotFound"`
-		CookiePolicyRevisionConflict     string `yaml:"cookiePolicyRevisionConflict"`
-		CookiePolicyPreconditionRequired string `yaml:"cookiePolicyPreconditionRequired"`
-		CookiePolicyUnavailable          string `yaml:"cookiePolicyUnavailable"`
-		InvalidCookiePolicy              string `yaml:"invalidCookiePolicy"`
+		BearerRequired         string `yaml:"bearerRequired"`
+		ManagementUnavailable  string `yaml:"managementUnavailable"`
+		ManagementMTLSRequired string `yaml:"managementMTLSRequired"`
+		IdempotencyConflict    string `yaml:"idempotencyConflict"`
+		PluginUnavailable      string `yaml:"pluginUnavailable"`
+		PluginNotFound         string `yaml:"pluginNotFound"`
+		InvalidRequest         string `yaml:"invalidRequest"`
+		ArtifactTooLarge       string `yaml:"artifactTooLarge"`
+		OperationNotFound      string `yaml:"operationNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
 		Healthz              string `yaml:"healthz"`
@@ -154,8 +140,6 @@ type ManagementWords struct {
 		Plugins              string `yaml:"plugins"`
 		PluginSettingsSuffix string `yaml:"pluginSettingsSuffix"`
 		AdminSurfaces        string `yaml:"adminSurfaces"`
-		PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
-		CookiePoliciesSuffix string `yaml:"cookiePoliciesSuffix"`
 		AdminPages           string `yaml:"adminPages"`
 		Restart              string `yaml:"restart"`
 		Logs                 string `yaml:"logs"`
@@ -165,12 +149,7 @@ type ManagementWords struct {
 		Operations           string `yaml:"operations"`
 		Audit                string `yaml:"audit"`
 		ServiceKeys          string `yaml:"serviceKeys"`
-		Groups               string `yaml:"groups"`
-		GroupByID            string `yaml:"groupByID"`
-		GroupReleases        string `yaml:"groupReleases"`
-		GroupRollback        string `yaml:"groupRollback"`
-		GroupIDSeparator     string `yaml:"groupIDSeparator"`
-		GroupIDPattern       string `yaml:"groupIDPattern"`
+		PluginIDSeparator    string `yaml:"pluginIDSeparator"`
 	} `yaml:"paths"`
 	Methods struct {
 		Get    string `yaml:"get"`
@@ -190,9 +169,6 @@ type ManagementWords struct {
 		IdempotencyKey     string `yaml:"idempotencyKey"`
 		ExpectedRevision   string `yaml:"expectedRevision"`
 		ID                 string `yaml:"id"`
-		GroupID            string `yaml:"groupId"`
-		Caddyfile          string `yaml:"caddyfile"`
-		CaddyfileDigest    string `yaml:"caddyfileDigest"`
 		ArtifactDigest     string `yaml:"artifactDigest"`
 		Frontends          string `yaml:"frontends"`
 		Files              string `yaml:"files"`
@@ -237,10 +213,6 @@ type ManagementWords struct {
 		Cursor             string `yaml:"cursor"`
 		Kind               string `yaml:"kind"`
 		Active             string `yaml:"active"`
-		Caddy              string `yaml:"caddy"`
-		Variant            string `yaml:"variant"`
-		BuildID            string `yaml:"buildId"`
-		Modules            string `yaml:"modules"`
 		Drift              string `yaml:"drift"`
 		RuntimeDigest      string `yaml:"runtimeDigest"`
 		CompositionDigest  string `yaml:"compositionDigest"`
@@ -285,7 +257,6 @@ type ManagementWords struct {
 		Empty                 string `yaml:"empty"`
 		NotReady              string `yaml:"notReady"`
 		SystemReleaseRequired string `yaml:"systemReleaseRequired"`
-		CaddyUnavailable      string `yaml:"caddyUnavailable"`
 		RecoveryRequired      string `yaml:"recoveryRequired"`
 	} `yaml:"statuses"`
 	Idempotency struct {
@@ -331,14 +302,10 @@ type AuditWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			GroupCreate               string `yaml:"groupCreate"`
-			PluginCookiePolicyReplace string `yaml:"pluginCookiePolicyReplace"`
-			ServiceKeyCreate          string `yaml:"serviceKeyCreate"`
+			ServiceKeyCreate string `yaml:"serviceKeyCreate"`
 		} `yaml:"actions"`
 		Resources struct {
-			Groups               string `yaml:"groups"`
-			PluginCookiePolicies string `yaml:"pluginCookiePolicies"`
-			ServiceKeys          string `yaml:"serviceKeys"`
+			ServiceKeys string `yaml:"serviceKeys"`
 		} `yaml:"resources"`
 		Results struct {
 			Succeeded string `yaml:"succeeded"`

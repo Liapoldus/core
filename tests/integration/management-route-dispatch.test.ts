@@ -27,13 +27,8 @@ describe("Management API route/method dispatch characterization", () => {
     );
 
     expect(dispatch).toEqual({
-      groupCollectionPost: { status: 503, code: "management_unavailable" },
-      groupCollectionDelete: { status: 404, code: "not_found" },
-      groupDetailPost: { status: 404, code: "not_found" },
       pluginListPost: { status: 404, code: "not_found" },
       pluginDetailPut: { status: 404, code: "not_found" },
-      pluginCookiePolicyPut: { status: 503, code: "management_unavailable" },
-      pluginCookiePolicyPost: { status: 404, code: "not_found" },
       pluginAdminPatch: { status: 404, code: "not_found" },
       pluginRestartGet: { status: 404, code: "not_found" },
       adminSurfacesPost: { status: 404, code: "not_found" },
@@ -41,7 +36,6 @@ describe("Management API route/method dispatch characterization", () => {
       auditPost: { status: 404, code: "not_found" },
       operationPost: { status: 404, code: "not_found" },
       statusHead: { status: 404, code: null },
-      caddyAdminDelete: { status: 503, code: "management_unavailable" },
     });
   }, 30_000);
 });

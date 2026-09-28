@@ -55,9 +55,13 @@ for (const file of publication.files) {
 }
 
 for (const target of Object.keys(manifest.files)) {
-  await readFile(join(outputDirectory, target));
+  if (!targets.has(target)) await readFile(join(outputDirectory, target));
 }
 for (const publication of publications) {
   await writeFile(join(outputDirectory, publication.target), publication.contents);
+}
+for (const target of Object.keys(manifest.files)) {
+  const contents = await readFile(join(outputDirectory, target));
+  manifest.files[target] = `sha256:${createHash("sha256").update(contents).digest("hex")}`;
 }
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

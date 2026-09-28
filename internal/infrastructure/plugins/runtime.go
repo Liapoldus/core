@@ -4,35 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
-	"net/netip"
 	"sort"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/pluginprotocol/transport"
+	pluginsdk "github.com/Liapoldus/pluginprotocol/presentation/sdk"
 )
 
 var ErrPluginStartup = errors.New("plugin startup failed")
 
 type runningInstance struct {
-	name             string
-	endpoint         string
-	grantServer      *transport.GrantServer
-	grantListener    net.Listener
-	broker           *grantBroker
-	listener         *net.TCPListener
-	client           *Client
-	capability       *CapabilityClient
-	model            models.PluginInstance
-	spec             Spec
-	done             <-chan error
-	resourceExceeded *atomic.Bool
-	configurationMu  *sync.Mutex
+	name            string
+	endpoint        string
+	grantServer     *pluginsdk.StartedGrantServer
+	broker          *grantBroker
+	listener        *pluginsdk.LocalListener
+	client          *Client
+	model           models.PluginInstance
+	spec            Spec
+	done            <-chan error
+	configurationMu *sync.Mutex
 }
 
 type Runtime struct {
@@ -51,15 +44,7 @@ type RuntimeSettings struct {
 
 var _ interfaces.PluginConfigurationApplier = (*Runtime)(nil)
 
-type DispatchBinding struct {
-	Name               string
-	Endpoint           string
-	Timeout            time.Duration
-	StartTimeout       time.Duration
-	MaxConcurrentCalls int
-}
-
-func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, secrets map[string]models.Secret, settings ...RuntimeSettings) (*Runtime, error) {
+func StartRuntime(ctx context.Context, configured map[string]models.PluginInstance, settings ...RuntimeSettings) (*Runtime, error) {
 	defer func() {
 		for name, instance := range configured {
 			clearConfigSecrets(instance.ConfigGrantSecrets)
@@ -84,27 +69,26 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		clearConfigSecrets(instance.ConfigGrantSecrets)
 		instance.ConfigGrantSecrets = nil
 		configured[name] = instance
-		listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: netip.AddrFrom4([4]byte{127, 0, 0, 1}).AsSlice()})
+		listener, err := pluginsdk.ListenLoopback()
 		if err != nil {
 			clearConfigSecrets(runtimeConfigSecrets)
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		endpoint := listener.Addr().String()
-		grantListener, err := net.Listen("tcp", net.JoinHostPort(netip.AddrFrom4([4]byte{127, 0, 0, 1}).String(), strconv.Itoa(0)))
+		endpoint := listener.Endpoint()
+		broker := newGrantBroker(name, instance.SettingsRevision, runtimeConfigSecrets, instance.ConfigGrantPurpose)
+		grantServer, err := pluginsdk.StartGrantBroker(broker)
 		if err != nil {
 			clearConfigSecrets(runtimeConfigSecrets)
+			broker.close()
 			_ = listener.Close()
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		broker := newGrantBroker(name, instance.SettingsRevision, instance.SecretGrants, secrets, runtimeConfigSecrets, instance.ConfigGrantPurpose)
-		brokerServer := transport.NewGrantBrokerServer(broker)
-		go func() { _ = brokerServer.Serve(grantListener) }()
 		spec := Spec{
-			Instance: name,
-			Binary:   instance.Binary,
-			Listener: listener,
+			Instance:     name,
+			Binary:       instance.Binary,
+			ListenerFile: listener.File,
 			Restart: RestartPolicy{
 				Enabled: instance.RestartEnabled,
 				Initial: instance.RestartInitialBackoff,
@@ -113,8 +97,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}
 		done, err := runtime.supervisor.StartWithExit(processContext, spec)
 		if err != nil {
-			brokerServer.Stop()
-			_ = grantListener.Close()
+			grantServer.Stop()
 			_ = listener.Close()
 			broker.close()
 			_ = runtime.Stop(context.Background())
@@ -122,8 +105,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}
 		client, err := NewClient(endpoint, instance.Timeout, instance.StartTimeout)
 		if err != nil {
-			brokerServer.Stop()
-			_ = grantListener.Close()
+			grantServer.Stop()
 			_ = listener.Close()
 			broker.close()
 			_ = runtime.supervisor.Stop(name)
@@ -132,8 +114,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 		}
 		configGrants, configHandles, err := broker.issueConfig()
 		if err != nil {
-			brokerServer.Stop()
-			_ = grantListener.Close()
+			grantServer.Stop()
 			_ = listener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
@@ -141,11 +122,10 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		handshake, err := client.BootstrapAndHandshake(ctx, name, grantListener.Addr().String(), instance.Settings, instance.SettingsRevision, configGrants)
+		handshake, err := client.BootstrapAndHandshake(ctx, name, grantServer.Endpoint(), instance.Settings, instance.SettingsRevision, configGrants)
 		broker.revoke(configHandles)
 		if err != nil || handshake.Manifest.GetName() != name || !manifestIncludes(handshake.Manifest.GetCapabilities(), instance.Capabilities) {
-			brokerServer.Stop()
-			_ = grantListener.Close()
+			grantServer.Stop()
 			_ = listener.Close()
 			_ = client.Close()
 			_ = runtime.supervisor.Stop(name)
@@ -153,25 +133,7 @@ func StartRuntime(ctx context.Context, configured map[string]models.PluginInstan
 			_ = runtime.Stop(context.Background())
 			return nil, ErrPluginStartup
 		}
-		capability, err := NewCapabilityClient(client, instance.MaxConcurrentCalls, instance.Capabilities...)
-		if err != nil {
-			brokerServer.Stop()
-			_ = grantListener.Close()
-			_ = listener.Close()
-			_ = client.Close()
-			_ = runtime.supervisor.Stop(name)
-			broker.close()
-			_ = runtime.Stop(context.Background())
-			return nil, ErrPluginStartup
-		}
-		resourceExceeded := &atomic.Bool{}
-		capability.grantBroker = broker
-		capability.setRSSLimit(instance.MemoryLimitBytes, func() (uint64, error) {
-			return runtime.supervisor.ResidentMemory(name)
-		}, func() {
-			_ = runtime.supervisor.Stop(name)
-		}, resourceExceeded)
-		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: brokerServer, grantListener: grantListener, broker: broker, listener: listener, client: client, capability: capability, model: instance, spec: spec, done: done, resourceExceeded: resourceExceeded, configurationMu: &sync.Mutex{}}
+		runtime.instances[name] = runningInstance{name: name, endpoint: endpoint, grantServer: grantServer, broker: broker, listener: listener, client: client, model: instance, spec: spec, done: done, configurationMu: &sync.Mutex{}}
 	}
 	if err := ctx.Err(); err != nil {
 		_ = runtime.Stop(context.Background())
@@ -234,7 +196,6 @@ func (r *Runtime) supervise(ctx, processContext context.Context, instance runnin
 			if err != nil || resident <= instance.model.MemoryLimitBytes {
 				continue
 			}
-			instance.resourceExceeded.Store(true)
 			_ = r.supervisor.Stop(instance.name)
 			select {
 			case <-ctx.Done():
@@ -275,7 +236,6 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 		}
 		done, err := r.supervisor.StartWithExit(processContext, current.spec)
 		if err == nil {
-			current.resourceExceeded.Store(false)
 			configGrants, configHandles, grantErr := current.broker.issueConfig()
 			if grantErr != nil {
 				_ = r.supervisor.Stop(current.name)
@@ -287,7 +247,7 @@ func (r *Runtime) restartUntilReady(ctx, processContext context.Context, instanc
 				}
 				continue
 			}
-			reconnectErr := current.client.Reconnect(ctx, current.endpoint, current.name, current.grantListener.Addr().String(), current.model.Settings, current.model.SettingsRevision, configGrants, current.name, current.model.Capabilities)
+			reconnectErr := current.client.Reconnect(ctx, current.endpoint, current.name, current.grantServer.Endpoint(), current.model.Settings, current.model.SettingsRevision, configGrants, current.name, current.model.Capabilities)
 			current.broker.revoke(configHandles)
 			lock.Unlock()
 			if reconnectErr == nil {
@@ -319,29 +279,6 @@ func manifestIncludes(advertised, configured []string) bool {
 		}
 	}
 	return true
-}
-
-func (r *Runtime) DispatchBindings() []DispatchBinding {
-	if r == nil {
-		return nil
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.instances))
-	for name := range r.instances {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	bindings := make([]DispatchBinding, 0, len(names))
-	for _, name := range names {
-		instance := r.instances[name]
-		bindings = append(bindings, DispatchBinding{
-			Name: instance.name, Endpoint: instance.endpoint,
-			Timeout: instance.model.Timeout, StartTimeout: instance.model.StartTimeout,
-			MaxConcurrentCalls: instance.model.MaxConcurrentCalls,
-		})
-	}
-	return bindings
 }
 
 func (r *Runtime) ApplyConfiguration(ctx context.Context, instanceID, revision string, configuration []byte) error {
@@ -444,9 +381,6 @@ func (r *Runtime) Stop(ctx context.Context) error {
 		}
 		if instance.broker != nil {
 			instance.broker.close()
-		}
-		if instance.grantListener != nil {
-			_ = instance.grantListener.Close()
 		}
 		if instance.listener != nil {
 			_ = instance.listener.Close()

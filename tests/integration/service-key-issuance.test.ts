@@ -58,13 +58,13 @@ async function prepareGateway(directory: string) {
     `  path: ${database}`,
     "artifacts:",
     `  path: ${join(directory, "artifacts")}`,
+    "execution:",
+    "  profile: external",
     "management:",
     `  listen: ${address}`,
     "  tls:",
     `    certificate: file:${certificate}`,
     `    key: file:${privateKey}`,
-    "caddy:",
-    "  variant: embedded",
     "",
   ].join("\n"), "utf8");
   const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);
@@ -120,7 +120,7 @@ describe("one-time service-key issuance", () => {
       expect(await serviceKeyCount(prepared.database)).toBe(2);
       expect((await databaseBytes(prepared.database)).includes(Buffer.from(credential.token))).toBe(false);
 
-      for (const path of ["/api/status", "/api/groups", "/api/audit"]) {
+      for (const path of ["/api/status", "/api/plugins", "/api/audit"]) {
         const response = await request(prepared.address, "GET", path, credential.token);
         expect(response.status).toBe(200);
         expect(response.body).not.toContain(credential.token);

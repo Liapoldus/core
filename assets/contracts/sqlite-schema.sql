@@ -5,57 +5,6 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS groups (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('system', 'application')),
-    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    archived_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS group_revisions (
-    id TEXT PRIMARY KEY,
-    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE RESTRICT,
-    caddyfile_digest TEXT NOT NULL,
-    artifact_digest TEXT,
-    caddyfile_path TEXT NOT NULL,
-    artifact_path TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    actor TEXT NOT NULL,
-    UNIQUE(group_id, id)
-);
-
-CREATE INDEX IF NOT EXISTS group_revisions_by_group
-    ON group_revisions(group_id, created_at DESC, id);
-
-CREATE TABLE IF NOT EXISTS group_release_journal (
-    operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE RESTRICT,
-    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE RESTRICT,
-    expected_current_revision_id TEXT,
-    revision_id TEXT NOT NULL,
-    caddyfile_digest TEXT NOT NULL,
-    artifact_digest TEXT,
-    caddyfile_path TEXT NOT NULL,
-    artifact_path TEXT,
-    actor TEXT NOT NULL,
-    request_id TEXT NOT NULL,
-    state TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS group_release_journal_by_state
-    ON group_release_journal(state, created_at);
-
-CREATE TABLE IF NOT EXISTS group_pointers (
-    group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE RESTRICT,
-    current_revision_id TEXT,
-    previous_revision_id TEXT,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(group_id, current_revision_id) REFERENCES group_revisions(group_id, id) ON DELETE RESTRICT,
-    FOREIGN KEY(group_id, previous_revision_id) REFERENCES group_revisions(group_id, id) ON DELETE RESTRICT
-);
-
 CREATE TABLE IF NOT EXISTS plugin_instances (
     id TEXT PRIMARY KEY,
     mode TEXT NOT NULL CHECK (mode IN ('local', 'remote')),
@@ -97,15 +46,6 @@ CREATE TABLE IF NOT EXISTS plugin_config_pointers (
 
 CREATE INDEX IF NOT EXISTS plugin_config_revisions_by_instance
     ON plugin_config_revisions(instance_id, revision DESC);
-
-CREATE TABLE IF NOT EXISTS plugin_cookie_policies (
-    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
-    capability TEXT NOT NULL,
-    allowed_names_json BLOB NOT NULL CHECK (json_valid(allowed_names_json)),
-    revision INTEGER NOT NULL CHECK (revision > 0),
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (instance_id, capability)
-);
 
 CREATE TABLE IF NOT EXISTS service_keys (
     id TEXT PRIMARY KEY,
@@ -156,22 +96,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS audit_events_by_timestamp
     ON audit_events(timestamp);
 
-CREATE TABLE IF NOT EXISTS caddy_checkpoints (
-    id TEXT PRIMARY KEY,
-    runtime_digest TEXT NOT NULL,
-    snapshot_path TEXT NOT NULL,
-    operation_id TEXT REFERENCES operations(id) ON DELETE RESTRICT,
-    actor TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
-
-INSERT OR IGNORE INTO groups(id, kind, active)
-VALUES ('system', 'system', 1);
-
-INSERT OR IGNORE INTO group_pointers(group_id)
-VALUES ('system');
 
 COMMIT;

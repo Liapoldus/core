@@ -39,17 +39,13 @@ describe("local plugin launch and configuration boundary", () => {
     expect(launch).not.toContain("internal/infrastructure/config");
   });
 
-  it("pushes settings before readiness and never puts settings into Caddy dispatch", async () => {
+  it("pushes settings before readiness through the generic plugin runtime", async () => {
     const runtime = await readFile(join(coreRoot, "internal/infrastructure/plugins/runtime.go"), "utf8");
-    const caddyHandler = await readFile(join(coreRoot, "internal/infrastructure/caddy/plugin_handler.go"), "utf8");
     const dispatch = await readFile(join(coreRoot, "internal/infrastructure/plugins/grant_broker.go"), "utf8");
 
     expect(runtime).toContain("issueConfig()");
     expect(runtime).toContain("BootstrapAndHandshake");
     expect(dispatch).toContain("GRANT_SCOPE_CONFIG_APPLY");
     expect(dispatch).toContain("request.GetSettingsRevision() != grant.settingsRevision");
-    expect(caddyHandler).toContain("client.VerifyReady(ctx)");
-    expect(caddyHandler).not.toContain("ConfigApply");
-    expect(caddyHandler).not.toContain("Settings");
   });
 });

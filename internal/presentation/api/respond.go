@@ -1,15 +1,10 @@
 package api
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strconv"
-	"time"
-
-	"github.com/Liapoldus/core/internal/domain/models"
 )
 
 func (server *Server) writeJSON(response http.ResponseWriter, status int, value any) {
@@ -33,25 +28,6 @@ func (server *Server) writeCatalogProblem(response http.ResponseWriter, code, re
 		return
 	}
 	server.writeProblem(response, problem.Status, problem.Code, problem.Detail, requestID)
-}
-
-func (server *Server) writeCookiePolicyFailure(response http.ResponseWriter, err error, requestID string) {
-	var notFound models.PluginCookiePolicyNotFound
-	var conflict models.PluginCookiePolicyRevisionConflict
-	var invalid models.PluginCookiePolicyValidationError
-	var unavailable models.PluginCookiePolicyUnavailable
-	switch {
-	case errors.As(err, &notFound):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyNotFound, requestID)
-	case errors.As(err, &conflict):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyRevisionConflict, requestID)
-	case errors.As(err, &invalid):
-		server.writeCatalogProblem(response, server.Management.Codes.InvalidCookiePolicy, requestID)
-	case errors.As(err, &unavailable):
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
-	default:
-		server.writeCatalogProblem(response, server.Management.Codes.CookiePolicyUnavailable, requestID)
-	}
 }
 
 func (server *Server) writePage(response http.ResponseWriter, values any, request *http.Request, requestID string) {
@@ -91,21 +67,4 @@ func (server *Server) writePage(response http.ResponseWriter, values any, reques
 		next = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(end)))
 	}
 	server.writeJSON(response, 200, map[string]any{server.Management.JSON.Items: items[offset:end], server.Management.JSON.NextCursor: next, server.Management.JSON.RequestID: requestID})
-}
-
-func (server *Server) recordAudit(ctx context.Context, actor, action, resource, result, requestID, digestBefore, digestAfter string) error {
-	if server.Audit == nil || action == "" || actor == "" {
-		return nil
-	}
-	record := models.AuditRecord{
-		Timestamp:    time.Now().UTC(),
-		Actor:        actor,
-		Action:       action,
-		Resource:     resource,
-		Result:       result,
-		RequestID:    requestID,
-		DigestBefore: digestBefore,
-		DigestAfter:  digestAfter,
-	}
-	return server.Audit.Record(ctx, record)
 }

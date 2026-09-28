@@ -4,7 +4,6 @@ package plugins
 import (
 	"context"
 	"errors"
-	"net"
 	"os"
 	"os/exec"
 	"sync"
@@ -16,10 +15,10 @@ import (
 var ErrPluginNotRunning = errors.New("plugin is not running")
 
 type Spec struct {
-	Instance string
-	Binary   string
-	Listener *net.TCPListener
-	Restart  RestartPolicy
+	Instance     string
+	Binary       string
+	ListenerFile func() (*os.File, error)
+	Restart      RestartPolicy
 }
 
 type RestartPolicy struct {
@@ -74,8 +73,8 @@ func (s *Supervisor) StartWithExit(ctx context.Context, spec Spec) (<-chan error
 	}
 	cmd := exec.CommandContext(ctx, spec.Binary)
 	cmd.Env = []string{}
-	if spec.Listener != nil {
-		listenerFile, err := spec.Listener.File()
+	if spec.ListenerFile != nil {
+		listenerFile, err := spec.ListenerFile()
 		if err != nil {
 			return nil, err
 		}

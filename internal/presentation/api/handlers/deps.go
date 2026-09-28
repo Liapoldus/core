@@ -20,41 +20,18 @@ type Dependencies struct {
 	WriteCatalogProblem func(http.ResponseWriter, string, string)
 }
 
-type GroupDependencies struct {
-	GroupService        application.GroupService
-	GroupReleases       *application.GroupReleaseService
-	GroupReleasePolicy  models.GroupReleasePolicy
+type PluginDependencies struct {
 	Management          config.ManagementWords
-	AuditWords          config.AuditWords
-	RecordAudit         func(context.Context, string, string, string, string, string, string, string) error
+	PluginIDField       string
+	Plugins             []any
+	AdminSurfaces       []AdminSurface
+	Operations          application.OperationService
+	RestartPlugin       func(context.Context, string) (models.Operation, error)
+	DispatchAdmin       func(context.Context, string, string, string, string, string, string, json.RawMessage) (PluginAdminResult, error)
 	WriteJSON           func(http.ResponseWriter, int, any)
 	WriteProblem        func(http.ResponseWriter, int, string, string, string)
 	WriteCatalogProblem func(http.ResponseWriter, string, string)
-}
-
-type CaddyDependencies struct {
-	AdminMutations      *application.AdminMutationService
-	AdminWords          config.AdminMutationWords
-	Management          config.ManagementWords
-	WriteCatalogProblem func(http.ResponseWriter, string, string)
-}
-
-type PluginDependencies struct {
-	Management             config.ManagementWords
-	PluginIDField          string
-	Plugins                []any
-	AdminSurfaces          []AdminSurface
-	Operations             application.OperationService
-	CookiePolicies         *application.PluginCookiePolicyService
-	CookiePolicyVersion    int
-	RestartPlugin          func(context.Context, string) (models.Operation, error)
-	DispatchAdmin          func(context.Context, string, string, string, string, string, string, json.RawMessage) (PluginAdminResult, error)
-	DecodeCookiePolicy     func([]byte) (models.PluginCookiePolicy, error)
-	WriteJSON              func(http.ResponseWriter, int, any)
-	WriteProblem           func(http.ResponseWriter, int, string, string, string)
-	WriteCatalogProblem    func(http.ResponseWriter, string, string)
-	WriteCookiePolicyError func(http.ResponseWriter, error, string)
-	WritePage              func(http.ResponseWriter, any, *http.Request, string)
+	WritePage           func(http.ResponseWriter, any, *http.Request, string)
 }
 
 type PluginAdminResult struct {
@@ -69,9 +46,6 @@ type ManagementDependencies struct {
 	DataPlaneState      string
 	DataPlaneReason     string
 	DataPlaneReadiness  func(context.Context) (string, string)
-	CaddyVariant        string
-	CaddyBuildID        string
-	CaddyModules        []string
 	Management          config.ManagementWords
 	AuditWords          config.AuditWords
 	WriteJSON           func(http.ResponseWriter, int, any)

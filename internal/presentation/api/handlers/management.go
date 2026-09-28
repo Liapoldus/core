@@ -34,11 +34,6 @@ func Readiness(deps ManagementDependencies, response http.ResponseWriter, reques
 		readiness[deps.Management.JSON.Reason] = reason
 	}
 	deps.WriteJSON(response, 200, map[string]any{
-		deps.Management.JSON.Caddy: map[string]any{
-			deps.Management.JSON.Variant: deps.CaddyVariant,
-			deps.Management.JSON.BuildID: deps.CaddyBuildID,
-			deps.Management.JSON.Modules: deps.CaddyModules,
-		},
 		deps.Management.JSON.Drift:              false,
 		deps.Management.JSON.DataPlaneReadiness: readiness,
 		deps.Management.JSON.RequestID:          requestID,

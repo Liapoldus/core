@@ -35,7 +35,7 @@ type contractFile struct {
 }
 
 // Validate validates a bootstrap document without reading or compiling any
-// traffic configuration. Traffic is configured through Caddyfile revisions.
+// traffic configuration, which is owned by the configured traffic plugin.
 func Validate(path string) error {
 	contents, err := os.ReadFile(path)
 	if err != nil {

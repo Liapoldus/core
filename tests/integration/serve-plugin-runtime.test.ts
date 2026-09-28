@@ -79,13 +79,15 @@ describe("serve plugin runtime composition", () => {
         `  path: ${database}`,
         "artifacts:",
         `  path: ${artifacts}`,
+        "execution:",
+        "  profile: supervised",
         "management:",
         `  listen: ${address}`,
         "  tls:",
         `    certificate: file:${certificate}`,
         `    key: file:${privateKey}`,
-        "caddy:",
-        "  variant: embedded",
+        "pluginCatalog:",
+        "  url: https://plugins.example.invalid/metadata",
         "",
       ].join("\n"), "utf8");
 
@@ -110,7 +112,7 @@ describe("serve plugin runtime composition", () => {
       const status = await request(address, "/api/status", token);
       expect(status.status).toBe(200);
       expect(JSON.parse(status.body)).toMatchObject({
-        dataPlaneReadiness: { state: "not-ready", reason: "system-release-required" },
+        dataPlaneReadiness: { state: "ready" },
       });
 
       const pluginList = await request(address, "/api/plugins", token);

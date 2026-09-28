@@ -2,12 +2,11 @@
   "version": "liapoldus.gateway.v1",
   "source": "https://liapoldus.github.io/spec/",
   "files": {
-    "errors.json": "sha256:8c0447aedd2aebeb3e93a7da7daa8dd5abadae8a53ba848b9ef85438ce4767a5",
-    "gateway.schema.json": "sha256:af1594e700c8fa63affc818da1c7007019f5a548ab268522f17f4d697673436f",
-    "golden-vectors.json": "sha256:b31d62101496e7256793a62aaf45050326598ce52eea89645beef32c14b67fad",
-    "http-runtime.json": "sha256:a44305156b1919c3bb78be23d384d942e85b95f9bc810c6523454421d20ee0e0",
-    "management-fields.yaml": "sha256:cd26ccbbb4c59f343eb2e19306171c03a1859067100de885350fcb75ec8dbdff",
-    "management.openapi.yaml": "sha256:c68ee4877e7ed0273b0f140fe376d963c88e9198c32e3bbb13a9e508d09e324b",
-    "security-runtime.json": "sha256:ca07625d474dca512214f70f26e226876e5e8a54d2853098fcd694b06a8489d5"
+    "errors.json": "sha256:7f063f5109faa223b1f0096a8357ef81676b4d6a8191a80a630d753645b8ce32",
+    "gateway.schema.json": "sha256:10a0b2f6eb671e9b3d59788b01dddd58384477d6fb6efcbc43f0995ae52aba16",
+    "golden-vectors.json": "sha256:f9c796630ff4e8ad2637e63b4a49a2d7d15c1b7b33934547b3f2891e67d2e11f",
+    "management-fields.yaml": "sha256:580555f76387dd90f9c50bf21f3b533850b6825132877942f6e942e77d9b8f97",
+    "management.openapi.yaml": "sha256:0f7e427d0e62cc342842e4fa80357958a26e17e3b446caeb4f9e184dc1027ae0",
+    "security-runtime.json": "sha256:77ad51d7e2fce70a4f8f996a766759205ce78d1f73c733c30c2c4e81e35b4edf"
   }
 }

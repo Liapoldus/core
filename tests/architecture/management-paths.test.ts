@@ -18,13 +18,11 @@ describe("Management API route contract", () => {
       "/api/audit",
       "/api/plugins/admin-surfaces",
       "/api/plugins/",
-      "/api/groups",
-      "/api/groups/",
       "/admin/pages/",
     ];
     const contractFields = [
       "healthz:", "status:", "plugins:", "operations:", "audit:",
-      "adminSurfaces:", "adminPages:", "groups:", "groupByID:",
+      "adminSurfaces:", "adminPages:",
     ];
 
     for (const field of contractFields) expect(contract).toContain(field);

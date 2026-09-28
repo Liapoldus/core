@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/presentation/api/handlers"
@@ -40,29 +39,6 @@ func (server *Server) handlerDependencies() handlers.Dependencies {
 	}
 }
 
-func (server *Server) groupHandlerDependencies() handlers.GroupDependencies {
-	return handlers.GroupDependencies{
-		GroupService:        server.GroupService,
-		GroupReleases:       server.GroupReleases,
-		GroupReleasePolicy:  server.GroupReleasePolicy,
-		Management:          server.Management,
-		AuditWords:          server.AuditWords,
-		RecordAudit:         server.recordAudit,
-		WriteJSON:           server.writeJSON,
-		WriteProblem:        server.writeProblem,
-		WriteCatalogProblem: server.writeCatalogProblem,
-	}
-}
-
-func (server *Server) caddyHandlerDependencies() handlers.CaddyDependencies {
-	return handlers.CaddyDependencies{
-		AdminMutations:      server.AdminMutations,
-		AdminWords:          server.AdminWords,
-		Management:          server.Management,
-		WriteCatalogProblem: server.writeCatalogProblem,
-	}
-}
-
 func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 	server.mu.RLock()
 	pluginInventory := append([]any(nil), server.Plugins...)
@@ -70,20 +46,16 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 	server.mu.RUnlock()
 
 	dependencies := handlers.PluginDependencies{
-		Management:             server.Management,
-		PluginIDField:          server.PluginIDField,
-		Plugins:                pluginInventory,
-		AdminSurfaces:          adminSurfaces,
-		Operations:             server.Operations,
-		CookiePolicies:         server.CookiePolicies,
-		CookiePolicyVersion:    server.Management.CookiePolicy.Version,
-		RestartPlugin:          server.RestartPlugin,
-		DecodeCookiePolicy:     decodePluginCookiePolicy,
-		WriteJSON:              server.writeJSON,
-		WriteProblem:           server.writeProblem,
-		WriteCatalogProblem:    server.writeCatalogProblem,
-		WriteCookiePolicyError: server.writeCookiePolicyFailure,
-		WritePage:              server.writePage,
+		Management:          server.Management,
+		PluginIDField:       server.PluginIDField,
+		Plugins:             pluginInventory,
+		AdminSurfaces:       adminSurfaces,
+		Operations:          server.Operations,
+		RestartPlugin:       server.RestartPlugin,
+		WriteJSON:           server.writeJSON,
+		WriteProblem:        server.writeProblem,
+		WriteCatalogProblem: server.writeCatalogProblem,
+		WritePage:           server.writePage,
 	}
 	if server.AdminDispatcher != nil {
 		dependencies.DispatchAdmin = func(ctx context.Context, instance, page, action, method, requestID, actor string, input json.RawMessage) (handlers.PluginAdminResult, error) {
@@ -108,26 +80,12 @@ func (server *Server) managementHandlerDependencies() handlers.ManagementDepende
 		DataPlaneState:      server.DataPlaneState,
 		DataPlaneReason:     server.DataPlaneReason,
 		DataPlaneReadiness:  server.DataPlaneReadiness,
-		CaddyVariant:        server.CaddyVariant,
-		CaddyBuildID:        server.CaddyBuildID,
-		CaddyModules:        server.CaddyModules,
 		Management:          server.Management,
 		AuditWords:          server.AuditWords,
 		WriteJSON:           server.writeJSON,
 		WriteProblem:        server.writeProblem,
 		WriteCatalogProblem: server.writeCatalogProblem,
 	}
-}
-
-func decodePluginCookiePolicy(encoded []byte) (models.PluginCookiePolicy, error) {
-	policy, err := plugins.DecodeCookiePolicy(encoded)
-	if err != nil {
-		return models.PluginCookiePolicy{}, err
-	}
-	return models.PluginCookiePolicy{
-		InstanceID: policy.InstanceID, Capability: policy.Capability,
-		AllowedNames: policy.AllowedNames,
-	}, nil
 }
 
 func (server *Server) handle(response http.ResponseWriter, request *http.Request) {
@@ -141,9 +99,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		return
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
-	if server.dispatchReadinessAndAdmin(response, request, path, requestID, actor) ||
-		server.dispatchAccessAndGroups(response, request, path, requestID, actor) ||
-		server.dispatchGroupReleases(response, request, path, requestID, actor) ||
+	if server.dispatchReadiness(response, request, path, requestID) ||
+		server.dispatchAccess(response, request, path, requestID, actor) ||
 		server.dispatchPluginCollections(response, request, path, requestID) ||
 		server.dispatchAudit(response, request, path, requestID) ||
 		server.dispatchPluginActions(response, request, path, requestID, actor) ||
@@ -190,62 +147,21 @@ func (server *Server) authenticate(ctx context.Context, value string) (string, b
 	return "", false, nil
 }
 
-func (server *Server) dispatchReadinessAndAdmin(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+func (server *Server) dispatchReadiness(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
 	if path == server.Management.Paths.Status && request.Method == http.MethodGet {
 		handlers.Readiness(server.managementHandlerDependencies(), response, request, requestID)
-		return true
-	}
-	if strings.HasPrefix(request.URL.Path, server.AdminWords.Paths.ManagementPrefix) {
-		handlers.CaddyAdmin(server.caddyHandlerDependencies(), response, request, requestID, actor)
 		return true
 	}
 	return false
 }
 
-func (server *Server) dispatchAccessAndGroups(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+func (server *Server) dispatchAccess(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Post {
 		handlers.ServiceKeyCreate(server.handlerDependencies(), response, request, requestID, actor)
 		return true
 	}
 	if path == server.Management.Paths.ServiceKeys && request.Method == server.Management.Methods.Get {
 		handlers.ServiceKeyList(server.handlerDependencies(), response, request, requestID)
-		return true
-	}
-	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Get {
-		handlers.GroupList(server.groupHandlerDependencies(), response, request, requestID)
-		return true
-	}
-	if path == server.Management.Paths.Groups && request.Method == server.Management.Methods.Post {
-		handlers.GroupCreate(server.groupHandlerDependencies(), response, request, requestID, actor)
-		return true
-	}
-	pluginDependencies := server.pluginHandlerDependencies()
-	if handlers.IsPluginCookiePolicyPath(pluginDependencies, path) && (request.Method == server.Management.Methods.Get || request.Method == server.Management.Methods.Put) {
-		handlers.PluginCookiePolicy(pluginDependencies, response, request, path, requestID, actor)
-		return true
-	}
-	return false
-}
-
-func (server *Server) dispatchGroupReleases(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
-	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Post {
-		handlers.GroupPublish(server.groupHandlerDependencies(), response, request, path, requestID, actor)
-		return true
-	}
-	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupReleases) && request.Method == server.Management.Methods.Get {
-		handlers.GroupReleases(server.groupHandlerDependencies(), response, request, path, requestID)
-		return true
-	}
-	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.Contains(path, server.Management.Paths.GroupReleases+server.Management.Paths.GroupIDSeparator) && request.Method == server.Management.Methods.Get {
-		handlers.GroupRelease(server.groupHandlerDependencies(), response, request, path, requestID)
-		return true
-	}
-	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && strings.HasSuffix(path, server.Management.Paths.GroupIDSeparator+server.Management.Paths.GroupRollback) && request.Method == server.Management.Methods.Post {
-		handlers.GroupRollback(server.groupHandlerDependencies(), response, request, path, requestID, actor)
-		return true
-	}
-	if strings.HasPrefix(path, server.Management.Paths.GroupByID) && request.Method == server.Management.Methods.Get {
-		handlers.GroupGet(server.groupHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	return false

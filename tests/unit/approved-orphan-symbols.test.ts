@@ -20,7 +20,7 @@ describe("approved orphan symbol cleanup", () => {
 
     expect(api).not.toMatch(/func redact\(/);
     expect(client).not.toMatch(/func \(c \*Client\) CallJSON\(/);
-    expect(cli).not.toMatch(/func Execute\(/);
+    expect(cli).toMatch(/func Execute\(/);
     expect(runtime).not.toMatch(/func \(r \*Runtime\) HTTPDispatchers\(/);
     expect(runtime).not.toMatch(/func \(r \*Runtime\) L4Dispatchers\(/);
   });

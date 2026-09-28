@@ -8,33 +8,17 @@ import (
 	"time"
 
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
-	"github.com/Liapoldus/pluginprotocol/transport"
+	pluginsdk "github.com/Liapoldus/pluginprotocol/presentation/sdk"
 )
-
-type ProtocolStream interface {
-	Send(*pluginv1.StreamMessage) error
-	Recv() (*pluginv1.StreamMessage, error)
-	CloseSend() error
-}
 
 var (
-	ErrProtocolViolation             = errors.New("plugin protocol violation")
-	ErrPluginUnavailable             = errors.New("plugin unavailable")
-	ErrPluginResourceExhausted error = pluginResourceExhausted{}
-	ErrPluginTimeout           error = pluginTimeout{}
+	ErrProtocolViolation = errors.New("plugin protocol violation")
+	ErrPluginUnavailable = errors.New("plugin unavailable")
 )
-
-type pluginTimeout struct{}
-
-func (pluginTimeout) Error() string { return ErrPluginUnavailable.Error() }
-
-type pluginResourceExhausted struct{}
-
-func (pluginResourceExhausted) Error() string { return ErrPluginUnavailable.Error() }
 
 type Client struct {
 	mu            sync.RWMutex
-	client        *transport.Client
+	client        *pluginsdk.Client
 	deadline      time.Duration
 	startTimeout  time.Duration
 	startDeadline time.Time
@@ -50,7 +34,7 @@ func NewClient(endpoint string, deadline, startTimeout time.Duration) (*Client, 
 	startDeadline := time.Now().Add(startTimeout)
 	ctx, cancel := context.WithDeadline(context.Background(), startDeadline)
 	defer cancel()
-	client, err := transport.DialContext(ctx, endpoint)
+	client, err := pluginsdk.DialContext(ctx, endpoint)
 	if err != nil {
 		return nil, ErrPluginUnavailable
 	}
@@ -76,7 +60,7 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 
 // VerifyReady reads the plugin's manifest and checks health without applying
 // application settings. Gateway pushes settings through ConfigApply before
-// Caddy receives a dispatch binding.
+// A traffic-serving plugin receives the binding through its own configuration.
 func (c *Client) VerifyReady(ctx context.Context) (*pluginv1.Manifest, error) {
 	ctx, cancel := c.withDeadline(ctx)
 	defer cancel()
@@ -149,7 +133,7 @@ func (c *Client) BootstrapAndHandshake(ctx context.Context, instanceID, grantBro
 func (c *Client) Reconnect(ctx context.Context, endpoint, instanceID, grantBrokerEndpoint string, config []byte, settingsRevision string, grants []*pluginv1.ActiveGrant, expectedName string, capabilities []string) error {
 	ctx, cancel := context.WithTimeout(ctx, c.startTimeout)
 	defer cancel()
-	replacement, err := transport.DialContext(ctx, endpoint)
+	replacement, err := pluginsdk.DialContext(ctx, endpoint)
 	if err != nil {
 		return ErrPluginUnavailable
 	}
@@ -170,37 +154,6 @@ func (c *Client) Reconnect(ctx context.Context, endpoint, instanceID, grantBroke
 	c.mu.Unlock()
 	_ = previous.Close()
 	return nil
-}
-
-func (c *Client) CallJSONWithGrants(ctx context.Context, capability string, payload []byte, grants []*pluginv1.ActiveGrant) ([]byte, error) {
-	if !json.Valid(payload) {
-		return nil, ErrProtocolViolation
-	}
-	ctx, cancel := c.withDeadline(ctx)
-	defer cancel()
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	response, err := c.client.CallWithGrants(ctx, capability, payload, grants)
-	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, context.DeadlineExceeded
-		}
-		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
-			return nil, context.DeadlineExceeded
-		}
-		if errors.Is(err, transport.ErrProtocolViolation) {
-			return nil, ErrProtocolViolation
-		}
-		return nil, ErrPluginUnavailable
-	}
-	return response.GetPayload(), nil
-}
-
-func (c *Client) OpenStream(ctx context.Context) (ProtocolStream, error) {
-	c.mu.RLock()
-	client := c.client
-	c.mu.RUnlock()
-	return client.Stream(ctx)
 }
 
 func (c *Client) withDeadline(ctx context.Context) (context.Context, context.CancelFunc) {

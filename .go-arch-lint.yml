@@ -14,29 +14,19 @@ components:
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
   infrastructurePlugins: { in: internal/infrastructure/plugins }
-  infrastructureArtifacts: { in: internal/infrastructure/artifacts }
-  infrastructureCaddy: { in: internal/infrastructure/caddy }
   presentationAPI: { in: internal/presentation/api }
   presentationAPIHandlers: { in: internal/presentation/api/handlers }
   presentationCLI: { in: internal/presentation/cli }
-  presentationCLICaddyRuntime: { in: internal/presentation/cli/caddyruntime }
   presentationCLIBootstrap: { in: internal/presentation/cli/bootstrap }
 vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
-  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
+  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/presentation/sdk, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
   protobuf: { in: [google.golang.org/protobuf/proto, google.golang.org/protobuf/encoding/protojson] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
   sqliteDriver: { in: [modernc.org/sqlite] }
-  caddy: { in: [github.com/caddyserver/caddy/v2, github.com/caddyserver/caddy/v2/modules/standard] }
-  caddyConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig] }
-  caddyHTTP: { in: [github.com/caddyserver/caddy/v2/modules/caddyhttp] }
-  caddyHTTPConfig: { in: [github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile] }
-  caddyfile: { in: [github.com/caddyserver/caddy/v2/caddyconfig/caddyfile] }
-  caddyLayer4: { in: [github.com/mholt/caddy-l4, github.com/mholt/caddy-l4/layer4] }
   textNormalization: { in: [golang.org/x/text/cases, golang.org/x/text/unicode/norm] }
-  websocket: { in: [github.com/coder/websocket] }
   googleUUID: { in: [github.com/google/uuid] }
 commonComponents: [domainModels]
 commonVendors: []
@@ -64,23 +54,14 @@ deps:
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil]
-  infrastructureArtifacts:
-    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
-    canUse: [yaml, textNormalization]
-  infrastructureCaddy:
-    mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructurePlugins]
-    canUse: [caddy, caddyLayer4, caddyConfig, caddyHTTP, caddyHTTPConfig, caddyfile, googleUUID, pluginprotocol, websocket]
   presentationAPI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPIHandlers]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPIHandlers]
     canUse: [bcrypt]
   presentationAPIHandlers:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
     canUse: []
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, infrastructureArtifacts, presentationAPI, presentationCLICaddyRuntime, presentationCLIBootstrap]
-  presentationCLICaddyRuntime:
-    mayDependOn: [domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
-    canUse: []
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPI, presentationCLIBootstrap]
   presentationCLIBootstrap:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureArtifacts, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, presentationAPI, presentationCLICaddyRuntime]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, presentationAPI]
     canUse: []

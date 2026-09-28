@@ -21,9 +21,6 @@ function measuredFunctionLines(source: string, name: string): number {
 describe("presentation function decomposition budget", () => {
   it.each([
     ["api", "handle"],
-    ["api/handlers", "GroupPublish"],
-    ["api/handlers", "GroupRollback"],
-    ["api/handlers", "readGroupReleaseMultipart"],
     ["cli/bootstrap", "Serve"],
   ])("keeps %s.%s at or below the agreed function budget", async (packageName, functionName) => {
     const source = await readGoPackageSources(root, `internal/presentation/${packageName}`);

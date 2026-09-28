@@ -26,16 +26,7 @@ type Server struct {
 	PluginIDField            string
 	RestartPlugin            func(context.Context, string) (models.Operation, error)
 	Audit                    *application.AuditService
-	GroupService             application.GroupService
-	GroupReleases            *application.GroupReleaseService
-	CookiePolicies           *application.PluginCookiePolicyService
-	GroupReleasePolicy       models.GroupReleasePolicy
-	AdminMutations           *application.AdminMutationService
-	AdminWords               config.AdminMutationWords
 	AccessService            *application.AccessService
-	CaddyVariant             string
-	CaddyBuildID             string
-	CaddyModules             []string
 	DataPlaneState           string
 	DataPlaneReason          string
 	DataPlaneReadiness       func(context.Context) (string, string)
@@ -49,16 +40,10 @@ type Server struct {
 
 func (server *Server) Handler() http.Handler {
 	server.contractOnce.Do(func() {
-		if server.Management.Paths.Groups == "" {
+		if server.Management.Paths.Plugins == "" {
 			server.Management, _ = config.LoadManagement()
 		}
 		server.Errors, _ = config.LoadErrorCatalog()
-		if server.AdminWords.Paths.ManagementPrefix == "" {
-			server.AdminWords, _ = config.LoadAdminMutation()
-		}
-		if server.GroupReleasePolicy.OperationKind == "" {
-			server.GroupReleasePolicy, _ = config.LoadGroupRelease()
-		}
 	})
 	return http.HandlerFunc(server.handle)
 }

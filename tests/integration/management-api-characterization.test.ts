@@ -60,9 +60,8 @@ describe("Management API response characterization matrix", () => {
         contentType: "application/json",
         requestID: true,
         body: {
-          caddy: { variant: "embedded", buildId: "fixture-build", modules: ["http", "layer4"] },
           drift: false,
-          dataPlaneReadiness: { state: "not-ready", reason: "system-release-required" },
+          dataPlaneReadiness: { state: "ready" },
           requestId: requestID,
         },
       },
@@ -73,12 +72,6 @@ describe("Management API response characterization matrix", () => {
         requestID: true,
         body: { status: "ok", requestId: requestID },
       },
-      groupListUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      groupDetailUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      groupReleaseListUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      groupReleaseDetailUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      groupPublishUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      groupRollbackUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       serviceKeyListUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       serviceKeyCreateUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       pluginList: {
@@ -110,11 +103,9 @@ describe("Management API response characterization matrix", () => {
         body: { id: "fixture-a", name: "Alpha", state: "ready" },
       },
       pluginNotFound: problem(404, "plugin_not_found", "Указанный plugin instance не существует."),
-      cookiePolicyUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       pluginAdminUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
       pluginAdminPostUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
       pluginRestartUnavailable: problem(501, "not_implemented", "plugin restart is unavailable"),
-      caddyAdminUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       operationUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       auditEmpty: {
         status: 200,
@@ -124,7 +115,7 @@ describe("Management API response characterization matrix", () => {
       },
       unknownRoute: problem(404, "not_found", "resource not found"),
       retiredConfigRoute: problem(404, "not_found", "resource not found"),
-      unsupportedMethod: problem(404, "not_found", "resource not found"),
+      unsupportedPluginMethod: problem(404, "not_found", "resource not found"),
     });
   }, 30_000);
 });

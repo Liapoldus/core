@@ -1,6 +1,0 @@
-insertOperation: "INSERT INTO operations(id, kind, state, request_id, actor, resource, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
-insertCheckpoint: "INSERT INTO caddy_checkpoints(id, runtime_digest, snapshot_path, operation_id, actor, created_at) VALUES(?, ?, ?, ?, ?, ?)"
-updateOperation: "UPDATE operations SET state = ?, updated_at = ? WHERE id = ?"
-selectLatestCheckpoint: "SELECT c.id, c.runtime_digest, c.snapshot_path, COALESCE(c.operation_id, ''), c.actor, c.created_at, COALESCE(o.state, '') FROM caddy_checkpoints c LEFT JOIN operations o ON o.id = c.operation_id ORDER BY c.rowid DESC LIMIT 1"
-timestampLayout: "2006-01-02T15:04:05.999999999Z07:00"
-invalidContract: "SQLite Caddy checkpoint contract is invalid."

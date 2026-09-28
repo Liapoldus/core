@@ -7,5 +7,3 @@ management:
   tls:
     certificate: file:/run/secrets/management.crt
     key: file:/run/secrets/management.key
-caddy:
-  variant: embedded

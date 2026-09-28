@@ -39,13 +39,13 @@ describe("bootstrap path resolution", () => {
         "  path: state/gateway.db",
         "artifacts:",
         "  path: artifacts",
+        "execution:",
+        "  profile: external",
         "management:",
         `  listen: ${address}`,
         "  tls:",
         "    certificate: file:certificates/management.crt",
         "    key: file:certificates/management.key",
-        "caddy:",
-        "  variant: embedded",
         "",
       ].join("\n"), "utf8");
 

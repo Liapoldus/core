@@ -11,10 +11,8 @@ describe("plugin-agnostic Gateway core", () => {
     const files = [
       "assets/contracts/gateway.schema.json",
       "assets/contracts/errors.json",
-      "contracts/v1/http-runtime.json",
       "contracts/v1/security-runtime.json",
       "internal/infrastructure/config/bootstrap.go",
-      "internal/infrastructure/plugins/capability_dispatch.go",
       "assets/contracts/management-fields.yaml",
       "contracts/v1/management.openapi.yaml",
     ];

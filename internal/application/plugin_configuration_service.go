@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
@@ -15,6 +16,8 @@ type PluginConfigurationService struct {
 	Applier     interfaces.PluginConfigurationApplier
 	Unavailable string
 }
+
+var SnapshotActivationLock sync.Mutex
 
 type ApplyPluginConfigurationCommand struct {
 	InstanceID       string

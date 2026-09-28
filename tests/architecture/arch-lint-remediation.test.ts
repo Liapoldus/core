@@ -12,7 +12,6 @@ describe("architecture lint boundaries", () => {
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const packages = [
       ["presentationAPIHandlers", "internal/presentation/api/handlers"],
-      ["presentationCLICaddyRuntime", "internal/presentation/cli/caddyruntime"],
       ["presentationCLIBootstrap", "internal/presentation/cli/bootstrap"],
     ];
 
@@ -21,7 +20,6 @@ describe("architecture lint boundaries", () => {
       const block = dependencies.match(new RegExp(`${component}:[\\s\\S]*?(?=\\n  [\\w]+:|$)`))?.[0] ?? "";
       expect(block, `${component} must define mayDependOn`).toMatch(/mayDependOn: \[[^\]]*\]/);
       expect(block, `${component} must define canUse`).toMatch(/canUse: \[[^\]]*\]/);
-      expect(block).not.toContain("infrastructureCaddy");
       expect(block).not.toContain("pluginprotocol");
     }
   });
@@ -36,24 +34,16 @@ describe("architecture lint boundaries", () => {
     expect(handlerDependencies).not.toContain("presentationAPI");
   });
 
-  it("keeps infrastructure adapters explicit about their vendor dependencies", async () => {
+  it("keeps generic infrastructure adapters explicit about their vendor dependencies", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
 
     expect(architecture).toMatch(/yaml:\s*\{ in: \[gopkg\.in\/yaml\.v3\] \}/);
     expect(architecture).toMatch(/textNormalization:\s*\{ in: \[golang\.org\/x\/text\/cases, golang\.org\/x\/text\/unicode\/norm\] \}/);
-    expect(architecture).toMatch(/caddyfile:\s*\{ in: \[github\.com\/caddyserver\/caddy\/v2\/caddyconfig\/caddyfile\] \}/);
-    expect(architecture).toMatch(/caddyLayer4:\s*\{ in: \[github\.com\/mholt\/caddy-l4, github\.com\/mholt\/caddy-l4\/layer4\] \}/);
     expect(architecture).toMatch(/protobuf:\s*\{ in: \[google\.golang\.org\/protobuf\/proto, google\.golang\.org\/protobuf\/encoding\/protojson\] \}/);
-    expect(architecture).toMatch(/infrastructureArtifacts:[\s\S]*?canUse: \[[^\]]*yaml[^\]]*textNormalization[^\]]*\]/);
-    expect(dependencies.match(/infrastructureArtifacts:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1]).toContain("contractAdapter");
-    const caddyDependencies = dependencies.match(/infrastructureCaddy:[\s\S]*?canUse: \[([^\]]*)\]/)?.[1] ?? "";
-    expect(caddyDependencies).toContain("pluginprotocol");
-    expect(caddyDependencies).toContain("caddyLayer4");
-    expect(caddyDependencies).toContain("websocket");
   });
 
-  it("does not let storage depend on config or CLI depend on data-plane/protocol adapters", async () => {
+  it("does not let storage depend on config or CLI depend on protocol adapters", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const storage = await readFile(join(root, "internal/infrastructure/storage/sqlite_plugin_instances.go"), "utf8");
@@ -65,10 +55,8 @@ describe("architecture lint boundaries", () => {
 
     expect(dependencies).toMatch(/presentationCLI:[\s\S]*?mayDependOn: \[[^\]]*\]/);
     const cliDependencies = dependencies.match(/presentationCLI:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
-    expect(cliDependencies).not.toContain("infrastructureCaddy");
     expect(cliDependencies).not.toContain("pluginprotocol");
     expect(storage).not.toContain("internal/infrastructure/config");
-    expect(cli).not.toContain("internal/infrastructure/caddy");
     expect(cli).not.toContain("github.com/Liapoldus/pluginprotocol");
   });
 });

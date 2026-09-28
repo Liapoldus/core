@@ -7,9 +7,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const apiRoot = join(root, "internal", "presentation", "api");
 const routerMethods = [
   "handle",
-  "dispatchReadinessAndAdmin",
-  "dispatchAccessAndGroups",
-  "dispatchGroupReleases",
+  "dispatchReadiness",
+  "dispatchAccess",
   "dispatchPluginCollections",
   "dispatchAudit",
   "dispatchPluginActions",

@@ -13,24 +13,14 @@
     "trustRoots": "Management client trust roots and plugin workload trust roots MUST be distinct.",
     "health": "Unauthenticated health endpoint exposes process health only and no configuration or runtime inventory."
   },
-  "caddyAdmin": {
-    "bind": "permissioned-unix-socket-for-external-or-in-process-for-embedded",
-    "publicExposure": false,
-    "externalProcess": "Gateway launches and supervises the configured compatible Caddy binary; Caddy Admin API/IPC is authenticated and private to Gateway.",
-    "dispatchSync": "External Caddy receives immutable dispatch generations before activation; sync failure leaves active Caddy and dispatch generations unchanged.",
-    "gatewayPassThrough": "Authenticated Management API pass-through preserves native Caddy payloads.",
-    "mutation": "Every mutation creates a durable checkpoint before forwarding and writes metadata-only audit.",
-    "drift": "Unrepresentable runtime changes block group publish/rollback until explicit checkpoint restore or full-composition reconcile.",
-    "reverseConversion": "Arbitrary Caddy JSON is never converted back to Caddyfile automatically."
-  },
   "plugins": {
     "local": "Gateway supervises a plugin process on an assigned loopback endpoint.",
     "remote": "A stable Service endpoint uses TLS/mTLS; each externally issued workload-replica identity maps to one logical plugin instance.",
-    "clientIdentities": "Remote Gateway control RPCs and Caddy data-plane Call/Stream use distinct workload client identities and scopes; the plugin rejects RPCs outside the identity scope.",
+    "clientIdentities": "Remote Gateway control RPCs and plugin data-plane Call/Stream use distinct workload client identities and scopes; the plugin rejects RPCs outside the identity scope.",
     "replicas": "Ready replicas share protocol, release, Manifest and settings digests; every new gRPC connection repeats TLS validation and handshake.",
     "recovery": "Gateway reconnects without replaying a unary Call with unknown outcome; an interrupted Stream closes and is not migrated to another replica.",
     "degradedMode": "An unavailable plugin degrades only its bound routes; unrelated routes remain available.",
-    "dataPath": "Caddy Liapoldus handler calls the plugin directly; Gateway Management API never proxies user request bodies.",
+    "dataPath": "Connected data-plane plugins handle user traffic directly; Gateway Management API never proxies user request bodies.",
     "grantBroker": "Only a narrow plugin-to-Gateway scoped-secret redemption callback is permitted; it does not proxy client traffic.",
     "gatewayCa": false,
     "downgrade": false,
@@ -46,7 +36,7 @@
   },
   "storage": {
     "database": "SQLite on local filesystem; network filesystem database mounts are unsupported.",
-    "artifactStore": "Immutable Caddyfile/plugin-settings revisions, frontend roots and checkpoints are stored separately as files.",
+    "artifactStore": "Plugin-owned runtime files remain outside Core; plugin settings and revisions are stored in SQLite.",
     "runtime": "Active configuration is hydrated into an immutable in-memory snapshot; user request paths do not read SQLite or config files.",
     "secretValuesInDatabase": false
   }

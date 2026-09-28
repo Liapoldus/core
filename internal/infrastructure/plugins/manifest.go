@@ -1,7 +1,7 @@
 package plugins
 
 import (
-	"github.com/Liapoldus/pluginprotocol"
+	pluginprotocol "github.com/Liapoldus/pluginprotocol/presentation/sdk"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 )
 
@@ -20,10 +20,6 @@ func ValidateManifest(manifest *pluginv1.Manifest, required []string) error {
 		}
 		capabilities[capability] = struct{}{}
 	}
-	if len(capabilities) == 0 {
-		return ErrProtocolViolation
-	}
-
 	descriptors := make(map[string]struct{}, len(manifest.GetCapabilityDescriptors()))
 	for _, descriptor := range manifest.GetCapabilityDescriptors() {
 		if descriptor == nil || descriptor.GetCapability() == "" || len(descriptor.GetModes()) == 0 {
