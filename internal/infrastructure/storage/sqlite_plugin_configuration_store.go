@@ -93,6 +93,23 @@ func (store *SQLitePluginConfigurationStore) Current(ctx context.Context, instan
 	return revision, pointers, err
 }
 
+func (store *SQLitePluginConfigurationStore) GetRevision(ctx context.Context, instanceID string, revision int64) (models.PluginConfigurationRevision, error) {
+	if store == nil || store.database == nil {
+		return models.PluginConfigurationRevision{}, sql.ErrConnDone
+	}
+	if instanceID == "" || revision < 1 {
+		return models.PluginConfigurationRevision{}, errors.New(store.contract.Diagnostics.InvalidDocument)
+	}
+	configuration, err := scanConfigurationRevision(
+		store.database.QueryRowContext(ctx, store.queries.queries["select-revision"], instanceID, revision),
+		store.contract.TimestampLayout,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.PluginConfigurationRevision{}, models.PluginConfigurationNotFound{}
+	}
+	return configuration, err
+}
+
 func (store *SQLitePluginConfigurationStore) CreateCandidate(ctx context.Context, instanceID string, expectedCurrent, schemaVersion int64, settingsJSON []byte, audit models.AuditRecord) (models.PluginConfigurationRevision, error) {
 	if store == nil || store.database == nil {
 		return models.PluginConfigurationRevision{}, sql.ErrConnDone

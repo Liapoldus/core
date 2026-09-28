@@ -51,6 +51,8 @@ func main() {
 	check(err)
 	_, restoredPointers, err := store.Current(ctx, "fixture")
 	check(err)
+	pendingCandidate, err := store.CreateCandidate(ctx, "fixture", 1, 1, []byte(`{"origin":"pending-after-reopen"}`), audit("candidate-pending"))
+	check(err)
 	check(database.Close())
 
 	database, err = openDatabase(ctx, databasePath, contract)
@@ -58,8 +60,11 @@ func main() {
 	defer database.Close()
 	reopenedStore, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
-	reopened, _, err := reopenedStore.Current(ctx, "fixture")
+	reopened, reopenedPointers, err := reopenedStore.Current(ctx, "fixture")
 	check(err)
+	reopenedPending, err := reopenedStore.GetRevision(ctx, "fixture", pendingCandidate.Revision)
+	check(err)
+	_, missingRevisionErr := reopenedStore.GetRevision(ctx, "fixture", pendingCandidate.Revision+1)
 	digest := sha256.Sum256(reopened.SettingsJSON)
 
 	report := map[string]any{
@@ -74,6 +79,10 @@ func main() {
 		"restoredCurrent":                    restoredPointers.CurrentRevision,
 		"restoredPrevious":                   restoredPointers.PreviousRevision,
 		"reopenedCurrent":                    reopened.Revision,
+		"reopenedPending":                    reopenedPointers.PendingRevision,
+		"reopenedPendingState":               reopenedPending.State,
+		"reopenedPendingSettings":            string(reopenedPending.SettingsJSON),
+		"missingRevisionRejected":            errors.As(missingRevisionErr, new(models.PluginConfigurationNotFound)),
 		"digestMatchesDocument":              hex.EncodeToString(digest[:]) == reopened.Digest,
 	}
 	check(json.NewEncoder(os.Stdout).Encode(report))

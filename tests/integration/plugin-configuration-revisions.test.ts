@@ -28,6 +28,10 @@ describe("durable plugin configuration revisions", () => {
         restoredCurrent: 1,
         restoredPrevious: 2,
         reopenedCurrent: 1,
+        reopenedPending: 4,
+        reopenedPendingState: "candidate",
+        reopenedPendingSettings: '{"origin":"pending-after-reopen"}',
+        missingRevisionRejected: true,
         digestMatchesDocument: true,
       });
     } finally {
