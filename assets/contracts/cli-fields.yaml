@@ -14,9 +14,9 @@ outputs:
   text: text
   json: json
 environment:
-  gatewayConfig: LIAPOLDUS_GATEWAY_CONFIG
+  coreConfig: LIAPOLDUS_CORE_CONFIG
 paths:
-  defaultConfig: /etc/liapoldus/gateway.yaml
+  defaultConfig: /etc/liapoldus/core.yaml
 codes:
   accessBootstrapConflict: access_bootstrap_conflict
   configNotFound: config_not_found
@@ -45,6 +45,6 @@ diagnostics:
   configNotFound: Файл конфигурации не найден.
   configInvalid: Конфигурация не прошла проверку.
   outputInvalid: --output должен иметь значение text или json
-  configRequired: --config требует путь к gateway.yaml
-  configLookupFailed: gateway.yaml не найден или является каталогом
+  configRequired: --config требует путь к core.yaml
+  configLookupFailed: core.yaml не найден или является каталогом
   accessBootstrapConflict: активный ключ доступа уже существует

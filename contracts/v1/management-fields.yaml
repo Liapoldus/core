@@ -3,13 +3,16 @@ paths:
   status: /api/status
   plugins: /api/plugins
   pluginSettingsSuffix: /settings
+  pluginRollbackSuffix: rollback
   adminSurfaces: /api/plugins/admin-surfaces
   pluginIDSeparator: "/"
   adminPages: admin/pages
-  restart: restart
   operations: /api/operations
   audit: /api/audit
   serviceKeys: /api/access/service-keys
+operationKinds:
+  pluginSettingsApply: plugin-settings-apply
+  pluginSettingsRollback: plugin-settings-rollback
 serviceKeys:
   nameMinLength: 1
   nameMaxLength: 80
@@ -27,6 +30,8 @@ json:
   id: id
   digest: digest
   idempotencyKey: idempotencyKey
+  errorCode: errorCode
+  resourceId: resourceId
   expectedCurrentRevision: expectedCurrentRevision
   replyTo: replyTo
   status: status
@@ -76,13 +81,15 @@ json:
   config: config
 headers:
   ifMatch: If-Match
+  contentType: Content-Type
   etag: ETag
   requestId: X-Request-ID
   location: Location
   retryAfter: Retry-After
 idempotency:
-  keyChars: 128
-  keyMin: 16
+  key: Idempotency-Key
+  keyMin: 1
+  keyMax: 128
 pagination:
   limitDefault: 50
   limitMax: 100
@@ -113,9 +120,12 @@ statuses:
 codes:
   bearerRequired: management_bearer_required
   managementUnavailable: management_unavailable
-  managementMTLSRequired: management_mtls_required
+  idempotencyConflict: idempotency_conflict
   pluginUnavailable: plugin_unavailable
   pluginNotFound: plugin_not_found
+  pluginConfigInvalid: plugin_config_invalid
+  pluginRevisionConflict: plugin_revision_conflict
+  activationFailed: activation_failed
   invalidRequest: invalid_request
   artifactTooLarge: artifact_too_large
   operationNotFound: not_found

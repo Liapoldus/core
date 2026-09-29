@@ -1,4 +1,4 @@
-// Package core exposes embedded static Gateway contracts to infrastructure.
+// Package core exposes embedded static Core contracts to infrastructure.
 package core
 
 import (
@@ -9,7 +9,7 @@ import (
 const (
 	ConfigFields               = "config-fields.yaml"
 	CLIFields                  = "cli-fields.yaml"
-	GatewaySchema              = "gateway.schema.json"
+	CoreSchema              = "core.schema.json"
 	ManagementFields           = "management-fields.yaml"
 	AuditFields                = "audit-fields.yaml"
 	ErrorsJSON                 = "errors.json"
@@ -20,9 +20,7 @@ const (
 	SQLiteOperationStore       = "sqlite-operation-store.yaml"
 	SQLitePluginInstances      = "sqlite-plugin-instances.yaml"
 	SQLitePluginConfiguration  = "sqlite-plugin-configuration.yaml"
-	PluginLocalLaunchSchema    = "local-launch.schema.json"
-	PluginRuntime              = "plugin-runtime.json"
-)
+	)
 
 //go:embed assets/contracts
 var contracts embed.FS

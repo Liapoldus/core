@@ -3,12 +3,11 @@ parentDirectoryMode: 448
 databaseFileMode: 384
 maxOpenConnections: 1
 maxIdleConnections: 1
-schemaVersion: 4
+schemaVersion: 6
 systemGroupID: system
-artifactsDirectoryMode: 448
 hasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')"
 migrationVersionQuery: "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-schemaVersionError: "SQLite schema version is incompatible with this Gateway build."
+schemaVersionError: "SQLite schema version is incompatible with this Core build."
 pragmas: |
   PRAGMA foreign_keys = ON;
   PRAGMA journal_mode = WAL;

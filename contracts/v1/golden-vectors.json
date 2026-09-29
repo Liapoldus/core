@@ -1,8 +1,8 @@
 {
-  "version": "liapoldus.gateway.v1",
-  "description": "Behavioral vectors; legacy wire-frame hex vectors are not used by Gateway contracts.",
+  "version": "liapoldus.core.v1",
+  "description": "Behavioral vectors; legacy wire-frame hex vectors are not used by Core contracts.",
   "vectors": [
-    {"id":"bootstrap-rejects-product-runtime-settings","input":{"keys":["state","artifacts","execution","management","site"]},"expected":{"valid":false,"code":"unknown_field"}},
+    {"id":"bootstrap-rejects-product-runtime-settings","input":{"keys":["state","management","pluginControl","site"]},"expected":{"valid":false,"code":"unknown_field"}},
     {"id":"archive-traversal","input":{"entry":"frontends/x/../../outside"},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
     {"id":"archive-gzip-integrity","input":{"entries":[{"name":"frontends/ui/index.html","content":"valid file"}],"corruptGzip":true},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
     {"id":"archive-duplicate-path","input":{"entries":[{"name":"frontends/ui/index.html","content":"first"},{"name":"frontends/ui/index.html","content":"second"}]},"expected":{"accepted":false,"code":"artifact_invalid","activeRevisionChanged":false}},
@@ -14,7 +14,7 @@
     {"id":"archive-compression-ratio-limit","input":{"contentBytes":16384},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
     {"id":"archive-compressed-byte-limit","input":{"contentBytes":1024,"contentEntropy":true,"limits":{"compressedArtifactLimitBytes":256}},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
     {"id":"archive-uncompressed-byte-limit","input":{"contentBytes":257,"limits":{"uncompressedArtifactLimitBytes":256}},"expected":{"accepted":false,"code":"artifact_too_large","activeRevisionChanged":false}},
-    {"id":"remote-management-requires-both-factors","input":{"clientCertificate":true,"bearer":false},"expected":{"authorized":false}},
+    {"id":"management-api-requires-bearer","input":{"bearer":false},"expected":{"authorized":false}},
     {"id":"remote-plugin-no-downgrade","input":{"mode":"remote","certificate":"rejected"},"expected":{"connected":false,"fallback":"none"}},
     {"id":"credential-one-time-reveal","input":{"operation":"rotate"},"expected":{"rawTokenReturnedOnce":true,"storedValue":"verifier-only"}}
   ]

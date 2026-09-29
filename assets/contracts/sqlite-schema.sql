@@ -9,11 +9,21 @@ CREATE TABLE IF NOT EXISTS plugin_instances (
     id TEXT PRIMARY KEY,
     mode TEXT NOT NULL CHECK (mode IN ('local', 'remote')),
     endpoint TEXT,
-    settings_json BLOB NOT NULL,
     manifest_json BLOB NOT NULL,
     state TEXT NOT NULL,
-    revision INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS plugin_config_generations (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
+    generation INTEGER NOT NULL CHECK (generation > 0),
+    slot TEXT NOT NULL CHECK (slot IN ('active', 'previous', 'staging')),
+    raw_json BLOB NOT NULL CHECK (json_valid(raw_json) AND json_type(raw_json) = 'object'),
+    sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (instance_id, generation),
+    UNIQUE (instance_id, slot)
 );
 
 CREATE TABLE IF NOT EXISTS plugin_launch_settings (
@@ -21,31 +31,8 @@ CREATE TABLE IF NOT EXISTS plugin_launch_settings (
     launch_json BLOB NOT NULL CHECK (json_valid(launch_json))
 );
 
-CREATE TABLE IF NOT EXISTS plugin_config_revisions (
-    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
-    revision INTEGER NOT NULL CHECK (revision > 0),
-    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
-    digest TEXT NOT NULL,
-    settings_json BLOB NOT NULL CHECK (json_valid(settings_json) AND json_type(settings_json) = 'object'),
-    state TEXT NOT NULL CHECK (state IN ('active', 'candidate', 'superseded', 'failed')),
-    actor TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (instance_id, revision)
-);
-
-CREATE TABLE IF NOT EXISTS plugin_config_pointers (
-    instance_id TEXT PRIMARY KEY REFERENCES plugin_instances(id) ON DELETE CASCADE,
-    current_revision INTEGER,
-    previous_revision INTEGER,
-    pending_revision INTEGER,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (instance_id, current_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT,
-    FOREIGN KEY (instance_id, previous_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT,
-    FOREIGN KEY (instance_id, pending_revision) REFERENCES plugin_config_revisions(instance_id, revision) ON DELETE RESTRICT
-);
-
-CREATE INDEX IF NOT EXISTS plugin_config_revisions_by_instance
-    ON plugin_config_revisions(instance_id, revision DESC);
+CREATE INDEX IF NOT EXISTS plugin_config_generations_by_instance
+    ON plugin_config_generations(instance_id, generation DESC);
 
 CREATE TABLE IF NOT EXISTS service_keys (
     id TEXT PRIMARY KEY,
@@ -81,6 +68,15 @@ CREATE TABLE IF NOT EXISTS idempotency (
     PRIMARY KEY(actor, scope, key_digest)
 );
 
+CREATE TABLE IF NOT EXISTS operation_payloads (
+    operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK (version > 0),
+    resource TEXT NOT NULL,
+    expected_revision INTEGER NOT NULL CHECK (expected_revision > 0),
+    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+    digest TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -98,5 +94,7 @@ CREATE INDEX IF NOT EXISTS audit_events_by_timestamp
 
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (5);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (6);
 
 COMMIT;

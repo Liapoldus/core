@@ -1,5 +1,8 @@
-insertOperation: "INSERT INTO operations(id, kind, state, request_id, actor, resource, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"
-selectOperation: "SELECT id, kind, state, created_at, updated_at, request_id, actor, resource FROM operations WHERE id = ?"
 timestampLayout: "2006-01-02T15:04:05.999999999Z07:00"
+errorCodeField: errorCode
+idempotencyExpiresAt: "9999-12-31T23:59:59.999999999Z"
 operationNotFound: "The requested operation does not exist."
 invalidContract: "The SQLite operation-store contract is invalid."
+invalidReservation: "The operation reservation is invalid."
+transitionConflict: "The operation state changed before the requested transition."
+idempotencyConflict: "The idempotency key was already used for a different request."

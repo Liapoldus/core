@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liapoldus.github.io/spec/core.schema.json",
+  "title": "Liapoldus Core bootstrap core.yaml",
+  "description": "Минимальная bootstrap-конфигурация Core. Plugin settings и fixed endpoints хранятся в SQLite; оператор вручную запускает Core и plugins. Core не управляет plugin processes или containers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "management", "pluginControl"],
+  "properties": {
+    "state": { "$ref": "#/$defs/state" },
+    "management": { "$ref": "#/$defs/management" },
+    "pluginControl": { "$ref": "#/$defs/pluginControl" }
+  },
+  "$defs": {
+    "fileReference": {
+      "type": "string",
+      "minLength": 7,
+      "pattern": "^file:[^\\x00]+$",
+      "description": "External file reference; inline secret values are forbidden."
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "description": "Local SQLite database file path; network filesystems are not supported." }
+      }
+    },
+    "management": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["listen", "tls"],
+      "properties": {
+        "listen": { "type": "string", "minLength": 1 },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["certificate", "key"],
+          "properties": {
+            "certificate": { "$ref": "#/$defs/fileReference" },
+            "key": { "$ref": "#/$defs/fileReference" },
+            "clientCA": { "$ref": "#/$defs/fileReference", "description": "Required for web Controller non-loopback access; desktop uses restricted SSH forwarding to loopback." }
+          },
+          "description": "Management TLS identity is required for every bind. Web Controller traffic additionally uses client mTLS and Bearer service credential."
+        },
+        "requestLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxBodyBytes": { "type": "integer", "minimum": 1 },
+            "headerTimeout": { "type": "string", "pattern": "^[1-9][0-9]*(ms|s|m)$" },
+            "requestTimeout": { "type": "string", "pattern": "^[1-9][0-9]*(ms|s|m)$" }
+          }
+        }
+      }
+    },
+    "pluginControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["listen", "publicURL", "tls"],
+      "properties": {
+        "listen": { "type": "string", "minLength": 1 },
+        "publicURL": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["certificate", "key", "replicaClientCA"],
+          "properties": {
+            "certificate": { "$ref": "#/$defs/fileReference" },
+            "key": { "$ref": "#/$defs/fileReference" },
+            "replicaClientCA": { "$ref": "#/$defs/fileReference" }
+          }
+        }
+      },
+      "description": "Private Plugin SDK lifecycle/configuration REST listener. Its trust roots are independent from Management and plugin-to-plugin roots."
+    }
+  },
+  "x-liapoldus-invariants": [
+    "Core is a single process and SQLite is the only durable source of desired plugin configuration.",
+    "Plugin processes and their binaries are operator-managed. Core only connects to fixed registered endpoints and has no process, binary-installation or container-provider management API.",
+    "Plugin settings are not accepted in core.yaml, environment variables, argv, or plugin application-config files; plugins pull exact immutable versioned JSON from Core REST after Reload(generation).",
+    "Traffic listeners, sites, routes, and traffic-plugin runtime configuration are not part of core.yaml.",
+    "Traffic plugins own their runtime state on persistent local storage; Core remains implementation-agnostic.",
+    "Local process supervision, signed package installation, container providers and workload automation are deferred to v2.",
+    "Management TLS is always enabled. Management and plugin workload trust roots are separate.",
+    "Plugin control REST uses the pluginControl TLS files and does not reuse the Management client CA or plugin-to-plugin trust roots.",
+    "SQLite and plugin-owned runtime state use persistent local storage; Core has no plugin package cache.",
+    "Plaintext secret values are forbidden in core.yaml and plugin settings JSON; secrets are returned only by scoped Core REST grants."
+  ]
+}

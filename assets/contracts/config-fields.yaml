@@ -1,15 +1,9 @@
 root:
   - state
-  - artifacts
-  - execution
   - management
-  - pluginCatalog
+  - pluginControl
 state:
   - path
-artifacts:
-  - path
-execution:
-  - profile
 management:
   - listen
   - tls
@@ -27,14 +21,20 @@ managementRequestLimits:
   - maxBodyBytes
   - headerTimeout
   - requestTimeout
-pluginCatalog:
-  - url
+pluginControl:
+  - listen
+  - publicURL
+  - tls
+pluginControlTLS:
+  - certificate
+  - key
+  - replicaClientCA
 secretReference:
   filePrefix: "file:"
 unknownFieldPolicy: reject
 semantics:
   minimalBootstrapOnly: |
-    Этот YAML содержит пути state/artifacts, профиль lifecycle, каталог пакетов и Management API bind/TLS/trust. Plugin settings и traffic configuration задаются через API.
+    Этот YAML содержит путь state, bind/TLS/trust Management API и bind/TLS/trust приватного plugin control listener для exact-generation config pull. Plugin settings, plugin endpoints, identities и traffic configuration задаются через Management API.
   localStorageOnly: |
     SQLite и immutable artifact store размещаются на локальной файловой системе. Сетевые database mounts не поддерживаются.
   managementRemoteSecurity: |

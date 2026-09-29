@@ -4,6 +4,10 @@ audit:
     staticToken: static-token
   actions:
     serviceKeyCreate: service_key.create
+    pluginSettingsCandidate: plugin_settings.candidate
+    pluginSettingsApply: plugin_settings.apply
+    pluginSettingsApplyFailed: plugin_settings.apply_failed
+    pluginSettingsRollback: plugin_settings.rollback
   resources:
     serviceKeys: service-keys
   results:
