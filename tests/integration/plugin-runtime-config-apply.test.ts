@@ -18,6 +18,7 @@ describe("supervised plugin ConfigApply", () => {
       expect(JSON.parse(result.stdout)).toEqual({
         rejectedApplyStayedInactive: true,
         mismatchedAckRejected: true,
+        previousRevisionReapplied: true,
         exactRevisionAcknowledged: true,
       });
     } finally {

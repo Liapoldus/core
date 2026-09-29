@@ -27,6 +27,10 @@ plugin lifecycle и не перечисляет продукты или их в�
   аудитируемому CAS из Management API. Application pipeline и supervised
   Runtime→`pluginprotocol.ConfigApply` с exact revision ACK реализованы; пока
   они проверены отдельно, без Management write endpoint и durable operation.
+  Последний focused slice вызывает ConfigApply через typed protocol SDK и при
+  неверном ACK повторно применяет активную до candidate ревизию перед возвратом
+  ошибки; это подтверждает `tests/integration/plugin-runtime-config-apply.test.ts`,
+  но не закрывает local mTLS, DispatchApply readiness или durable API workflow.
 - [ ] Принимать только полную versioned JSON revision; сверять Manifest и
   `ConfigSchema`, capability→mode descriptors и release compatibility перед
   apply, не интерпретируя product fields.

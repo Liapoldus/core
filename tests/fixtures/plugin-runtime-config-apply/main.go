@@ -29,9 +29,12 @@ func main() {
 	rejected := runtime.ApplyConfiguration(ctx, "fixture", "2", []byte(`{"reject":true}`))
 	mismatched := runtime.ApplyConfiguration(ctx, "fixture", "2", []byte(`{"wrongRevision":true}`))
 	accepted := runtime.ApplyConfiguration(ctx, "fixture", "2", []byte(`{"mode":"updated"}`))
+	revisions, err := os.ReadFile(os.Args[1] + ".config-revisions")
+	check(err)
 	check(json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"rejectedApplyStayedInactive": rejected != nil,
 		"mismatchedAckRejected":       mismatched != nil,
+		"previousRevisionReapplied":   string(revisions) == "1\n2\n2\n1\n2\n",
 		"exactRevisionAcknowledged":   accepted == nil,
 	}))
 }

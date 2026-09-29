@@ -21,6 +21,7 @@ type plugin struct {
 	server        *grpc.Server
 	marker        string
 	startMarker   string
+	configMarker  string
 	grantEndpoint string
 	instanceID    string
 	configured    bool
@@ -58,6 +59,17 @@ func (p *plugin) Bootstrap(_ context.Context, request *pluginv1.BootstrapRequest
 }
 
 func (p *plugin) ConfigApply(_ context.Context, request *pluginv1.ConfigApplyRequest) (*pluginv1.ConfigApplyResult, error) {
+	file, err := os.OpenFile(p.configMarker, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := fmt.Fprintf(file, "%s\n", request.GetSettingsRevision()); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if err := file.Close(); err != nil {
+		return nil, err
+	}
 	var settings struct {
 		Credential    string `json:"credential"`
 		Reject        bool   `json:"reject"`
@@ -148,7 +160,10 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-	service := &plugin{startMarker: executable + ".starts", marker: executable + ".crash"}
+	service := &plugin{
+		startMarker: executable + ".starts", marker: executable + ".crash",
+		configMarker: executable + ".config-revisions",
+	}
 	if os.Getenv("LIAPOLDUS_TEST_SENTINEL") != "" {
 		if err := os.WriteFile(service.startMarker+".inherited-environment", []byte{}, 0o600); err != nil {
 			os.Exit(1)

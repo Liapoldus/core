@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/pluginprotocol/pluginv1"
 	pluginsdk "github.com/Liapoldus/pluginprotocol/presentation/sdk"
 )
@@ -98,19 +99,19 @@ func (c *Client) ApplyConfiguration(ctx context.Context, revision string, config
 	defer cancel()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	result, err := c.client.Service().ConfigApply(ctx, &pluginv1.ConfigApplyRequest{
-		Config: configuration, SettingsRevision: revision, Grants: grants,
-	})
-	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return context.DeadlineExceeded
-		}
+	err := c.client.ApplyConfiguration(ctx, revision, configuration, grants)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, pluginsdk.ErrConfigApplyRejected):
+		return models.PluginConfigurationRejected{}
+	case errors.Is(err, pluginsdk.ErrInvalidConfigAcknowledgement), errors.Is(err, pluginsdk.ErrProtocolViolation):
+		return ErrProtocolViolation
+	case errors.Is(err, context.DeadlineExceeded):
+		return context.DeadlineExceeded
+	default:
 		return ErrPluginUnavailable
 	}
-	if result == nil || !result.GetApplied() || result.GetSettingsRevision() != revision {
-		return ErrPluginUnavailable
-	}
-	return nil
 }
 
 func (c *Client) BootstrapAndHandshake(ctx context.Context, instanceID, grantBrokerEndpoint string, config []byte, settingsRevision string, grants []*pluginv1.ActiveGrant) (Handshake, error) {

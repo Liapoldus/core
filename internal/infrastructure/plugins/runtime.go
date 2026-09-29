@@ -308,6 +308,9 @@ func (r *Runtime) ApplyConfiguration(ctx context.Context, instanceID, revision s
 	instance.broker.revoke(handles)
 	if err != nil {
 		clearConfigSecrets(configSecrets)
+		if errors.Is(err, ErrProtocolViolation) && r.reapplyActiveConfiguration(ctx, instance) != nil {
+			return ErrPluginUnavailable
+		}
 		return err
 	}
 	instance.broker.replaceConfiguration(revision, configSecrets)
@@ -320,6 +323,20 @@ func (r *Runtime) ApplyConfiguration(ctx context.Context, instanceID, revision s
 	}
 	r.mu.Unlock()
 	return nil
+}
+
+func (r *Runtime) reapplyActiveConfiguration(ctx context.Context, instance runningInstance) error {
+	grants, handles, err := instance.broker.issueConfig()
+	if err != nil {
+		return ErrPluginUnavailable
+	}
+	defer instance.broker.revoke(handles)
+
+	return instance.client.Reconnect(
+		ctx, instance.endpoint, instance.name, instance.grantServer.Endpoint(),
+		instance.model.Settings, instance.model.SettingsRevision, grants,
+		instance.name, instance.model.Capabilities,
+	)
 }
 
 func (r *Runtime) instance(name string) (runningInstance, bool) {
