@@ -92,14 +92,18 @@ func OperationGet(deps ManagementDependencies, response http.ResponseWriter, req
 		return
 	}
 	result := map[string]any{
-		deps.Management.JSON.ID:        operation.ID,
-		deps.Management.JSON.Kind:      operation.Kind,
-		deps.Management.JSON.State:     operation.State,
-		deps.Management.JSON.CreatedAt: operation.CreatedAt,
-		deps.Management.JSON.RequestID: operation.RequestID,
+		deps.Management.JSON.ID:         operation.ID,
+		deps.Management.JSON.Kind:       operation.Kind,
+		deps.Management.JSON.State:      operation.State,
+		deps.Management.JSON.ResourceID: operation.Resource,
+		deps.Management.JSON.CreatedAt:  operation.CreatedAt,
+		deps.Management.JSON.RequestID:  operation.RequestID,
 	}
 	if operation.UpdatedAt != nil {
 		result[deps.Management.JSON.UpdatedAt] = *operation.UpdatedAt
+	}
+	if operation.ErrorCode != "" {
+		result[deps.Management.JSON.ErrorCode] = operation.ErrorCode
 	}
 	deps.WriteJSON(response, http.StatusOK, result)
 }

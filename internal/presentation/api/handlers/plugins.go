@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
@@ -61,46 +60,6 @@ func AdminSurfaceList(deps PluginDependencies, response http.ResponseWriter, req
 	deps.WriteJSON(response, http.StatusOK, map[string]any{
 		deps.Management.JSON.Items:     deps.AdminSurfaces,
 		deps.Management.JSON.RequestID: requestID,
-	})
-}
-
-func PluginRestart(deps PluginDependencies, response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
-	if deps.RestartPlugin == nil {
-		deps.WriteProblem(response, 501, "not_implemented", "plugin restart is unavailable", requestID)
-		return
-	}
-	instance := strings.TrimSuffix(strings.TrimPrefix(path, deps.Management.Paths.Plugins+"/"), "/"+deps.Management.Paths.Restart)
-	if len(instance) == 0 || strings.Contains(instance, "/") {
-		deps.WriteProblem(response, http.StatusNotFound, "not_found", "plugin resource not found", requestID)
-		return
-	}
-	if deps.Operations.Store == nil {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	op, err := deps.RestartPlugin(request.Context(), instance)
-	if err != nil {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	if op.ID == "" || op.Kind == "" || (op.State != deps.Management.Statuses.Pending && op.State != deps.Management.Statuses.Running) {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	op.RequestID = requestID
-	op.Actor = actor
-	op.Resource = instance
-	if op.CreatedAt.IsZero() {
-		op.CreatedAt = time.Now().UTC()
-	}
-	if err := deps.Operations.Create(request.Context(), op); err != nil {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
-		return
-	}
-	deps.WriteJSON(response, http.StatusAccepted, map[string]any{
-		deps.Management.JSON.OperationID: op.ID,
-		deps.Management.JSON.State:       op.State,
-		deps.Management.JSON.RequestID:   requestID,
 	})
 }
 

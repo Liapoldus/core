@@ -16,7 +16,11 @@ func (server *Server) writeProblem(response http.ResponseWriter, status int, cod
 }
 
 func (server *Server) writeResponse(response http.ResponseWriter, status int, contentType string, value any) {
-	response.Header().Set("Content-Type", contentType)
+	writeJSONResponse(response, status, server.Management.Headers.ContentType, contentType, value)
+}
+
+func writeJSONResponse(response http.ResponseWriter, status int, headerName, contentType string, value any) {
+	response.Header().Set(headerName, contentType)
 	response.WriteHeader(status)
 	_ = json.NewEncoder(response).Encode(value)
 }

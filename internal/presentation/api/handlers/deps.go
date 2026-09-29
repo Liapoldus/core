@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
 
@@ -22,11 +21,11 @@ type Dependencies struct {
 
 type PluginDependencies struct {
 	Management          config.ManagementWords
+	AuditWords          config.AuditWords
 	PluginIDField       string
 	Plugins             []any
 	AdminSurfaces       []AdminSurface
 	Operations          application.OperationService
-	RestartPlugin       func(context.Context, string) (models.Operation, error)
 	DispatchAdmin       func(context.Context, string, string, string, string, string, string, json.RawMessage) (PluginAdminResult, error)
 	WriteJSON           func(http.ResponseWriter, int, any)
 	WriteProblem        func(http.ResponseWriter, int, string, string, string)

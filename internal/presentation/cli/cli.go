@@ -1,4 +1,4 @@
-// Package cli adapts operator commands to the Gateway bootstrap use cases.
+// Package cli adapts operator commands to the Core bootstrap use cases.
 package cli
 
 import (
@@ -79,7 +79,7 @@ func discoverConfig(options options) (string, string, error) {
 		path, err := absoluteExistingFile(options.config)
 		return path, words.Sources.Flag, err
 	}
-	if path := os.Getenv(words.Environment.GatewayConfig); path != "" {
+	if path := os.Getenv(words.Environment.CoreConfig); path != "" {
 		resolved, err := absoluteExistingFile(path)
 		return resolved, words.Sources.Environment, err
 	}

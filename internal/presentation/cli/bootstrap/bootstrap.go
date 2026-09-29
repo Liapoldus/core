@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
@@ -20,15 +19,17 @@ import (
 )
 
 type RunOptions struct {
-	Output       string
-	Words        config.CLIWords
-	WriteFailure func(output string, exitCode int, code, detail string)
+	Output            string
+	Words             config.CLIWords
+	WriteFailure      func(output string, exitCode int, code, detail string)
+	PluginRESTControl *PluginRESTControl
 }
 
 type runContext struct {
-	output       string
-	words        config.CLIWords
-	writeFailure func(output string, exitCode int, code, detail string)
+	output            string
+	words             config.CLIWords
+	writeFailure      func(output string, exitCode int, code, detail string)
+	pluginRESTControl *PluginRESTControl
 }
 
 type bootstrapStores struct {
@@ -36,6 +37,7 @@ type bootstrapStores struct {
 	keyStore          *storage.SQLiteServiceKeyStore
 	operationStore    *storage.SQLiteOperationStore
 	pluginConfigStore *storage.SQLitePluginConfigurationStore
+	pluginConfigWords config.PluginConfigurationWords
 }
 
 type bootstrapInventory struct {
@@ -45,12 +47,6 @@ type bootstrapInventory struct {
 	view       []any
 }
 
-type pluginLaunchSetup struct {
-	contract        config.PluginRuntimeContract
-	instances       map[string]models.PluginInstance
-	runtimeSettings plugins.RuntimeSettings
-}
-
 type managementInputs struct {
 	auditWords       config.AuditWords
 	errorCatalog     config.ErrorCatalog
@@ -58,23 +54,18 @@ type managementInputs struct {
 }
 
 func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
-	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure}
+	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure, pluginRESTControl: input.PluginRESTControl}
 	return serveBootstrap(options, bootstrapConfig)
 }
 
 func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
-	sqliteContract, err := config.LoadSQLiteContract()
-	if err != nil {
-		options.writeFailure(options.output, options.words.Exits.Internal, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
-		return options.words.Exits.Internal
-	}
 	database, err := OpenDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
 	}
 	defer database.Close()
-	stores, exitCode := loadBootstrapStores(options, bootstrap, database, sqliteContract)
+	stores, exitCode := loadBootstrapStores(options, bootstrap, database)
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
@@ -82,18 +73,20 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
-	pluginLaunch, exitCode := prepareLocalPlugins(options, inventory.records)
-	if exitCode != options.words.Exits.OK {
-		return exitCode
-	}
-	pluginRuntime, err := plugins.StartRuntime(context.Background(), pluginLaunch.instances, pluginLaunch.runtimeSettings)
-	if err != nil {
-		return failBootstrap(options, options.words.Exits.Unavailable, pluginLaunch.contract.Diagnostics.StartupFailed)
-	}
-	defer func() { _ = pluginRuntime.Stop(context.Background()) }()
 	managementInputs, exitCode := loadManagementInputs(options, bootstrap)
 	if exitCode != options.words.Exits.OK {
 		return exitCode
+	}
+	// v1 connects to explicitly registered, already-running plugin endpoints over
+	// the Plugin SDK REST API. There is no process supervision or local launch.
+	applier := &plugins.SDKConfigurationApplier{Store: stores.pluginConfigStore}
+	if options.pluginRESTControl != nil {
+		applier.Clients = options.pluginRESTControl.ReloadClients
+		stopRESTControl, controlErr := startPluginRESTControl(options.pluginRESTControl, stores.pluginConfigStore)
+		if controlErr != nil {
+			return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+		}
+		defer stopRESTControl()
 	}
 	management := newManagementServer(managementServerDependencies{
 		stores: stores, inventory: inventory, managementInputs: managementInputs,
@@ -101,8 +94,36 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	pluginConfigurationService := &application.PluginConfigurationService{
-		Store: stores.pluginConfigStore, Applier: pluginRuntime,
-		Unavailable: inventory.management.Codes.ManagementUnavailable,
+		Store: stores.pluginConfigStore, Applier: applier,
+		Operations:     application.OperationService{Store: stores.operationStore},
+		Unavailable:    inventory.management.Codes.ManagementUnavailable,
+		OperationKind:  inventory.management.OperationKinds.PluginSettingsApply,
+		PayloadVersion: stores.pluginConfigWords.SchemaVersion, MaximumPayloadBytes: stores.pluginConfigWords.MaximumPayloadBytes,
+		PayloadFailureCode: inventory.management.Codes.ActivationFailed,
+		OperationStates: application.PluginConfigurationOperationStates{
+			Pending: inventory.management.Statuses.Pending, Running: inventory.management.Statuses.Running,
+			Succeeded: inventory.management.Statuses.Succeeded, Failed: inventory.management.Statuses.Failed,
+		},
+		OperationFailureCodes: application.PluginConfigurationFailureCodes{
+			Rejected:    inventory.management.Codes.PluginConfigInvalid,
+			Conflict:    inventory.management.Codes.PluginRevisionConflict,
+			Unavailable: inventory.management.Codes.PluginUnavailable,
+			ApplyFailed: inventory.management.Codes.ActivationFailed,
+		},
+		RevisionStates: application.PluginConfigurationRevisionStates{
+			Active: stores.pluginConfigWords.Slots.Active, Candidate: stores.pluginConfigWords.Slots.Staging,
+			Failed: "",
+		},
+		RecoveryAudit: application.PluginConfigurationRecoveryAudit{
+			CandidateAction: managementInputs.auditWords.Audit.Actions.PluginSettingsCandidate,
+			AppliedAction:   managementInputs.auditWords.Audit.Actions.PluginSettingsApply,
+			FailedAction:    managementInputs.auditWords.Audit.Actions.PluginSettingsApplyFailed,
+			Succeeded:       managementInputs.auditWords.Audit.Results.Succeeded,
+			Failed:          managementInputs.auditWords.Audit.Results.Failed,
+		},
+	}
+	if err := pluginConfigurationService.Recover(context.Background()); err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
 	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
@@ -116,11 +137,8 @@ func failBootstrap(options runContext, exitCode int, detail string) int {
 	return exitCode
 }
 
-func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, database *sql.DB, sqliteContract config.SQLiteContract) (bootstrapStores, int) {
+func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, database *sql.DB) (bootstrapStores, int) {
 	var stores bootstrapStores
-	if err := os.MkdirAll(bootstrap.ArtifactsPath, os.FileMode(sqliteContract.ArtifactsDirectoryMode)); err != nil {
-		return stores, failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
-	}
 	var err error
 	if stores.auditStore, err = storage.NewSQLiteAuditStore(database); err != nil {
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
@@ -132,6 +150,9 @@ func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, d
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.pluginConfigStore, err = storage.NewSQLitePluginConfigurationStore(database); err != nil {
+		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	if stores.pluginConfigWords, err = config.LoadPluginConfiguration(); err != nil {
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	return stores, options.words.Exits.OK
@@ -160,52 +181,6 @@ func loadBootstrapInventory(options runContext, database *sql.DB) (bootstrapInve
 		return inventory, failBootstrap(options, options.words.Exits.Validation, options.words.Diagnostics.ConfigInvalid)
 	}
 	return inventory, options.words.Exits.OK
-}
-
-func prepareLocalPlugins(options runContext, records []storage.PluginInstanceRecord) (pluginLaunchSetup, int) {
-	var setup pluginLaunchSetup
-	var err error
-	if setup.contract, err = config.LoadPluginRuntimeContract(); err != nil {
-		return setup, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
-	}
-	launchSchema, err := config.LoadPluginLaunchSchema()
-	if err != nil {
-		return setup, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
-	}
-	fileReferencePrefix, err := config.LoadFileReferencePrefix()
-	if err != nil {
-		return setup, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
-	}
-	setup.runtimeSettings = plugins.RuntimeSettings{
-		FileReferencePrefix: fileReferencePrefix,
-		MaximumSecretBytes:  setup.contract.ConfigSecrets.MaximumBytes,
-	}
-	localRecords := make([]plugins.LocalInstanceRecord, 0, len(records))
-	for _, record := range records {
-		localRecords = append(localRecords, plugins.LocalInstanceRecord{
-			ID: record.ID, Mode: record.Mode, Revision: record.Revision, LaunchJSON: record.LaunchJSON,
-			SettingsJSON: record.SettingsJSON, ManifestJSON: record.ManifestJSON,
-		})
-	}
-	setup.instances, err = plugins.BuildLocalInstances(localRecords, plugins.LocalRuntimeContract{
-		LocalMode: setup.contract.Modes.Local, BinaryField: setup.contract.LaunchFields.Binary,
-		MaximumSecretBytes: setup.contract.ConfigSecrets.MaximumBytes, SecretGrantPurpose: setup.contract.ConfigSecrets.GrantPurpose,
-		FileReferencePrefix: fileReferencePrefix, LaunchSchema: launchSchema,
-		CallTimeout: setup.contract.Defaults.CallTimeout, StartTimeout: setup.contract.Defaults.StartTimeout,
-		MaxConcurrentCalls: setup.contract.Defaults.MaxConcurrentCalls, RestartEnabled: setup.contract.Defaults.RestartEnabled,
-		RestartInitialBackoff:  setup.contract.Defaults.RestartInitialBackoff,
-		RestartMaximumBackoff:  setup.contract.Defaults.RestartMaximumBackoff,
-		HealthProbeInterval:    setup.contract.Defaults.HealthProbeInterval,
-		HealthFailureThreshold: setup.contract.Defaults.HealthFailureThreshold,
-		MemoryProbeInterval:    setup.contract.Defaults.MemoryProbeInterval,
-		MemoryLimitBytes:       setup.contract.Defaults.MemoryLimitBytes,
-		InvalidContract:        setup.contract.Diagnostics.InvalidContract,
-		InvalidLaunch:          setup.contract.Diagnostics.InvalidLaunch,
-	})
-	if err != nil {
-		return setup, failBootstrap(options, options.words.Exits.Validation, setup.contract.Diagnostics.InvalidLaunch)
-	}
-	return setup, options.words.Exits.OK
 }
 
 func loadManagementInputs(options runContext, bootstrapConfig config.BootstrapConfig) (managementInputs, int) {

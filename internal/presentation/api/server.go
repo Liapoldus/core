@@ -16,26 +16,24 @@ import (
 )
 
 type Server struct {
-	Token                    string
-	ServiceAccounts          []models.ServiceAccount
-	mu                       sync.RWMutex
-	Operations               application.OperationService
-	AdminSurfaces            []handlers.AdminSurface
-	AdminDispatcher          *plugins.Dispatcher
-	Plugins                  []any
-	PluginIDField            string
-	RestartPlugin            func(context.Context, string) (models.Operation, error)
-	Audit                    *application.AuditService
-	AccessService            *application.AccessService
-	DataPlaneState           string
-	DataPlaneReason          string
-	DataPlaneReadiness       func(context.Context) (string, string)
-	AuditWords               config.AuditWords
-	Management               config.ManagementWords
-	Errors                   config.ErrorCatalog
-	TLSConfig                *tls.Config
-	RequireClientCertificate bool
-	contractOnce             sync.Once
+	Token              string
+	ServiceAccounts    []models.ServiceAccount
+	mu                 sync.RWMutex
+	Operations         application.OperationService
+	AdminSurfaces      []handlers.AdminSurface
+	AdminDispatcher    *plugins.Dispatcher
+	Plugins            []any
+	PluginIDField      string
+	Audit              *application.AuditService
+	AccessService      *application.AccessService
+	DataPlaneState     string
+	DataPlaneReason    string
+	DataPlaneReadiness func(context.Context) (string, string)
+	AuditWords         config.AuditWords
+	Management         config.ManagementWords
+	Errors             config.ErrorCatalog
+	TLSConfig          *tls.Config
+	contractOnce       sync.Once
 }
 
 func (server *Server) Handler() http.Handler {

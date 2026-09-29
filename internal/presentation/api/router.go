@@ -47,11 +47,11 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 
 	dependencies := handlers.PluginDependencies{
 		Management:          server.Management,
+		AuditWords:          server.AuditWords,
 		PluginIDField:       server.PluginIDField,
 		Plugins:             pluginInventory,
 		AdminSurfaces:       adminSurfaces,
 		Operations:          server.Operations,
-		RestartPlugin:       server.RestartPlugin,
 		WriteJSON:           server.writeJSON,
 		WriteProblem:        server.writeProblem,
 		WriteCatalogProblem: server.writeCatalogProblem,
@@ -101,7 +101,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if server.dispatchReadiness(response, request, path, requestID) ||
 		server.dispatchAccess(response, request, path, requestID, actor) ||
-		server.dispatchPluginCollections(response, request, path, requestID) ||
+		server.dispatchPluginCollections(response, request, path, requestID, actor) ||
 		server.dispatchAudit(response, request, path, requestID) ||
 		server.dispatchPluginActions(response, request, path, requestID, actor) ||
 		server.dispatchOperations(response, request, path, requestID) {
@@ -111,10 +111,6 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 }
 
 func (server *Server) authorizeManagementRequest(response http.ResponseWriter, request *http.Request, requestID string) (string, bool) {
-	if server.RequireClientCertificate && (request.TLS == nil || len(request.TLS.PeerCertificates) == 0) {
-		server.writeCatalogProblem(response, server.Management.Codes.ManagementMTLSRequired, requestID)
-		return "", false
-	}
 	actor, authorized, err := server.authenticate(request.Context(), request.Header.Get("Authorization"))
 	if err != nil {
 		server.writeCatalogProblem(response, server.Management.Codes.ManagementUnavailable, requestID)
@@ -167,7 +163,7 @@ func (server *Server) dispatchAccess(response http.ResponseWriter, request *http
 	return false
 }
 
-func (server *Server) dispatchPluginCollections(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+func (server *Server) dispatchPluginCollections(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	if path == server.Management.Paths.Plugins && request.Method == http.MethodGet {
 		handlers.PluginList(server.pluginHandlerDependencies(), response, request, requestID)
 		return true
@@ -179,6 +175,10 @@ func (server *Server) dispatchPluginCollections(response http.ResponseWriter, re
 	pluginDependencies := server.pluginHandlerDependencies()
 	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
 		handlers.PluginSettings(pluginDependencies, response, pluginConfigurationServiceFromContext(request.Context()), request.Context(), path, requestID)
+		return true
+	}
+	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Put {
+		handlers.PluginSettingsUpdate(pluginDependencies, response, request, pluginConfigurationServiceFromContext(request.Context()), path, requestID, actor)
 		return true
 	}
 	if handlers.IsPluginDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
@@ -197,12 +197,13 @@ func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.
 }
 
 func (server *Server) dispatchPluginActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
-	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
-		handlers.PluginAdmin(server.pluginHandlerDependencies(), response, request, path, requestID)
+	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsPluginRollbackPath(pluginDependencies, path) && request.Method == server.Management.Methods.Post {
+		handlers.PluginSettingsRollback(pluginDependencies, response, request, pluginConfigurationServiceFromContext(request.Context()), path, requestID, actor)
 		return true
 	}
-	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.HasSuffix(path, "/"+server.Management.Paths.Restart) && request.Method == http.MethodPost {
-		handlers.PluginRestart(server.pluginHandlerDependencies(), response, request, path, requestID, actor)
+	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
+		handlers.PluginAdmin(server.pluginHandlerDependencies(), response, request, path, requestID)
 		return true
 	}
 	return false
