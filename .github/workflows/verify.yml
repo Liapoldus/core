@@ -1,4 +1,4 @@
-name: Verify Gateway
+name: Verify Core
 
 on:
   pull_request:
@@ -15,10 +15,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: core
-      - uses: actions/checkout@v4
+      - name: Checkout plugin-sdk
+        uses: actions/checkout@v4
         with:
-          repository: Liapoldus/pluginprotocol
-          path: pluginprotocol
+          repository: Liapoldus/plugin-sdk
+          path: plugin-sdk
       - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
@@ -27,7 +28,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: core/tests/package-lock.json
-      - name: Build Gateway
+      - name: Build Core
         run: make build
         working-directory: core
       - name: Run TypeScript test suite

@@ -23,6 +23,7 @@ vendors:
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
   pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/presentation/sdk, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
+  pluginSDK: { in: [liapoldus.local/plugin-sdk, liapoldus.local/plugin-sdk/domain/interfaces, liapoldus.local/plugin-sdk/domain/models, liapoldus.local/plugin-sdk/infrastructure, liapoldus.local/plugin-sdk/presentation] }
   protobuf: { in: [google.golang.org/protobuf/proto, google.golang.org/protobuf/encoding/protojson] }
   gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
   sqliteDriver: { in: [modernc.org/sqlite] }
@@ -53,10 +54,10 @@ deps:
     canUse: [sqliteDriver, yaml]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil]
+    canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil, pluginSDK]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPIHandlers]
-    canUse: [bcrypt]
+    canUse: [bcrypt, pluginSDK]
   presentationAPIHandlers:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
     canUse: []

@@ -1,5 +1,5 @@
 {
-  "name": "liapoldus-gateway-tests",
+  "name": "liapoldus-core-tests",
   "private": true,
   "type": "module",
   "engines": {

@@ -1,9 +1,9 @@
-name: Release Gateway contracts
+name: Release Core contracts
 
 on:
   push:
     tags:
-      - "gateway-v*"
+      - "core-v*"
 
 permissions:
   contents: write
@@ -16,9 +16,9 @@ jobs:
       - name: Verify versioned contracts
         run: node scripts/verify-contract-bundle.mjs contracts/v1
       - name: Package contracts
-        run: tar -czf "liapoldus-gateway-contracts-${GITHUB_REF_NAME#gateway-}.tar.gz" -C contracts v1
+        run: tar -czf "liapoldus-core-contracts-${GITHUB_REF_NAME#core-}.tar.gz" -C contracts v1
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: liapoldus-gateway-contracts-*.tar.gz
+          files: liapoldus-core-contracts-*.tar.gz

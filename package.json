@@ -1,5 +1,5 @@
 {
-  "name": "liapoldus-gateway-core",
+  "name": "liapoldus-core-core",
   "private": true,
   "engines": {
     "node": ">=22"
