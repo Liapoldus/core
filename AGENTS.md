@@ -1,25 +1,35 @@
-# AGENTS.md — Liapoldus Gateway Core
+# AGENTS.md — Liapoldus Core
 
 ## Purpose and source of truth
 
-Core is the single-instance Gateway control plane. It stores desired service
-configuration in SQLite, builds immutable in-memory snapshots, and pushes
-versioned JSON to plugins through `pluginprotocol.ConfigApply`. Core does not
-serve public traffic or implement product-specific data planes; those belong to
-independently connected plugins.
+Core is the single-instance Core control plane and the durable source of
+desired configuration. It stores versioned JSON in SQLite, builds immutable
+in-memory snapshots, and exposes exact generations to plugins over the Plugin
+SDK REST API. Core notifies each plugin replica with REST `Reload(generation)`;
+the plugin pulls that generation from Core. Core does not serve public traffic
+or implement product-specific data planes; those belong to independently
+connected plugins.
 
-Until Gateway v1 is complete, the normative architecture, public Management
+Until Core v1 is complete, the normative architecture, public Management
 API, bootstrap schema and public error contract live in
-`/Users/docup/Projects/Liapoldus Engine/liapoldus.github.io`. The sole owner of
-plugin protobuf, gRPC API, lifecycle payloads, and plugin JSON contracts is
-`/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Do not copy those
-contracts into Core except generated/mirrored build assets explicitly required
-by the contract-publication check.
+`/Users/docup/Projects/Liapoldus Engine/liapoldus.github.io`. The standalone
+Plugin SDK in workspace directory `plugin-sdk/` is the owner of plugin-facing
+REST lifecycle/configuration APIs and common plugin facilities; its Go module
+path is not yet assigned and must not be guessed. The sole owner of
+plugin-to-plugin transport and generic peer
+communication is
+`/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Core uses the Plugin
+SDK REST client only and must not import or call `pluginprotocol`. Do not copy
+SDK or peer protocol contracts into Core except generated/mirrored build assets
+explicitly required by the contract-publication check.
 
 If a missing or contradictory requirement affects implementation, record the
 specific conflict in `TODO.md` and ask the user before changing observable
-behavior. The approved target is one global profile per Core: `supervised` or
-`external`; these profiles are not mixed inside one Core instance.
+behavior. Core v1 has no deployment modes or plugin workload management:
+operators manually install and start Core and each plugin. Core registers and
+connects to fixed plugin endpoints only. Local process supervision and all
+Docker/Compose/Swarm/Kubernetes integrations are v2 scope and must not appear in
+v1 API, persistence, permissions, or acceptance.
 
 ## Architecture and implementation rules
 
@@ -27,25 +37,53 @@ behavior. The approved target is one global profile per Core: `supervised` or
   interaction policy, grants, operations, access and audit. It must not contain
   plugin-name, capability-name, provider, or product-specific branches.
 - SQLite is the only durable Core store for desired configuration and control
-  metadata. Candidate and active revisions are durable; runtime request paths
-  use immutable in-memory snapshots and never read SQLite or configuration files.
-  Plugin settings are JSON pushed by Core; plugins do not pull them or read
-  application settings from environment variables, argv, or application config
-  files.
-- In `supervised`, Core verifies TUF-signed package metadata and supervises
-  local plugin processes. In `external`, an operator owns process lifecycle and
-  Core only connects to configured endpoints, applies state, and checks health.
-  Core is not a certificate authority.
-- `ConfigApply` and `DispatchApply` are protocol-owned typed operations. Commit
-  a new active generation only after the required replica-bound acknowledgments;
-  do not replay a Call with an unknown outcome. Secrets are never embedded in
-  config JSON or returned/logged; use scoped protocol grants.
+  metadata. Each plugin instance has exactly two durable configuration slots
+  that are ever published to a plugin: `active` and `previous`. A third
+  internal slot, `staging`, holds the validated candidate for a limited time
+  so that promotion, rollback and interrupted-operation recovery are durable;
+  it is never pullable by a replica. Store plugin configurations as raw JSON
+  BLOBs; do not decode and re-encode them. Compute the generation digest over
+  the exact stored UTF-8 bytes. Core may validate JSON syntax, size, duplicate
+  keys, and a generic plugin-owned JSON Schema, but must not interpret
+  product-specific fields. Runtime paths use immutable in-memory snapshots and
+  never read SQLite or configuration files. Core exposes an exact immutable
+  JSON generation; plugins pull it from Core only after REST
+  `Reload(generation)`. Plugins must not read application settings from
+  environment variables, argv, or application config files.
+- In v1 the operator owns plugin binary provenance and process lifecycle. Core
+  only connects to explicitly registered endpoints, applies state, and checks
+  health. Core must not install, start, stop, restart, scale, or delete plugin
+  processes/containers, and must not contain TUF release installation or
+  container-provider control. Core is not a certificate authority.
+- `Reload(generation)`, exact-generation config retrieval and scoped secret
+  redemption use the Plugin SDK REST API, not `pluginprotocol`. Rollback is a
+  Core Management API operation that swaps `active`/`previous` and notifies
+  replicas through ordinary `Reload`. After validating a candidate, promote it
+  to desired `active` in the same SQLite transaction that moves former `active`
+  to `previous` and discards the older `previous`, before notifying replicas.
+  `Rollback` swaps `active` and `previous` before notifying replicas. Partial rollout is roll-forward: retry failed
+  replicas, mark the instance degraded, and keep only replicas that have
+  acknowledged the desired generation eligible for traffic or peer calls.
+  Never replay an operation with an unknown outcome. Secrets are never
+  embedded in config JSON or returned/logged; scoped redemption uses the
+  Plugin SDK REST API.
+- `pluginprotocol` is a standalone, plugin-agnostic library for plugin-to-plugin
+  communication only. It has no Core lifecycle/configuration methods and no
+  product-specific capabilities. Its configurable physical transport must not
+  change plugin-defined application endpoints. The separate Plugin SDK is a
+  standalone Go module independent of `pluginprotocol`; all plugins use it for
+  their common REST endpoints, configuration, health, metrics, logging, and
+  error handling.
+- Keep one lifecycle architecture: after a complete REST migration slice has
+  passed its child-process conformance gate, remove the superseded Core↔plugin
+  lifecycle transport and its fallback paths. Do not preserve two permanent
+  lifecycle APIs or describe transitional compatibility as a supported mode.
 - `internal/domain` contains exactly `models/` and `interfaces/`; each model,
   interface, and typed error has its own file. Only validating constructors and
   model validation are permitted there. `internal/application` remains a flat
   use-case package. `internal/infrastructure` contains technical adapters in
   focused subpackages. `internal/presentation` contains only `api/` and `cli/`
-  and their documented adapter subpackages. `cmd/gateway` is the composition
+  and their documented adapter subpackages. `cmd/core` is the composition
   root.
 - SQL statements live in source-owned `.sql` files embedded at build time;
   application and persistence failures use typed Go errors. Public error codes,
@@ -100,12 +138,12 @@ behavior. The approved target is one global profile per Core: `supervised` or
 - `make arch-lint` uses the repository's Docker image as CI does; do not replace
   it with a host-installed linter.
 - At milestone completion, also run applicable race checks, executable golden
-  vectors, macOS/Linux builds and Docker smoke. Do not declare v1 ready while
+  vectors, macOS/Linux builds and manually deployed service smoke. Do not declare v1 ready while
   any required cross-component conformance gate remains open.
 
 ## Contract ownership after v1
 
-Only after Gateway v1 gates pass may contract ownership move into Core: generate
+Only after Core v1 gates pass may contract ownership move into Core: generate
 OpenAPI, bootstrap schemas, public errors and vectors from code, publish them as
 versioned release assets, and then change the documentation site to consume
 those assets. Do not start that migration early.

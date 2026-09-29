@@ -1,5 +1,6 @@
 # Local dependency and test-runner output.
 /core
+/gateway
 tests/fixtures/serve-plugin-runtime/serve-plugin-runtime
 tests/node_modules/
 tests/.vite/
