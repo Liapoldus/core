@@ -19,7 +19,6 @@ type requestCase struct {
 	path   string
 	token  string
 	body   string
-	mtls   bool
 }
 
 type observation struct {
@@ -53,16 +52,8 @@ func main() {
 			Capabilities: []string{"admin.surface.get"},
 		}},
 	}
-	mtlsServer := &api.Server{
-		Token:                    "characterization-token",
-		Management:               management,
-		AuditWords:               auditWords,
-		RequireClientCertificate: true,
-	}
 	serverForRequests := httptest.NewServer(server.Handler())
 	defer serverForRequests.Close()
-	serverForMTLS := httptest.NewServer(mtlsServer.Handler())
-	defer serverForMTLS.Close()
 
 	plugin := management.Paths.Plugins + "/fixture-a"
 	cases := []requestCase{
@@ -71,8 +62,7 @@ func main() {
 		{name: "healthPost", method: http.MethodPost, path: management.Paths.Healthz},
 		{name: "statusUnauthorized", method: http.MethodGet, path: management.Paths.Status},
 		{name: "statusAuthenticated", method: http.MethodGet, path: management.Paths.Status, token: "characterization-token"},
-		{name: "statusMTLSRequired", method: http.MethodGet, path: management.Paths.Status, token: "characterization-token", mtls: true},
-		{name: "healthBeforeMTLS", method: http.MethodGet, path: management.Paths.Healthz, mtls: true},
+		{name: "healthWithoutBearer", method: http.MethodGet, path: management.Paths.Healthz},
 		{name: "serviceKeyListUnavailable", method: http.MethodGet, path: management.Paths.ServiceKeys, token: "characterization-token"},
 		{name: "serviceKeyCreateUnavailable", method: http.MethodPost, path: management.Paths.ServiceKeys, token: "characterization-token", body: `{}`},
 		{name: "pluginList", method: http.MethodGet, path: management.Paths.Plugins + "?limit=1", token: "characterization-token"},
@@ -82,7 +72,7 @@ func main() {
 		{name: "pluginNotFound", method: http.MethodGet, path: management.Paths.Plugins + "/missing", token: "characterization-token"},
 		{name: "pluginAdminUnavailable", method: http.MethodGet, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
 		{name: "pluginAdminPostUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.AdminPages + "/records/delete", token: "characterization-token", body: `{}`},
-		{name: "pluginRestartUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.Restart, token: "characterization-token"},
+		{name: "pluginRollbackUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.PluginRollbackSuffix, token: "characterization-token"},
 		{name: "operationUnavailable", method: http.MethodGet, path: management.Paths.Operations + "/missing", token: "characterization-token"},
 		{name: "auditEmpty", method: http.MethodGet, path: management.Paths.Audit, token: "characterization-token"},
 		{name: "unknownRoute", method: http.MethodGet, path: "/api/unknown", token: "characterization-token"},
@@ -94,7 +84,7 @@ func main() {
 			{name: "pluginListPost", method: http.MethodPost, path: management.Paths.Plugins, token: "characterization-token"},
 			{name: "pluginDetailPut", method: http.MethodPut, path: plugin, token: "characterization-token"},
 			{name: "pluginAdminPatch", method: http.MethodPatch, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
-			{name: "pluginRestartGet", method: http.MethodGet, path: plugin + "/" + management.Paths.Restart, token: "characterization-token"},
+			{name: "pluginRollbackGet", method: http.MethodGet, path: plugin + "/" + management.Paths.PluginRollbackSuffix, token: "characterization-token"},
 			{name: "adminSurfacesPost", method: http.MethodPost, path: management.Paths.AdminSurfaces, token: "characterization-token"},
 			{name: "serviceKeyDelete", method: http.MethodDelete, path: management.Paths.ServiceKeys, token: "characterization-token"},
 			{name: "auditPost", method: http.MethodPost, path: management.Paths.Audit, token: "characterization-token"},
@@ -104,16 +94,9 @@ func main() {
 	}
 
 	client := serverForRequests.Client()
-	mtlsClient := serverForMTLS.Client()
 	result := make(map[string]observation, len(cases))
 	for _, testCase := range cases {
-		requestClient := client
-		requestServer := serverForRequests
-		if testCase.mtls {
-			requestClient = mtlsClient
-			requestServer = serverForMTLS
-		}
-		result[testCase.name] = perform(requestClient, requestServer.URL, testCase, management.Headers.RequestID)
+		result[testCase.name] = perform(client, serverForRequests.URL, testCase, management.Headers.RequestID)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
 		panic(err)

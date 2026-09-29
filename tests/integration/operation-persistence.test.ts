@@ -14,7 +14,7 @@ describe("durable Management API operations", () => {
     try {
       const result = await execFileAsync(
         "go",
-        ["run", "./tests/fixtures/operation-persistence", join(directory, "gateway.db")],
+        ["run", "./tests/fixtures/operation-persistence", join(directory, "core.db")],
         { cwd: coreRoot },
       );
       const report = JSON.parse(result.stdout) as {
@@ -26,6 +26,8 @@ describe("durable Management API operations", () => {
         unknownCode: string;
         resultSecretAbsent: boolean;
         storedPayloadsNull: boolean;
+        appliedRevision: string;
+        appliedRaw: string;
       };
 
       expect(report.createStatus).toBe(202);
@@ -33,11 +35,13 @@ describe("durable Management API operations", () => {
       expect(report.readStatus).toBe(200);
       expect(report.operation).toMatchObject({
         id: report.operationId,
-        kind: expect.any(String),
+        kind: "plugin-settings-rollback",
         state: "running",
         createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
         requestId: expect.any(String),
       });
+      expect(report.appliedRevision).toBe("1");
+      expect(report.appliedRaw).toBe('{"generation":1}');
       expect(report.operation).not.toHaveProperty("actor");
       expect(report.operation).not.toHaveProperty("resource");
       expect(report.operation).not.toHaveProperty("result");

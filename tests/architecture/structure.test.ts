@@ -24,7 +24,7 @@ async function sourceFiles(path: string): Promise<string[]> {
   ];
 }
 
-describe("Gateway architecture", () => {
+describe("Core architecture", () => {
   it("keeps the domain limited to models and interfaces", async () => {
     const domain = join(root, "internal", "domain");
     expect(await directories(domain)).toEqual(["interfaces", "models"]);
@@ -56,7 +56,7 @@ describe("Gateway architecture", () => {
     expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
     expect(await directories(join(root, "internal", "presentation", "api"))).toEqual(["handlers"]);
     expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual(["bootstrap"]);
-    expect(await directories(join(root, "cmd"))).toEqual(["gateway"]);
+    expect(await directories(join(root, "cmd"))).toEqual(["core"]);
   });
 
   it("keeps assets static and places its embed adapter outside assets", async () => {

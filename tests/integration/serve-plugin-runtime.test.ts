@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
-import { buildGatewayTestBinary, startGateway } from "../support/gateway.js";
+import { buildCoreTestBinary, startCore } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
@@ -35,9 +35,9 @@ function request(address: string, path: string, token: string, method = "GET"): 
   });
 }
 
-async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startGateway>>["process"]): Promise<void> {
+async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startCore>>["process"]): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode !== null) throw new Error(`Gateway exited before Management API became ready (${child.exitCode}).`);
+    if (child.exitCode !== null) throw new Error(`Core exited before Management API became ready (${child.exitCode}).`);
     try {
       const response = await request(address, "/healthz", "unused");
       if (response.status === 200) return;
@@ -45,49 +45,55 @@ async function waitForManagement(address: string, child: Awaited<ReturnType<type
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  throw new Error("Gateway Management API did not become ready.");
+  throw new Error("Core Management API did not become ready.");
 }
 
-async function buildFixture(name: string, output: string): Promise<void> {
-  await execFileAsync("go", ["build", "-o", output, `./tests/fixtures/${name}`], {
-    cwd: join(import.meta.dirname, "../.."),
-  });
-}
-
-describe("serve plugin runtime composition", () => {
-  it("loads SQLite plugin instances and exposes them only through the ready management runtime", async () => {
+describe("serve plugin composition", () => {
+  it("exposes only generic instance metadata for explicitly registered endpoints and supervises no process", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-serve-plugin-runtime-"));
-    const binary = await buildGatewayTestBinary();
+    const binary = await buildCoreTestBinary();
     const address = await freeAddress();
+    const controlAddress = await freeAddress();
     const certificate = join(directory, "management.crt");
     const privateKey = join(directory, "management.key");
-    const database = join(directory, "gateway.db");
-    const artifacts = join(directory, "artifacts");
-    const config = join(directory, "gateway.yaml");
-    const pluginBinary = join(directory, "plugin-child");
-    let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
+    const controlCertificate = join(directory, "plugin-control.crt");
+    const controlKey = join(directory, "plugin-control.key");
+    const replicaClientCA = join(directory, "plugin-replica-ca.crt");
+    const database = join(directory, "core.db");
+    const config = join(directory, "core.yaml");
+    let core: Awaited<ReturnType<typeof startCore>> | undefined;
 
     try {
+      for (const [key, out] of [[privateKey, certificate], [controlKey, controlCertificate]] as const) {
+        await execFileAsync("openssl", [
+          "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+          "-subj", "/CN=localhost",
+          "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+          "-keyout", key, "-out", out,
+        ]);
+      }
       await execFileAsync("openssl", [
         "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=localhost",
-        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-        "-keyout", privateKey, "-out", certificate,
+        "-subj", "/CN=plugin-replica-ca",
+        "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
       ]);
+      // v1 core.yaml is exactly state + management + pluginControl. There is no
+      // artifacts store, no execution profile and no package catalog in Core.
       await writeFile(config, [
         "state:",
         `  path: ${database}`,
-        "artifacts:",
-        `  path: ${artifacts}`,
-        "execution:",
-        "  profile: supervised",
         "management:",
         `  listen: ${address}`,
         "  tls:",
         `    certificate: file:${certificate}`,
         `    key: file:${privateKey}`,
-        "pluginCatalog:",
-        "  url: https://plugins.example.invalid/metadata",
+        "pluginControl:",
+        `  listen: ${controlAddress}`,
+        "  publicURL: https://core.internal:9444",
+        "  tls:",
+        `    certificate: file:${controlCertificate}`,
+        `    key: file:${controlKey}`,
+        `    replicaClientCA: file:${replicaClientCA}`,
         "",
       ].join("\n"), "utf8");
 
@@ -95,19 +101,17 @@ describe("serve plugin runtime composition", () => {
       const token = bootstrap.stdout.trim();
       expect(token.length).toBeGreaterThan(0);
 
-      await buildFixture("serve-plugin-child", pluginBinary);
-      const seeded = await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-runtime", database, pluginBinary], {
+      const seeded = await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-runtime", database], {
         cwd: join(import.meta.dirname, "../.."),
       });
-      const seedReport = JSON.parse(seeded.stdout) as { columns: string[]; launchSettingsSeeded: boolean; seeded: boolean };
+      const seedReport = JSON.parse(seeded.stdout) as { columns: string[]; configurationColumns: string[]; seeded: boolean };
       expect(seedReport.seeded).toBe(true);
-      expect(seedReport.launchSettingsSeeded).toBe(true);
-      expect(seedReport.columns).toEqual(expect.arrayContaining([
-        "id", "mode", "endpoint", "settings_json", "manifest_json", "state", "revision",
-      ]));
+      expect(seedReport.columns).toEqual(expect.arrayContaining(["id", "mode", "endpoint", "manifest_json", "state"]));
+      expect(seedReport.columns).not.toContain("settings_json");
+      expect(seedReport.configurationColumns).toEqual(expect.arrayContaining(["instance_id", "generation", "slot", "raw_json", "sha256"]));
 
-      gateway = await startGateway(["--config", config, "serve"]);
-      await waitForManagement(address, gateway.process);
+      core = await startCore(["--config", config, "serve"]);
+      await waitForManagement(address, core.process);
 
       const status = await request(address, "/api/status", token);
       expect(status.status).toBe(200);
@@ -115,33 +119,24 @@ describe("serve plugin runtime composition", () => {
         dataPlaneReadiness: { state: "ready" },
       });
 
+      // Core owns generic instance metadata only. Manifest documents and
+      // registered endpoints are plugin-owned and must not be surfaced.
       const pluginList = await request(address, "/api/plugins", token);
       expect(pluginList.status).toBe(200);
       const pluginListBody = JSON.parse(pluginList.body) as { items: Array<Record<string, unknown>> };
-      expect(pluginListBody.items).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          id: "serve-fixture",
-          mode: "local",
-          state: "configured",
-          revision: 1,
-          capabilities: expect.arrayContaining(["test.lifecycle"]),
-          capabilityDescriptors: expect.arrayContaining([
-            expect.objectContaining({ capability: "test.lifecycle", modes: ["INVOCATION_MODE_CALL"] }),
-          ]),
-        }),
-      ]));
+      expect(pluginListBody.items).toEqual([
+        { id: "serve-fixture", mode: "remote", state: "configured", revision: 1 },
+      ]);
       expect(pluginList.body).not.toContain("127.0.0.1:45678");
       expect(pluginList.body).not.toContain("fixture-private-value");
       expect(pluginList.body).not.toContain("settings_json");
+      expect(pluginList.body).not.toContain("capabilit");
+      expect(pluginList.body).not.toContain("protocolVersion");
 
       const pluginDetail = await request(address, "/api/plugins/serve-fixture", token);
       expect(pluginDetail.status).toBe(200);
-      expect(JSON.parse(pluginDetail.body)).toMatchObject({
-        id: "serve-fixture",
-        mode: "local",
-        state: "configured",
-        revision: 1,
-        capabilities: ["test.lifecycle"],
+      expect(JSON.parse(pluginDetail.body)).toEqual({
+        id: "serve-fixture", mode: "remote", state: "configured", revision: 1,
       });
       expect(pluginDetail.body).not.toContain("fixture-private-value");
       expect(pluginDetail.body).not.toContain("127.0.0.1:45678");
@@ -156,10 +151,14 @@ describe("serve plugin runtime composition", () => {
         expect.objectContaining({ plugin: "serve-fixture" }),
       ]));
 
-      const restart = await request(address, "/api/plugins/serve-fixture/restart", token, "POST");
-      expect(restart.status).not.toBe(202);
+      // v1 Core owns no process lifecycle: install, restart and release are not
+      // Management API operations.
+      for (const path of ["/api/plugins/serve-fixture/restart", "/api/plugins/serve-fixture/install"]) {
+        const response = await request(address, path, token, "POST");
+        expect([404, 405], path).toContain(response.status);
+      }
     } finally {
-      if (gateway !== undefined) await gateway.stop();
+      if (core !== undefined) await core.stop();
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);

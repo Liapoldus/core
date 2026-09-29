@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { env } from "node:process";
 
-export interface GatewayResult {
+export interface CoreResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
@@ -18,19 +18,19 @@ const execFileAsync = promisify(execFile);
 let binary: Promise<string> | undefined;
 let binaryDirectory: string | undefined;
 
-async function gatewayBinary(): Promise<string> {
+async function coreBinary(): Promise<string> {
   binary ??= (async () => {
-    const directory = await mkdtemp(join(tmpdir(), "liapoldus-gateway-bin-"));
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-core-bin-"));
     binaryDirectory = directory;
-    const path = join(directory, "gateway");
-    await execFileAsync("go", ["build", "-o", path, "./cmd/gateway"], { cwd: coreRoot });
+    const path = join(directory, "core");
+    await execFileAsync("go", ["build", "-o", path, "./cmd/core"], { cwd: coreRoot });
     return path;
   })();
   return binary;
 }
 
-export function buildGatewayTestBinary(): Promise<string> {
-  return gatewayBinary();
+export function buildCoreTestBinary(): Promise<string> {
+  return coreBinary();
 }
 
 export function observeChildClose(child: ChildProcess): Promise<void> {
@@ -42,7 +42,7 @@ export async function stopChildProcess(child: ChildProcess, closed: Promise<void
   await closed;
 }
 
-export async function cleanupGatewayTestBinary(): Promise<void> {
+export async function cleanupCoreTestBinary(): Promise<void> {
   const directory = binaryDirectory;
   if (directory === undefined) return;
   binaryDirectory = undefined;
@@ -50,13 +50,13 @@ export async function cleanupGatewayTestBinary(): Promise<void> {
   await rm(directory, { recursive: true, force: true });
 }
 
-afterAll(cleanupGatewayTestBinary);
+afterAll(cleanupCoreTestBinary);
 
-export async function runGateway(
+export async function runCore(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = {},
-): Promise<GatewayResult> {
-	const executable = await gatewayBinary();
+): Promise<CoreResult> {
+	const executable = await coreBinary();
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
       cwd: coreRoot,
@@ -74,15 +74,15 @@ export async function runGateway(
   });
 }
 
-export function jsonOutput(result: GatewayResult): Record<string, unknown> {
+export function jsonOutput(result: CoreResult): Record<string, unknown> {
   return JSON.parse(result.stdout) as Record<string, unknown>;
 }
 
-export async function startGateway(
+export async function startCore(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = {},
 ): Promise<{ process: ChildProcess; stop(): Promise<void> }> {
-  const executable = await gatewayBinary();
+  const executable = await coreBinary();
   const process = spawn(executable, args, { cwd: coreRoot, env: { ...env, ...environment }, stdio: "ignore" });
   const closed = observeChildClose(process);
   return {
@@ -91,11 +91,11 @@ export async function startGateway(
   };
 }
 
-export async function startGatewayWithOutput(
+export async function startCoreWithOutput(
   args: readonly string[],
   environment: NodeJS.ProcessEnv = {},
 ): Promise<{ process: ChildProcess; stdout: string; stderr: string; stop(): Promise<void> }> {
-  const executable = await gatewayBinary();
+  const executable = await coreBinary();
   const process = spawn(executable, args, { cwd: coreRoot, env: { ...env, ...environment }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";

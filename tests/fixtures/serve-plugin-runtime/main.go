@@ -13,15 +13,15 @@ import (
 
 type report struct {
 	Columns              []string `json:"columns"`
-	LaunchSettingsSeeded bool     `json:"launchSettingsSeeded"`
+	ConfigurationColumns []string `json:"configurationColumns"`
 	Seeded               bool     `json:"seeded"`
 }
 
 func main() {
-	if len(os.Args) != 3 {
+	if len(os.Args) != 2 {
 		os.Exit(2)
 	}
-	databasePath, pluginBinary := os.Args[1], os.Args[2]
+	databasePath := os.Args[1]
 	contract, err := config.LoadSQLiteContract()
 	if err != nil {
 		panic(err)
@@ -55,23 +55,40 @@ func main() {
 	if err := rows.Close(); err != nil {
 		panic(err)
 	}
+	configRows, err := database.QueryContext(context.Background(), "PRAGMA table_info(plugin_config_generations)")
+	if err != nil {
+		panic(err)
+	}
+	configurationColumns := make([]string, 0)
+	for configRows.Next() {
+		var sequence, notNull, primaryKey int
+		var name, dataType string
+		var defaultValue sql.NullString
+		if err := configRows.Scan(&sequence, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			panic(err)
+		}
+		configurationColumns = append(configurationColumns, name)
+	}
+	if err := configRows.Close(); err != nil {
+		panic(err)
+	}
 
-	manifest := json.RawMessage(`{"name":"serve-fixture","protocolVersion":"liapoldus.plugin.v1","capabilities":["test.lifecycle"],"capabilityDescriptors":[{"capability":"test.lifecycle","modes":["INVOCATION_MODE_CALL"]}]}`)
+	manifest := json.RawMessage(`{"name":"serve-fixture","protocolVersion":"liapoldus.plugin.v1","capabilities":["test.lifecycle"]}`)
 	_, err = database.ExecContext(context.Background(), `INSERT INTO plugin_instances
-		(id, mode, endpoint, settings_json, manifest_json, state, revision)
-		VALUES (?, ?, ?, ?, ?, ?, 1)`,
-		"serve-fixture", "local", nil, []byte(`{}`), []byte(manifest), "configured")
+		(id, mode, endpoint, manifest_json, state) VALUES (?, ?, ?, ?, ?)`,
+		"serve-fixture", "remote", "127.0.0.1:45678", []byte(manifest), "configured")
 	if err != nil {
 		panic(err)
 	}
-	launch, err := json.Marshal(map[string]string{"binary": pluginBinary})
+	_, err = database.ExecContext(context.Background(), `INSERT INTO plugin_config_generations
+		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
+		VALUES (?, 1, 'active', ?, ?, 1, '2026-09-29T00:00:00Z')`,
+		"serve-fixture", []byte(`{}`), "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
 	if err != nil {
 		panic(err)
 	}
-	if _, err := database.ExecContext(context.Background(), `INSERT INTO plugin_launch_settings (instance_id, launch_json) VALUES (?, ?)`, "serve-fixture", launch); err != nil {
-		panic(err)
-	}
-	if err := json.NewEncoder(os.Stdout).Encode(report{Columns: columns, LaunchSettingsSeeded: true, Seeded: true}); err != nil {
+	// v1 Core registers endpoints only: no launch settings and no binary.
+	if err := json.NewEncoder(os.Stdout).Encode(report{Columns: columns, ConfigurationColumns: configurationColumns, Seeded: true}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

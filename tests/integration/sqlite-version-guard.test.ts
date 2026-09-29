@@ -9,10 +9,10 @@ const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
 
 describe("SQLite schema compatibility", () => {
-  it("rejects a database with a migration newer than this Gateway supports", async () => {
+  it("rejects a database with a migration newer than this Core supports", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-sqlite-version-"));
     try {
-      const database = join(directory, "gateway.db");
+      const database = join(directory, "core.db");
       const result = await execFileAsync(
         "go",
         ["run", "./tests/fixtures/sqlite-version-probe", database],

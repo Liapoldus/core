@@ -8,7 +8,7 @@ const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 type PublicationFile = { source: string; target: string };
 
-describe("published Gateway contract mirrors", () => {
+describe("published Core contract mirrors", () => {
   it("matches every data-declared asset and manifest digest", async () => {
     const publicationPath = join(root, "assets/contracts/publication.json");
     const publication = JSON.parse(await readFile(publicationPath, "utf8")) as {

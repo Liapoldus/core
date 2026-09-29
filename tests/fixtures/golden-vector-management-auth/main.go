@@ -1,12 +1,10 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"os"
 	"net/http"
 	"net/http/httptest"
+	"os"
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -14,8 +12,7 @@ import (
 
 type vector struct {
 	Input struct {
-		ClientCertificate bool `json:"clientCertificate"`
-		Bearer            bool `json:"bearer"`
+		Bearer bool `json:"bearer"`
 	} `json:"input"`
 }
 
@@ -45,15 +42,11 @@ func main() {
 		os.Exit(2)
 	}
 	server := &api.Server{
-		Token:                    "golden-vector-management-token",
-		Management:               management,
-		Errors:                   errorCatalog,
-		RequireClientCertificate: true,
+		Token:      "golden-vector-management-token",
+		Management: management,
+		Errors:     errorCatalog,
 	}
 	request := httptest.NewRequest(management.Methods.Get, management.Paths.Status, nil)
-	if input.Input.ClientCertificate {
-		request.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{{}}}
-	}
 	if input.Input.Bearer {
 		request.Header.Set("Authorization", "Bearer golden-vector-management-token")
 	}

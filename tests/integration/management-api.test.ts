@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { readGoPackageSources } from "../support/presentation-source";
+
+const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+const contractPath = (name: string) => join(root, "assets", "contracts", name);
 
 describe("Management API v1", () => {
   it("exposes the documented control-plane resources", () => {
-    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
+    const contract = readFileSync(contractPath("management-fields.yaml"), "utf8");
     for (const route of ["/healthz", "/api/status", "/api/plugins", "/api/operations", "/api/audit"]) {
       expect(contract).toContain(route);
     }
@@ -15,15 +19,15 @@ describe("Management API v1", () => {
   });
 
   it("documents secret-safe and request-correlated responses", () => {
-    const contract = readFileSync(resolve(process.cwd(), "../assets/contracts/management-fields.yaml"), "utf8");
-    const errors = readFileSync(resolve(process.cwd(), "../assets/contracts/errors.json"), "utf8");
+    const contract = readFileSync(contractPath("management-fields.yaml"), "utf8");
+    const errors = readFileSync(contractPath("errors.json"), "utf8");
     expect(contract).toContain("requestId: X-Request-ID");
     expect(errors).toContain("application/problem+json");
     expect(errors).toContain("details contain no secret values");
   });
 
-  it("does not expose the retired Gateway config-DSL API", async () => {
-    const source = await readGoPackageSources(resolve(process.cwd(), ".."), "internal/presentation/api");
+  it("does not expose the retired Core config-DSL API", async () => {
+    const source = await readGoPackageSources(resolve(root), "internal/presentation/api");
     expect(source).not.toContain("case path == server.Management.Paths.Config");
     expect(source).not.toContain("Paths.ConfigValidate &&");
     expect(source).not.toContain("Paths.Reload ||");

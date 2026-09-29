@@ -26,8 +26,13 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, settings_json, manifest_json, state, revision) VALUES (?, ?, ?, ?, ?, ?)`,
-		"fixture", "remote", []byte(`{"mode":"fixture"}`), []byte(`{"name":"fixture"}`), "configured", 1)
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
+		"fixture", "remote", []byte(`{"name":"fixture"}`), "configured")
+	check(err)
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
+		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
+		VALUES (?, 1, 'active', ?, ?, 1, '2026-09-29T00:00:00Z')`,
+		"fixture", []byte(`{"mode":"fixture"}`), "b3d6ed829f27bca65d65dc83829cc144b3fe0a8ac94e39e0b2038be790faac8a")
 	check(err)
 	store, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)

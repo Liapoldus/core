@@ -23,21 +23,21 @@ export function portOf(address: string): string {
   return separator >= 0 ? address.slice(separator + 1) : "";
 }
 
-export async function writeGatewayConfig(contents: string): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "liapoldus-gateway-config-"));
-  const path = join(directory, "gateway.yaml");
+export async function writeCoreConfig(contents: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "liapoldus-core-config-"));
+  const path = join(directory, "core.yaml");
   await writeFile(path, contents, "utf8");
   return path;
 }
 
-export interface GatewayHTTPResponse {
+export interface CoreHTTPResponse {
   status: number;
   text: string;
   headers: Headers;
 }
 
 export async function waitReady(address: string): Promise<void> {
-	// Full acceptance runs start several real Gateway binaries in sequence; on
+	// Full acceptance runs start several real Core binaries in sequence; on
 	// emulated CI hosts process startup can exceed three seconds even though the
 	// listener is healthy. Keep polling long enough to distinguish startup
 	// latency from an actual bind/configuration failure.
@@ -51,10 +51,10 @@ export async function waitReady(address: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`gateway never became ready at ${address}`);
+  throw new Error(`core never became ready at ${address}`);
 }
 
-export async function request(address: string, path: string, init?: RequestInit): Promise<GatewayHTTPResponse> {
+export async function request(address: string, path: string, init?: RequestInit): Promise<CoreHTTPResponse> {
   const response = await fetch(`http://${address}${path}`, init);
   return { status: response.status, text: await response.text(), headers: response.headers };
 }

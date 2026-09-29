@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildGatewayTestBinary, cleanupGatewayTestBinary } from "../support/gateway.js";
+import { buildCoreTestBinary, cleanupCoreTestBinary } from "../support/core.js";
 
-describe("Gateway test binary lifecycle", () => {
+describe("Core test binary lifecycle", () => {
   it("removes its temporary executable and directory on cleanup", async () => {
-    const executable = await buildGatewayTestBinary();
+    const executable = await buildCoreTestBinary();
     expect(existsSync(executable)).toBe(true);
 
-    await cleanupGatewayTestBinary();
+    await cleanupCoreTestBinary();
 
     expect(existsSync(executable)).toBe(false);
   }, 60_000);

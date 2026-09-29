@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
-import { observeChildClose, stopChildProcess } from "../support/gateway.js";
+import { observeChildClose, stopChildProcess } from "../support/core.js";
 
 const children: ReturnType<typeof spawn>[] = [];
 
@@ -11,7 +11,7 @@ afterEach(() => {
   }
 });
 
-describe("Gateway child-process cleanup", () => {
+describe("Core child-process cleanup", () => {
   it("resolves when close happened before cleanup requests shutdown", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
     children.push(child);

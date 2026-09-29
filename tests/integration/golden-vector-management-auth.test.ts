@@ -10,17 +10,17 @@ const coreRoot = join(import.meta.dirname, "../..");
 
 interface ManagementAuthVector {
   id: string;
-  input: { clientCertificate: boolean; bearer: boolean };
+  input: { bearer: boolean };
   expected: { authorized: boolean };
 }
 
-describe("Gateway management authentication golden vectors", () => {
-  it("executes the two-factor management authorization vector through the API middleware", async () => {
+describe("Core management authentication golden vectors", () => {
+  it("executes the Management API bearer authorization vector independently of TLS", async () => {
     const document = JSON.parse(
       await readFile(join(coreRoot, "contracts/v1/golden-vectors.json"), "utf8"),
     ) as { vectors: ManagementAuthVector[] };
     const vector = document.vectors.find(
-      (candidate) => candidate.id === "remote-management-requires-both-factors",
+      (candidate) => candidate.id === "management-api-requires-bearer",
     );
     expect(vector, "remote management authorization vector").toBeDefined();
 

@@ -6,11 +6,11 @@ import { describe, expect, it } from "vitest";
 
 const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
-describe("versioned Gateway contracts", () => {
+describe("versioned Core contracts", () => {
   it("matches the manifest checksums", async () => {
     const directory = join(root, "contracts", "v1");
     const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8")) as { version: string; files: Record<string, string> };
-    expect(manifest.version).toBe("liapoldus.gateway.v1");
+    expect(manifest.version).toBe("liapoldus.core.v1");
     for (const [name, expected] of Object.entries(manifest.files)) {
       const digest = createHash("sha256").update(await readFile(join(directory, name))).digest("hex");
       expect(`sha256:${digest}`, name).toBe(expected);
@@ -19,7 +19,7 @@ describe("versioned Gateway contracts", () => {
 
   it("contains the complete v1 golden-vector catalog", async () => {
     const document = JSON.parse(await readFile(join(root, "contracts", "v1", "golden-vectors.json"), "utf8")) as { version: string; vectors: Array<{ id: string; input: unknown; expected: unknown }> };
-    expect(document.version).toBe("liapoldus.gateway.v1");
+    expect(document.version).toBe("liapoldus.core.v1");
     expect(document.vectors.length).toBeGreaterThan(0);
     expect(new Set(document.vectors.map((vector) => vector.id)).size).toBe(document.vectors.length);
     for (const vector of document.vectors) {

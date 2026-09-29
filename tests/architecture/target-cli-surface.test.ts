@@ -6,7 +6,7 @@ import { readGoPackageSources } from "../support/presentation-source";
 
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-describe("target Gateway CLI surface", () => {
+describe("target Core CLI surface", () => {
   it("contains only the server and access bootstrap commands", async () => {
     const [contracts, source] = await Promise.all([
       readFile(join(coreRoot, "assets/contracts/cli-fields.yaml"), "utf8"),

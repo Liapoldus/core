@@ -13,7 +13,7 @@ import (
 
 var (
 	ErrUnknownField    = errors.New("unknown bootstrap field")
-	ErrInvalidDocument = errors.New("invalid gateway bootstrap document")
+	ErrInvalidDocument = errors.New("invalid core bootstrap document")
 )
 
 type contractSecretReference struct {
@@ -117,7 +117,7 @@ func validateSchema(root *yaml.Node) error {
 	if err := json.Unmarshal(encoded, &instance); err != nil {
 		return err
 	}
-	contents, err := assets.Contract(assets.GatewaySchema)
+	contents, err := assets.Contract(assets.CoreSchema)
 	if err != nil {
 		return err
 	}

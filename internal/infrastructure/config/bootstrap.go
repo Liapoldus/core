@@ -10,7 +10,6 @@ import (
 
 type BootstrapConfig struct {
 	StatePath                string
-	ArtifactsPath            string
 	ManagementListen         string
 	ManagementCertificate    string
 	ManagementKey            string
@@ -18,8 +17,11 @@ type BootstrapConfig struct {
 	ManagementMaxBodyBytes   int64
 	ManagementHeaderTimeout  string
 	ManagementRequestTimeout string
-	ExecutionProfile         string
-	PluginCatalogURL         string
+	PluginControlListen      string
+	PluginControlPublicURL   string
+	PluginControlCertificate string
+	PluginControlKey         string
+	PluginReplicaClientCA    string
 }
 
 type managementBootstrapFields struct {
@@ -37,12 +39,11 @@ type managementBootstrapOptions struct {
 
 type bootstrapFieldLists struct {
 	State                   []string `yaml:"state"`
-	Artifacts               []string `yaml:"artifacts"`
-	Execution               []string `yaml:"execution"`
 	Management              []string `yaml:"management"`
 	ManagementTLS           []string `yaml:"managementTLS"`
 	ManagementRequestLimits []string `yaml:"managementRequestLimits"`
-	PluginCatalog           []string `yaml:"pluginCatalog"`
+	PluginControl           []string `yaml:"pluginControl"`
+	PluginControlTLS        []string `yaml:"pluginControlTLS"`
 }
 
 // LoadBootstrap validates and decodes bootstrap configuration. Relative paths
@@ -69,31 +70,38 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err := yaml.Unmarshal(contents, &document); err != nil {
 		return BootstrapConfig{}, err
 	}
-	if len(document.Content) == 0 || len(loaded.Root) < 5 || len(fieldLists.Execution) != 1 || len(fieldLists.PluginCatalog) != 1 {
+	if len(document.Content) == 0 || len(fieldLists.State) != 1 || len(fieldLists.PluginControlTLS) != 3 {
 		return BootstrapConfig{}, ErrInvalidDocument
 	}
 	root := document.Content[0]
-	state := mappingValue(root, loaded.Root[0])
-	artifacts := mappingValue(root, loaded.Root[1])
-	execution := mappingValue(root, loaded.Root[2])
-	management := mappingValue(root, loaded.Root[3])
+	state := mappingValue(root, fieldNameAt(loaded.Root, "state"))
+	management := mappingValue(root, fieldNameAt(loaded.Root, "management"))
 	statePath, err := onlyScalarValue(state, fieldLists.State)
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-	artifactsPath, err := onlyScalarValue(artifacts, fieldLists.Artifacts)
+	pluginControl := mappingValue(root, fieldNameAt(loaded.Root, "pluginControl"))
+	pluginControlListen, err := optionalScalarValue(mappingValue(pluginControl, fieldNameAt(fieldLists.PluginControl, "listen")))
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-	executionProfile, err := onlyScalarValue(execution, fieldLists.Execution)
+	pluginControlPublicURL, err := optionalScalarValue(mappingValue(pluginControl, fieldNameAt(fieldLists.PluginControl, "publicURL")))
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-	pluginCatalogURL, err := optionalScalarValue(mappingValue(mappingValue(root, loaded.Root[4]), fieldLists.PluginCatalog[0]))
+	pluginControlTLS := mappingValue(pluginControl, fieldNameAt(fieldLists.PluginControl, "tls"))
+	pluginControlCertificate, err := optionalScalarValue(mappingValue(pluginControlTLS, fieldNameAt(fieldLists.PluginControlTLS, "certificate")))
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-
+	pluginControlKey, err := optionalScalarValue(mappingValue(pluginControlTLS, fieldNameAt(fieldLists.PluginControlTLS, "key")))
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
+	pluginReplicaClientCA, err := optionalScalarValue(mappingValue(pluginControlTLS, fieldNameAt(fieldLists.PluginControlTLS, "replicaClientCA")))
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
 	managementListen, err := scalarValue(mappingValue(management, loaded.ManagementBootstrap.Listen))
 	if err != nil {
 		return BootstrapConfig{}, err
@@ -124,7 +132,6 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 
 	return BootstrapConfig{
 		StatePath:                resolveRelative(path, statePath),
-		ArtifactsPath:            resolveRelative(path, artifactsPath),
 		ManagementListen:         managementListen,
 		ManagementCertificate:    resolveReference(path, certificate, loaded.SecretReference.FilePrefix),
 		ManagementKey:            resolveReference(path, key, loaded.SecretReference.FilePrefix),
@@ -132,8 +139,11 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 		ManagementMaxBodyBytes:   requestLimits.MaxBodyBytes,
 		ManagementHeaderTimeout:  requestLimits.HeaderTimeout,
 		ManagementRequestTimeout: requestLimits.RequestTimeout,
-		ExecutionProfile:         executionProfile,
-		PluginCatalogURL:         pluginCatalogURL,
+		PluginControlListen:      pluginControlListen,
+		PluginControlPublicURL:   pluginControlPublicURL,
+		PluginControlCertificate: resolveReference(path, pluginControlCertificate, loaded.SecretReference.FilePrefix),
+		PluginControlKey:         resolveReference(path, pluginControlKey, loaded.SecretReference.FilePrefix),
+		PluginReplicaClientCA:    resolveReference(path, pluginReplicaClientCA, loaded.SecretReference.FilePrefix),
 	}, nil
 }
 
@@ -235,4 +245,13 @@ func optionalScalarValue(node *yaml.Node) (string, error) {
 		return "", nil
 	}
 	return scalarValue(node)
+}
+
+func fieldNameAt(fields []string, name string) string {
+	for _, field := range fields {
+		if field == name {
+			return field
+		}
+	}
+	return ""
 }

@@ -1,9 +1,14 @@
 state:
-  path: ./state/gateway.db
-artifacts:
-  path: ./state/artifacts
+  path: ./state/core.db
 management:
   listen: 127.0.0.1:9443
   tls:
     certificate: file:/run/secrets/management.crt
     key: file:/run/secrets/management.key
+pluginControl:
+  listen: 127.0.0.1:9444
+  publicURL: https://core.internal:9444
+  tls:
+    certificate: file:/run/secrets/plugin-control.crt
+    key: file:/run/secrets/plugin-control.key
+    replicaClientCA: file:/run/secrets/plugin-replica-ca.crt

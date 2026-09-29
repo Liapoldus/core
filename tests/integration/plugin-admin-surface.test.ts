@@ -5,16 +5,14 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 const plugins = resolve(root, "../plugins");
 
-describe("plugin supervisor и admin surface boundary", () => {
-  it("имеет реалный supervisor с жизненным циклом процесса", () => {
-    const supervisor = readFileSync(resolve(root, "internal/infrastructure/plugins/supervisor.go"), "utf8");
-    const runtime = readFileSync(resolve(root, "internal/infrastructure/plugins/runtime.go"), "utf8");
-    expect(supervisor).toContain("func NewSupervisor");
-    expect(supervisor).toContain("func (s *Supervisor) StartWithExit");
-    expect(supervisor).toContain("func (s *Supervisor) Stop");
-    expect(supervisor).toContain("func (p RestartPolicy) Delay");
-    expect(runtime).toContain("func (r *Runtime) supervise");
-    expect(runtime).toContain("func (r *Runtime) restartUntilReady");
+describe("plugin admin surface boundary", () => {
+  it("не содержит process supervision, удалённого из v1", () => {
+    for (const removed of [
+      "internal/infrastructure/plugins/supervisor.go",
+      "internal/infrastructure/plugins/runtime.go",
+    ]) {
+      expect(existsSync(resolve(root, removed))).toBe(false);
+    }
   });
 
   it("публикует типизированную admin-surface boundary", () => {

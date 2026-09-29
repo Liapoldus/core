@@ -15,7 +15,7 @@ describe("SQLite audit retention", () => {
     const binary = join(directory, "sqlite-audit-store");
     try {
       await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/sqlite-audit-store"], { cwd: coreRoot });
-      const { stdout } = await execFileAsync(binary, [join(directory, "gateway.db")], { cwd: coreRoot });
+      const { stdout } = await execFileAsync(binary, [join(directory, "core.db")], { cwd: coreRoot });
       expect(JSON.parse(stdout)).toEqual({ expiredRemaining: 0, retainedActors: ["recent-actor"] });
     } finally {
       await rm(directory, { recursive: true, force: true });

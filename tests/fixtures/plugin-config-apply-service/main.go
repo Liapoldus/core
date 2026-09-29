@@ -20,12 +20,18 @@ type applier struct {
 	cancel   context.CancelFunc
 }
 
-func (a *applier) ApplyConfiguration(_ context.Context, _ string, revision string, config []byte) error {
+func (a *applier) ApplyConfiguration(ctx context.Context, _ string, revision string, config []byte) error {
 	if a.reject {
 		if a.cancel != nil {
 			a.cancel()
 		}
 		return errors.New("apply rejected")
+	}
+	if a.cancel != nil {
+		a.cancel()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	a.config = append(a.config[:0], config...)
 	a.revision = revision
@@ -45,14 +51,24 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, settings_json, manifest_json, state, revision) VALUES (?, ?, ?, ?, ?, ?)`,
-		"fixture", "local", []byte(`{"origin":"old"}`), []byte(`{"name":"fixture"}`), "configured", 1)
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
+		"fixture", "local", []byte(`{"name":"fixture"}`), "configured")
+	check(err)
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
+		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
+		VALUES (?, 1, 'active', ?, ?, 1, '2026-09-29T00:00:00Z')`,
+		"fixture", []byte(`{"origin":"old"}`), "d1c2fa5dcee07ed2483d0f5ab8e03cadbd8405d8d7f2fe1c4aa05fb6ca3c0a5b")
 	check(err)
 	store, err := storage.NewSQLitePluginConfigurationStore(database)
+	check(err)
+	pluginConfiguration, err := config.LoadPluginConfiguration()
 	check(err)
 	client := &applier{}
 	service := application.PluginConfigurationService{
 		Store: store, Applier: client,
+		RevisionStates: application.PluginConfigurationRevisionStates{
+			Active: pluginConfiguration.Slots.Active, Candidate: pluginConfiguration.Slots.Staging,
+		},
 	}
 	active, err := service.Apply(ctx, application.ApplyPluginConfigurationCommand{
 		InstanceID: "fixture", ExpectedRevision: 1, SchemaVersion: 1,
@@ -75,14 +91,15 @@ func main() {
 	if rejected == nil {
 		panic("rejected apply was accepted")
 	}
-	var failedState string
-	check(database.QueryRowContext(ctx, `SELECT state FROM plugin_config_revisions WHERE instance_id = ? AND revision = ?`, "fixture", 3).Scan(&failedState))
+	var failedCount int
+	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM plugin_config_generations WHERE instance_id = ? AND generation = ?`, "fixture", 3).Scan(&failedCount))
 	current, activePointers, err := store.Current(ctx, "fixture")
 	check(err)
+	client.reject = false
 	cancelContext, cancel := context.WithCancel(ctx)
 	client.cancel = cancel
 	_, cancelled := service.Apply(cancelContext, application.ApplyPluginConfigurationCommand{
-		InstanceID: "fixture", ExpectedRevision: 2, SchemaVersion: 1,
+		InstanceID: "fixture", ExpectedRevision: 3, SchemaVersion: 1,
 		SettingsJSON:   []byte(`{"origin":"cancelled"}`),
 		CandidateAudit: audit("configuration_candidate", "pending"),
 		AppliedAudit:   audit("configuration_applied", "succeeded"),
@@ -90,8 +107,10 @@ func main() {
 	})
 	cancel()
 	client.cancel = nil
-	var cancelledState string
-	check(database.QueryRowContext(ctx, `SELECT state FROM plugin_config_revisions WHERE instance_id = ? AND revision = ?`, "fixture", 4).Scan(&cancelledState))
+	var cancelledCount int
+	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM plugin_config_generations WHERE instance_id = ? AND generation = ?`, "fixture", 4).Scan(&cancelledCount))
+	_, afterCancelledPointers, err := store.Current(ctx, "fixture")
+	check(err)
 	_, stale := service.Apply(ctx, application.ApplyPluginConfigurationCommand{
 		InstanceID: "fixture", ExpectedRevision: 1, SchemaVersion: 1,
 		SettingsJSON:   []byte(`{"origin":"stale"}`),
@@ -99,15 +118,13 @@ func main() {
 		AppliedAudit:   audit("configuration_applied", "succeeded"),
 		FailedAudit:    audit("configuration_failed", "failed"),
 	})
-	_, err = store.GetRevision(ctx, "fixture", active.Revision)
-	check(err)
 	check(json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"appliedRevision": active.Revision, "activeAfterApply": pointers.CurrentRevision,
 		"previousAfterApply": pointers.PreviousRevision, "acknowledgedConfig": string(client.config),
 		"failedRevision": 3, "activeAfterReject": activePointers.CurrentRevision,
-		"failedState": failedState, "staleRevisionRejected": errors.As(stale, new(models.PluginConfigurationConflict)),
+		"failedCandidateRemoved": failedCount == 0, "staleRevisionRejected": errors.As(stale, new(models.PluginConfigurationConflict)),
 		"activeConfig": string(current.SettingsJSON), "cancelledApplyReturnedError": cancelled != nil,
-		"cancelledCandidateState": cancelledState, "currentAfterCancelledApply": activePointers.CurrentRevision,
+		"cancelledCandidateRemoved": cancelledCount == 0, "currentAfterCancelledApply": afterCancelledPointers.CurrentRevision,
 	}))
 }
 

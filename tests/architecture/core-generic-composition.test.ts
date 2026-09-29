@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-describe("Gateway composition root", () => {
+describe("Core composition root", () => {
   it("only composes the generic control-plane entry point", async () => {
-    const source = await readFile(join(root, "cmd", "gateway", "main.go"), "utf8");
+    const source = await readFile(join(root, "cmd", "core", "main.go"), "utf8");
 
     expect(source).toContain("cli.Execute(os.Args[1:])");
     expect(source).not.toContain("RuntimeBindings");

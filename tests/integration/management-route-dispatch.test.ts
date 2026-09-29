@@ -30,7 +30,7 @@ describe("Management API route/method dispatch characterization", () => {
       pluginListPost: { status: 404, code: "not_found" },
       pluginDetailPut: { status: 404, code: "not_found" },
       pluginAdminPatch: { status: 404, code: "not_found" },
-      pluginRestartGet: { status: 404, code: "not_found" },
+      pluginRollbackGet: { status: 404, code: "not_found" },
       adminSurfacesPost: { status: 404, code: "not_found" },
       serviceKeyDelete: { status: 404, code: "not_found" },
       auditPost: { status: 404, code: "not_found" },

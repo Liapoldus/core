@@ -22,16 +22,16 @@ async function writeBundle(directory: string, files: Record<string, string>) {
   }
   await writeFile(
     join(directory, "manifest.json"),
-    JSON.stringify({ version: "liapoldus.gateway.v1", files: digests }),
+    JSON.stringify({ version: "liapoldus.core.v1", files: digests }),
     "utf8",
   );
 }
 
-describe("Gateway release contract bundle", () => {
+describe("Core release contract bundle", () => {
   it("accepts a bundle whose payload and SHA-256 values match the manifest", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-contract-bundle-"));
     try {
-      await writeBundle(directory, { "errors.json": "{}", "gateway.schema.json": "{}" });
+      await writeBundle(directory, { "errors.json": "{}", "core.schema.json": "{}" });
       await expect(execFileAsync("node", [verifier, directory])).resolves.toBeDefined();
     } finally {
       await rm(directory, { recursive: true, force: true });

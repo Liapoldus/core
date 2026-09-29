@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"sync"
 
 	assets "github.com/Liapoldus/core"
@@ -34,7 +35,7 @@ type CLIWords struct {
 		JSON string `yaml:"json"`
 	} `yaml:"outputs"`
 	Environment struct {
-		GatewayConfig string `yaml:"gatewayConfig"`
+		CoreConfig string `yaml:"coreConfig"`
 	} `yaml:"environment"`
 	Paths struct {
 		DefaultConfig string `yaml:"defaultConfig"`
@@ -120,8 +121,10 @@ type ManagementWords struct {
 	Codes struct {
 		BearerRequired         string `yaml:"bearerRequired"`
 		ManagementUnavailable  string `yaml:"managementUnavailable"`
-		ManagementMTLSRequired string `yaml:"managementMTLSRequired"`
 		IdempotencyConflict    string `yaml:"idempotencyConflict"`
+		PluginConfigInvalid    string `yaml:"pluginConfigInvalid"`
+		PluginRevisionConflict string `yaml:"pluginRevisionConflict"`
+		ActivationFailed       string `yaml:"activationFailed"`
 		PluginUnavailable      string `yaml:"pluginUnavailable"`
 		PluginNotFound         string `yaml:"pluginNotFound"`
 		InvalidRequest         string `yaml:"invalidRequest"`
@@ -139,9 +142,9 @@ type ManagementWords struct {
 		Upstreams            string `yaml:"upstreams"`
 		Plugins              string `yaml:"plugins"`
 		PluginSettingsSuffix string `yaml:"pluginSettingsSuffix"`
+		PluginRollbackSuffix string `yaml:"pluginRollbackSuffix"`
 		AdminSurfaces        string `yaml:"adminSurfaces"`
 		AdminPages           string `yaml:"adminPages"`
-		Restart              string `yaml:"restart"`
 		Logs                 string `yaml:"logs"`
 		TLS                  string `yaml:"tls"`
 		Renew                string `yaml:"renew"`
@@ -151,6 +154,10 @@ type ManagementWords struct {
 		ServiceKeys          string `yaml:"serviceKeys"`
 		PluginIDSeparator    string `yaml:"pluginIDSeparator"`
 	} `yaml:"paths"`
+	OperationKinds struct {
+		PluginSettingsApply    string `yaml:"pluginSettingsApply"`
+		PluginSettingsRollback string `yaml:"pluginSettingsRollback"`
+	} `yaml:"operationKinds"`
 	Methods struct {
 		Get    string `yaml:"get"`
 		Post   string `yaml:"post"`
@@ -167,6 +174,8 @@ type ManagementWords struct {
 		Digest             string `yaml:"digest"`
 		Valid              string `yaml:"valid"`
 		IdempotencyKey     string `yaml:"idempotencyKey"`
+		ErrorCode          string `yaml:"errorCode"`
+		ResourceID         string `yaml:"resourceId"`
 		ExpectedRevision   string `yaml:"expectedRevision"`
 		ID                 string `yaml:"id"`
 		ArtifactDigest     string `yaml:"artifactDigest"`
@@ -225,11 +234,12 @@ type ManagementWords struct {
 		Config             string `yaml:"config"`
 	} `yaml:"json"`
 	Headers struct {
-		IfMatch    string `yaml:"ifMatch"`
-		ETag       string `yaml:"etag"`
-		RequestID  string `yaml:"requestId"`
-		Location   string `yaml:"location"`
-		RetryAfter string `yaml:"retryAfter"`
+		IfMatch     string `yaml:"ifMatch"`
+		ContentType string `yaml:"contentType"`
+		ETag        string `yaml:"etag"`
+		RequestID   string `yaml:"requestId"`
+		Location    string `yaml:"location"`
+		RetryAfter  string `yaml:"retryAfter"`
 	} `yaml:"headers"`
 	ContentTypes struct {
 		YAML    string `yaml:"yaml"`
@@ -263,8 +273,8 @@ type ManagementWords struct {
 		LimitDefault int    `yaml:"limitDefault"`
 		LimitMax     int    `yaml:"limitMax"`
 		LimitMin     int    `yaml:"limitMin"`
-		KeyChars     int    `yaml:"keyChars"`
 		KeyMin       int    `yaml:"keyMin"`
+		KeyMax       int    `yaml:"keyMax"`
 		Window       string `yaml:"window"`
 		Key          string `yaml:"key"`
 		ReplyTo      string `yaml:"replyTo"`
@@ -281,6 +291,40 @@ type ManagementWords struct {
 	Diagnostics struct {
 		OperationNotFound string `yaml:"operationNotFound"`
 	} `yaml:"diagnostics"`
+}
+
+type PluginConfigurationWords struct {
+	SchemaVersion       int64 `yaml:"schemaVersion"`
+	MaximumPayloadBytes int   `yaml:"maximumPayloadBytes"`
+	Slots               struct {
+		Active   string `yaml:"active"`
+		Previous string `yaml:"previous"`
+		Staging  string `yaml:"staging"`
+	} `yaml:"slots"`
+	OperationStates struct {
+		Pending string `yaml:"pending"`
+		Running string `yaml:"running"`
+	} `yaml:"operationStates"`
+	Diagnostics struct {
+		InvalidContract string `yaml:"invalidContract"`
+		MigrationFailed string `yaml:"migrationFailed"`
+	} `yaml:"diagnostics"`
+}
+
+func LoadPluginConfiguration() (PluginConfigurationWords, error) {
+	contents, err := assets.Contract(assets.SQLitePluginConfiguration)
+	if err != nil {
+		return PluginConfigurationWords{}, err
+	}
+	var loaded PluginConfigurationWords
+	if err := yaml.Unmarshal(contents, &loaded); err != nil {
+		return PluginConfigurationWords{}, err
+	}
+	if loaded.SchemaVersion < 1 || loaded.MaximumPayloadBytes < 1 || loaded.Slots.Active == "" || loaded.Slots.Previous == "" || loaded.Slots.Staging == "" ||
+		loaded.OperationStates.Pending == "" || loaded.OperationStates.Running == "" || loaded.Diagnostics.InvalidContract == "" || loaded.Diagnostics.MigrationFailed == "" {
+		return PluginConfigurationWords{}, errors.New(loaded.Diagnostics.InvalidContract)
+	}
+	return loaded, nil
 }
 
 func LoadManagement() (ManagementWords, error) {
@@ -302,7 +346,11 @@ type AuditWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			ServiceKeyCreate string `yaml:"serviceKeyCreate"`
+			ServiceKeyCreate          string `yaml:"serviceKeyCreate"`
+			PluginSettingsCandidate   string `yaml:"pluginSettingsCandidate"`
+			PluginSettingsApply       string `yaml:"pluginSettingsApply"`
+			PluginSettingsApplyFailed string `yaml:"pluginSettingsApplyFailed"`
+			PluginSettingsRollback    string `yaml:"pluginSettingsRollback"`
 		} `yaml:"actions"`
 		Resources struct {
 			ServiceKeys string `yaml:"serviceKeys"`

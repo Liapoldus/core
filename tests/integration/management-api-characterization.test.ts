@@ -65,8 +65,7 @@ describe("Management API response characterization matrix", () => {
           requestId: requestID,
         },
       },
-      statusMTLSRequired: problem(401, "management_mtls_required", "Удалённый Management API требует валидную mTLS identity."),
-      healthBeforeMTLS: {
+      healthWithoutBearer: {
         status: 200,
         contentType: "application/json",
         requestID: true,
@@ -105,7 +104,7 @@ describe("Management API response characterization matrix", () => {
       pluginNotFound: problem(404, "plugin_not_found", "Указанный plugin instance не существует."),
       pluginAdminUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
       pluginAdminPostUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
-      pluginRestartUnavailable: problem(501, "not_implemented", "plugin restart is unavailable"),
+      pluginRollbackUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       operationUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       auditEmpty: {
         status: 200,

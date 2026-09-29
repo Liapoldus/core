@@ -14,13 +14,13 @@ interface Vector {
   expected: { valid?: boolean; code?: string };
 }
 
-describe("Gateway golden-vector conformance", () => {
+describe("Core golden-vector conformance", () => {
   it("executes the bootstrap unknown-field vector through the production validator", async () => {
     const vectorDocument = JSON.parse(
       await readFile(join(coreRoot, "contracts/v1/golden-vectors.json"), "utf8"),
     ) as { vectors: Vector[] };
     const schema = JSON.parse(
-      await readFile(join(coreRoot, "assets/contracts/gateway.schema.json"), "utf8"),
+      await readFile(join(coreRoot, "assets/contracts/core.schema.json"), "utf8"),
     ) as { properties: Record<string, unknown> };
     const errors = JSON.parse(
       await readFile(join(coreRoot, "assets/contracts/errors.json"), "utf8"),
@@ -38,7 +38,7 @@ describe("Gateway golden-vector conformance", () => {
         join(coreRoot, "tests/fixtures/golden-vectors/bootstrap-base.yaml"),
         "utf8",
       );
-      const documentPath = join(directory, "gateway.yaml");
+      const documentPath = join(directory, "core.yaml");
       await writeFile(documentPath, `${template}${unknownKeys[0]}: {}\n`, "utf8");
       const result = await execFileAsync(
         "go",

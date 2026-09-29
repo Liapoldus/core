@@ -12,7 +12,7 @@ async function engines(path: string): Promise<string | undefined> {
 }
 
 describe("Node runtime requirement", () => {
-  it("declares Node.js 22 or newer for the Gateway test runner", async () => {
+  it("declares Node.js 22 or newer for the Core test runner", async () => {
     await expect(engines(join(testDirectory, "../../package.json"))).resolves.toBe(">=22");
     await expect(engines(join(testDirectory, "../package.json"))).resolves.toBe(">=22");
   });

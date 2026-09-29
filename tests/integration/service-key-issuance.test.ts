@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
-import { buildGatewayTestBinary, startGateway } from "../support/gateway.js";
+import { buildCoreTestBinary, startCore } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
 
 const execFileAsync = promisify(execFile);
@@ -40,47 +40,64 @@ function request(address: string, method: string, path: string, token?: string, 
   });
 }
 
-async function prepareGateway(directory: string) {
-  const binary = await buildGatewayTestBinary();
+async function prepareCore(directory: string) {
+  const binary = await buildCoreTestBinary();
   const address = await freeAddress();
+  const pluginControlAddress = await freeAddress();
   const certificate = join(directory, "management.crt");
   const privateKey = join(directory, "management.key");
-  const database = join(directory, "gateway.db");
-  const config = join(directory, "gateway.yaml");
+  const pluginControlCertificate = join(directory, "plugin-control.crt");
+  const pluginControlKey = join(directory, "plugin-control.key");
+  const replicaClientCA = join(directory, "plugin-replica-ca.crt");
+  const database = join(directory, "core.db");
+  const config = join(directory, "core.yaml");
   await execFileAsync("openssl", [
     "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
     "-subj", "/CN=localhost",
     "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
     "-keyout", privateKey, "-out", certificate,
   ]);
+  await execFileAsync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+    "-subj", "/CN=plugin-control",
+    "-keyout", pluginControlKey, "-out", pluginControlCertificate,
+  ]);
+  await execFileAsync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+    "-subj", "/CN=plugin-replica-ca",
+    "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
+  ]);
   await writeFile(config, [
     "state:",
     `  path: ${database}`,
-    "artifacts:",
-    `  path: ${join(directory, "artifacts")}`,
-    "execution:",
-    "  profile: external",
     "management:",
     `  listen: ${address}`,
     "  tls:",
     `    certificate: file:${certificate}`,
     `    key: file:${privateKey}`,
+    "pluginControl:",
+    `  listen: ${pluginControlAddress}`,
+    `  publicURL: https://${pluginControlAddress}`,
+    "  tls:",
+    `    certificate: file:${pluginControlCertificate}`,
+    `    key: file:${pluginControlKey}`,
+    `    replicaClientCA: file:${replicaClientCA}`,
     "",
   ].join("\n"), "utf8");
   const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);
   return { address, config, database, bootstrapToken: bootstrap.stdout.trim() };
 }
 
-async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startGateway>>["process"]): Promise<void> {
+async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startCore>>["process"]): Promise<void> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode !== null) throw new Error(`Gateway exited before Management API became ready (${child.exitCode}).`);
+    if (child.exitCode !== null) throw new Error(`Core exited before Management API became ready (${child.exitCode}).`);
     try {
       if ((await request(address, "GET", "/healthz")).status === 200) return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  throw new Error("Gateway Management API did not become ready.");
+  throw new Error("Core Management API did not become ready.");
 }
 
 async function serviceKeyCount(database: string): Promise<number> {
@@ -102,11 +119,11 @@ async function databaseBytes(database: string): Promise<Buffer> {
 describe("one-time service-key issuance", () => {
   it("issues a platform-admin credential once, stores only its verifier and audits without secrets", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-service-key-"));
-    let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
+    let core: Awaited<ReturnType<typeof startCore>> | undefined;
     try {
-      const prepared = await prepareGateway(directory);
-      gateway = await startGateway(["--config", prepared.config, "serve"]);
-      await waitForManagement(prepared.address, gateway.process);
+      const prepared = await prepareCore(directory);
+      core = await startCore(["--config", prepared.config, "serve"]);
+      await waitForManagement(prepared.address, core.process);
 
       const created = await request(prepared.address, "POST", "/api/access/service-keys", prepared.bootstrapToken, { name: "controller" });
       expect(created.status).toBe(201);
@@ -128,19 +145,19 @@ describe("one-time service-key issuance", () => {
       const audit = JSON.parse((await request(prepared.address, "GET", "/api/audit", credential.token)).body) as { items: unknown[] };
       expect(audit.items).toHaveLength(1);
     } finally {
-      if (gateway !== undefined) await gateway.stop();
+      if (core !== undefined) await core.stop();
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);
 
   it("does not persist or return a credential when the atomic audit insert fails", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-service-key-audit-failure-"));
-    let gateway: Awaited<ReturnType<typeof startGateway>> | undefined;
+    let core: Awaited<ReturnType<typeof startCore>> | undefined;
     try {
-      const prepared = await prepareGateway(directory);
+      const prepared = await prepareCore(directory);
       await execFileAsync("go", ["run", "./tests/fixtures/sqlite-audit-trigger", prepared.database], { cwd: coreRoot });
-      gateway = await startGateway(["--config", prepared.config, "serve"]);
-      await waitForManagement(prepared.address, gateway.process);
+      core = await startCore(["--config", prepared.config, "serve"]);
+      await waitForManagement(prepared.address, core.process);
 
       const rejected = await request(prepared.address, "POST", "/api/access/service-keys", prepared.bootstrapToken, { name: "not-persisted" });
       expect(rejected.status).toBe(503);
@@ -148,7 +165,7 @@ describe("one-time service-key issuance", () => {
       expect(await serviceKeyCount(prepared.database)).toBe(1);
       expect((await request(prepared.address, "GET", "/api/audit", prepared.bootstrapToken)).body).not.toContain("not-persisted");
     } finally {
-      if (gateway !== undefined) await gateway.stop();
+      if (core !== undefined) await core.stop();
       await rm(directory, { recursive: true, force: true });
     }
   }, 120_000);

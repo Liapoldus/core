@@ -25,7 +25,8 @@ describe("API plugin handler ownership", () => {
     for (const handler of [
       "PluginList",
       "AdminSurfaceList",
-      "PluginRestart",
+      "PluginSettingsRollback",
+      "IsPluginRollbackPath",
       "IsPluginDetailPath",
       "PluginDetail",
       "PluginAdmin",
@@ -41,7 +42,7 @@ describe("API plugin handler ownership", () => {
     for (const handler of [
       "PluginList",
       "AdminSurfaceList",
-      "PluginRestart",
+      "PluginSettingsRollback",
       "PluginDetail",
       "PluginAdmin",
     ]) {

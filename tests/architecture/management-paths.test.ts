@@ -30,4 +30,18 @@ describe("Management API route contract", () => {
       expect(source, path).not.toContain(`"${path}"`);
     }
   });
+
+  it("keeps plugin rollback on a contract path and omits every v1-forbidden lifecycle verb", async () => {
+    const source = await readGoPackageSources(root, "internal/presentation/api");
+    const contract = await readFile(join(root, "assets/contracts/management-fields.yaml"), "utf8");
+
+    expect(contract).toContain("pluginRollbackSuffix: rollback");
+    expect(contract).toContain("pluginSettingsRollback: plugin-settings-rollback");
+    expect(source, "rollback path must come from the contract asset").not.toContain(`"/rollback"`);
+
+    for (const verb of ["restart", "Restart", "install", "Install", "uninstall", "Uninstall", "supervise", "Supervise", "scale", "Scale"]) {
+      expect(contract, verb).not.toContain(verb);
+      expect(source, verb).not.toContain(verb);
+    }
+  });
 });

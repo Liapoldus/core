@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 describe("plugin IPC contract ownership", () => {
-  it("keeps plugin wire schemas in pluginprotocol instead of a Gateway mirror", async () => {
+  it("keeps plugin wire schemas in pluginprotocol instead of a Core mirror", async () => {
     const legacyContract = join(coreRoot, "contracts/v1/plugin-contracts.json");
     const manifest = JSON.parse(await readFile(join(coreRoot, "contracts/v1/manifest.json"), "utf8")) as {
       files: Record<string, string>;

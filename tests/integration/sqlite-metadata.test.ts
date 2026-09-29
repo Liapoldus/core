@@ -11,24 +11,27 @@ const coreRoot = join(import.meta.dirname, "../..");
 describe("SQLite control-plane state", () => {
   it("opens a local WAL database, applies migrations once and preserves schema after restart", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-sqlite-"));
-    const database = join(directory, "state", "gateway.db");
+    const database = join(directory, "state", "core.db");
     try {
       const first = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", database], {
         cwd: coreRoot,
       });
-      expect(JSON.parse(first.stdout)).toMatchObject({
+      const firstReport = JSON.parse(first.stdout) as { migrationVersion: number; requiredTables: string[] };
+      expect(firstReport).toMatchObject({
         journalMode: "wal",
         foreignKeys: 1,
-        migrationVersion: 4,
-        requiredTables: expect.arrayContaining(["schema_migrations", "plugin_instances", "plugin_config_revisions", "plugin_config_pointers", "service_keys", "operations", "idempotency", "audit_events"]),
+        migrationVersion: 6,
+        requiredTables: expect.arrayContaining(["schema_migrations", "plugin_instances", "plugin_config_generations", "service_keys", "operations", "idempotency", "operation_payloads", "audit_events"]),
       });
+      expect(firstReport.requiredTables).not.toContain("plugin_config_revisions");
+      expect(firstReport.requiredTables).not.toContain("plugin_config_pointers");
       expect((await stat(database)).mode & 0o077).toBe(0);
       expect((await stat(join(directory, "state"))).mode & 0o077).toBe(0);
 
       const second = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", database], {
         cwd: coreRoot,
       });
-      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 4, migrationCount: 2 });
+      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 6, migrationCount: 4 });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

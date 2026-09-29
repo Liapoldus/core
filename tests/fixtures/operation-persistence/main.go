@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +13,23 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
+
+const instanceID = "forms"
+
+type fixtureApplier struct {
+	revision string
+	raw      []byte
+}
+
+func (a *fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, raw []byte) error {
+	a.revision = revision
+	a.raw = append(a.raw[:0], raw...)
+	return nil
+}
 
 type report struct {
 	CreateStatus       int            `json:"createStatus"`
@@ -26,11 +40,17 @@ type report struct {
 	UnknownCode        string         `json:"unknownCode"`
 	ResultSecretAbsent bool           `json:"resultSecretAbsent"`
 	StoredPayloadsNull bool           `json:"storedPayloadsNull"`
+	AppliedRevision    string         `json:"appliedRevision"`
+	AppliedRaw         string         `json:"appliedRaw"`
 }
 
 func main() {
 	path := os.Args[1]
 	management, err := config.LoadManagement()
+	if err != nil {
+		panic(err)
+	}
+	auditWords, err := config.LoadAudit()
 	if err != nil {
 		panic(err)
 	}
@@ -43,16 +63,31 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	seedPluginRevisions(database, instanceID)
 	server := &api.Server{
-		Token: "fixture-management-token", Management: management, Errors: errorCatalog,
+		Token: "fixture-management-token", Management: management, AuditWords: auditWords, Errors: errorCatalog,
 		Operations: application.OperationService{Store: operationStore},
-		RestartPlugin: func(context.Context, string) (models.Operation, error) {
-			return models.Operation{
-				ID: "operation-restart-1", Kind: "plugin-restart", State: "running", CreatedAt: time.Now().UTC(),
-			}, nil
+	}
+	configurationStore, err := storage.NewSQLitePluginConfigurationStore(database)
+	if err != nil {
+		panic(err)
+	}
+	pluginConfiguration, err := config.LoadPluginConfiguration()
+	if err != nil {
+		panic(err)
+	}
+	applier := &fixtureApplier{}
+	pluginConfigurations := &application.PluginConfigurationService{
+		Store: configurationStore, Applier: applier,
+		PayloadVersion: pluginConfiguration.SchemaVersion,
+		RevisionStates: application.PluginConfigurationRevisionStates{
+			Active: pluginConfiguration.Slots.Active, Candidate: pluginConfiguration.Slots.Staging,
 		},
 	}
-	created := perform(server.Handler(), http.MethodPost, management.Paths.Plugins+"/forms/"+management.Paths.Restart, true)
+	handler := api.WithPluginConfigurations(server.Handler(), pluginConfigurations)
+	created := performWithHeaders(handler, http.MethodPost,
+		management.Paths.Plugins+"/"+instanceID+"/"+management.Paths.PluginRollbackSuffix, true,
+		map[string]string{management.Headers.IfMatch: `"2"`, management.Idempotency.Key: "fixture-operation-key"})
 	if created.Code != http.StatusAccepted {
 		panic(created.Body.String())
 	}
@@ -70,7 +105,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	server = &api.Server{Token: "fixture-management-token", Management: management, Errors: errorCatalog, Operations: application.OperationService{Store: operationStore}}
+	server = &api.Server{Token: "fixture-management-token", Management: management, AuditWords: auditWords, Errors: errorCatalog, Operations: application.OperationService{Store: operationStore}}
 	read := perform(server.Handler(), http.MethodGet, management.Paths.Operations+"/"+operationID, true)
 	unknown := perform(server.Handler(), http.MethodGet, management.Paths.Operations+"/unknown-operation", true)
 	var operation map[string]any
@@ -92,6 +127,8 @@ func main() {
 		UnknownStatus:      unknown.Code,
 		ResultSecretAbsent: !leaked && !strings.Contains(read.Body.String(), "must-not-be-persisted-or-returned"),
 		StoredPayloadsNull: !resultJSON.Valid && !problemJSON.Valid,
+		AppliedRevision:    applier.revision,
+		AppliedRaw:         string(applier.raw),
 	}
 	if code, ok := unknownBody["code"].(string); ok {
 		result.UnknownCode = code
@@ -119,10 +156,40 @@ func openDatabase(path string) *sql.DB {
 	return database
 }
 
+func seedPluginRevisions(database *sql.DB, id string) {
+	ctx := context.Background()
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
+		id, "local", []byte(`{"name":"fixture"}`), "configured"); err != nil {
+		panic(err)
+	}
+	for _, generation := range []struct {
+		number int64
+		slot   string
+		raw    string
+	}{{1, "previous", `{"generation":1}`}, {2, "active", `{"generation":2}`}} {
+		digest := sha256.Sum256([]byte(generation.raw))
+		if _, err := database.ExecContext(ctx,
+			`INSERT INTO plugin_config_generations (instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
+			 VALUES (?, ?, ?, ?, ?, 1, ?)`,
+			id, generation.number, generation.slot, []byte(generation.raw),
+			hex.EncodeToString(digest[:]), time.Now().UTC().Format(time.RFC3339)); err != nil {
+			panic(err)
+		}
+	}
+}
+
 func perform(handler http.Handler, method, path string, authorized bool) *httptest.ResponseRecorder {
+	return performWithHeaders(handler, method, path, authorized, nil)
+}
+
+func performWithHeaders(handler http.Handler, method, path string, authorized bool, headers map[string]string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, path, nil)
 	if authorized {
 		request.Header.Set("Authorization", "Bearer fixture-management-token")
+	}
+	for name, value := range headers {
+		request.Header.Set(name, value)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

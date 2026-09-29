@@ -20,12 +20,62 @@ describe("removed unreferenced legacy artifacts", () => {
       "internal/infrastructure/storage/management.go",
       "internal/infrastructure/storage/audit.go",
       "tests/fixtures/plugin-grant/main.go",
+      "internal/infrastructure/plugins/protocol.go",
+      "internal/infrastructure/plugins/runtime.go",
+      "internal/infrastructure/plugins/supervisor.go",
+      "internal/infrastructure/plugins/local_launch.go",
+      "internal/infrastructure/plugins/manifest.go",
+      "internal/infrastructure/plugins/manifest_modes.go",
+      "internal/infrastructure/plugins/inventory_manifest.go",
+      "internal/infrastructure/plugins/grant_broker.go",
+      "assets/contracts/plugin-runtime.json",
+      "assets/contracts/local-launch.schema.json",
     ];
 
     for (const path of removedPaths) {
       expect(existsSync(join(coreRoot, path)), path).toBe(false);
     }
     expect(existsSync(join(coreRoot, "tests/fixtures/plugin-grant")), "empty plugin-grant fixture directory").toBe(false);
+    for (const fixture of [
+      "http-stream-plugin",
+      "invalid-manifest-plugin",
+      "plugin-grpc",
+      "plugin-manifest-check",
+      "plugin-manifest-mode-gate",
+      "plugin-process-launcher",
+      "plugin-runtime-config-apply",
+      "serve-plugin-child",
+    ]) {
+      expect(existsSync(join(coreRoot, "tests/fixtures", fixture)), fixture).toBe(false);
+    }
+  });
+
+  it("does not restore v2 Caddy runtime, local launch or binary release fixtures", () => {
+    const v2Fixtures = [
+      "caddy-plugin",
+      "caddy-runtime",
+      "caddy-runtime-reload",
+      "caddy-http-stream",
+      "caddy-l4-plugin",
+      "caddy-cookie-policy",
+      "caddy-cookie-policy-stream",
+      "caddy-module-probe",
+      "external-caddy",
+      "external-caddy-admin-proxy",
+      "external-caddy-custom",
+      "external-caddy-plugin-host",
+      "serve-local-plugin-products",
+      "serve-plugin-composition",
+      "group-release-store",
+      "group-release-recovery",
+      "group-release-reservation-race",
+      "group-release-process-state",
+      "group-release-plugin-mode-preflight",
+    ];
+
+    for (const fixture of v2Fixtures) {
+      expect(existsSync(join(coreRoot, "tests/fixtures", fixture)), fixture).toBe(false);
+    }
   });
 
   it("does not restore retired JSONL and telemetry configuration into the SQLite audit adapter", () => {

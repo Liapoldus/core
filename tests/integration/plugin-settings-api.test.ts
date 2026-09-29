@@ -12,7 +12,7 @@ describe("plugin settings read API", () => {
   it("returns the active SQLite revision, digest and config with a strong ETag", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-plugin-settings-api-"));
     try {
-      const result = await execFileAsync("go", ["run", "./tests/fixtures/plugin-settings-api", join(directory, "gateway.db")], { cwd: coreRoot });
+      const result = await execFileAsync("go", ["run", "./tests/fixtures/plugin-settings-api", join(directory, "core.db")], { cwd: coreRoot });
       expect(JSON.parse(result.stdout)).toEqual({
         status: 200,
         etag: '"1"',

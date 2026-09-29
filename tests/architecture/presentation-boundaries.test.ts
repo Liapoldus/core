@@ -64,7 +64,6 @@ describe("presentation package ownership", () => {
       "AdminDispatcher",
       "Plugins",
       "PluginIDField",
-      "RestartPlugin",
       "Audit",
       "AccessService",
       "DataPlaneState",
@@ -74,10 +73,9 @@ describe("presentation package ownership", () => {
       "Management",
       "Errors",
       "TLSConfig",
-      "RequireClientCertificate",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(18);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(16);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 
