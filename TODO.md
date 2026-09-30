@@ -144,9 +144,11 @@
 - [ ] ~~Довести Management API для CRUD generic plugin instance/replica fixed
   endpoints и ожидаемых identities~~ **Снято решением A:** объявление topology
   перенесено в `core.yaml`, поэтому Management API регистрации не появился и
-  добавлять его не нужно. Остаётся только зафиксировать это в OpenAPI/docs
-  (см. «Требует решения владельца» про рассинхрон контракта) и удалить из
-  published contract остатки lifecycle-описаний v2.
+  добавлять его не нужно. OpenAPI/docs локально синхронизированы с этим
+  решением: registration/mutation, interaction и cookie-policy paths удалены;
+  остаются только читаемые plugin instances, settings, rollback, Admin Surface,
+  operations, audit и access. Docs commit `453b15e` опубликован в `main`;
+  Pages deployment после этого commit нужно проверить отдельно.
 - [ ] Завершить интеграцию вручную запускаемого `plugins/server`: текущий
   WIP содержит SDK REST adapter и строгую settings/runtime реализацию, но
   `GOWORK=off go test ./...` на 2026-09-30 падает: production-пакеты всё ещё
@@ -204,17 +206,15 @@
     revokedAt-ротация) и расширения Management API — отдельным инкрементом.
     `AGENTS.md` теперь явно разделяет v1 secret-grant broker и отложенные v2
     plugin-to-plugin interaction policy/grants.
-  - [ ] **Owner-действие вне Core scope: синхронизировать docs-репозиторий.**
-    `liapoldus.github.io/public/spec/management.openapi.yaml` всё ещё содержит
-    16 paths с `createPlugin`/`updatePlugin`/`deletePlugin`, `/interactions` и
-    `/cookie-policies/{capability}`. По `AGENTS.md` нормативный публичный
-    Management API живёт в docs-репозитории до завершения Core v1, поэтому
-    правка Core-зеркала НЕ делает docs-контракт актуальным. Репозиторий также уже
-    содержит чужие незакоммиченные изменения, поэтому автоматическая правка
-    запрещена. Требуется согласованный отдельный коммит владельца docs; после
-    него `contract-publication` начнёт сверять Core-зеркало с каноном
-    (`tests/support/canonical-contracts.ts` уже умеет читать
-    `public/spec/errors.json` — понадобится аналогичная проверка OpenAPI).
+  - [x] **Синхронизация нормативного docs OpenAPI/error contract выполнена в
+    рабочем дереве 2026-09-30.** Удалены неподдерживаемые registration,
+    interaction, cookie-policy и service-key rotation/revocation operations;
+    оставлены текущие маршруты Core, включая `/healthz` и
+    `/api/plugins/admin-surfaces`. Error catalog приведён к v1 contracts и
+    обновлён hash в manifest. Публикация остаётся отдельным gate: сначала
+    VitePress build прошёл 2026-09-30; docs commit `453b15e` отправлен в `main`.
+    Core `npx vitest run tests/architecture/contract-publication.test.ts`
+    прошёл 2026-09-30 (1 file / 1 test).
 - [ ] Прогнать `make check`, `go vet ./...`, `make staticcheck-u1000`,
   `go build ./...`, macOS/Linux builds и smoke с отдельно вручную запущенными
   сервисами. Фиксировать только реально полученные результаты.
@@ -320,7 +320,9 @@ SDK-контракт не создавался. Приёмка
       (`plugin_mode_operation_forbidden`; без `plugin_catalog_untrusted`,
       `plugin_release_incompatible`). Добавлен отсутствовавший в обоих
       репозиториях маршрут `/api/plugins/{pluginId}/rollback`.
-      Ошибка `'n'` вместо `422` присутствует только в опубликованных docs.
+      Остаточные contract расхождения проверяются вместе с docs owner после
+      синхронизации публичного spec; не добавлять исправленный текст в Core
+      зеркало в обход его publication workflow.
 
 ### Потребители и межрепозиторная интеграция
 
