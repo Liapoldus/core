@@ -10,8 +10,12 @@ test:
 
 test-ts: test
 
+# Core has no Go *_test.go files by design, so `go test -race ./...` compiles
+# nothing and would report success vacuously. The real race gate builds the
+# service and fixtures under -race with halt_on_error=1, so a detected race
+# aborts instead of printing a warning nobody reads.
 test-race:
-	go test -race ./...
+	npm --prefix tests test -- --run race-detection
 
 docker-smoke:
 	./scripts/docker-smoke.sh

@@ -220,6 +220,32 @@ SDK-контракт не создавался. Приёмка
    `public/spec/management.openapi.yaml` (маршрут rollback, числовые коды 422)
    и error catalog; Core эти файлы не редактирует.
 
+### Найдено при введении race-гейта — не чинилось, нужно решение владельца
+
+`PluginConfigurationService.Recover` пере-апливает операции в состоянии
+`running`, и на пере settled-базе он является no-op. В v1 это недостижимо:
+`bootstrap.serveBootstrap` вызывает `Recover` ровно один раз до
+`management.Listen`, когда ни одного apply ещё нет. Но защиты у этого
+инварианта нет, и конкурентный вызов `Recover` даёт двойной apply.
+
+Обнаружено race-фикстурой: 49 вызовов `ApplyConfiguration` на 48 успешных
+операций. Обе цифры сходятся, если `Recover` вызывать только до начала
+работы и на settled-базе, как в реальном bootstrap.
+
+- [ ] Решить, нужен ли guard (например, запрет `Recover` при непустом
+      `operationWorkers`, либо перевод recover-worker'а на тот же
+      per-operation дедупликатор, что и `scheduleApply`). Поведение
+      наблюдаемое, поэтому без решения владельца не меняю.
+- [x] Race-гейт перестал быть вакуумным: `make test-race` больше не
+      выполняет `go test -race ./...` (в проекте нет Go `*_test.go`, он
+      компилировал пустоту и рапортовал успех). Теперь это
+      `tests/integration/race-detection.test.ts`, который собирает сервис и
+      фикстуры под `-race` с `GORACE=halt_on_error=1` и прогоняет 8 инстансов
+      × 6 раундов конкурентных apply/read/recovery через реальный
+      management handler. Гонка валидирована контрольным запуском: с
+      внедрённым несинхронизированным доступом gate падает (exit 2,
+      `DATA RACE`).
+
 ### Внешние расхождения (вне владения Core)
 
 - Канонический `core.schema.json` в docs-repo требует
