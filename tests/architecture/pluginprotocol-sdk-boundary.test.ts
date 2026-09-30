@@ -55,7 +55,17 @@ describe("Core peer protocol boundary", () => {
       goSources(["internal", "cmd", "tests/fixtures"]),
     ]);
 
-    expect(files.sort()).toEqual(["admin_dispatch.go", "admin_surface.go", "errors.go", "sdk_control.go"]);
+    // declared_replicas.go is the only place that turns an operator-declared
+    // endpoint and expected identity into a live SDK control client, so it is
+    // listed explicitly: a new file here must be a deliberate, reviewed
+    // addition to the plugin lifecycle layer rather than a silent one.
+    expect(files.sort()).toEqual([
+      "admin_dispatch.go",
+      "admin_surface.go",
+      "declared_replicas.go",
+      "errors.go",
+      "sdk_control.go",
+    ]);
     expect(sdkControl).not.toMatch(/exec\.Command|"os\/exec"|net\.Listen|ListenLoopback|StartGrantBroker|StartRuntime/);
 
     // Core owns plugin process lifecycle in no form, in any layer: no child

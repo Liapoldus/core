@@ -20,18 +20,22 @@ describe("SQLite control-plane state", () => {
       expect(firstReport).toMatchObject({
         journalMode: "wal",
         foreignKeys: 1,
-        migrationVersion: 6,
+        migrationVersion: 7,
         requiredTables: expect.arrayContaining(["schema_migrations", "plugin_instances", "plugin_config_generations", "service_keys", "operations", "idempotency", "operation_payloads", "audit_events"]),
       });
+      expect(firstReport.requiredTables).toContain("plugin_replicas");
       expect(firstReport.requiredTables).not.toContain("plugin_config_revisions");
       expect(firstReport.requiredTables).not.toContain("plugin_config_pointers");
+      // v1 never supervises a plugin process, so the local-launch settings table
+      // is dropped rather than carried forward into the v1 schema.
+      expect(firstReport.requiredTables).not.toContain("plugin_launch_settings");
       expect((await stat(database)).mode & 0o077).toBe(0);
       expect((await stat(join(directory, "state"))).mode & 0o077).toBe(0);
 
       const second = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", database], {
         cwd: coreRoot,
       });
-      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 6, migrationCount: 4 });
+      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 7, migrationCount: 5 });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

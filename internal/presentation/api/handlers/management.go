@@ -33,8 +33,16 @@ func Readiness(deps ManagementDependencies, response http.ResponseWriter, reques
 	if state == deps.Management.Statuses.NotReady {
 		readiness[deps.Management.JSON.Reason] = reason
 	}
+	// Drift is derived from durable observations, never assumed. When Core
+	// cannot read its own observation store it reports drift instead of
+	// claiming no drift, because a Core that cannot tell is not a Core that
+	// is in sync.
+	drift := true
+	if deps.DataPlaneDrift != nil {
+		drift = deps.DataPlaneDrift(request.Context())
+	}
 	deps.WriteJSON(response, 200, map[string]any{
-		deps.Management.JSON.Drift:              false,
+		deps.Management.JSON.Drift:              drift,
 		deps.Management.JSON.DataPlaneReadiness: readiness,
 		deps.Management.JSON.RequestID:          requestID,
 	})

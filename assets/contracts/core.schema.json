@@ -5,11 +5,12 @@
   "description": "Минимальная bootstrap-конфигурация Core. Plugin settings и fixed endpoints хранятся в SQLite; оператор вручную запускает Core и plugins. Core не управляет plugin processes или containers.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["state", "management", "pluginControl"],
+  "required": ["state", "management", "pluginControl", "plugins"],
   "properties": {
     "state": { "$ref": "#/$defs/state" },
     "management": { "$ref": "#/$defs/management" },
-    "pluginControl": { "$ref": "#/$defs/pluginControl" }
+        "pluginControl": { "$ref": "#/$defs/pluginControl" },
+        "plugins": { "$ref": "#/$defs/plugins" }
   },
   "$defs": {
     "fileReference": {
@@ -54,6 +55,12 @@
         }
       }
     },
+    "plugins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pluginInstance" },
+      "description": "Operator-declared plugin instances and their replicas. This list is the only source of fixed replica endpoints and expected mTLS identities. It is static for the lifetime of the Core process: changing it requires editing core.yaml and restarting Core. Core has no plugin registration API and does not accept plugin self-registration."
+    },
     "pluginControl": {
       "type": "object",
       "additionalProperties": false,
@@ -64,20 +71,73 @@
         "tls": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["certificate", "key", "replicaClientCA"],
+          "required": ["certificate", "key", "replicaClientCA", "replicaServerCA"],
           "properties": {
             "certificate": { "$ref": "#/$defs/fileReference" },
             "key": { "$ref": "#/$defs/fileReference" },
-            "replicaClientCA": { "$ref": "#/$defs/fileReference" }
+            "replicaClientCA": { "$ref": "#/$defs/fileReference" },
+            "replicaServerCA": { "$ref": "#/$defs/fileReference" }
           }
         }
       },
-      "description": "Private Plugin SDK lifecycle/configuration REST listener. Its trust roots are independent from Management and plugin-to-plugin roots."
+      "description": "Private Plugin SDK lifecycle/configuration REST listener. Its trust roots are independent from Management and plugin-to-plugin roots. certificate/key are Core's own identity, served on the pull listener and presented to replicas when Core dials them. replicaClientCA verifies replica client certificates on the pull listener; replicaServerCA verifies replica server certificates when Core dials a declared endpoint."
+    },
+    "plugins": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pluginInstance" }
+    },
+    "pluginIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable operator-assigned identifier. Not a product, capability or provider name."
+    },
+    "pluginInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instanceId", "replicas"],
+      "properties": {
+        "instanceId": { "$ref": "#/$defs/pluginIdentifier" },
+        "replicas": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/pluginReplica" }
+        }
+      }
+    },
+    "pluginReplica": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["replicaId", "endpoint", "expectedPeerIdentity"],
+      "properties": {
+        "replicaId": { "$ref": "#/$defs/pluginIdentifier" },
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Fixed origin Core dials for Plugin SDK control calls. Core never derives or discovers an endpoint."
+        },
+        "expectedPeerIdentity": { "$ref": "#/$defs/peerIdentity" }
+      }
+    },
+    "peerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commonName"],
+      "properties": {
+        "commonName": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "uniformResourceIdentifier": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "description": "Expected mTLS identity of one replica. Core compares it exactly against the verified certificate, in both directions. An absent entry is never a wildcard."
     }
   },
   "x-liapoldus-invariants": [
     "Core is a single process and SQLite is the only durable source of desired plugin configuration.",
     "Plugin processes and their binaries are operator-managed. Core only connects to fixed registered endpoints and has no process, binary-installation or container-provider management API.",
+    "The plugins list in core.yaml is the single normative source of plugin instance ids, replica ids, fixed endpoints and expected mTLS identities. Core has no plugin registration API, does not accept plugin self-registration, and treats the list as static for the process lifetime.",
+    "A replica identity document published by a plugin is conformance evidence only. It never registers a replica, never overrides a declared endpoint or expected identity, and never becomes desired state.",
     "Plugin settings are not accepted in core.yaml, environment variables, argv, or plugin application-config files; plugins pull exact immutable versioned JSON from Core REST after Reload(generation).",
     "Traffic listeners, sites, routes, and traffic-plugin runtime configuration are not part of core.yaml.",
     "Traffic plugins own their runtime state on persistent local storage; Core remains implementation-agnostic.",

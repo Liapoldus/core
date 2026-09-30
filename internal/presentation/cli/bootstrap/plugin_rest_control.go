@@ -15,6 +15,10 @@ type PluginRESTControl struct {
 	ConfigPullTLS      *tls.Config
 	ResolveReplica     interfaces.PluginReplicaIdentityResolver
 	ReloadClients      map[string]plugins.SDKReloadClient
+	// CloseReleases dials idle keep-alive connections to declared replicas on
+	// shutdown. A plugin is never restarted by Core, so leaving those sockets
+	// open would keep TLS sessions to a replica alive after Core stopped.
+	CloseReleases func()
 }
 
 var errInvalidPluginRESTControl = errors.New("invalid plugin REST control configuration")
@@ -43,5 +47,8 @@ func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.P
 	return func() {
 		_ = configuration.ConfigPullListener.Close()
 		<-done
+		if configuration.CloseReleases != nil {
+			configuration.CloseReleases()
+		}
 	}, nil
 }

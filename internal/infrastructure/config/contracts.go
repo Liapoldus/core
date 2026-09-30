@@ -257,7 +257,6 @@ type ManagementWords struct {
 		Healthy               string `yaml:"healthy"`
 		Degraded              string `yaml:"degraded"`
 		Unavailable           string `yaml:"unavailable"`
-		Starting              string `yaml:"starting"`
 		Unhealthy             string `yaml:"unhealthy"`
 		Stopped               string `yaml:"stopped"`
 		Renewing              string `yaml:"renewing"`

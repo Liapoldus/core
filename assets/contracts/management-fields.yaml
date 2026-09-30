@@ -108,7 +108,6 @@ statuses:
   healthy: healthy
   degraded: degraded
   unavailable: unavailable
-  starting: starting
   unhealthy: unhealthy
   stopped: stopped
   pending: pending

@@ -26,10 +26,24 @@ CREATE TABLE IF NOT EXISTS plugin_config_generations (
     UNIQUE (instance_id, slot)
 );
 
-CREATE TABLE IF NOT EXISTS plugin_launch_settings (
-    instance_id TEXT PRIMARY KEY REFERENCES plugin_instances(id) ON DELETE CASCADE,
-    launch_json BLOB NOT NULL CHECK (json_valid(launch_json))
+-- Replica rows are observations of declared replicas, never a declaration. The
+-- replica set, each endpoint and each expected peer identity are owned by
+-- core.yaml, so this table intentionally has no endpoint, identity or
+-- composition column: it only records what a replica was last observed doing so
+-- readiness and drift can be derived without Core re-deriving desired topology.
+CREATE TABLE IF NOT EXISTS plugin_replicas (
+    instance_id TEXT NOT NULL REFERENCES plugin_instances(id) ON DELETE CASCADE,
+    replica_id TEXT NOT NULL,
+    observed_generation INTEGER,
+    observed_state TEXT NOT NULL CHECK (observed_state IN ('pending', 'acknowledged', 'failed', 'unreachable')),
+    last_failure_code TEXT,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (instance_id, replica_id)
 );
+
+-- v1 never installs, starts or supervises a plugin process, so the launch
+-- settings that backed local mode are removed rather than carried forward.
+DROP TABLE IF EXISTS plugin_launch_settings;
 
 CREATE INDEX IF NOT EXISTS plugin_config_generations_by_instance
     ON plugin_config_generations(instance_id, generation DESC);
@@ -96,5 +110,6 @@ INSERT OR IGNORE INTO schema_migrations(version) VALUES (3);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (5);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (6);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (7);
 
 COMMIT;

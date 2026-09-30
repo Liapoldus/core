@@ -12,3 +12,16 @@ pluginControl:
     certificate: file:/run/secrets/plugin-control.crt
     key: file:/run/secrets/plugin-control.key
     replicaClientCA: file:/run/secrets/plugin-replica-ca.crt
+    replicaServerCA: file:/run/secrets/plugin-replica-server-ca.crt
+plugins:
+  - instanceId: catalog
+    replicas:
+      - replicaId: catalog-a
+        endpoint: https://catalog-a.internal:9443
+        expectedPeerIdentity:
+          commonName: catalog-a
+          uniformResourceIdentifier: spiffe://liapoldus/plugin/catalog-a
+      - replicaId: catalog-b
+        endpoint: https://catalog-b.internal:9443
+        expectedPeerIdentity:
+          commonName: catalog-b

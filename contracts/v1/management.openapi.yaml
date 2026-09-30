@@ -3,9 +3,12 @@ info:
   title: Liapoldus Core Management API
   version: 1.0.0
   description: >-
-    Control-plane API единственного Core instance. Desired plugin configuration
-    хранится в SQLite и push-ится по pluginprotocol ConfigApply. Public traffic
-    не проходит через этот API. Caddy Admin/group/TLS endpoints отсутствуют.
+    Control-plane API единственного Core instance. Состав plugin topology
+    объявляется оператором в core.yaml и статичен на время процесса; Management
+    API не регистрирует и не удаляет instances, а Core не управляет их
+    process/container lifecycle. Desired plugin configuration хранится в SQLite
+    и доставляется репликам через Plugin SDK REST Reload. Public traffic не
+    проходит через этот API. Caddy Admin/group/TLS endpoints отсутствуют.
 servers:
   - url: /
 security:
@@ -52,33 +55,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-    post:
-      operationId: createPlugin
-      summary: Создать plugin instance desired state
-      description: >-
-        Профиль берётся из bootstrap. supervised принимает catalog release
-        reference; external принимает fixed replica endpoints и ожидаемую
-        identity. Содержимое application settings меняется отдельным settings
-        endpoint. Core не принимает произвольный package URL.
-      parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/PluginCreate' }
-      responses:
-        '202':
-          description: Desired instance записан; возвращена operation
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/Invalid' }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
   /api/plugins/{pluginId}:
     parameters:
       - $ref: '#/components/parameters/PluginId'
@@ -95,44 +71,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-    put:
-      operationId: updatePlugin
-      summary: Обновить generic endpoint или installation release reference
-      parameters:
-        - $ref: '#/components/parameters/IfMatch'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/PluginDesiredState' }
-      responses:
-        '202':
-          description: Изменение принято как durable operation
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '412': { $ref: '#/components/responses/PreconditionFailed' }
-        '400': { $ref: '#/components/responses/InvalidRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    delete:
-      operationId: deletePlugin
-      summary: Удалить desired plugin instance
-      parameters:
-        - $ref: '#/components/parameters/IfMatch'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '202':
-          description: Instance удаляется; supervised lifecycle завершается Core, external — оператором
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '412': { $ref: '#/components/responses/PreconditionFailed' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
   /api/plugins/{pluginId}/settings:
     parameters:
       - $ref: '#/components/parameters/PluginId'
@@ -154,7 +92,7 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
     put:
       operationId: applyPluginSettings
-      summary: Сохранить и push-ить plugin settings через ConfigApply
+      summary: Сохранить desired settings и уведомить реплики через SDK REST Reload
       parameters:
         - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -200,102 +138,16 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/interactions:
-    parameters:
-      - $ref: '#/components/parameters/PluginId'
+  /api/plugins/admin-surfaces:
     get:
-      operationId: getPluginInteractions
-      summary: Получить outbound allow-list caller instance
+      operationId: listAdminSurfaces
+      summary: Список validated plugin Admin Surface
       responses:
         '200':
-          description: Desired explicit plugin-to-plugin edges
+          description: Declarative surfaces без executable UI
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/InteractionPolicy' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    put:
-      operationId: applyPluginInteractions
-      summary: Заменить outbound allow-list с generation/CAS
-      parameters:
-        - $ref: '#/components/parameters/IfMatch'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/InteractionPolicyInput' }
-      responses:
-        '202':
-          description: Policy generation отправляется всем участникам
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '412': { $ref: '#/components/responses/PreconditionFailed' }
-        '422': { $ref: '#/components/responses/Invalid' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins/{pluginId}/cookie-policies/{capability}:
-    parameters:
-      - $ref: '#/components/parameters/PluginId'
-      - name: capability
-        in: path
-        required: true
-        schema: { type: string }
-    get:
-      operationId: getPluginCookiePolicy
-      summary: Получить входную cookie allow-list
-      responses:
-        '200':
-          description: Policy для пары instance/capability
-          headers:
-            ETag: { schema: { type: string } }
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CookiePolicy' }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-    put:
-      operationId: replacePluginCookiePolicy
-      summary: Заменить cookie allow-list с CAS/audit
-      parameters:
-        - $ref: '#/components/parameters/IfMatchOptional'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/CookiePolicyInput' }
-      responses:
-        '200':
-          description: Активная policy и новый ETag
-          headers:
-            ETag: { schema: { type: string } }
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CookiePolicy' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '412': { $ref: '#/components/responses/PreconditionFailed' }
-        '428': { $ref: '#/components/responses/CookiePreconditionRequired' }
-        '400': { $ref: '#/components/responses/InvalidCookiePolicy' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins/{pluginId}/admin/surface:
-    parameters:
-      - $ref: '#/components/parameters/PluginId'
-    get:
-      operationId: getPluginAdminSurface
-      summary: Получить validated plugin Admin Surface
-      responses:
-        '200':
-          description: Declarative surface без executable UI
-          content:
-            application/json:
-              schema: { type: object, additionalProperties: true }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
+              schema: { $ref: '#/components/schemas/AdminSurfaceList' }
         '503': { $ref: '#/components/responses/Unavailable' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -459,40 +311,6 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/access/service-keys/{keyId}/rotate:
-    post:
-      operationId: rotateServiceKey
-      summary: Ротировать service credential
-      parameters:
-        - name: keyId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '201':
-          description: Новый raw token показывается один раз
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ServiceKeyIssued' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-  /api/access/service-keys/{keyId}/revoke:
-    post:
-      operationId: revokeServiceKey
-      summary: Отозвать service credential
-      parameters:
-        - name: keyId
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '204': { description: Credential отозван }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '503': { $ref: '#/components/responses/Unavailable' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
 components:
   securitySchemes:
     ServiceBearer:
@@ -516,12 +334,6 @@ components:
       required: true
       schema: { type: string }
       description: Strong ETag текущего ресурса.
-    IfMatchOptional:
-      name: If-Match
-      in: header
-      required: false
-      schema: { type: string }
-      description: Strong ETag текущего ресурса; отсутствие приводит к 428 при изменении cookie policy.
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -587,39 +399,24 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
-    CookiePreconditionRequired:
-      description: >-
-        428 cookie_policy_precondition_required: для изменения cookie policy
-        требуется сильный If-Match.
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }
-    InvalidCookiePolicy:
-      description: >-
-        400 invalid_cookie_policy: cookie names are invalid or duplicated.
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: >-
-        409 conflict: по операции код может быть plugin_instance_conflict,
-        plugin_mode_operation_forbidden или idempotency_conflict.
+        409 conflict: по операции код может быть plugin_instance_conflict
+        или idempotency_conflict.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     PreconditionFailed:
       description: >-
         412 precondition failed: If-Match не соответствует актуальной revision;
-        код определяется resource contract (plugin_revision_conflict,
-        interaction_generation_conflict или cookie_policy_revision_conflict).
+        код plugin_revision_conflict определяется resource contract.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Invalid:
       description: >-
         422 invalid request/schema. Код берётся из Error Catalog и зависит от
-        операции (например plugin_config_invalid, interaction_policy_invalid
-        или artifact_invalid).
+        операции (например plugin_config_invalid или artifact_invalid).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -670,37 +467,6 @@ components:
           additionalProperties: false
         requestId: { type: string }
       additionalProperties: false
-    PluginCreate:
-      type: object
-      required: [id, replicas]
-      description: >-
-        Регистрирует plugin instance и endpoints его уже запущенных replicas.
-        Core не принимает release или workload instructions.
-      properties:
-        id: { type: string, minLength: 1 }
-        replicas:
-          type: array
-          minItems: 1
-          items: { $ref: '#/components/schemas/PluginReplicaInput' }
-      additionalProperties: false
-    PluginDesiredState:
-      type: object
-      required: [replicas]
-      description: >-
-        Обновляет только fixed endpoints и ожидаемые identities.
-      properties:
-        replicas:
-          type: array
-          minItems: 1
-          items: { $ref: '#/components/schemas/PluginReplicaInput' }
-      additionalProperties: false
-    PluginReplicaInput:
-      type: object
-      required: [endpoint, expectedIdentity]
-      properties:
-        endpoint: { type: string, format: uri }
-        expectedIdentity: { type: string, minLength: 1 }
-      additionalProperties: false
     PluginInstance:
       type: object
       required: [id, state, desiredGeneration, appliedGeneration]
@@ -721,6 +487,13 @@ components:
         nextCursor: { type: [string, 'null'] }
         requestId: { type: string }
       additionalProperties: false
+    AdminSurfaceList:
+      type: object
+      required: [items, requestId]
+      properties:
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        requestId: { type: string }
+      additionalProperties: false
     PluginSettings:
       type: object
       required: [revision, config]
@@ -734,42 +507,6 @@ components:
       required: [config]
       properties:
         config: { type: object, additionalProperties: true }
-      additionalProperties: false
-    InteractionPolicy:
-      type: object
-      required: [generation, edges]
-      properties:
-        generation: { type: integer, minimum: 0 }
-        edges: { type: array, items: { $ref: '#/components/schemas/InteractionEdge' } }
-      additionalProperties: false
-    InteractionPolicyInput:
-      type: object
-      required: [edges]
-      properties:
-        edges: { type: array, items: { $ref: '#/components/schemas/InteractionEdge' } }
-      additionalProperties: false
-    InteractionEdge:
-      type: object
-      required: [targetInstance, capability, mode]
-      properties:
-        targetInstance: { type: string }
-        capability: { type: string }
-        mode: { type: string }
-      additionalProperties: false
-    CookiePolicy:
-      type: object
-      required: [instanceId, capability, revision, allowedNames]
-      properties:
-        instanceId: { type: string }
-        capability: { type: string }
-        revision: { type: integer, minimum: 0 }
-        allowedNames: { type: array, items: { type: string } }
-      additionalProperties: false
-    CookiePolicyInput:
-      type: object
-      required: [allowedNames]
-      properties:
-        allowedNames: { type: array, uniqueItems: true, items: { type: string } }
       additionalProperties: false
     OperationAccepted:
       type: object

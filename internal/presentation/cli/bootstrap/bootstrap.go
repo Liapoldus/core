@@ -19,17 +19,15 @@ import (
 )
 
 type RunOptions struct {
-	Output            string
-	Words             config.CLIWords
-	WriteFailure      func(output string, exitCode int, code, detail string)
-	PluginRESTControl *PluginRESTControl
+	Output       string
+	Words        config.CLIWords
+	WriteFailure func(output string, exitCode int, code, detail string)
 }
 
 type runContext struct {
-	output            string
-	words             config.CLIWords
-	writeFailure      func(output string, exitCode int, code, detail string)
-	pluginRESTControl *PluginRESTControl
+	output       string
+	words        config.CLIWords
+	writeFailure func(output string, exitCode int, code, detail string)
 }
 
 type bootstrapStores struct {
@@ -54,7 +52,7 @@ type managementInputs struct {
 }
 
 func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
-	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure, pluginRESTControl: input.PluginRESTControl}
+	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure}
 	return serveBootstrap(options, bootstrapConfig)
 }
 
@@ -77,19 +75,40 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
-	// v1 connects to explicitly registered, already-running plugin endpoints over
-	// the Plugin SDK REST API. There is no process supervision or local launch.
-	applier := &plugins.SDKConfigurationApplier{Store: stores.pluginConfigStore}
-	if options.pluginRESTControl != nil {
-		applier.Clients = options.pluginRESTControl.ReloadClients
-		stopRESTControl, controlErr := startPluginRESTControl(options.pluginRESTControl, stores.pluginConfigStore)
-		if controlErr != nil {
-			return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
-		}
-		defer stopRESTControl()
+	// v1 connects to the operator-declared, already-running plugin replicas
+	// declared in core.yaml over the Plugin SDK REST API. The control plane is
+	// always built from the bootstrap document: a Core that accepted core.yaml
+	// and then silently dropped pluginControl would promote generations that no
+	// replica can ever fetch, so an unusable control plane fails startup instead.
+	controlPlane, err := buildPluginRESTControl(bootstrap)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
+	registry, err := newPluginRegistry(bootstrap)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	if err := registerDeclaredPlugins(context.Background(), database, registry); err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	replicaObservations := storage.NewPluginReplicaStore(database, options.words.Diagnostics.ConfigInvalid)
+	applier := &plugins.SDKConfigurationApplier{
+		Store:   stores.pluginConfigStore,
+		Clients: controlPlane.ReloadClients,
+		Observations: recordReplicaObservation{
+			store:   replicaObservations,
+			unavail: inventory.management.Codes.PluginUnavailable,
+			refused: inventory.management.Codes.ActivationFailed,
+		},
+	}
+	stopRESTControl, controlErr := startPluginRESTControl(controlPlane, stores.pluginConfigStore)
+	if controlErr != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	defer stopRESTControl()
 	management := newManagementServer(managementServerDependencies{
 		stores: stores, inventory: inventory, managementInputs: managementInputs,
+		registry: registry, replicas: replicaObservations,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -202,6 +221,8 @@ type managementServerDependencies struct {
 	stores           bootstrapStores
 	inventory        bootstrapInventory
 	managementInputs managementInputs
+	registry         pluginRegistry
+	replicas         *storage.PluginReplicaStore
 }
 
 func newManagementServer(dependencies managementServerDependencies) *api.Server {
@@ -219,6 +240,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		AuditWords:    audit, Management: management, Errors: inputs.errorCatalog,
 		TLSConfig: inputs.tlsConfiguration,
 		Plugins:   inventory.view, PluginIDField: inventory.contract.JSON.ID,
-		DataPlaneState: management.Statuses.Ready,
+		DataPlaneReadiness: pluginReadiness(dependencies.registry, stores.pluginConfigStore, dependencies.replicas, management),
+		DataPlaneDrift:     pluginDrift(dependencies.registry, stores.pluginConfigStore, dependencies.replicas),
 	}
 }

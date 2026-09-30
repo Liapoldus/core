@@ -16,10 +16,14 @@
 - Docker/Compose, Swarm, Kubernetes, provider API, local process supervision,
   TUF package installation и plugin workload lifecycle — v2. Не включать их в
   v1 API, SQLite schema, permissions, CLI или acceptance.
-- Plugin configuration — точные raw JSON bytes. В SQLite хранятся только два
-  durable поколения `active` и `previous`; candidate полностью проверяется до
-  транзакции и не создаёт третьего staging slot. Core не decode/remarshal-ит и
-  не знает product fields.
+- Plugin configuration — точные raw JSON bytes. Опубликованных durable
+  слотов два: `active` и `previous`; только они когда-либо отдаются реплике.
+  Внутренний третий слот `staging` существует в той же таблице и является
+  **рабочим буфером** validated candidate: он никогда не публикуется наружу и
+  существует ровно потому, что `operation_payloads` хранит только digest, а не
+  settings bytes — без него interrupted-operation recovery недолговечен.
+  Решение владельца принято и не пересматривается (см. «Решение владельца по
+  `staging`»). Core не decode/remarshal-ит и не знает product fields.
 - После validation одна SQLite-транзакция сдвигает текущий `active` в
   `previous`, записывает candidate как новый `active` и удаляет прежний
   `previous`. После commit Core публикует in-memory snapshot и вызывает REST
@@ -35,44 +39,116 @@
 
 ## 1. Core config и durable operations
 
-- [ ] Завершить generic `PUT /api/plugins/{id}/config`: принимать сам JSON
+- [x] Завершить generic `PUT /api/plugins/{id}/settings`: принимать сам JSON
   object без wrapper, сохранять точные UTF-8 request bytes, вычислять SHA-256 по
   ним же; проверять size, syntax, root type, duplicate keys и plugin-owned JSON
-  Schema без изменения bytes.
-- [ ] Свести конфигурационное durable storage к `plugin_config_generations` с
+  Schema без изменения bytes. Покрыто `plugin-settings-api`,
+  `plugin-settings-mutation`, `golden-vector-conformance`.
+- [x] Свести конфигурационное durable storage к `plugin_config_generations` с
   колонками `instance_id`, `generation`, `slot`, `raw_json BLOB`, `sha256`,
   `schema_version`, `created_at`; разрешить только `active`/`previous`, по одной
-  строке на слот. Удалить старые config stores после replacement/recovery tests.
-- [ ] Реализовать CAS, `Idempotency-Key`, durable operations и аудит для
-  settings, rollback, endpoint membership, interaction policies и plugin Admin
-  Surface. Candidate validation failure не меняет slots/snapshot и не вызывает
-  Reload.
-- [ ] Реализовать atomic `active`/`previous` update до Reload, per-replica ACK,
-  roll-forward/fencing, explicit rollback и crash recovery. Не replay-ить
-  неизвестный plugin call outcome.
+  строке на слот. Старые stores удалены, `plugin_config_revisions`/
+  `plugin_config_pointers` отсутствуют. Покрыто `sqlite-metadata`,
+  `plugin-config-migration`.
+- [x] Реализовать CAS, `Idempotency-Key`, durable operations и аудит для
+  settings, rollback и plugin Admin Surface. Candidate validation failure не
+  меняет slots и не вызывает Reload. Покрыто `operation-persistence`,
+  `plugin-settings-mutation`, `sqlite-audit-retention`.
+- [x] Реализовать atomic `active`/`previous` update до Reload, per-replica ACK,
+  roll-forward/fencing, explicit rollback и crash recovery; неизвестный outcome
+  не replay-ится. Покрыто `plugin-config-roll-forward`, `plugin-settings-recovery`,
+  `plugin-settings-rollback`, `plugin-configuration-revisions`.
 - [ ] Построить immutable in-memory snapshot из SQLite до readiness; runtime
   request path не читает SQLite или конфигурационные файлы.
+  **ПРОВЕРЕНО 2026-09-30: НЕ РЕАЛИЗОВАНО.** Слово `snapshot` не встречается ни в
+  одном файле `internal/`; readiness вычисляется из таблицы наблюдений
+  `plugin_replicas` на каждый запрос. Это реальный пробел v1, а не
+  формальность: runtime path ходит в SQLite.
 - [ ] Завершить SQLite backup/restore, integrity/foreign-key checks,
   migrations и source-owned embedded SQL. Не добавлять PostgreSQL или S3.
+  **ПРОВЕРЕНО 2026-09-30: частично.** Embedded source-owned SQL, `schema_migrations`
+  и проверка версии есть; апгрейд v6→v7 идёт идемпотентным применением схемы
+  (`sqlite.go:64` допускает меньшую версию, `sqlite-version-guard` это
+  закрепляет). Отсутствуют `integrity_check`/`quick_check` и backup/restore —
+  их в `internal/` и `assets/` нет вообще.
 
 ## 2. Plugin SDK REST integration
 
-- [ ] Завершить Core REST client/server adapters: fixed endpoint для каждой
-  replica, per-replica mTLS, Manifest/schema/health/readiness, `Reload`, exact
-  config pull и digest-bound ACK.
-- [ ] Подключить SDK к реальному Core composition root и удалить Core lifecycle
-  dependency/wiring через `pluginprotocol` после миграции активных consumers.
+- [x] ~~**Подтверждено на штатном бинаре: `core serve` полностью игнорирует
+  `pluginControl`.**~~ **Исправлено (2026-09-30).** `core serve` теперь сам
+  собирает control plane из `core.yaml`: `RunOptions.PluginRESTControl` удалён,
+  `bootstrap.serveBootstrap` вызывает `buildPluginRESTControl(...)` и
+  `startPluginRESTControl(...)` безусловно, поэтому `pluginControl.listen`
+  действительно слушает, а `SDKConfigurationApplier.Clients` заполнен
+  per-instance fan-out. Покрыто: `tests/integration/serve-plugin-runtime.test.ts`,
+  `tests/integration/bootstrap-relative-paths.test.ts`,
+  `tests/integration/bootstrap-loader.test.ts` (7 negative-случаев).
+- [x] ~~**Ложная готовность.**~~ **Исправлено (2026-09-30).** `/api/status`
+  больше не возвращает захардкоженный `drift: false`: `Server.DataPlaneDrift`
+  вычисляется из production-эвалуатора (`pluginDrift`/`pluginReadiness` в
+  `plugin_registration.go`) по наблюдениям `plugin_replicas`, а при отсутствии
+  источника evidence handler **fail-closed** отдаёт `drift: true`.
+  Надёжный startup (config + pluginControl trust material) и достижимость каждой
+  объявленной реплики теперь являются условием старта: `core serve` падает, а не
+  поднимается «наполовину». Покрыто:
+  `tests/integration/management-api-characterization.test.ts` (drift: true без
+  evidence), `tests/architecture/presentation-boundaries.test.ts`,
+  `tests/architecture/v1-migration-contracts.test.ts`.
+  Promotion-before-fan-out в `plugin_configuration_service.go` сохранён
+  намеренно: durable `active`/`previous` двигается в той же транзакции, что и
+  раньше, а компенсация деградации обеспечена fencing + наблюдениями, а не
+  откатом слота. Это отдельное решение владельца — см. «Требует решения
+  владельца» ниже.
+- [x] Завершить Core REST client/server adapters: fixed endpoint для каждой
+  replica, per-replica mTLS (раздельные `replicaClientCA` для pull и
+  `replicaServerCA` для dial), `Reload`, exact config pull и digest-bound ACK.
+  Покрыто `plugin-sdk-config-pull`, `serve-plugin-runtime`.
+- [x] Подключить SDK к реальному Core composition root и удалить Core lifecycle
+  dependency/wiring через `pluginprotocol`. `go.mod`/`go.sum` не содержат
+  `pluginprotocol`; SDK вызывается только через `internal/infrastructure/plugins`.
+  Границы проверены `make arch-lint` и `pluginprotocol-sdk-boundary`.
 - [ ] Проверить reconnect после ручного operator restart: новый handshake,
   identity/schema/generation validation и reload при расхождении; никакого
   process launch, restart или replay со стороны Core.
-- [ ] Проверить redaction, Management authorization, service credential
+- [ ] Проверить redaction, Management authorization, workload credential
   rotation/revocation, scoped secret grants, audit и разделённые trust roots.
+- [ ] Реализовать Core-side SDK secret-grant issue/redemption endpoints. Сейчас
+  их нет в production router/storage, хотя SDK contract и Core schema обещают
+  scoped Core REST grants. Это v1-блокер для plugin-конфигураций с opaque secret
+  references (включая persistent storage forms-db и custom TLS server plugin).
+  Грант должен быть one-use и scoped к аутентифицированной replica, точному
+  active generation, reference и purpose; никакого plugin-to-plugin interaction
+  authorization этим API не предоставляется.
 
 ## 3. Plugin registration и product integration
 
-- [ ] Довести Management API для CRUD generic plugin instance/replica fixed
-  endpoints и ожидаемых identities; исключить process/container lifecycle,
-  artifact catalog и provider management surfaces.
+- [x] **Решение владельца принято (2026-09-30): вариант A.** `core.yaml` —
+  единственный нормативный источник declared plugin topology. Утверждённые
+  правила: `plugins[].instanceId` + `plugins[].replicas[].replicaId`,
+  фиксированный HTTPS `endpoint` и `expectedPeerIdentity`
+  (`commonName` + optional `uniformResourceIdentifier`); список статичен на
+  время процесса, изменение = restart; Management API регистрации и plugin
+  self-registration в v1 **нет**; endpoint никогда не берётся из redirect,
+  manifest или ответа plugin. Варианты B и C отклонены.
+  Реализовано: `assets/contracts/core.schema.json` (`plugins` — обязательный
+  корень), `config-fields.yaml`, `LoadBootstrap` → `pluginInstances(...)`,
+  `config.PluginEndpoint(...)`, `config.ValidPeerIdentity(...)`,
+  `internal/infrastructure/plugins/declared_replicas.go` (единственное место,
+  где объявленные endpoint+identity превращаются в живой SDK client),
+  `plugin_control_plane.go`, `plugin_registration.go`, таблица `plugin_replicas`.
+  SQLite не хранит endpoint/identity/replica set: реплики и наблюдения — только
+  из `core.yaml`, таблица `plugin_replicas` содержит исключительно
+  observation/ACK-состояние.
+  ВНИМАНИЕ: физические колонки `plugin_instances.mode` и `plugin_instances.endpoint`
+  пока остались в схеме (см. «Требует решения владельца» про безопасную миграцию
+  parent-таблицы). Новые регистрации их не заполняют, inventory-запрос их не
+  читает, но формально колонки ещё существуют.
+- [ ] ~~Довести Management API для CRUD generic plugin instance/replica fixed
+  endpoints и ожидаемых identities~~ **Снято решением A:** объявление topology
+  перенесено в `core.yaml`, поэтому Management API регистрации не появился и
+  добавлять его не нужно. Остаётся только зафиксировать это в OpenAPI/docs
+  (см. «Требует решения владельца» про рассинхрон контракта) и удалить из
+  published contract остатки lifecycle-описаний v2.
 - [ ] Интегрировать вручную запускаемый `plugins/server`: конфигурация,
   SDK REST Reload/pull, plugin-owned schema/runtime apply, digest ACK и
   обработанный HTTP/TLS traffic. Имена в публичных API/fixtures — `server`, не
@@ -89,11 +165,54 @@
 - [ ] Обновить TypeScript integration/E2E в `tests/`: два config slots,
   byte-exact PUT→SQLite→pull, CAS/idempotency, Reload/ACK, manual restart,
   fencing/recovery, authorization/audit/redaction и Core→SDK→Server/forms-db.
-- [ ] Удалить старые Core process supervision, provider/TUF installation API,
+- [x] Удалить старые Core process supervision, provider/TUF installation API,
   SQLite provider/workload state, неиспользуемые CLI commands и legacy protocol
-  lifecycle только после replacement tests и consumer audit.
+  lifecycle. Регрессии закреплены `pluginprotocol-sdk-boundary`,
+  `no-legacy-site-api`, `target-cli-surface`, `dead-artifacts`.
 - [ ] Синхронизировать versioned contracts/mirrors, OpenAPI, docs, this TODO и
   `AGENTS.md`; не оставлять конкурирующие lifecycle APIs.
+  - [x] ~~**Рассинхрон published OpenAPI (2026-09-30)~~ **Решено владельцем:
+    контракт описывает только реализованное v1.** Из
+    `contracts/v1/management.openapi.yaml` удалены несуществующие и запрещённые
+    поверхности: `POST /api/plugins` (createPlugin),
+    `PUT`/`DELETE /api/plugins/{pluginId}`, `/interactions`,
+    `/cookie-policies/{capability}`, `/service-keys/{keyId}/rotate` и `/revoke`;
+    путь admin surface исправлен с `/api/plugins/{pluginId}/admin/surface` на
+    фактический `/api/plugins/admin-surfaces`. Вместе с ними удалены осиротевшие
+    `PluginCreate`, `PluginDesiredState`, `PluginReplicaInput`, `InteractionPolicy*`,
+    `InteractionEdge`, `CookiePolicy*`, `CookiePreconditionRequired`,
+    `InvalidCookiePolicy`, `IfMatchOptional`; 16 paths → 12 paths / 14 operations.
+    Ложные формулировки (`supervised lifecycle завершается Core`, `supervised
+    принимает catalog release reference`, `push-ится по pluginprotocol ConfigApply`)
+    заменены на declared-registry + SDK REST Reload. Перепубликовано через
+    `scripts/publish-contracts.mjs` (обновлён `manifest.json`).
+    Новый гейт `tests/architecture/management-openapi-surface.test.ts` фиксирует
+    operation set против роутера, запрет lifecycle/registration и целостность
+    `$ref`; `v1-migration-contracts.test.ts` переписан под решение. Проверено
+    негативными прогонами: возврат запрещённого пути, висячий `$ref` и остаточное
+    слово `supervised` — каждый даёт падение.
+  - [ ] **Вынесено в v2 backlog (решение владельца: не реализовывать в v1).**
+    Plugin-to-plugin interaction policy (outbound allow-list с generation/CAS),
+    interaction grants, cookie policy (per-instance/capability allow-list,
+    428 без If-Match) и service-key rotate/revoke не входят в v1 Management API.
+    Они не тождественны scoped secret grants, которые нужны v1 через отдельный
+    Plugin SDK REST control endpoint для secret references. Если v2 features
+    понадобятся, они
+    требуют новой durable схемы (interaction generations, cookie policies,
+    revokedAt-ротация) и расширения Management API — отдельным инкрементом.
+    `AGENTS.md` теперь явно разделяет v1 secret-grant broker и отложенные v2
+    plugin-to-plugin interaction policy/grants.
+  - [ ] **Owner-действие вне Core scope: синхронизировать docs-репозиторий.**
+    `liapoldus.github.io/public/spec/management.openapi.yaml` всё ещё содержит
+    16 paths с `createPlugin`/`updatePlugin`/`deletePlugin`, `/interactions` и
+    `/cookie-policies/{capability}`. По `AGENTS.md` нормативный публичный
+    Management API живёт в docs-репозитории до завершения Core v1, поэтому
+    правка Core-зеркала НЕ делает docs-контракт актуальным. Репозиторий также уже
+    содержит чужие незакоммиченные изменения, поэтому автоматическая правка
+    запрещена. Требуется согласованный отдельный коммит владельца docs; после
+    него `contract-publication` начнёт сверять Core-зеркало с каноном
+    (`tests/support/canonical-contracts.ts` уже умеет читать
+    `public/spec/errors.json` — понадобится аналогичная проверка OpenAPI).
 - [ ] Прогнать `make check`, `go vet ./...`, `make staticcheck-u1000`,
   `go build ./...`, macOS/Linux builds и smoke с отдельно вручную запущенными
   сервисами. Фиксировать только реально полученные результаты.
@@ -257,4 +376,3 @@ SDK-контракт не создавался. Приёмка
   маршрут добавлен. Синхронизацию docs выполняет их владелец.
 - Опубликованные docs содержат `'n'` вместо числового кода `422` в enum
   состояний операции. В Core mirror значение корректно (`recovering`).
-

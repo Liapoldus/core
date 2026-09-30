@@ -49,6 +49,7 @@ async function prepareCore(directory: string) {
   const pluginControlCertificate = join(directory, "plugin-control.crt");
   const pluginControlKey = join(directory, "plugin-control.key");
   const replicaClientCA = join(directory, "plugin-replica-ca.crt");
+  const replicaServerCA = join(directory, "plugin-replica-server-ca.crt");
   const database = join(directory, "core.db");
   const config = join(directory, "core.yaml");
   await execFileAsync("openssl", [
@@ -67,6 +68,11 @@ async function prepareCore(directory: string) {
     "-subj", "/CN=plugin-replica-ca",
     "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
   ]);
+  await execFileAsync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+    "-subj", "/CN=plugin-replica-server-ca",
+    "-keyout", join(directory, "plugin-replica-server-ca.key"), "-out", replicaServerCA,
+  ]);
   await writeFile(config, [
     "state:",
     `  path: ${database}`,
@@ -82,6 +88,14 @@ async function prepareCore(directory: string) {
     `    certificate: file:${pluginControlCertificate}`,
     `    key: file:${pluginControlKey}`,
     `    replicaClientCA: file:${replicaClientCA}`,
+    `    replicaServerCA: file:${replicaServerCA}`,
+    "plugins:",
+    "  - instanceId: catalog",
+    "    replicas:",
+    "      - replicaId: catalog-a",
+    `        endpoint: https://catalog-a.internal:9443`,
+    "        expectedPeerIdentity:",
+    "          commonName: catalog-a",
     "",
   ].join("\n"), "utf8");
   const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);

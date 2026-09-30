@@ -80,6 +80,7 @@ func (server *Server) managementHandlerDependencies() handlers.ManagementDepende
 		DataPlaneState:      server.DataPlaneState,
 		DataPlaneReason:     server.DataPlaneReason,
 		DataPlaneReadiness:  server.DataPlaneReadiness,
+		DataPlaneDrift:      server.DataPlaneDrift,
 		Management:          server.Management,
 		AuditWords:          server.AuditWords,
 		WriteJSON:           server.writeJSON,

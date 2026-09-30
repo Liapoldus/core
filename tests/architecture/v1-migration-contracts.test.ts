@@ -47,8 +47,11 @@ describe("Core v1 management contracts", () => {
     const properties = Object.keys((schema.properties ?? {}) as SchemaNode);
     const definitions = Object.keys((schema.$defs ?? {}) as SchemaNode);
 
-    expect(required).toEqual(["state", "management", "pluginControl"]);
-    expect([...properties].sort()).toEqual(["management", "pluginControl", "state"]);
+    // The declared plugin registry is part of the minimal v1 bootstrap surface:
+    // it is the only source of replica endpoints and expected identities, so a
+    // Core that started without it could never deliver a generation.
+    expect(required).toEqual(["state", "management", "pluginControl", "plugins"]);
+    expect([...properties].sort()).toEqual(["management", "pluginControl", "plugins", "state"]);
     expect(schema.additionalProperties).toBe(false);
     expect(new Set(required), "every declared bootstrap block must be required").toEqual(
       new Set(properties),
@@ -92,36 +95,27 @@ describe("Core v1 management contracts", () => {
     }
   });
 
-  it("registers a plugin instance from its id and already-running replica endpoints", async () => {
+  it("exposes no Management API plugin registration or desired-state replacement", async () => {
     const openapi = await readFile(contract("management.openapi.yaml"), "utf8");
-    const create = openapi.slice(
-      openapi.indexOf("    PluginCreate:"),
-      openapi.indexOf("    PluginDesiredState:"),
-    );
-    const desired = openapi.slice(
-      openapi.indexOf("    PluginDesiredState:"),
-      openapi.indexOf("    PluginReplicaInput:"),
-    );
-    const compactCreate = create.replace(/\s+/g, " ");
-    const compactDesired = desired.replace(/\s+/g, " ");
 
-    expect(create).toContain("required: [id, replicas]");
-    expect(compactCreate).toContain(
-      "properties: id: { type: string, minLength: 1 } replicas: type: array minItems: 1",
-    );
-    expect(create).toContain("items: { $ref: '#/components/schemas/PluginReplicaInput' }");
-    expect(create).toContain("additionalProperties: false");
-    expect(desired).toContain("required: [replicas]");
-    expect(desired).toContain("additionalProperties: false");
-    for (const shape of [create, desired]) {
-      expect(shape).not.toMatch(/^\s+release:/m);
-      expect(shape).not.toContain("PluginReleaseSelection");
-      expect(shape).not.toMatch(/^\s+(oneOf|anyOf|allOf|not):/m);
-      expect(shape).not.toMatch(/^\s+profile:/m);
+    // Declared topology is operator-owned bootstrap configuration, so the
+    // Management API must neither create an instance nor rewrite its replicas.
+    for (const removedShape of [
+      "    PluginCreate:",
+      "    PluginDesiredState:",
+      "    PluginReplicaInput:",
+      "      operationId: createPlugin",
+      "      operationId: updatePlugin",
+      "      operationId: deletePlugin",
+      "    post:\n      operationId: createPlugin",
+    ]) {
+      expect(openapi, removedShape).not.toContain(removedShape);
     }
-    for (const shape of [compactCreate, compactDesired]) {
-      expect(shape).not.toMatch(/supervised|external|профил|install|TUF|release:/i);
-    }
+    expect(openapi).toContain("    post:\n      operationId: createServiceKey");
+    // The read paths that survive must still be instance-scoped and redacted.
+    expect(openapi).toContain("      operationId: getPlugin\n");
+    expect(openapi).toContain("      operationId: listPlugins");
+    expect(openapi).toContain("        id: { type: string }\n        state: { type: string }");
   });
 
   it("keeps the published bootstrap vector aligned with the bootstrap surface", async () => {
@@ -141,18 +135,33 @@ describe("Core v1 management contracts", () => {
     ]);
   });
 
-  it("makes cookie policy If-Match optional in OpenAPI and specifies 428 when absent", async () => {
+  it("exposes no cookie policy or interaction policy surface in v1", async () => {
     const openapi = await readFile(contract("management.openapi.yaml"), "utf8");
-    const cookiePolicy = openapi.slice(
-      openapi.indexOf("  /api/plugins/{pluginId}/cookie-policies/{capability}:"),
-      openapi.indexOf("  /api/plugins/{pluginId}/admin/surface:"),
-    );
-    const optionalIfMatch = openapi.slice(openapi.indexOf("    IfMatchOptional:"), openapi.indexOf("    IdempotencyKey:"));
 
-    expect(cookiePolicy).toContain("- $ref: '#/components/parameters/IfMatchOptional'");
-    expect(cookiePolicy).toContain("'428': { $ref: '#/components/responses/CookiePreconditionRequired' }");
-    expect(optionalIfMatch).toContain("required: false");
-    expect(optionalIfMatch).toContain("отсутствие приводит к 428");
+    // These surfaces are not dispatched by the v1 router, so the contract must
+    // not advertise them and must not keep their now-unreferenced envelopes.
+    for (const notInV1 of [
+      "  /api/plugins/{pluginId}/cookie-policies/{capability}:",
+      "  /api/plugins/{pluginId}/interactions:",
+      "    IfMatchOptional:",
+      "    CookiePreconditionRequired:",
+      "    InvalidCookiePolicy:",
+      "    CookiePolicy:",
+      "    CookiePolicyInput:",
+      "    InteractionPolicy:",
+      "    InteractionPolicyInput:",
+      "    InteractionEdge:",
+      "cookie_policy_revision_conflict",
+      "interaction_generation_conflict",
+      "interaction_policy_invalid",
+    ]) {
+      expect(openapi, notInV1).not.toContain(notInV1);
+    }
+
+    // Optional `If-Match` has exactly one meaning left: none, since every
+    // mutating v1 operation requires a strong ETag.
+    expect(openapi).toContain("    IfMatch:");
+    expect(openapi).toContain("      required: true");
   });
 
   it("does not expose product runtime administration through the Core API", async () => {

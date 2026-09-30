@@ -33,8 +33,15 @@ v1 API, persistence, permissions, or acceptance.
 
 ## Architecture and implementation rules
 
-- Core owns generic plugin instance metadata, desired settings, endpoint sets,
-  interaction policy, grants, operations, access and audit. It must not contain
+- Core owns generic plugin instance metadata, desired settings, operator-declared
+  endpoint sets, durable operations, Core Management access and audit. Core v1
+  does not own plugin-to-plugin interaction policies or interaction grants; that
+  authorization surface is deferred to v2. This is distinct from scoped,
+  one-use secret grants: Core must expose those through the Plugin SDK REST
+  control API for opaque secret references used by a plugin's own configuration.
+  Secret grants are not plugin-to-plugin permissions and must never be added to
+  `pluginprotocol`. Keep the v1 grant API generic and bound to the authenticated
+  replica, exact active generation, reference and purpose. Core must not contain
   plugin-name, capability-name, provider, or product-specific branches.
 - SQLite is the only durable Core store for desired configuration and control
   metadata. Each plugin instance has exactly two durable configuration slots
@@ -61,10 +68,13 @@ v1 API, persistence, permissions, or acceptance.
   replicas through ordinary `Reload`. After validating a candidate, promote it
   to desired `active` in the same SQLite transaction that moves former `active`
   to `previous` and discards the older `previous`, before notifying replicas.
-  `Rollback` swaps `active` and `previous` before notifying replicas. Partial rollout is roll-forward: retry failed
-  replicas, mark the instance degraded, and keep only replicas that have
-  acknowledged the desired generation eligible for traffic or peer calls.
-  Never replay an operation with an unknown outcome. Secrets are never
+  `Rollback` swaps `active` and `previous` before notifying replicas. Partial
+  rollout is roll-forward: keep the promoted generation as desired, record
+  per-replica acknowledgements, mark the instance degraded, and fence replicas
+  that have not acknowledged that generation. Core v1 has no background retry
+  loop; reconciliation after a Core/plugin restart may re-announce the same
+  immutable generation, relying on the Plugin SDK's idempotent Reload contract.
+  Do not replay a non-idempotent operation whose outcome is unknown. Secrets are never
   embedded in config JSON or returned/logged; scoped redemption uses the
   Plugin SDK REST API.
 - `pluginprotocol` is a standalone, plugin-agnostic library for plugin-to-plugin

@@ -45,6 +45,7 @@ type ManagementDependencies struct {
 	DataPlaneState      string
 	DataPlaneReason     string
 	DataPlaneReadiness  func(context.Context) (string, string)
+	DataPlaneDrift      func(context.Context) bool
 	Management          config.ManagementWords
 	AuditWords          config.AuditWords
 	WriteJSON           func(http.ResponseWriter, int, any)

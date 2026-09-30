@@ -69,13 +69,14 @@ describe("presentation package ownership", () => {
       "DataPlaneState",
       "DataPlaneReason",
       "DataPlaneReadiness",
+      "DataPlaneDrift",
       "AuditWords",
       "Management",
       "Errors",
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(16);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(17);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 

@@ -12,14 +12,10 @@ type PluginInventoryContract struct {
 	ValidModes      []string `yaml:"validModes"`
 	ValidStates     []string `yaml:"validStates"`
 	JSON            struct {
-		ID                    string `yaml:"id"`
-		Mode                  string `yaml:"mode"`
-		State                 string `yaml:"state"`
-		Revision              string `yaml:"revision"`
-		Capabilities          string `yaml:"capabilities"`
-		CapabilityDescriptors string `yaml:"capabilityDescriptors"`
-		DescriptorCapability  string `yaml:"descriptorCapability"`
-		DescriptorModes       string `yaml:"descriptorModes"`
+		ID       string `yaml:"id"`
+		Mode     string `yaml:"mode"`
+		State    string `yaml:"state"`
+		Revision string `yaml:"revision"`
 	} `yaml:"json"`
 	Diagnostics struct {
 		InvalidContract string `yaml:"invalidContract"`
@@ -39,7 +35,6 @@ func LoadPluginInventoryContract() (PluginInventoryContract, error) {
 	}
 	if contract.SelectInstances == "" || len(contract.ValidModes) == 0 || len(contract.ValidStates) == 0 ||
 		contract.JSON.ID == "" || contract.JSON.Mode == "" || contract.JSON.State == "" || contract.JSON.Revision == "" ||
-		contract.JSON.Capabilities == "" || contract.JSON.CapabilityDescriptors == "" || contract.JSON.DescriptorCapability == "" || contract.JSON.DescriptorModes == "" ||
 		contract.Diagnostics.InvalidContract == "" || contract.Diagnostics.InvalidRecord == "" || contract.Diagnostics.InvalidManifest == "" {
 		return PluginInventoryContract{}, errors.New(contract.Diagnostics.InvalidContract)
 	}

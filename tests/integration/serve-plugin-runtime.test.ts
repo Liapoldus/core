@@ -59,6 +59,7 @@ describe("serve plugin composition", () => {
     const controlCertificate = join(directory, "plugin-control.crt");
     const controlKey = join(directory, "plugin-control.key");
     const replicaClientCA = join(directory, "plugin-replica-ca.crt");
+  const replicaServerCA = join(directory, "plugin-replica-server-ca.crt");
     const database = join(directory, "core.db");
     const config = join(directory, "core.yaml");
     let core: Awaited<ReturnType<typeof startCore>> | undefined;
@@ -77,6 +78,11 @@ describe("serve plugin composition", () => {
         "-subj", "/CN=plugin-replica-ca",
         "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
       ]);
+      await execFileAsync("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=plugin-replica-server-ca",
+        "-keyout", join(directory, "plugin-replica-server-ca.key"), "-out", replicaServerCA,
+      ]);
       // v1 core.yaml is exactly state + management + pluginControl. There is no
       // artifacts store, no execution profile and no package catalog in Core.
       await writeFile(config, [
@@ -94,6 +100,14 @@ describe("serve plugin composition", () => {
         `    certificate: file:${controlCertificate}`,
         `    key: file:${controlKey}`,
         `    replicaClientCA: file:${replicaClientCA}`,
+        `    replicaServerCA: file:${replicaServerCA}`,
+        "plugins:",
+        "  - instanceId: catalog",
+        "    replicas:",
+        "      - replicaId: catalog-a",
+        `        endpoint: https://${controlAddress}`,
+        "        expectedPeerIdentity:",
+        "          commonName: catalog-a",
         "",
       ].join("\n"), "utf8");
 

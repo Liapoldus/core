@@ -60,7 +60,12 @@ describe("Management API response characterization matrix", () => {
         contentType: "application/json",
         requestID: true,
         body: {
-          drift: false,
+          // This fixture is wired without a data-plane drift evidence source, so
+          // `/api/status` fails closed. A Core that cannot prove its declared
+          // replicas converged must never report "no drift" -- that is exactly
+          // the lie the pre-registry Core told while no replica had ever been
+          // told that a generation existed.
+          drift: true,
           dataPlaneReadiness: { state: "ready" },
           requestId: requestID,
         },

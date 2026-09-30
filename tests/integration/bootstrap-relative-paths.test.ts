@@ -45,6 +45,12 @@ describe("bootstrap path resolution", () => {
         "-keyout", join(certificateDirectory, "plugin-replica-ca.key"),
         "-out", join(certificateDirectory, "plugin-replica-ca.crt"),
       ]);
+      await execFileAsync("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=plugin-replica-server-ca",
+        "-keyout", join(certificateDirectory, "plugin-replica-server-ca.key"),
+        "-out", join(certificateDirectory, "plugin-replica-server-ca.crt"),
+      ]);
       const config = join(configurationDirectory, "core.yaml");
       await writeFile(config, [
         "state:",
@@ -61,6 +67,14 @@ describe("bootstrap path resolution", () => {
         "    certificate: file:certificates/plugin-control.crt",
         "    key: file:certificates/plugin-control.key",
         "    replicaClientCA: file:certificates/plugin-replica-ca.crt",
+        "    replicaServerCA: file:certificates/plugin-replica-server-ca.crt",
+        "plugins:",
+        "  - instanceId: catalog",
+        "    replicas:",
+        "      - replicaId: catalog-a",
+        `        endpoint: https://${pluginControlAddress}`,
+        "        expectedPeerIdentity:",
+        "          commonName: catalog-a",
         "",
       ].join("\n"), "utf8");
 

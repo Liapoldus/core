@@ -29,6 +29,7 @@ type Server struct {
 	DataPlaneState     string
 	DataPlaneReason    string
 	DataPlaneReadiness func(context.Context) (string, string)
+	DataPlaneDrift     func(context.Context) bool
 	AuditWords         config.AuditWords
 	Management         config.ManagementWords
 	Errors             config.ErrorCatalog

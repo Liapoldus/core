@@ -1,10 +1,8 @@
-selectInstances: "SELECT instances.id, instances.mode, instances.state, active.generation, instances.manifest_json, active.raw_json, COALESCE(launch.launch_json, '') FROM plugin_instances AS instances JOIN plugin_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' LEFT JOIN plugin_launch_settings AS launch ON launch.instance_id = instances.id ORDER BY instances.id"
+selectInstances: "SELECT instances.id, instances.mode, instances.state, active.generation, instances.manifest_json, active.raw_json FROM plugin_instances AS instances JOIN plugin_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' ORDER BY instances.id"
 validModes:
-  - local
   - remote
 validStates:
   - configured
-  - starting
   - ready
   - degraded
   - failed
@@ -13,10 +11,6 @@ json:
   mode: mode
   state: state
   revision: revision
-  capabilities: capabilities
-  capabilityDescriptors: capabilityDescriptors
-  descriptorCapability: capability
-  descriptorModes: modes
 diagnostics:
   invalidContract: plugin inventory contract is invalid
   invalidRecord: plugin instance record is invalid
