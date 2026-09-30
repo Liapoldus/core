@@ -16,12 +16,10 @@
 - Docker/Compose, Swarm, Kubernetes, provider API, local process supervision,
   TUF package installation и plugin workload lifecycle — v2. Не включать их в
   v1 API, SQLite schema, permissions, CLI или acceptance.
-- Plugin configuration — точные raw JSON bytes. Опубликованных durable
-  слотов два: `active` и `previous`; только они когда-либо отдаются реплике.
-  Внутренний третий слот `staging` существует в той же таблице и является
-  **рабочим буфером** validated candidate: он никогда не публикуется наружу и
-  существует ровно потому, что `operation_payloads` хранит только digest, а не
-  settings bytes — без него interrupted-operation recovery недолговечен.
+- Plugin configuration — точные raw JSON bytes. Durable slots три:
+  `active`, `previous` и внутренний `staging`. Только первые два когда-либо
+  отдаются реплике. `staging` хранит validated candidate, связанный с durable
+  operation, для recovery; он не является видимым config generation.
   Решение владельца принято и не пересматривается (см. «Решение владельца по
   `staging`»). Core не decode/remarshal-ит и не знает product fields.
 - После validation одна SQLite-транзакция сдвигает текущий `active` в
@@ -46,8 +44,8 @@
   `plugin-settings-mutation`, `golden-vector-conformance`.
 - [x] Свести конфигурационное durable storage к `plugin_config_generations` с
   колонками `instance_id`, `generation`, `slot`, `raw_json BLOB`, `sha256`,
-  `schema_version`, `created_at`; разрешить только `active`/`previous`, по одной
-  строке на слот. Старые stores удалены, `plugin_config_revisions`/
+  `schema_version`, `created_at`; разрешены `active`/`previous`/`staging`, не
+  более одной строки на слот. Старые stores удалены, `plugin_config_revisions`/
   `plugin_config_pointers` отсутствуют. Покрыто `sqlite-metadata`,
   `plugin-config-migration`.
 - [x] Реализовать CAS, `Idempotency-Key`, durable operations и аудит для
@@ -149,14 +147,18 @@
   добавлять его не нужно. Остаётся только зафиксировать это в OpenAPI/docs
   (см. «Требует решения владельца» про рассинхрон контракта) и удалить из
   published contract остатки lifecycle-описаний v2.
-- [ ] Интегрировать вручную запускаемый `plugins/server`: конфигурация,
-  SDK REST Reload/pull, plugin-owned schema/runtime apply, digest ACK и
-  обработанный HTTP/TLS traffic. Имена в публичных API/fixtures — `server`, не
-  `caddy`.
+- [ ] Завершить интеграцию вручную запускаемого `plugins/server`: текущий
+  WIP содержит SDK REST adapter и строгую settings/runtime реализацию, но
+  `GOWORK=off go test ./...` на 2026-09-30 падает: production-пакеты всё ещё
+  импортируют удалённые `pluginprotocol/pluginv1` и `presentation/sdk`, а REST
+  adapter не совпадает с текущим публичным API Plugin SDK. До зелёной сборки и
+  Core→SDK→Server smoke интеграция не завершена. Публичное имя — `server`.
 - [ ] Удалить Caddy-L4 dependency/registration и public TCP/UDP listener/relay
   implementation из v1 build; держать их только в v2 backlog.
-- [ ] Интегрировать вручную запускаемый forms-db plugin: собственные schemas,
-  REST lifecycle, persistent product data и Admin Surface.
+- [ ] Завершить интеграцию вручную запускаемого forms-db: его текущая сборка
+  (`GOWORK=off go test ./...`, 2026-09-30) падает из-за оставшихся импортов
+  `pluginprotocol/pluginv1` и `presentation/sdk`. Сохранить plugin-owned schema,
+  persistent product data и Admin Surface при переносе lifecycle на SDK.
 - [ ] Не добавлять plugin-name/capability branches в Core. Не мигрировать и не
   собирать как Core v1 CAPTCHA/Identity.
 
@@ -284,9 +286,14 @@ SDK-контракт не создавался. Приёмка
 - Durable `staging`-слот **сохраняется**. Он является внутренним рабочим
   буфером и никогда не публикуется наружу: replica может pull-ить только
   `active` и `previous`. Опубликованных durable config slots по-прежнему два.
-- Обязательный порядок при выпуске новой конфигурации: старый `active`
-  переносится в `staging`, валидированный кандидат становится `active`,
-  затем `staging` становится `previous`. Прежний `previous` отбрасывается.
+- Обязательный порядок при выпуске новой конфигурации: после validation exact
+  candidate bytes сохраняются в `staging` вместе с durable operation; до
+  promotion прежние `active`/`previous` остаются неизменными. Promotion одной
+  транзакцией удаляет старый `previous`, переносит прежний `active` в
+  `previous`, а candidate из `staging` в `active`.
+- При неуспешной validation `staging` не создаётся. При отказе после записи
+  candidate recovery завершает roll-forward либо удаляет staging-candidate по
+  durable operation state; plugin никогда не может pull-ить staging.
 - `OperationPayload` хранит только digest, а не settings bytes, поэтому
   `staging` — load-bearing для recovery незавершённой операции: без него
   прерванный rollout нельзя восстановить.
@@ -315,34 +322,19 @@ SDK-контракт не создавался. Приёмка
       репозиториях маршрут `/api/plugins/{pluginId}/rollback`.
       Ошибка `'n'` вместо `422` присутствует только в опубликованных docs.
 
-### План миграции потребителей (не выполняется в этом инкременте)
+### Потребители и межрепозиторная интеграция
 
-По решению владельца `plugins/server` и `plugins/forms-db` в этом инкременте
-**не мигрируются**. Ниже — порядок будущей миграции, который следует из
-финальной архитектуры v1.
-
-1. Обновить зависимость на текущий standalone Plugin SDK; удалить
-   `pluginprotocol`-импорты и собственный lifecycle-код.
-2. Заменить собственный config source на `NewCoreConfigurationSource`:
-   приложение больше не читает настройки из env, argv или конфиг-файлов.
-3. Реализовать `Reload(generation)` через SDK: подтвердить только после
-   успешного применения, иначе вернуть ошибку и оставить старую генерацию.
-4. Pull-ить **точную** запрошенную генерацию; не применять «последнюю
-   известную» и не кэшировать конфигурацию на диске.
-5. Удалить собственные `/reload`, `/config` и admin-поверхности, которые уже
-   публикует Plugin SDK, чтобы не осталось двух lifecycle API.
-6. Снять v1-специфичные остатки: TUF release installation, container
-   providers, artifact/execution/pluginCatalog поля.
-7. Проверить приёмку: `Management PUT -> SQLite -> Reload -> exact-generation
-   pull -> ACK` для обоих потребителей.
-8. Отдельно: владелец `liapoldus.github.io` синхронизирует
-   `public/spec/management.openapi.yaml` (маршрут rollback, числовые коды 422)
-   и error catalog; Core эти файлы не редактирует.
+Core REST composition и per-replica registration/observation wiring добавлены
+в commit `dcc0a90`; Core `make check`, `go vet ./...` и
+`make staticcheck-u1000` проходят. Это не доказывает готовность product
+consumers: `plugins/server` и `plugins/forms-db` пока не компилируются против
+удалённого protocol lifecycle и нового SDK. Активные интеграционные действия
+закреплены в их repo-owned TODO. Не добавлять в Core fallback на legacy API.
 
 ### Найдено при введении race-гейта — не чинилось, нужно решение владельца
 
-`PluginConfigurationService.Recover` пере-апливает операции в состоянии
-`running`, и на пере settled-базе он является no-op. В v1 это недостижимо:
+`PluginConfigurationService.Recover` пере-применяет операции в состоянии
+`running`, а на уже settled-базе является no-op. В v1 это недостижимо:
 `bootstrap.serveBootstrap` вызывает `Recover` ровно один раз до
 `management.Listen`, когда ни одного apply ещё нет. Но защиты у этого
 инварианта нет, и конкурентный вызов `Recover` даёт двойной apply.
@@ -365,14 +357,11 @@ SDK-контракт не создавался. Приёмка
       внедрённым несинхронизированным доступом gate падает (exit 2,
       `DATA RACE`).
 
-### Внешние расхождения (вне владения Core)
+### Внешние контракты
 
-- Канонический `core.schema.json` в docs-repo требует
-  `["state","management"]` и не содержит `pluginControl`, тогда как Core
-  объявляет `["state","management","pluginControl"]`. Закрывает владелец
-  `liapoldus.github.io`.
-- Опубликованный management spec не содержит маршрута
-  `/api/plugins/{pluginId}/rollback`, хотя Core его реализует; в Core mirror
-  маршрут добавлен. Синхронизацию docs выполняет их владелец.
-- Опубликованные docs содержат `'n'` вместо числового кода `422` в enum
-  состояний операции. В Core mirror значение корректно (`recovering`).
+Schema, OpenAPI, error catalog и manifest синхронизированы с docs commit
+`ae2a734`; Core `make check` прошёл после синхронизации. Если меняется публичный
+контракт, сначала меняется docs owner source, затем обновляется Core mirror и
+его digest/vector gate. Новый docs build прошёл, но deployed `/core/` пока
+отвечает `404`, а legacy `/gateway/` — `200`; доступность нового Pages build
+остаётся внешним deployment gate.
