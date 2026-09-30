@@ -2,6 +2,14 @@
 
 Нормативный scope: [целевая архитектура](https://liapoldus.github.io/core/architecture/target), [Control Plane](https://liapoldus.github.io/core/architecture/control-plane), [ручной запуск v1 / автоматизация v2](https://liapoldus.github.io/core/architecture/plugin-deployment), [roadmap](https://liapoldus.github.io/core/architecture/v1-migration-roadmap) и [acceptance](https://liapoldus.github.io/core/configuration/acceptance).
 
+## Документация
+
+- [x] Канонические Core Markdown и Mermaid исходники принадлежат этому repo в
+  `docs/site/core/` и `docs/site/diagrams/`. Агрегатор `liapoldus.github.io`
+  собирает закреплённый commit SHA в единый сайт без редактируемой копии.
+- [ ] После изменения Core docs синхронизировать pinned SHA в
+  `liapoldus.github.io/docs-sources.json` и выполнить агрегаторный build.
+
 ## Зафиксированная граница v1
 
 - Состав v1: три сервиса — Core, Server plugin, forms-db plugin; две библиотеки —

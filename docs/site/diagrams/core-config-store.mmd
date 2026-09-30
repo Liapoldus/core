@@ -1,0 +1,79 @@
+erDiagram
+    PLUGIN_INSTANCE ||--o{ PLUGIN_CONFIG_GENERATION : owns
+    PLUGIN_INSTANCE ||--o{ REPLICA : has
+    REPLICA ||--o{ REPLICA_GENERATION : acknowledges
+    PLUGIN_INSTANCE ||--o{ OPERATION : changes
+    SERVICE_KEY ||--o{ OPERATION : requests
+    OPERATION ||--o| IDEMPOTENCY_RECORD : deduplicates
+    SERVICE_KEY ||--o{ AUDIT_EVENT : acts
+    OPERATION ||--o{ AUDIT_EVENT : records
+
+    PLUGIN_INSTANCE {
+        text id PK
+        text package_id
+        text desired_mode
+        text state
+        integer created_at
+        integer updated_at
+    }
+    PLUGIN_CONFIG_GENERATION {
+        text instance_id PK, FK
+        integer generation PK
+        text slot UK
+        text schema_version
+        blob raw_json
+        text sha256
+        integer created_at
+    }
+    REPLICA {
+        text id PK
+        text plugin_id FK
+        text endpoint
+        text expected_identity
+        text state
+    }
+    REPLICA_GENERATION {
+        text replica_id PK, FK
+        integer generation PK
+        text config_digest
+        text dispatch_digest
+        integer acknowledged_at
+    }
+    OPERATION {
+        text id PK
+        text plugin_id FK
+        text service_key_id FK
+        text kind
+        text state
+        text input_digest
+        text result_code
+        integer created_at
+        integer updated_at
+    }
+    IDEMPOTENCY_RECORD {
+        text service_key_id PK, FK
+        text idempotency_key PK
+        text input_digest
+        text operation_id FK
+        integer expires_at
+    }
+    SERVICE_KEY {
+        text id PK
+        text name
+        text verifier_hash
+        text state
+        integer created_at
+        integer revoked_at
+    }
+    AUDIT_EVENT {
+        integer sequence PK
+        text service_key_id FK
+        text operation_id FK
+        text action
+        text resource_type
+        text resource_id
+        text result
+        text before_digest
+        text after_digest
+        integer created_at
+    }

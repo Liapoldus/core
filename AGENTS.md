@@ -10,9 +10,10 @@ the plugin pulls that generation from Core. Core does not serve public traffic
 or implement product-specific data planes; those belong to independently
 connected plugins.
 
-Until Core v1 is complete, the normative architecture, public Management
-API, bootstrap schema and public error contract live in
-`/Users/docup/Projects/Liapoldus Engine/liapoldus.github.io`. The standalone
+The normative architecture, public Management API, bootstrap schema, public
+error contract and Core implementation guides are owned by this repository in
+`docs/site/core/`. The VitePress aggregator publishes those files while
+preserving their public routes. The standalone
 Plugin SDK in workspace directory `plugin-sdk/` is the owner of plugin-facing
 REST lifecycle/configuration APIs and common plugin facilities; its Go module
 path is not yet assigned and must not be guessed. The sole owner of
