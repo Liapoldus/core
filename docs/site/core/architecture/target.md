@@ -65,12 +65,12 @@ filesystem permissions и pipe ACL являются дополнительным
 Автоматического выбора и fallback нет. Подробная спецификация и обязательные
 platform conformance gates приведены в разделе
 [v2: локальные IPC carriers и mTLS](protocol#целевое-расширение-v2-локальные-ipc-carriers).
-В v2 также создаётся независимая Python-реализация того же language-neutral
-wire contract; она обязана проходить shared vectors и реальные Go↔Python
-child-process interop tests для unary и streams на поддерживаемой carrier/OS
-матрице. Поддержка других языков не подразумевается автоматически. Полный
-процесс описан в разделе
-[межъязыковых реализаций](protocol#межъязыковые-реализации-в-v2).
+В v2 Go остаётся единственной реализацией `pluginprotocol`; для Python и
+последующих языков она открывается через версионированную native C ABI и FFI.
+Первый binding — Python `cffi`, поставляемый с platform-specific native library;
+независимый Python wire/session engine не создаётся. Полная поверхность,
+границы безопасности и conformance описаны в разделе
+[межъязыкового доступа через C ABI](protocol#межъязыковой-доступ-через-c-abi-в-v2).
 
 V2 также добавляет единый бинарник/процессный профиль: статически выбранные
 доверенные Go plugins могут работать в том же процессе, что и Core, через
@@ -80,6 +80,21 @@ in-process adapter Plugin SDK без REST и Core↔plugin mTLS. Отдельн�
 `pluginprotocol` с mTLS, без прямого Go-вызова между продуктами. Граница доверия
 и conformance описаны в
 [v2-модели Plugin SDK](protocol#целевое-расширение-v2-plugin-sdk-без-внутреннего-rest).
+
+Отдельно v2 предоставляет публичный Go host API для запуска Core как
+библиотеки внутри Go-приложения. Он использует штатный Core composition root,
+SQLite desired state, Management API и lifecycle, не экспортирует `internal/`
+пакеты и не создаёт второй Core instance для той же state database. Единый
+executable строится статической композицией Core и выбранных доверенных Go
+plugin factories; список plugin modules определяется сборкой, не dynamic
+loader. Этот composition совместим с REST/in-process выбором Plugin SDK и не
+заменяет plugin↔plugin обмен через `pluginprotocol`.
+
+Embedding и in-process plugins образуют одну границу доверия и отказа. Они не
+получают process isolation или Core↔plugin mTLS; режим предназначен только для
+доверенного кода. Встроенные плагины нельзя независимо обновить без пересборки
+host binary. Реализационные этапы и gates приведены в
+[v2 roadmap](v1-migration-roadmap).
 
 ## Запуск плагинов в v1
 

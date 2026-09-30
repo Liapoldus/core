@@ -136,13 +136,13 @@ PASS. Не объявлять Core v1 готовым при любом проп�
 public TCP/UDP relay; CAPTCHA/Identity; TUF, catalog и установку plugin
 releases; Core-managed process supervision; Docker/Compose, Swarm или
 Kubernetes providers; Unix domain socket и Windows named-pipe carriers в
-`pluginprotocol`, а также Python SDK и pairwise Go↔Python conformance. Локальные
-carriers требуют явного выбора, обязательного mTLS,
-OS permissions/ACL только как дополнительной защиты и реальных platform-specific
-tests. Межъязыковая реализация требует общей language-neutral wire спецификации,
-исполняемых vectors и реальных Go↔Python child-process interop tests. Подробности
-приведены в [v2-разделах протокола](protocol#межъязыковые-реализации-в-v2).
-Подробная граница перечислена в [целевой архитектуре](target).
+`pluginprotocol`, Python FFI binding поверх C ABI, Core embedding API и
+статическая композиция Core с доверенными Go plugins. `pluginprotocol` остаётся
+единственной Go wire/session реализацией; второй Python engine не создаётся.
+Native artifacts и Python `cffi` wheels проверяются на Linux amd64/arm64, macOS
+arm64 и Windows amd64. Подробности и ABI/interop gates приведены в
+[C ABI дизайне](protocol#межъязыковой-доступ-через-c-abi-в-v2); Core и SDK
+composition — в [целевой архитектуре](target).
 
 ### Plugin SDK in-process adapter и единый бинарник
 
@@ -167,6 +167,28 @@ In-process компоненты — одна граница доверия и о
 instance scoping, authorization/grants/audit и отмена. Smoke доказывает, что
 in-process профиль не открывает Core↔plugin REST listener, REST-профиль
 сохраняет mTLS, а plugin-to-plugin mTLS не изменяется.
+
+### Core как Go library и статическая композиция
+
+Core предоставляет публичный host API, позволяющий Go-приложению создать,
+запустить, проверить readiness и остановить один Core runtime. API использует
+штатную composition root и bootstrap/config source; не раскрывает `internal/`
+типы, не обходит SQLite и не создаёт параллельную модель конфигурации. Core
+остаётся singleton относительно своей state database.
+
+Отдельный сборочный composition root включает Core и выбранные plugin factories
+в один executable. Встроенные Go plugins подключаются через Plugin SDK
+in-process adapter; REST adapter остаётся для отдельно запущенных и удалённых
+plugins. Состав фиксируется на build time; dynamic Go plugin loading,
+независимое обновление встроенного plugin без пересборки и обещание process
+isolation не входят в scope. Упаковка executable с child processes сама по себе
+не переводит их на in-process transport.
+
+**Gate:** host API smoke создаёт/закрывает один Core и освобождает ресурсы;
+composed binary содержит только явно включённые factories; in-process plugin
+проходит общий SDK Reload/config-pull/ACK corpus без REST listener. Отдельный
+process сохраняет REST+mTLS и тот же lifecycle contract. Ни один plugin не
+обходит Core/peer security boundary прямым вызовом `pluginprotocol`.
 
 ## Правила агентной работы
 

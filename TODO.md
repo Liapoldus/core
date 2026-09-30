@@ -239,6 +239,16 @@
   reconciliation, rollout/scale/drain и ownership-safe cleanup.
 - [ ] Любые API, credentials, database fields, CLI commands и tests, которые
   существуют только для этих v2 features.
+- [ ] Публичный Go host API для embedding одного Core runtime без импорта
+  `internal/` пакетов; lifecycle, readiness, shutdown, bootstrap reuse и один
+  Core instance на state database.
+- [ ] Static composition root для единого Go executable с явно выбранными
+  trusted plugin factories; без dynamic Go plugin loading и независимого
+  обновления встроенных plugins.
+- [ ] Использовать Plugin SDK in-process adapter для embedded plugins с тем же
+  lifecycle conformance, что и REST; отдельно запущенные plugins сохраняют
+  REST+mTLS. Проверить отсутствие listener, duplicate Core runtime, утечек
+  ресурсов и нарушения Core/plugin trust boundary.
 
 ## Статус инкреста (preflight + миграция v1)
 

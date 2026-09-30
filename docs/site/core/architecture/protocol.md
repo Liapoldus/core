@@ -277,87 +277,45 @@ Unix-socket tests на macOS/Linux runners. v2 gate считается прой�
 исполняемые vectors принадлежат только `pluginprotocol` и описываются в его
 TODO до начала v2.
 
-### Межъязыковые реализации в v2
+### Межъязыковой доступ через C ABI в v2
 
-В v2 `pluginprotocol` становится переносимым wire-протоколом, а не Go API,
-которое другие языки должны пытаться вызывать напрямую. Go остаётся одной из
-реализаций. Независимая реализация на другом языке должна использовать тот же
-wire contract и проходить общую conformance suite; несовместимые языковые
-варианты протокола не допускаются.
+В v2 Go остаётся единственной реализацией wire/session engine
+`pluginprotocol`. Другие языки используют native shared library с
+версионированной C ABI и FFI; независимый Python codec/session/TLS stack и
+параллельные реализации wire semantics не создаются. Первый официальный
+binding — Python package на `cffi`.
 
-Для текущего wire contract источник истины — `proto/liapoldus/peer/v1/peer.proto`
-в репозитории `pluginprotocol`. Он задаёт protobuf-типы только generic peer
-сообщений и не задаёт product methods. Поверх transport byte stream действует
-общий framing: 13-byte header — 1 byte frame type, 8-byte unsigned stream ID
-в big-endian и 4-byte unsigned body length в big-endian; за ним идёт protobuf
-body соответствующего frame type. Текущие frame types, их числовые значения,
-stream scope, protobuf message mapping, ограничения длины и состояния сессии
-должны быть перенесены из реализации в нормативную language-neutral
-спецификацию и не могут определяться только Go constants или комментариями.
-Эти значения нельзя менять в рамках кросс-языкового порта. Любое несовместимое
-изменение wire semantics требует отдельной protocol-versioning процедуры;
-переход системы к v2 сам по себе не переименовывает `liapoldus.peer.v1`.
+C ABI покрывает полный generic peer facade: создание listener/client, unary
+calls и двунаправленные streams. Она принимает только C-совместимые значения,
+opaque handles и length-delimited byte spans; Go pointers не пересекают
+границу. Входящие requests/events выдаются через bounded poll/event queue, а
+host отправляет результаты и stream frames отдельными вызовами API. Заполнение
+очереди сохраняет backpressure semantics протокола; callbacks из Go goroutines
+в чужие runtimes не используются. Входные bytes копируются; владение
+возвращаемыми буферами и API их освобождения закрепляются в публичном C header.
 
-Каждый язык генерирует свои protobuf types из общей `.proto`; generated code не
-редактируется вручную и не является самостоятельной спецификацией. Кроме
-generated messages реализация обязана предоставить собственные корректные:
+TLS identity, private key и trust roots передаются как length-delimited PEM
+bytes и копируются в Go-owned memory. FFI сохраняет mTLS, peer identity,
+revocation, deadlines, cancellation и error classification. PEM, key bytes,
+payload и внутренние Go errors не попадают в публичные ошибки или logs.
+`pluginprotocol` остаётся только plugin↔plugin API: Core↔plugin `Reload`, config
+pull, health и metrics в C ABI не входят и принадлежат Plugin SDK.
 
-- frame encoder/decoder с проверками unknown type, truncation, stream ID,
-  body length и configured limits до выделения больших буферов;
-- session engine для concurrent unary calls и multiplexed bidirectional
-  streams, включая stream open/ack, data, half-close, terminal status, ping,
-  close, cancellation, deadlines и backpressure;
-- carrier adapters для объявленных платформой TCP, QUIC, Unix domain socket и
-  Windows named pipe;
-- TLS/mTLS adapter с той же проверкой trust roots, replica identity,
-  certificate purpose и revocation; локальный carrier не ослабляет правило;
-- idiomatic public SDK facade, сохраняющий одинаковые observable semantics.
+C ABI version независима от wire contract `liapoldus.peer.v1`: additive symbols
+допустимы внутри ABI-major, breaking ABI требует нового ABI-major. Публичные C
+header, exported symbols, ownership rules и ABI version принадлежат
+`pluginprotocol`. Python binding не является второй protocol implementation;
+прочие языки считаются поддержанными только после собственного binding и
+conformance.
 
-Четырёхслойная ответственность остаётся обязательной, но физическая структура
-пакетов может следовать idioms языка: transport-independent models/interfaces;
-registration/session use cases; framing, carriers и crypto adapters; публичный
-library facade. Generated protobuf types, OS-specific APIs и конкретные carrier
-dependencies не должны проникать в application/domain API. Слои не создают
-копии product schemas: method name и payload остаются opaque для библиотеки и
-определяются конкретным plugin contract.
-
-#### Межъязыковые векторы и проверка совместимости
-
-Conformance suite должна иметь машиночитаемый corpus, независимый от Go
-implementation. Он покрывает:
-
-- валидные framing/protobuf-векторы каждого frame type и boundary размеров;
-- malformed/truncated header и body, неизвестные frame types, недопустимые
-  stream IDs, oversized payload и некорректные protobuf bodies;
-- последовательности unary call и bidirectional stream, включая конкурентные
-  stream IDs, half-close, remote/local cancellation, deadlines и terminal errors;
-- TLS/mTLS handshake, ожидаемую identity, недоверенный/просроченный/отозванный
-  сертификат и обязательный отказ без downgrade;
-- carrier-specific permissions/ACL и platform lifecycle согласно требованиям
-  выше.
-
-Каждая реализация должна выполнить один и тот же corpus локально, а pairwise
-interop gate должен запускать реального child-process peer на каждом
-поддерживаемом языке: Go↔другой язык в обе стороны для unary и stream, а также
-межъязыковые negative/security сценарии. Совпадение только unit-тестов внутри
-одной реализации или cross-build без запуска не доказывает interop. Ожидаемый
-результат corpus нельзя генерировать и проверять только одной реализацией;
-vectors ревьюируются как contract assets, а изменения wire-поведения — как
-явное изменение версии/контракта.
-
-Первый non-Go target v2 уже выбран: **Python**. Владелец protocol добавляет
-изолированный Python package/SDK к репозиторию `pluginprotocol`, не смешивая его
-с Go module и сохраняя один source of truth wire-контрактов. Python API должен
-быть idiomatic для языка, но не менять wire semantics, error mapping,
-authorization boundary или mTLS requirements. Публичные product methods и
-schemas в SDK не добавляются. До начала реализации отдельно фиксируются
-поддерживаемые CPython versions, packaging/dependency policy и конкретные
-security-reviewed carrier libraries; выбор реализации не меняет протокол.
-
-Python SDK проходит тот же corpus и полный заявленный carrier/platform matrix,
-включая Windows named pipes на Windows runner, а также двунаправленный реальный
-Go↔Python interop для unary и streams. CI должна запускать Python-версии с
-объявленной матрицей на поддерживаемых ОС; cross-build или вызов Go через
-subprocess wrapper не считается Python implementation. Добавление каждого
-следующего языка — отдельное решение и gate; документация не заявляет его
-поддержку до прохождения pairwise interop.
+CI выпускает native library artifacts и Python wheels с библиотекой внутри для
+Linux amd64/arm64, macOS arm64 и Windows amd64. Python package не собирает Go
+library при установке. Для каждой пары OS/architecture CI выполняет native ABI
+smoke и protocol conformance; одних cross-build результатов недостаточно.
+Shared suite проверяет полную facade поверхность, event queue bounds и
+backpressure, memory ownership, cancellation, deadlines, error mapping, mTLS и
+Go↔Python FFI peers в обоих направлениях для unary и streams. Поддерживаемые
+версии CPython фиксируются при реализации binding, не меняя wire contract.
+Native shared builds используют поддерживаемые Go build modes и cgo; конкретная
+матрица подтверждается для закреплённого Go toolchain и запускается в native CI
+([Go build modes](https://go.dev/src/cmd/dist/test.go), [cgo](https://pkg.go.dev/cmd/cgo)).
