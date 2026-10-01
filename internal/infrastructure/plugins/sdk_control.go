@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
-	sdkmodels "liapoldus.local/plugin-sdk/domain/models"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
 )
 
 type SDKReloadClient interface {
@@ -16,11 +16,9 @@ type SDKReloadClient interface {
 }
 
 // SDKReloadFanout announces one generation to every declared replica of a single
-// plugin instance. A generation is applied to the instance only when every
-// declared replica accepted it: a partial acknowledgement leaves the instance
-// fenced, and the failing replica is reported by name so the operator can see
-// which declared endpoint did not converge. Replicas are notified sequentially in
-// declaration order so a single failure has a deterministic cause.
+// plugin instance. A generation is converged only when every declared replica
+// accepted it. Replicas are notified in declaration order; one refusal does not
+// prevent later replicas from receiving the desired generation.
 type SDKReloadFanout struct {
 	InstanceID string
 	Replicas   []SDKReloadReplicaClient
@@ -33,11 +31,10 @@ type SDKReloadReplicaClient struct {
 	Client    SDKReloadClient
 }
 
-// Reload announces the generation to each declared replica and stops at the
-// first refusal. The returned error names the replica that refused so a
-// degraded instance is attributable to a declared endpoint. The call is never
-// replayed here: whether to repeat a failed announcement is a Core operation
-// decision, not a client one.
+// Reload announces the generation to every declared replica. Its returned
+// error identifies all failed replicas so degradation remains attributable to
+// declared endpoints. Calls are never replayed here: whether to retry an
+// announcement is a Core operation decision, not a client one.
 func (fanout *SDKReloadFanout) Reload(ctx context.Context, reload sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
 	acknowledged, _, err := fanout.ReloadObserved(ctx, reload)
 	return acknowledged, err
@@ -55,41 +52,35 @@ type ReplicaReloadResult struct {
 	Unreachable bool
 }
 
-// ReloadObserved announces the generation and reports every replica outcome,
-// including the replicas that were never reached after the first refusal. Only
-// the refusal itself is returned as an error; the remaining replicas are
-// deliberately not contacted so an unavailable replica never turns a single
-// announcement into an unbounded fan-out.
+// ReloadObserved announces the generation to every declared replica and reports
+// each outcome. Failed replicas remain fenced while successfully acknowledged
+// replicas may serve the desired generation.
 func (fanout *SDKReloadFanout) ReloadObserved(ctx context.Context, reload sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, []ReplicaReloadResult, error) {
-	results := make([]ReplicaReloadResult, 0, len(fanout.Replicas))
 	if fanout == nil || len(fanout.Replicas) == 0 {
-		return sdkmodels.ReloadAcknowledgement{}, results, ErrPluginUnavailable
+		return sdkmodels.ReloadAcknowledgement{}, nil, ErrPluginUnavailable
 	}
+	results := make([]ReplicaReloadResult, 0, len(fanout.Replicas))
 	var acknowledged sdkmodels.ReloadAcknowledgement
-	for index, replica := range fanout.Replicas {
+	var failures []error
+	for _, replica := range fanout.Replicas {
 		if replica.Client == nil {
 			results = append(results, ReplicaReloadResult{ReplicaID: replica.ReplicaID, Unreachable: true})
-			markRemainingUnreachable(fanout.Replicas, results, index+1)
-			return sdkmodels.ReloadAcknowledgement{}, results, ErrPluginUnavailable
+			failures = append(failures, fmt.Errorf("replica %s/%s: %w", fanout.InstanceID, replica.ReplicaID, ErrPluginUnavailable))
+			continue
 		}
 		answer, err := replica.Client.Reload(ctx, reload)
 		if err != nil {
 			results = append(results, ReplicaReloadResult{ReplicaID: replica.ReplicaID, Unreachable: isUnreachable(err)})
-			markRemainingUnreachable(fanout.Replicas, results, index+1)
-			return sdkmodels.ReloadAcknowledgement{}, results, fmt.Errorf("replica %s/%s: %w", fanout.InstanceID, replica.ReplicaID, err)
+			failures = append(failures, fmt.Errorf("replica %s/%s: %w", fanout.InstanceID, replica.ReplicaID, err))
+			continue
 		}
 		results = append(results, ReplicaReloadResult{ReplicaID: replica.ReplicaID, Acknowledged: true})
 		acknowledged = answer
 	}
-	return acknowledged, results, nil
-}
-
-// markRemainingUnreachable records the replicas that were never attempted, so a
-// partial announcement never looks like a partial acknowledgement.
-func markRemainingUnreachable(replicas []SDKReloadReplicaClient, results []ReplicaReloadResult, from int) {
-	for _, remaining := range replicas[from:] {
-		results = append(results, ReplicaReloadResult{ReplicaID: remaining.ReplicaID, Unreachable: true})
+	if len(failures) != 0 {
+		return sdkmodels.ReloadAcknowledgement{}, results, errors.Join(failures...)
 	}
+	return acknowledged, results, nil
 }
 
 // isUnreachable reports whether an SDK client error means the replica could not
@@ -106,10 +97,23 @@ type ReplicaObservationRecorder interface {
 	RecordReplicaObservation(ctx context.Context, instanceID, replicaID string, generation int64, acknowledged, unreachable bool)
 }
 
+// ConfigurationSnapshot is refreshed after a durable promotion and before any
+// replica is told to pull that generation.
+type ConfigurationSnapshot interface {
+	Refresh(context.Context, string) error
+}
+
+type ConvergenceSnapshot interface {
+	Refresh(context.Context) error
+	Invalidate()
+}
+
 type SDKConfigurationApplier struct {
 	Store        interfaces.PluginConfigurationStore
 	Clients      map[string]SDKReloadClient
 	Observations ReplicaObservationRecorder
+	Snapshot     ConfigurationSnapshot
+	Convergence  ConvergenceSnapshot
 }
 
 var _ interfaces.PluginConfigurationApplier = (*SDKConfigurationApplier)(nil)
@@ -132,6 +136,19 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	}
 	if !bytes.Equal(revision.SettingsJSON, rawJSON) {
 		return ErrProtocolViolation
+	}
+	if applier.Convergence != nil {
+		applier.Convergence.Invalidate()
+	}
+	if applier.Snapshot != nil {
+		if err := applier.Snapshot.Refresh(context.WithoutCancel(ctx), instanceID); err != nil {
+			return err
+		}
+	}
+	if applier.Convergence != nil {
+		if err := applier.Convergence.Refresh(context.WithoutCancel(ctx)); err != nil {
+			return err
+		}
 	}
 	reload := sdkmodels.Reload{
 		Generation:    generation,

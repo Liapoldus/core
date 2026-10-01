@@ -40,7 +40,8 @@ describe("architecture lint boundaries", () => {
 
     expect(architecture).toMatch(/yaml:\s*\{ in: \[gopkg\.in\/yaml\.v3\] \}/);
     expect(architecture).toMatch(/textNormalization:\s*\{ in: \[golang\.org\/x\/text\/cases, golang\.org\/x\/text\/unicode\/norm\] \}/);
-    expect(architecture).toMatch(/protobuf:\s*\{ in: \[google\.golang\.org\/protobuf\/proto, google\.golang\.org\/protobuf\/encoding\/protojson\] \}/);
+    expect(architecture).not.toMatch(/protobuf:\s*\{/);
+    expect(architecture).toMatch(/pluginSDK:\s*\{ in: \[github\.com\/Liapoldus\/plugin-sdk,/);
   });
 
   it("does not let storage depend on config or CLI depend on protocol adapters", async () => {

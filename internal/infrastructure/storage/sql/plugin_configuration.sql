@@ -10,6 +10,26 @@ SELECT active.instance_id, active.generation, active.schema_version, active.sha2
 FROM plugin_config_generations AS active
 WHERE active.instance_id = ? AND active.slot = ?;
 
+-- name: instance-exists
+SELECT EXISTS(SELECT 1 FROM plugin_instances WHERE id = ?);
+
+-- name: operation-payload-needs-v8
+SELECT sql LIKE '%expected_revision > 0%' FROM sqlite_master WHERE type = 'table' AND name = 'operation_payloads';
+
+-- name: rebuild-operation-payloads-v8
+CREATE TABLE operation_payloads_v8 (
+    operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL CHECK (version > 0),
+    resource TEXT NOT NULL,
+    expected_revision INTEGER NOT NULL CHECK (expected_revision >= 0),
+    schema_version INTEGER NOT NULL CHECK (schema_version > 0),
+    digest TEXT NOT NULL
+);
+INSERT INTO operation_payloads_v8(operation_id, version, resource, expected_revision, schema_version, digest)
+SELECT operation_id, version, resource, expected_revision, schema_version, digest FROM operation_payloads;
+DROP TABLE operation_payloads;
+ALTER TABLE operation_payloads_v8 RENAME TO operation_payloads;
+
 -- name: select-generation
 SELECT instance_id, generation, schema_version, sha256, raw_json, slot, created_at
 FROM plugin_config_generations WHERE instance_id = ? AND generation = ?;

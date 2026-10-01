@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
@@ -165,6 +166,27 @@ func main() {
 	check(rows.Err())
 	check(rows.Close())
 	auditedActor, auditActions := readAudit(ctx, database)
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
+		"fresh", "remote", []byte(`{"name":"fresh"}`), "configured")
+	check(err)
+	firstRaw := []byte(`{"initial":true}`)
+	first := perform(handler, http.MethodPut, management.Paths.Plugins+"/fresh"+management.Paths.PluginSettingsSuffix,
+		firstRaw, `"0"`, "first-config-key-0001", management)
+	firstReport := map[string]any{"acceptedStatus": first.Code, "state": "", "revision": "", "raw": ""}
+	if first.Code == http.StatusAccepted {
+		var accepted map[string]any
+		check(json.Unmarshal(first.Body.Bytes(), &accepted))
+		if id, _ := accepted[management.JSON.OperationID].(string); id != "" {
+			finished := waitOperation(handler, id, management)
+			firstReport["state"] = finished[management.JSON.State]
+		}
+		var revision int64
+		var raw []byte
+		check(database.QueryRowContext(ctx, `SELECT generation, raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = ?`,
+			"fresh", pluginConfigurationWords.Slots.Active).Scan(&revision, &raw))
+		firstReport["revision"] = strconv.FormatInt(revision, 10)
+		firstReport["raw"] = string(raw)
+	}
 	writeReport(map[string]any{
 		"acceptedStatus": accepted.Code, "accepted": acceptedBody, "operation": operation,
 		"applyCalls": applyCalls, "settings": settingsBody,
@@ -174,6 +196,7 @@ func main() {
 		"tooLargeStatus": tooLarge.Code, "activeRaw": string(activeRaw), "activeDigest": activeDigest, "slots": slots,
 		"rejectedOperation": rejectedOperation, "settingsAfterReject": rejectedSettingsBody,
 		"auditedActor": auditedActor, "auditActions": auditActions,
+		"firstConfig": firstReport,
 	})
 }
 

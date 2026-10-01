@@ -38,6 +38,9 @@ private keys. Plugin data без соответствующего Core backup м
 
 1. Восстанавливайте сначала в изолированное окружение. Проверьте целостность
    SQLite, совместимость Core binary и наличие внешних secret/TLS references.
+   При старте Core выполняет SQLite `quick_check(1)` и `foreign_key_check` до и
+   после применения схемы; любой отказ не допускает открытия listener-ов. Эти
+   проверки не заменяют пробное восстановление полной резервной копии.
 2. Восстановите Core bootstrap и SQLite. Core должен загрузить `active` и
    `previous` из долговременного хранилища и собрать runtime snapshot в памяти.
 3. Вручную запустите Caddy и forms-db из совместимых operator-managed binary

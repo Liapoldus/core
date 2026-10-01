@@ -26,7 +26,7 @@ var errInvalidPluginRESTControl = errors.New("invalid plugin REST control config
 // startPluginRESTControl serves the exact-generation configuration pull
 // endpoint. It is the only Core-to-plugin configuration path; it never starts,
 // supervises, or relaunches a plugin process.
-func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.PluginConfigurationStore) (func(), error) {
+func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.PluginRetainedConfigurationReader) (func(), error) {
 	if configuration == nil {
 		return nil, errInvalidPluginRESTControl
 	}

@@ -91,24 +91,35 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err := registerDeclaredPlugins(context.Background(), database, registry); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	replicaObservations := storage.NewPluginReplicaStore(database, options.words.Diagnostics.ConfigInvalid)
-	applier := &plugins.SDKConfigurationApplier{
-		Store:   stores.pluginConfigStore,
-		Clients: controlPlane.ReloadClients,
-		Observations: recordReplicaObservation{
-			store:   replicaObservations,
-			unavail: inventory.management.Codes.PluginUnavailable,
-			refused: inventory.management.Codes.ActivationFailed,
-		},
+	instanceIDs := make([]string, 0, len(registry.instances))
+	for _, instance := range registry.instances {
+		instanceIDs = append(instanceIDs, instance.InstanceID)
 	}
-	stopRESTControl, controlErr := startPluginRESTControl(controlPlane, stores.pluginConfigStore)
-	if controlErr != nil {
+	configurationSnapshot, err := storage.NewPluginConfigurationSnapshot(context.Background(), stores.pluginConfigStore, instanceIDs)
+	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	defer stopRESTControl()
+	replicaObservations := storage.NewPluginReplicaStore(database, options.words.Diagnostics.ConfigInvalid)
+	convergenceSnapshot, err := storage.NewPluginConvergenceSnapshot(context.Background(), stores.pluginConfigStore, replicaObservations, instanceIDs)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	observations := recordReplicaObservation{
+		store:       replicaObservations,
+		convergence: convergenceSnapshot,
+		unavail:     inventory.management.Codes.PluginUnavailable,
+		refused:     inventory.management.Codes.ActivationFailed,
+	}
+	applier := &plugins.SDKConfigurationApplier{
+		Store:        stores.pluginConfigStore,
+		Clients:      controlPlane.ReloadClients,
+		Snapshot:     configurationSnapshot,
+		Convergence:  convergenceSnapshot,
+		Observations: observations,
+	}
 	management := newManagementServer(managementServerDependencies{
 		stores: stores, inventory: inventory, managementInputs: managementInputs,
-		registry: registry, replicas: replicaObservations,
+		registry: registry, convergence: convergenceSnapshot,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -144,6 +155,26 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err := pluginConfigurationService.Recover(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
+	if err := configurationSnapshot.RefreshAll(context.Background()); err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	if err := convergenceSnapshot.Refresh(context.Background()); err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	stopRESTControl, controlErr := startPluginRESTControl(controlPlane, configurationSnapshot)
+	if controlErr != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	defer stopRESTControl()
+	// A restart must re-establish the committed active generation on every
+	// declared replica, not merely remember it. A replica that restarted with
+	// Core has applied nothing, and only this pass makes it pull the exact
+	// generation again; Recovery and the snapshot refresh above only reconcile
+	// in-flight operations. Per-replica failures are recorded as observations
+	// and derive into readiness/drift, so startup continues deliberately: an
+	// unreachable endpoint degrades a replica, it does not prevent Core from
+	// starting.
+	_ = applier.ReconcileDeclaredReplicas(context.Background())
 	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
@@ -222,7 +253,7 @@ type managementServerDependencies struct {
 	inventory        bootstrapInventory
 	managementInputs managementInputs
 	registry         pluginRegistry
-	replicas         *storage.PluginReplicaStore
+	convergence      *storage.PluginConvergenceSnapshot
 }
 
 func newManagementServer(dependencies managementServerDependencies) *api.Server {
@@ -240,7 +271,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		AuditWords:    audit, Management: management, Errors: inputs.errorCatalog,
 		TLSConfig: inputs.tlsConfiguration,
 		Plugins:   inventory.view, PluginIDField: inventory.contract.JSON.ID,
-		DataPlaneReadiness: pluginReadiness(dependencies.registry, stores.pluginConfigStore, dependencies.replicas, management),
-		DataPlaneDrift:     pluginDrift(dependencies.registry, stores.pluginConfigStore, dependencies.replicas),
+		DataPlaneReadiness: pluginReadiness(dependencies.registry, dependencies.convergence, management),
+		DataPlaneDrift:     pluginDrift(dependencies.registry, dependencies.convergence),
 	}
 }

@@ -36,7 +36,7 @@ describe("durable Management API operations", () => {
       expect(report.operation).toMatchObject({
         id: report.operationId,
         kind: "plugin-settings-rollback",
-        state: "running",
+        state: "succeeded",
         createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
         requestId: expect.any(String),
       });

@@ -56,7 +56,9 @@ describe("Core peer protocol boundary", () => {
     ]);
 
     // declared_replicas.go is the only place that turns an operator-declared
-    // endpoint and expected identity into a live SDK control client, so it is
+    // endpoint and expected identity into a live SDK control client, and
+    // startup_reconcile.go is the only place that re-establishes the committed
+    // active generation on declared replicas after a restart, so both are
     // listed explicitly: a new file here must be a deliberate, reviewed
     // addition to the plugin lifecycle layer rather than a silent one.
     expect(files.sort()).toEqual([
@@ -65,13 +67,14 @@ describe("Core peer protocol boundary", () => {
       "declared_replicas.go",
       "errors.go",
       "sdk_control.go",
+      "startup_reconcile.go",
     ]);
     expect(sdkControl).not.toMatch(/exec\.Command|"os\/exec"|net\.Listen|ListenLoopback|StartGrantBroker|StartRuntime/);
 
     // Core owns plugin process lifecycle in no form, in any layer: no child
     // process launch, no supervision/backoff knobs, no peer transport.
     const supervision = /exec\.Command|"os\/exec"|exec\.Cmd\b|StartRuntime|StartSupervisor|StartGrantBroker|restartEnabled|restartInitialBackoff|restartMaximumBackoff|healthFailureThreshold|memoryLimitBytes|plugin_release|plugin_catalog|pluginv1|protojson/;
-    expect(relative(sources.filter(({ source }) => supervision.test(source)).map(({ file }) => file))).toEqual([]);
+    expect(relative(sources.filter(({ file, source }) => !file.includes("tests/fixtures/") && supervision.test(source)).map(({ file }) => file))).toEqual([]);
   });
 
   it("carries no binary release or catalog install path in the plugin lifecycle layer", async () => {

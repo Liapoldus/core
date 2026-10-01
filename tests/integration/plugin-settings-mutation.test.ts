@@ -40,6 +40,7 @@ describe("plugin settings mutation API", () => {
         settingsAfterReject: { revision?: string; config?: Record<string, unknown> };
         auditedActor: string;
         auditActions: string[];
+        firstConfig: { acceptedStatus: number; state: string; revision: string; raw: string };
       };
 
       expect(report.acceptedStatus).toBe(202);
@@ -76,6 +77,12 @@ describe("plugin settings mutation API", () => {
       expect(report.auditedActor).toBe("static-token");
       expect(report.auditActions).toContain("plugin_settings.apply");
       expect(report.auditActions.filter((action) => action === "plugin_settings.apply")).toHaveLength(2);
+      expect(report.firstConfig).toEqual({
+        acceptedStatus: 202,
+        state: "succeeded",
+        revision: "1",
+        raw: '{"initial":true}',
+      });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

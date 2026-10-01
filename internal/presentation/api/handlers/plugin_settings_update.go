@@ -211,7 +211,7 @@ func parseStrongRevisionETag(value string) (int64, bool) {
 	}
 	quoted := strings.Trim(value, "\"")
 	revision, err := strconv.ParseInt(quoted, 10, 64)
-	return revision, err == nil && revision > 0 && revisionETag(revision) == value
+	return revision, err == nil && revision >= 0 && revisionETag(revision) == value
 }
 
 func newOperationID() (string, error) {

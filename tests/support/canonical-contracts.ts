@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,16 +17,20 @@ function git(cwd: string, ...args: string[]): string | null {
   }
 }
 
-/**
- * A local docs checkout may only be trusted while it is a real git repository
- * whose working HEAD is exactly the fetched `origin/main`. Anything else (a
- * non-repository, a detached head, a branch that drifted) is ignored so a stale
- * working tree can never masquerade as the canonical contract.
- */
-function isAuthoritativeCheckout(candidate: string): boolean {
-  const head = git(candidate, "rev-parse", "HEAD");
-  const originMain = git(candidate, "rev-parse", `origin/${docsBranch}`);
-  return head !== null && originMain !== null && head === originMain;
+/** Read the tracked remote revision, never uncommitted docs working files. */
+function canonicalLocalFile(candidate: string, relativePath: string): Buffer | null {
+  const remote = git(candidate, "remote", "get-url", "origin");
+  if (remote !== `https://github.com/${docsRepo}.git` && remote !== `git@github.com:${docsRepo}.git`) {
+    return null;
+  }
+  try {
+    return execFileSync("git", ["show", `origin/${docsBranch}:${relativePath}`], {
+      cwd: candidate,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
 }
 
 function checkoutCandidates(): string[] {
@@ -38,21 +41,15 @@ function checkoutCandidates(): string[] {
 }
 
 /**
- * Loads one canonical documentation file. Resolution order is a verified local
- * checkout first and the GitHub REST API second; if neither yields the file the
- * call rejects. There is deliberately no untracked fallback: a missing canonical
- * contract must fail verification rather than be silently replaced by a copy
- * that is not the published one.
+ * Loads one canonical documentation file. Resolution order is a local
+ * origin/main tracking revision first and the GitHub REST API second. The
+ * working tree is never read, so unrelated dirty docs cannot alter the gate.
  */
 export async function loadCanonicalDocsFile(relativePath: string): Promise<Buffer> {
   for (const candidate of checkoutCandidates()) {
-    if (!isAuthoritativeCheckout(candidate)) {
-      continue;
-    }
-    try {
-      return readFileSync(join(candidate, relativePath));
-    } catch {
-      // A verified checkout that lacks the file still falls through to the API.
+    const local = canonicalLocalFile(candidate, relativePath);
+    if (local !== null) {
+      return local;
     }
   }
 

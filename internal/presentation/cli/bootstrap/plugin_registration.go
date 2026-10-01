@@ -3,10 +3,8 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
@@ -54,9 +52,10 @@ func registerDeclaredPlugins(ctx context.Context, database *sql.DB, registry plu
 // contract, never a driver error, a path or anything from a replica's response
 // body, so the observation table can be shown to an operator as-is.
 type recordReplicaObservation struct {
-	store   *storage.PluginReplicaStore
-	unavail string
-	refused string
+	store       *storage.PluginReplicaStore
+	convergence *storage.PluginConvergenceSnapshot
+	unavail     string
+	refused     string
 }
 
 var _ plugins.ReplicaObservationRecorder = recordReplicaObservation{}
@@ -84,7 +83,13 @@ func (recorder recordReplicaObservation) RecordReplicaObservation(ctx context.Co
 	}
 	// An observation that cannot be written is not silently ignored: readiness
 	// is derived from this table, so losing one must not be papered over here.
-	_ = recorder.store.Record(ctx, observation)
+	if err := recorder.store.Record(context.WithoutCancel(ctx), observation); err != nil {
+		recorder.convergence.Invalidate()
+		return
+	}
+	if recorder.convergence != nil {
+		_ = recorder.convergence.Refresh(context.WithoutCancel(ctx))
+	}
 }
 
 func sqlNullInt64(value int64) sql.NullInt64 {
@@ -94,17 +99,12 @@ func sqlNullInt64(value int64) sql.NullInt64 {
 // pluginConvergence is the derived view Core reports on /api/status. It is
 // computed from durable desired state (the active generation) and the recorded
 // replica observations, never from a constant.
-type pluginConvergence struct {
-	Desired map[string]int64
-	Records []storage.PluginReplicaObservation
-}
-
 // instanceConverged reports whether every declared replica of an instance is
 // observed at exactly the desired generation. An instance that has no desired
 // configuration yet has nothing to converge and does not hold readiness. An
 // instance that has one but whose replicas have not all acknowledged it is
 // fenced, and it is exactly that case that makes Core degraded with drift.
-func instanceConverged(instanceID string, convergence pluginConvergence, declaredReplicas int) (ready bool, drifted bool) {
+func instanceConverged(instanceID string, convergence storage.PluginConvergenceView, declaredReplicas int) (ready bool, drifted bool) {
 	desired, hasDesired := convergence.Desired[instanceID]
 	if !hasDesired {
 		return true, false
@@ -128,9 +128,9 @@ func instanceConverged(instanceID string, convergence pluginConvergence, declare
 // declared registry plus durable observations. A Core with declared replicas that
 // have not converged reports notReady, and drift is true whenever any instance
 // with a desired generation is not fully acknowledged.
-func pluginReadiness(registry pluginRegistry, store *storage.SQLitePluginConfigurationStore, replicas *storage.PluginReplicaStore, words config.ManagementWords) func(context.Context) (string, string) {
-	return func(ctx context.Context) (string, string) {
-		convergence, err := convergenceFor(ctx, registry, store, replicas)
+func pluginReadiness(registry pluginRegistry, snapshot *storage.PluginConvergenceSnapshot, words config.ManagementWords) func(context.Context) (string, string) {
+	return func(_ context.Context) (string, string) {
+		convergence, err := snapshot.Current()
 		if err != nil {
 			return words.Statuses.NotReady, "plugin observations unavailable"
 		}
@@ -146,9 +146,9 @@ func pluginReadiness(registry pluginRegistry, store *storage.SQLitePluginConfigu
 
 // pluginDrift reports whether any instance with a desired generation is not
 // fully acknowledged by its declared replicas.
-func pluginDrift(registry pluginRegistry, store *storage.SQLitePluginConfigurationStore, replicas *storage.PluginReplicaStore) func(context.Context) bool {
-	return func(ctx context.Context) bool {
-		convergence, err := convergenceFor(ctx, registry, store, replicas)
+func pluginDrift(registry pluginRegistry, snapshot *storage.PluginConvergenceSnapshot) func(context.Context) bool {
+	return func(_ context.Context) bool {
+		convergence, err := snapshot.Current()
 		if err != nil {
 			// An unreadable observation store is drift, not a silent clean bill
 			// of health: Core must not report no drift when it cannot tell.
@@ -162,33 +162,4 @@ func pluginDrift(registry pluginRegistry, store *storage.SQLitePluginConfigurati
 		}
 		return false
 	}
-}
-
-func convergenceFor(ctx context.Context, registry pluginRegistry, store *storage.SQLitePluginConfigurationStore, replicas *storage.PluginReplicaStore) (pluginConvergence, error) {
-	convergence := pluginConvergence{Desired: make(map[string]int64, len(registry.instances))}
-	if store != nil {
-		for _, instance := range registry.instances {
-			_, pointers, err := store.Current(ctx, instance.InstanceID)
-			// A declared instance that has no configuration yet has nothing to
-			// converge. That is an expected state, not an unreadable store, so it
-			// must not make readiness fail or drift report.
-			if errors.Is(err, models.PluginConfigurationNotFound{}) {
-				continue
-			}
-			if err != nil {
-				return pluginConvergence{}, err
-			}
-			if pointers.CurrentRevision > 0 {
-				convergence.Desired[instance.InstanceID] = pointers.CurrentRevision
-			}
-		}
-	}
-	if replicas != nil {
-		records, err := replicas.List(ctx)
-		if err != nil {
-			return pluginConvergence{}, err
-		}
-		convergence.Records = records
-	}
-	return convergence, nil
 }

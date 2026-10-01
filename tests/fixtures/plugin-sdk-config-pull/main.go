@@ -29,8 +29,8 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
-	sdkmodels "liapoldus.local/plugin-sdk/domain/models"
-	pluginsdk "liapoldus.local/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
+	pluginsdk "github.com/Liapoldus/plugin-sdk/infrastructure"
 )
 
 func main() {
@@ -57,6 +57,8 @@ func main() {
 	}
 	store, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
+	snapshot, err := storage.NewPluginConfigurationSnapshot(ctx, store, []string{"fixture"})
+	check(err)
 	httpContract, err := pluginsdk.LoadHTTPContract()
 	check(err)
 	contract, err := newCertificates()
@@ -64,7 +66,7 @@ func main() {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	check(err)
 	serverTLS := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{contract.server}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: contract.roots}
-	handler, err := api.NewPluginConfigurationPullHandler(store, func(certificate *x509.Certificate) (string, bool) {
+	handler, err := api.NewPluginConfigurationPullHandler(snapshot, func(certificate *x509.Certificate) (string, bool) {
 		if certificate.Subject.CommonName == "fixture-replica" {
 			return "fixture", true
 		}
@@ -119,7 +121,7 @@ func main() {
 	check(err)
 	reloadClient, err := pluginsdk.NewPluginClient(httpContract, "https://localhost:"+itoa(pluginListener.Addr().(*net.TCPAddr).Port), coreTransport, peerIdentity)
 	check(err)
-	applier := &plugins.SDKConfigurationApplier{Store: store, Clients: map[string]plugins.SDKReloadClient{"fixture": reloadClient}}
+	applier := &plugins.SDKConfigurationApplier{Store: store, Snapshot: snapshot, Clients: map[string]plugins.SDKReloadClient{"fixture": reloadClient}}
 	service := application.PluginConfigurationService{Store: store, Applier: applier,
 		RevisionStates: application.PluginConfigurationRevisionStates{Active: "active", Candidate: "staging"}}
 	activated, reloadErr := service.Apply(ctx, application.ApplyPluginConfigurationCommand{

@@ -64,22 +64,32 @@
   roll-forward/fencing, explicit rollback и crash recovery; неизвестный outcome
   не replay-ится. Покрыто `plugin-config-roll-forward`, `plugin-settings-recovery`,
   `plugin-settings-rollback`, `plugin-configuration-revisions`.
-- [ ] Построить immutable in-memory snapshot из SQLite до readiness; runtime
+- [x] Построить immutable in-memory snapshot из SQLite до readiness; runtime
   request path не читает SQLite или конфигурационные файлы.
-  **ПРОВЕРЕНО 2026-09-30: НЕ РЕАЛИЗОВАНО.** Слово `snapshot` не встречается ни в
-  одном файле `internal/`; readiness вычисляется из таблицы наблюдений
-  `plugin_replicas` на каждый запрос. Это реальный пробел v1, а не
-  формальность: runtime path ходит в SQLite.
+  **ПРОВЕРЕНО 2026-09-30:** exact-generation pull читает атомарный снимок
+  `active`/`previous`; readiness/drift читают отдельный опубликованный снимок
+  desired generation и ACK-наблюдений. После startup recovery оба снимка
+  обновляются до открытия listener-ов. Покрыто
+  `plugin-config-snapshot`, `plugin-convergence-snapshot`,
+  `serve-plugin-runtime` и полным `make check`. Сквозную проверку restart с
+  реальными plugin-процессами учитывать в отдельном v1 acceptance gate.
 - [ ] Завершить SQLite backup/restore, integrity/foreign-key checks,
   migrations и source-owned embedded SQL. Не добавлять PostgreSQL или S3.
   **ПРОВЕРЕНО 2026-09-30: частично.** Embedded source-owned SQL, `schema_migrations`
-  и проверка версии есть; апгрейд v6→v7 идёт идемпотентным применением схемы
+  и проверка версии есть; апгрейд v6→v8 идёт идемпотентным применением схемы
   (`sqlite.go:64` допускает меньшую версию, `sqlite-version-guard` это
-  закрепляет). Отсутствуют `integrity_check`/`quick_check` и backup/restore —
-  их в `internal/` и `assets/` нет вообще.
+  закрепляет). На production bootstrap добавлены `quick_check(1)` и
+  `foreign_key_check` до/после schema apply; исполняемый тест отклоняет
+  осиротевший FK до открытия listener-ов. Backup/restore и проверка
+  восстановления из копии остаются открытыми.
 
 ## 2. Plugin SDK REST integration
 
+- [x] Перевести Core imports и Go module dependency на утверждённый
+  `github.com/Liapoldus/plugin-sdk`; SDK и Core `go build ./...` проходят.
+  Fan-out `Reload` продолжает оповещение остальных replica после одного отказа;
+  каждый результат фиксируется отдельно. Покрыто
+  `tests/integration/plugin-reload-fanout.test.ts`.
 - [x] ~~**Подтверждено на штатном бинаре: `core serve` полностью игнорирует
   `pluginControl`.**~~ **Исправлено (2026-09-30).** `core serve` теперь сам
   собирает control plane из `core.yaml`: `RunOptions.PluginRESTControl` удалён,
@@ -157,18 +167,27 @@
   остаются только читаемые plugin instances, settings, rollback, Admin Surface,
   operations, audit и access. Docs commit `453b15e` опубликован в `main`;
   Pages deployment после этого commit нужно проверить отдельно.
-- [ ] Завершить интеграцию вручную запускаемого `plugins/server`: текущий
-  WIP содержит SDK REST adapter и строгую settings/runtime реализацию, но
-  `GOWORK=off go test ./...` на 2026-09-30 падает: production-пакеты всё ещё
-  импортируют удалённые `pluginprotocol/pluginv1` и `presentation/sdk`, а REST
-  adapter не совпадает с текущим публичным API Plugin SDK. До зелёной сборки и
-  Core→SDK→Server smoke интеграция не завершена. Публичное имя — `server`.
+- [ ] Завершить интеграцию вручную запускаемого `plugins/server`: migration
+  на SDK REST уже собирается; child-process fixture подтвердил mTLS
+  Reload→exact pull→ACK→HTTP, а полный Server Vitest прошёл 19/19 файлов
+  (2026-10-01). Настоящий Core→SDK→Server smoke подтверждает первый PUT с
+  revision 0, второе поколение, точный digest в SQLite, смену HTTP upstream и
+  rollback с ACK и завершённой durable operation. Custom TLS grants и site
+  publish ещё не доказаны. Публичное имя — `server`.
 - [ ] Удалить Caddy-L4 dependency/registration и public TCP/UDP listener/relay
   implementation из v1 build; держать их только в v2 backlog.
-- [ ] Завершить интеграцию вручную запускаемого forms-db: его текущая сборка
-  (`GOWORK=off go test ./...`, 2026-09-30) падает из-за оставшихся импортов
-  `pluginprotocol/pluginv1` и `presentation/sdk`. Сохранить plugin-owned schema,
-  persistent product data и Admin Surface при переносе lifecycle на SDK.
+- [ ] Завершить интеграцию вручную запускаемого forms-db: перенос на SDK REST,
+  product schema, generic peer handlers и сборка выполнены; `npm test`,
+  `go test/build/vet ./...` прошли локально. Contract-compatible Core fixture
+  проверяет настоящий forms-db binary, mTLS Reload/pull/ACK, scoped DSN grant,
+  peer submit и SQLite persistence после restart. Ещё нужны production Core→
+  SDK→forms-db smoke с SQL/grants, MySQL/PostgreSQL restart/failure и прямой
+  Server→forms-db вызов. Настоящий Core→SDK→forms-db child-process Reload/ACK
+  теперь проверен для memory-driver; это не заменяет SQL/grants gate.
+- [ ] Реализовать generic bounded artifact forwarding в Management API через
+  Plugin SDK REST stream. Core не импортирует peer-only `pluginprotocol`, не
+  интерпретирует Server archive/site payload и не буферизует весь artifact;
+  Server владеет publish metadata/receipt, валидацией и durable operation.
 - [ ] Не добавлять plugin-name/capability branches в Core. Не мигрировать и не
   собирать как Core v1 CAPTCHA/Identity.
 

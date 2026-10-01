@@ -16,7 +16,7 @@ error contract and Core implementation guides are owned by this repository in
 preserving their public routes. The standalone
 Plugin SDK in workspace directory `plugin-sdk/` is the owner of plugin-facing
 REST lifecycle/configuration APIs and common plugin facilities; its Go module
-path is not yet assigned and must not be guessed. The sole owner of
+path is `github.com/Liapoldus/plugin-sdk`. The sole owner of
 plugin-to-plugin transport and generic peer
 communication is
 `/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Core uses the Plugin

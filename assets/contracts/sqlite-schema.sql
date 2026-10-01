@@ -111,5 +111,6 @@ INSERT OR IGNORE INTO schema_migrations(version) VALUES (4);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (5);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (6);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (7);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (8);
 
 COMMIT;

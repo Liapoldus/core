@@ -23,6 +23,10 @@ func OpenDatabase(ctx context.Context, path string) (*sql.DB, error) {
 		HasMigrationTableQuery: contract.HasMigrationTableQuery,
 		MigrationVersionQuery:  contract.MigrationVersionQuery,
 		SchemaVersionError:     contract.SchemaVersionError,
+		IntegrityCheckQuery:    contract.IntegrityCheckQuery,
+		ForeignKeyCheckQuery:   contract.ForeignKeyCheckQuery,
+		IntegritySuccess:       contract.IntegritySuccess,
+		IntegrityError:         contract.IntegrityError,
 		Pragmas:                contract.Pragmas,
 	}, contract.Schema)
 }

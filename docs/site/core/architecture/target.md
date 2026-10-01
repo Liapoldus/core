@@ -35,7 +35,7 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 | Владелец | Ответственность |
 | --- | --- |
 | Core | SQLite desired state, Management API/CLI, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Plugin-to-plugin interaction policies и interaction grants относятся к v2. В v1 Core подключается к вручную запущенным plugin REST endpoints. Core не содержит product-specific branches. |
-| Plugin SDK | Отдельный независимый Go-модуль: единый REST/in-process lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки. REST+mTLS используется для отдельных процессов; in-process interface — только для статически связанного плагина в одном процессе и без сетевого mTLS. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
+| Plugin SDK | Отдельный независимый Go-модуль. В v1 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v2. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
 | Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v2. |
 | forms-db plugin | Простые формы, собственные schemas, capabilities и данные; отдельный управляемый оператором сервис. |
@@ -245,9 +245,9 @@ snapshot через instance-scoped interface. Детали и ограниче�
 
 В v1 Core импортирует Plugin SDK REST client, но не `pluginprotocol`. Plugin может
 независимо импортировать Plugin SDK, `pluginprotocol`, обе библиотеки или ни одну
-из них в зависимости от своих функций. Публикация plugin SDK — отдельный
-Go-модуль в workspace `plugin-sdk/`; его canonical Git remote/module path пока
-не назначены и не публикуются до отдельного решения владельца.
+из них в зависимости от своих функций. Утверждённый canonical module path SDK —
+`github.com/Liapoldus/plugin-sdk`; текущий временный local path и imports должны
+быть мигрированы согласованно до production release.
 
 ## Server plugin и durable state
 
@@ -383,8 +383,8 @@ SQLite integrity и foreign-key validation, проверяет journal/pointers 
 всех обязательных Core-owned files, затем восстанавливает in-memory snapshot и
 согласует его с plugin ACK. Backup Core включает согласованный SQLite backup и
 Core-owned versioned package/config artifacts; backup Caddy release/ACME data
-выполняется отдельно на его persistent volume. Никаких PostgreSQL/S3
-dependencies для v1.
+выполняется отдельно на его persistent volume. У Core v1 нет PostgreSQL/S3
+dependencies; product plugins могут иметь собственный storage scope.
 
 ER-модель целевого v1 control store показывает `plugin_instance`,
 `plugin_config_generations` с slot rows `active`/`previous`/`staging`,

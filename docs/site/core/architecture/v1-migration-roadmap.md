@@ -50,8 +50,9 @@ Prometheus metrics и JSON stdout/stderr logging. Process shutdown/drain не
 является Core↔plugin API в v1: его выполняет оператор средствами ОС.
 
 Владелец: `plugin-sdk/`. Публичный endpoint contract и TS vectors должны
-предшествовать consumer migration. Модуль остаётся локальным до решения о
-canonical path/remote.
+предшествовать consumer migration. Canonical module path утверждён:
+`github.com/Liapoldus/plugin-sdk`; coordinated `go.mod`/consumer migration
+остаётся открытым.
 
 **Gate:** SDK contract tests, focused Go build/vet, реальные HTTP child-process
 tests и четыре слоя без cross-layer imports.

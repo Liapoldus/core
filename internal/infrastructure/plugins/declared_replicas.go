@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"time"
 
-	sdkmodels "liapoldus.local/plugin-sdk/domain/models"
-	sdkinfrastructure "liapoldus.local/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
 )
 
 // DeclaredReplica is one operator-declared replica, reduced to the values Core
@@ -29,11 +29,6 @@ type DeclaredReplica struct {
 	// whatever the network presented.
 	Transport *http.Transport
 }
-
-// replicaDialTimeout bounds a single Core-to-replica control call so an
-// unreachable replica fails fast and surfaces as degraded state instead of
-// holding a rollout open.
-const replicaDialTimeout = 5 * time.Second
 
 // DeclaredReplicaFanouts builds one SDK control client per declared replica,
 // grouped into a fanout per declared instance. It returns a release function that
@@ -68,7 +63,7 @@ func DeclaredReplicaFanouts(replicas []DeclaredReplica) (map[string]SDKReloadCli
 			release()
 			return nil, nil, err
 		}
-		replica.Transport.ResponseHeaderTimeout = replicaDialTimeout
+		replica.Transport.ResponseHeaderTimeout = time.Duration(contract.Deadlines.PluginReloadSeconds) * time.Second
 		client, err := sdkinfrastructure.NewPluginClient(
 			contract,
 			replica.Endpoint.String(),

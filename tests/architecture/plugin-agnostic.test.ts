@@ -46,7 +46,9 @@ describe("plugin-agnostic Core core", () => {
     expect(source).not.toMatch(/github\.com\/Liapoldus\/pluginprotocol/);
     expect(source).not.toMatch(/pluginv1|protojson/);
     expect(source).not.toMatch(/plugin_launch_settings|launchFields|configSecrets/);
-    expect(source).not.toMatch(/exec\.Command(?:Context)?\(/);
+    // Child-process fixtures exercise manually started plugins; production Core
+    // itself must never launch or supervise plugin executables.
+    expect(production).not.toMatch(/exec\.Command(?:Context)?\(/);
     expect(source).not.toMatch(/(?:restartEnabled|restartInitialBackoff|restartMaximumBackoff|healthFailureThreshold|memoryLimitBytes)/);
     expect(module).not.toMatch(/pluginprotocol/);
   });

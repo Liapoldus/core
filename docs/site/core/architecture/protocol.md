@@ -26,9 +26,9 @@ lifecycle и/или прямое взаимодействие с другими 
 Plugin SDK: в v1 — REST client, в v2 — явно выбранный REST либо in-process
 adapter. Core не импортирует `pluginprotocol`.
 
-Локальное расположение будущего модуля согласовано как соседний каталог
-`plugin-sdk/` workspace. Canonical Go module path и Git remote не назначены;
-до их решения модуль не публикуется и публичные import paths не объявляются.
+Локальное расположение модуля — соседний каталог `plugin-sdk/` workspace.
+Утверждённый canonical Go module path — `github.com/Liapoldus/plugin-sdk`;
+согласованная миграция текущих local imports остаётся частью v1.
 
 ## Plugin SDK: REST lifecycle v1
 

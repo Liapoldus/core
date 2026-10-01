@@ -15,7 +15,7 @@ type OperationPayload struct {
 }
 
 func (payload OperationPayload) Valid() bool {
-	if payload.Version < 1 || payload.Resource == "" || payload.ExpectedRevision < 1 || payload.SchemaVersion < 1 ||
+	if payload.Version < 1 || payload.Resource == "" || payload.ExpectedRevision < 0 || payload.SchemaVersion < 1 ||
 		len(payload.Digest) != 64 {
 		return false
 	}

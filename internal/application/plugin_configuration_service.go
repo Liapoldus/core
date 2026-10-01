@@ -147,7 +147,7 @@ func (service *PluginConfigurationService) Apply(ctx context.Context, command Ap
 	if service.Store == nil || service.Applier == nil {
 		return models.PluginConfigurationRevision{}, models.PluginConfigurationUnavailable{Message: service.Unavailable}
 	}
-	if command.InstanceID == "" || command.ExpectedRevision < 1 || command.SchemaVersion < 1 {
+	if command.InstanceID == "" || command.ExpectedRevision < 0 || command.SchemaVersion < 1 {
 		return models.PluginConfigurationRevision{}, models.PluginConfigurationUnavailable{Message: service.Unavailable}
 	}
 	SnapshotActivationLock.Lock()
@@ -266,7 +266,7 @@ func (service *PluginConfigurationService) recoverOperation(ctx context.Context,
 			return payloadErr
 		}
 		if !found || !payload.Valid() || payload.Version != service.PayloadVersion || payload.Resource != operation.Resource ||
-			payload.ExpectedRevision < 1 || payload.SchemaVersion < 1 {
+			payload.ExpectedRevision < 0 || payload.SchemaVersion < 1 {
 			return service.failCorruptReservation(ctx, operation)
 		}
 		return service.failCorruptReservation(ctx, operation)

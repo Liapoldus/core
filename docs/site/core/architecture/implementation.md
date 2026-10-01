@@ -31,7 +31,7 @@ backlogs и команды находятся в `TODO.md` каждого реп
 | Компонент | Текущее подтверждение | Осталось для v1 |
 | --- | --- | --- |
 | Core | `make check`, `go vet ./...`, `make staticcheck-u1000` прошли. Добавлены REST composition, declared replica clients и SQLite replica observations. | In-memory snapshot, SQLite integrity/backup/restore, secret grant endpoints, reconnect/failure/recovery и сквозные security tests. |
-| Plugin SDK | `make check` прошёл: 176 TypeScript tests, `go build ./...`, `go vet ./...`. | Интеграция с активными consumers; canonical module path/repository и Linux runtime evidence. |
+| Plugin SDK | `make check` прошёл: 176 TypeScript tests, `go build ./...`, `go vet ./...`. | Интеграция с активными consumers; migration на утверждённый `github.com/Liapoldus/plugin-sdk` и Linux runtime evidence. |
 | `pluginprotocol` | `make check` прошёл: 136 TypeScript tests, `go vet ./...`, `go build ./...`; публичная поверхность generic peer-to-peer. | Активным plugins нужно удалить обращения к удалённым lifecycle exports; отдельный multi-language implementation относится к v2. |
 | Server и forms-db | Изменения контрактов и SDK adapters существуют в локальных commit-ах. | Текущий общий `go test ./server/... ./forms-db/...` падает на импортированных удалённых protocol packages; Server дополнительно не совпадает с API SDK. Сквозного Core→SDK→plugin smoke нет. |
 | Документация | `npm run build` прошёл. | После push новые `/core/` маршруты отвечали `404`, тогда как `/gateway/configuration/` отвечал `200`; Pages deployment требует отдельной проверки. |

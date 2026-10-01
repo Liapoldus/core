@@ -39,6 +39,8 @@
   их репозитории не входят в active workspace/v1 gates. Это не исключает обязательную
   authentication/authorization, mTLS, аудит и redaction самого Management API.
 - `archive/plugins/tls-issuer/` и `test/` не входят в runtime workspace.
-- Локальные plugin/SDK repositories без canonical remote не публикуются и не
-  получают выдуманный module path или Git URL.
-- PostgreSQL/S3 и multi-Core deployment не входят в v1.
+- Реализация не зависит от настроенного Git remote. Canonical SDK module path
+  утверждён как `github.com/Liapoldus/plugin-sdk`; неизвестные URLs других
+  repos не угадываются, а публикация требует отдельного запроса.
+- PostgreSQL/S3 не входят в Core v1; forms-db product storage — отдельный scope.
+  Multi-Core deployment не входит в v1.

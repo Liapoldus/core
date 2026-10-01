@@ -22,10 +22,7 @@ vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
-  pluginprotocol: { in: [github.com/Liapoldus/pluginprotocol, github.com/Liapoldus/pluginprotocol/presentation/sdk, github.com/Liapoldus/pluginprotocol/transport, github.com/Liapoldus/pluginprotocol/pluginv1] }
-  pluginSDK: { in: [liapoldus.local/plugin-sdk, liapoldus.local/plugin-sdk/domain/interfaces, liapoldus.local/plugin-sdk/domain/models, liapoldus.local/plugin-sdk/infrastructure, liapoldus.local/plugin-sdk/presentation] }
-  protobuf: { in: [google.golang.org/protobuf/proto, google.golang.org/protobuf/encoding/protojson] }
-  gopsutil: { in: [github.com/shirou/gopsutil/v4/process] }
+  pluginSDK: { in: [github.com/Liapoldus/plugin-sdk, github.com/Liapoldus/plugin-sdk/domain/interfaces, github.com/Liapoldus/plugin-sdk/domain/models, github.com/Liapoldus/plugin-sdk/infrastructure, github.com/Liapoldus/plugin-sdk/presentation] }
   sqliteDriver: { in: [modernc.org/sqlite] }
   textNormalization: { in: [golang.org/x/text/cases, golang.org/x/text/unicode/norm] }
   googleUUID: { in: [github.com/google/uuid] }
@@ -54,7 +51,7 @@ deps:
     canUse: [sqliteDriver, yaml]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [yaml, jsonschema, bcrypt, pluginprotocol, protobuf, gopsutil, pluginSDK]
+    canUse: [yaml, jsonschema, bcrypt, pluginSDK]
   presentationAPI:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPIHandlers]
     canUse: [bcrypt, pluginSDK]

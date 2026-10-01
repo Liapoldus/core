@@ -6,9 +6,10 @@ plugin-to-plugin вызовов. Их API не смешиваются: Plugin SD
 `pluginprotocol`, и сам plugin определяет свои Manifest, settings, capabilities,
 schemas, ошибки и Admin Surface.
 
-Plugin SDK уже существует как отдельный локальный Go module; его временный
-module path пока не является публикуемым canonical path. Normative HTTP contract
-и API лежат в самом SDK; этот гайд описывает только продуктовую последовательность.
+Plugin SDK существует как отдельный Go module. Утверждённый canonical import
+path — `github.com/Liapoldus/plugin-sdk`; coordinated migration текущих local
+imports входит в v1. Normative HTTP contract и API лежат в самом SDK; этот гайд
+описывает только продуктовую последовательность.
 См. [границы библиотек](protocol), [целевую архитектуру](target) и
 [план перехода](v1-migration-roadmap).
 

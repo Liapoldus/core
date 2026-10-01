@@ -81,6 +81,23 @@ func NewSQLitePluginConfigurationStore(database *sql.DB) (*SQLitePluginConfigura
 	if err := store.migrateLegacyConfiguration(context.Background()); err != nil {
 		return nil, err
 	}
+	var rebuild bool
+	if err := database.QueryRowContext(context.Background(), queries.queries["operation-payload-needs-v8"]).Scan(&rebuild); err != nil {
+		return nil, err
+	}
+	if rebuild {
+		tx, err := database.BeginTx(context.Background(), nil)
+		if err != nil {
+			return nil, err
+		}
+		defer tx.Rollback()
+		if _, err := tx.ExecContext(context.Background(), queries.queries["rebuild-operation-payloads-v8"]); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+	}
 	return store, nil
 }
 
@@ -92,7 +109,15 @@ func (store *SQLitePluginConfigurationStore) Current(ctx context.Context, instan
 	revision, pointers, err := scanCurrentConfiguration(store.database.QueryRowContext(ctx, query,
 		store.contract.Slots.Previous, store.contract.Slots.Staging, instanceID, store.contract.Slots.Active), store.contract.TimestampLayout)
 	if errors.Is(err, sql.ErrNoRows) {
-		return models.PluginConfigurationRevision{}, models.PluginConfigurationPointers{}, models.PluginConfigurationNotFound{}
+		var exists bool
+		if checkErr := store.database.QueryRowContext(ctx, store.queries.queries["instance-exists"], instanceID).Scan(&exists); checkErr != nil {
+			return models.PluginConfigurationRevision{}, models.PluginConfigurationPointers{}, checkErr
+		}
+		if !exists {
+			return models.PluginConfigurationRevision{}, models.PluginConfigurationPointers{}, models.PluginConfigurationNotFound{}
+		}
+		return models.PluginConfigurationRevision{InstanceID: instanceID, SchemaVersion: store.contract.SchemaVersion},
+			models.PluginConfigurationPointers{InstanceID: instanceID}, nil
 	}
 	return revision, pointers, err
 }
@@ -501,7 +526,7 @@ func loadPluginConfigurationSQL(invalidContract string) (PluginConfigurationSQL,
 			statement.WriteByte('\n')
 		}
 	}
-	if scanner.Err() != nil || !storeStatement() || len(queries) != 23 {
+	if scanner.Err() != nil || !storeStatement() || len(queries) != 26 {
 		return PluginConfigurationSQL{}, errors.New(invalidContract)
 	}
 	return PluginConfigurationSQL{queries: queries}, nil

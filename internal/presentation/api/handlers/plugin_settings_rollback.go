@@ -54,7 +54,7 @@ func PluginSettingsRollback(
 		return
 	}
 	expectedRevision, ok := parseStrongRevisionETag(request.Header.Get(deps.Management.Headers.IfMatch))
-	if !ok {
+	if !ok || expectedRevision == 0 {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
 		return
 	}
@@ -117,7 +117,12 @@ func PluginSettingsRollback(
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
 		return
 	}
-	writePluginRollbackAccepted(deps, response, operation.ID, deps.Management.Statuses.Running, path, requestID)
+	if err := deps.Operations.Transition(request.Context(), operation.ID,
+		deps.Management.Statuses.Running, deps.Management.Statuses.Succeeded, ""); err != nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	writePluginRollbackAccepted(deps, response, operation.ID, deps.Management.Statuses.Succeeded, path, requestID)
 }
 
 func failPluginRollback(

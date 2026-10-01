@@ -54,7 +54,7 @@ describe("plugin settings rollback API", () => {
       expect(report.accepted.body).toEqual({
         operationId: expect.any(String),
         requestId: expect.any(String),
-        state: "running",
+        state: "succeeded",
       });
       expect(report.accepted.body).not.toHaveProperty("configuration");
       expect(report.accepted.location).toBe(`/api/operations/${report.accepted.body.operationId as string}`);
@@ -64,7 +64,7 @@ describe("plugin settings rollback API", () => {
 
       expect(report.replay.status).toBe(202);
       expect(report.replay.body.operationId).toBe(report.accepted.body.operationId);
-      expect(report.replay.body.state).toBe("running");
+      expect(report.replay.body.state).toBe("succeeded");
       expect(report.applyCalls).toHaveLength(2);
 
       expect(report.conflicting.status).toBe(412);

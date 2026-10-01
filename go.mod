@@ -4,9 +4,9 @@ go 1.26.0
 
 require gopkg.in/yaml.v3 v3.0.1
 
-require liapoldus.local/plugin-sdk v0.0.0
+require github.com/Liapoldus/plugin-sdk v0.0.0
 
-replace liapoldus.local/plugin-sdk => ../plugin-sdk
+replace github.com/Liapoldus/plugin-sdk => ../plugin-sdk
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

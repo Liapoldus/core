@@ -20,6 +20,10 @@ type SQLiteOptions struct {
 	HasMigrationTableQuery string
 	MigrationVersionQuery  string
 	SchemaVersionError     string
+	IntegrityCheckQuery    string
+	ForeignKeyCheckQuery   string
+	IntegritySuccess       string
+	IntegrityError         string
 	Pragmas                string
 }
 
@@ -70,6 +74,10 @@ func OpenSQLite(ctx context.Context, path string, options SQLiteOptions, schema 
 		_ = database.Close()
 		return nil, err
 	}
+	if err := verifySQLiteIntegrity(ctx, database, options); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	if _, err := database.ExecContext(ctx, string(schema)); err != nil {
 		_ = database.Close()
 		return nil, err
@@ -79,5 +87,31 @@ func OpenSQLite(ctx context.Context, path string, options SQLiteOptions, schema 
 		_ = database.Close()
 		return nil, errors.New(options.SchemaVersionError)
 	}
+	if err := verifySQLiteIntegrity(ctx, database, options); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	return database, nil
+}
+
+func verifySQLiteIntegrity(ctx context.Context, database *sql.DB, options SQLiteOptions) error {
+	if options.IntegrityCheckQuery == "" && options.ForeignKeyCheckQuery == "" && options.IntegritySuccess == "" && options.IntegrityError == "" {
+		return nil
+	}
+	if options.IntegrityCheckQuery == "" || options.ForeignKeyCheckQuery == "" || options.IntegritySuccess == "" || options.IntegrityError == "" {
+		return errors.New(options.SchemaVersionError)
+	}
+	var result string
+	if err := database.QueryRowContext(ctx, options.IntegrityCheckQuery).Scan(&result); err != nil || result != options.IntegritySuccess {
+		return errors.New(options.IntegrityError)
+	}
+	rows, err := database.QueryContext(ctx, options.ForeignKeyCheckQuery)
+	if err != nil {
+		return errors.New(options.IntegrityError)
+	}
+	defer rows.Close()
+	if rows.Next() || rows.Err() != nil {
+		return errors.New(options.IntegrityError)
+	}
+	return nil
 }
