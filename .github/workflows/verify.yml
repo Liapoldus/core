@@ -20,6 +20,25 @@ jobs:
         with:
           repository: Liapoldus/plugin-sdk
           path: plugin-sdk
+      # The manual-core-server fixture builds and starts the real Server and
+      # forms-db binaries from their workspace siblings, and the plugin-protocol
+      # and SDK replace directives those modules declare resolve from there.
+      # Without this layout the suite fails on chdir instead of on behaviour.
+      - name: Checkout pluginprotocol
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/pluginprotocol
+          path: pluginprotocol
+      - name: Checkout server
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/server
+          path: plugins/server
+      - name: Checkout forms-db
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/forms-db
+          path: plugins/forms-db
       - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
