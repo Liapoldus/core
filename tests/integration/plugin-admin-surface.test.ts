@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { missingWorkspaceRepositories } from "../support/workspace.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const plugins = resolve(root, "../plugins");
+
+// forms-db owns its own surface, so this asserts a fact about that repository
+// rather than a Core copy of it. The plugin-agnostic gate has no forms-db
+// checkout; the integration workflow provides it.
+const missingFormsDb = missingWorkspaceRepositories("plugins/forms-db");
 
 describe("plugin admin surface boundary", () => {
   it("не содержит process supervision, удалённого из v1", () => {
@@ -22,7 +28,7 @@ describe("plugin admin surface boundary", () => {
     expect(source).toContain("func (s AdminSurface) Namespace");
   });
 
-  it("берёт forms-db surface из репозитория самого плагина", () => {
+  it.skipIf(missingFormsDb.length > 0)("берёт forms-db surface из репозитория самого плагина", () => {
     const contract = resolve(plugins, "forms-db/contracts/v1/admin-surface.json");
     expect(existsSync(contract)).toBe(true);
     const parsed = JSON.parse(readFileSync(contract, "utf8"));

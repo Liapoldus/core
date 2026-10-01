@@ -1,0 +1,55 @@
+name: Integration scenarios
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: core
+      # These scenarios assert facts that live in the repositories next to Core:
+      # the fixture builds and starts the real Server and forms-db binaries, and
+      # the surface boundary reads forms-db's own contract. Core itself stays
+      # plugin-agnostic, which is why this workspace is assembled here and not in
+      # the plugin-agnostic Verify Core gate.
+      - name: Checkout plugin-sdk
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/plugin-sdk
+          path: plugin-sdk
+      # pluginprotocol belongs to the two product plugins that speak it, not to
+      # Core; their own replace directives resolve it from this sibling.
+      - name: Checkout pluginprotocol
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/pluginprotocol
+          path: pluginprotocol
+      - name: Checkout server
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/server
+          path: plugins/server
+      - name: Checkout forms-db
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/forms-db
+          path: plugins/forms-db
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: core/go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: core/tests/package-lock.json
+      - name: Cross-repository scenarios
+        run: npm --prefix tests ci && npm --prefix tests test -- manual-core-server plugin-admin-surface
+        working-directory: core
