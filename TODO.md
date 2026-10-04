@@ -303,7 +303,7 @@ Caddy автоматически продлевает сертификаты.
   транзакции, сохраняет дочерние наблюдения и поколения, затем проверяет
   foreign keys; интеграционный fixture подтверждает сохранность raw JSON и
   repeat startup. Inventory API не раскрывает deployment mode.
-- [ ] ~~Довести Management API для CRUD generic plugin instance/replica fixed
+- [x] ~~Довести Management API для CRUD generic plugin instance/replica fixed
   endpoints и ожидаемых identities~~ **Снято решением A:** объявление topology
   перенесено в `core.yaml`, поэтому Management API регистрации не появился и
   добавлять его не нужно. OpenAPI/docs локально синхронизированы с этим
@@ -341,7 +341,7 @@ Cross-repository CI запускает все три backend.
 - [x] Доказать artifact forwarding из Core до настоящего Server child process
   и подтверждённую Server receipt/operation. Исправлены SDK transport adapters
   для artifact/action deadlines и page binding операции status.
-- [ ] Не добавлять plugin-name/capability branches в Core. Не мигрировать и не
+- [x] Не добавлять plugin-name/capability branches в Core. Не мигрировать и не
   собирать как Core v1 CAPTCHA/Identity.
 
 ## 4. Проверки и удаление старого lifecycle
@@ -355,7 +355,7 @@ Cross-repository CI запускает все три backend.
   SQLite provider/workload state, неиспользуемые CLI commands и legacy protocol
   lifecycle. Регрессии закреплены `pluginprotocol-sdk-boundary`,
   `no-legacy-site-api`, `target-cli-surface`, `dead-artifacts`.
-- [ ] Синхронизировать versioned contracts/mirrors, OpenAPI, docs, this TODO и
+- [x] Синхронизировать versioned contracts/mirrors, OpenAPI, docs, this TODO и
   `AGENTS.md`; не оставлять конкурирующие lifecycle APIs.
   - [x] ~~**Рассинхрон published OpenAPI (2026-09-30)~~ **Решено владельцем:
     контракт описывает только реализованное v1.** Из
@@ -423,8 +423,8 @@ Cross-repository CI запускает все три backend.
   Surface/cursor, manual reconnect, mTLS rotation/revocation, redaction и
   отсутствие peer payload в Core. Отдельные SQL E2E прошли на PostgreSQL 16,
   MySQL 8.0 и MariaDB 11.4.
-- [ ] Закрыть внешние gates: повторный hosted cross-repository CI после
-  публикации Server/forms-db и актуализация docs pins/release metadata.
+- [x] Закрыть внешние gates: hosted cross-repository CI после публикации
+  Server/forms-db, docs pins и release metadata завершены.
   Plugin SDK `v1.0.0` и `pluginprotocol/v2 v2.0.0` опубликованы; protocol Go
   module major v2 отражает breaking API, wire namespace остаётся
   `liapoldus.peer.v1`. Server и forms-db используют опубликованные версии без
