@@ -25,8 +25,8 @@ macOS и в Ubuntu 24.04.5 ARM64 VM под OrbStack; Core `make check`, `go vet
 `liapoldus.plugin.v1` в целевой архитектуре Core: указан актуальный generic
 `liapoldus.peer.v1`; тестовая manifest fixture больше не притворяется старым
 protocol manifest. `serve-plugin-runtime.test.ts` прошёл. VitePress `docs:sync`
-и `npm run build` прошли на локальных checkout. Published docs pin не менялся:
-owner worktree не закоммичен и публикация запрещена текущим v1 prompt.
+и `npm run build` прошли на локальных checkout. На тот момент owner worktree
+ещё не был закоммичен; 2026-10-05 v1 prompt разрешил публикацию после gates.
 
 Дополнение 2026-10-04: `serve-plugin-runtime.test.ts` теперь отдельно доказывает,
 что active generation с недоступным declared endpoint не блокирует запуск Core:
@@ -421,14 +421,14 @@ Cross-repository CI запускает все три backend.
   Surface/cursor, manual reconnect, mTLS rotation/revocation, redaction и
   отсутствие peer payload в Core. Отдельные SQL E2E прошли на PostgreSQL 16,
   MySQL 8.0 и MariaDB 11.4.
-- [ ] Закрыть внешние gates: hosted CI для согласованных published revisions,
-  docs pins/release metadata и публикация совместимых Go module revisions.
-  Сейчас SDK и protocol API берутся через локальные sibling `replace`: SDK ещё
-  не имеет опубликованного tag, а protocol `v1.0.0` старше используемого API
-  `v1.1.0`. После согласованной публикации убрать локальные `replace` у
-  потребителей и проверить каждый модуль из отдельного checkout с `GOWORK=off`.
-  Текущие проверки относятся к незакоммиченным worktrees; создать hosted run,
-  docs pins или совместимые module versions без отдельной публикации нельзя.
+- [ ] Закрыть внешние gates: повторный hosted cross-repository CI после
+  публикации Server/forms-db и актуализация docs pins/release metadata.
+  Plugin SDK `v1.0.0` и `pluginprotocol/v2 v2.0.0` опубликованы; protocol Go
+  module major v2 отражает breaking API, wire namespace остаётся
+  `liapoldus.peer.v1`. Server и forms-db используют опубликованные версии без
+  локальных `replace` (`GOWORK=off` build/vet пройдены). Локальный
+  `manual-core-server` cross-process E2E прошёл 2026-10-05; hosted CI
+  потребителей и Core integration ещё выполняются/требуют повторного запуска.
 
 ## Отложено до v2 — не включать в v1 gates
 
