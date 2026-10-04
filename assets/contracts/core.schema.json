@@ -9,8 +9,8 @@
   "properties": {
     "state": { "$ref": "#/$defs/state" },
     "management": { "$ref": "#/$defs/management" },
-        "pluginControl": { "$ref": "#/$defs/pluginControl" },
-        "plugins": { "$ref": "#/$defs/plugins" }
+    "pluginControl": { "$ref": "#/$defs/pluginControl" },
+    "plugins": { "$ref": "#/$defs/plugins" }
   },
   "$defs": {
     "fileReference": {
@@ -76,16 +76,23 @@
             "certificate": { "$ref": "#/$defs/fileReference" },
             "key": { "$ref": "#/$defs/fileReference" },
             "replicaClientCA": { "$ref": "#/$defs/fileReference" },
-            "replicaServerCA": { "$ref": "#/$defs/fileReference" }
+            "replicaServerCA": { "$ref": "#/$defs/fileReference" },
+            "replicaClientCRLs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/fileReference" },
+              "description": "Optional signed CRL files checked against replicaClientCA. If configured, unreadable, expired or invalid CRLs fail closed. Changes take effect after restarting Core."
+            },
+            "replicaServerCRLs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/fileReference" },
+              "description": "Optional signed CRL files checked against replicaServerCA. If configured, unreadable, expired or invalid CRLs fail closed. Changes take effect after restarting Core."
+            }
           }
         }
       },
-      "description": "Private Plugin SDK lifecycle/configuration REST listener. Its trust roots are independent from Management and plugin-to-plugin roots. certificate/key are Core's own identity, served on the pull listener and presented to replicas when Core dials them. replicaClientCA verifies replica client certificates on the pull listener; replicaServerCA verifies replica server certificates when Core dials a declared endpoint."
-    },
-    "plugins": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "#/$defs/pluginInstance" }
+      "description": "Private Plugin SDK lifecycle/configuration REST listener. Its trust roots are independent from Management and plugin-to-plugin roots. certificate/key are Core's own identity, served on the pull listener and presented to replicas when Core dials them. replicaClientCA verifies replica client certificates on the pull listener; replicaServerCA verifies replica server certificates when Core dials a declared endpoint. Optional signed CRL sets are independently bound to each trust root and fail closed when configured. Credential, CA and CRL file changes require an orderly Core restart in v1."
     },
     "pluginIdentifier": {
       "type": "string",

@@ -191,7 +191,7 @@ paths:
         in: path
         required: true
         schema: { type: string }
-      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/PluginActionIfMatch'
       - $ref: '#/components/parameters/IdempotencyKey'
     post:
       operationId: executePluginAdminAction
@@ -334,11 +334,25 @@ components:
       required: true
       schema: { type: string }
       description: Strong ETag текущего ресурса.
+    PluginActionIfMatch:
+      name: If-Match
+      in: header
+      required: false
+      schema: { type: string }
+      description: >-
+        Required for JSON actions. Multipart artifact actions may omit this
+        header when creating the first revision; the plugin enforces its
+        metadata-level expectedCurrentRevision CAS.
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
       schema: { type: string, minLength: 1, maxLength: 128 }
+      description: >-
+        Durable mutations and multipart artifact actions deduplicate by actor,
+        resource/action and request fingerprint. For synchronous JSON plugin
+        Admin Actions this value is correlation/audit metadata only; each
+        accepted request invokes the action again.
     Limit:
       name: limit
       in: query

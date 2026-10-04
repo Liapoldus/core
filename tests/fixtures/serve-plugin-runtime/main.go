@@ -73,10 +73,9 @@ func main() {
 		panic(err)
 	}
 
-	manifest := json.RawMessage(`{"name":"serve-fixture","protocolVersion":"liapoldus.plugin.v1","capabilities":["test.lifecycle"]}`)
+	manifest := json.RawMessage(`{"name":"serve-fixture","capabilities":["test.lifecycle"]}`)
 	_, err = database.ExecContext(context.Background(), `INSERT INTO plugin_instances
-		(id, mode, endpoint, manifest_json, state) VALUES (?, ?, ?, ?, ?)`,
-		"serve-fixture", "remote", "127.0.0.1:45678", []byte(manifest), "configured")
+		(id, manifest_json, state) VALUES (?, ?, ?)`, "serve-fixture", []byte(manifest), "configured")
 	if err != nil {
 		panic(err)
 	}

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/presentation/api"
-	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 )
 
 type requestCase struct {
@@ -47,10 +46,6 @@ func main() {
 			map[string]any{"id": "fixture-b", "name": "Beta", "state": "starting"},
 		},
 		PluginIDField: "id",
-		AdminSurfaces: []handlers.AdminSurface{{
-			Plugin: "fixture-a", Namespace: "forms", Version: "v1", Title: "Forms",
-			Capabilities: []string{"admin.surface.get"},
-		}},
 	}
 	serverForRequests := httptest.NewServer(server.Handler())
 	defer serverForRequests.Close()

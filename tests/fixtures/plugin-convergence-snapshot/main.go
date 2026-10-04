@@ -21,7 +21,7 @@ func main() {
 	defer os.RemoveAll(directory)
 	database, err := bootstrap.OpenDatabase(ctx, filepath.Join(directory, "core.db"))
 	check(err)
-	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)", "fixture", "remote", []byte(`{}`), "configured")
+	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)", "fixture", []byte(`{}`), "configured")
 	check(err)
 	raw := []byte(`{"enabled":true}`)
 	digest := sha256.Sum256(raw)

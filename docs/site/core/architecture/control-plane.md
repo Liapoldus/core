@@ -106,24 +106,37 @@ references.
    Если проверка или применение не прошли, локально остаётся его прежняя
    конфигурация.
 7. Когда все обязательные replicas подтвердили target generation, Core
-   завершает operation. До этого operation остаётся `degraded`/`rolling_forward`,
-   а новый immutable snapshot разрешает traffic только через replicas,
-   подтвердившие именно active generation.
+   завершает operation как `succeeded`. Если начальная попытка Reload завершилась
+   отказом, operation становится `failed` с безопасным кодом ошибки; желаемый
+   `active` не откатывается. Instance остаётся degraded, а traffic разрешён
+   только через replicas, подтвердившие именно active generation. Readiness
+   monitor только записывает наблюдения. После устранения причины оператор
+   вручную перезапускает Core, чтобы выполнить startup reconciliation; явный
+   rollback создаёт новую operation.
 
 `Reload` идемпотентен по instance, replica и generation. Повторный config pull
 `GET` возвращает тот же неизменяемый документ; Core не подменяет содержимое уже
 выданного generation. Плагин не опрашивает Core постоянно: он получает
-инициирующий Reload, а конфигурацию забирает сам. При запуске/переподключении
-плагин сообщает своё применённое поколение; Core сравнивает его с desired state
-и инициирует Reload при расхождении.
+инициирующий Reload, а конфигурацию забирает сам. Core периодически опрашивает
+SDK readiness и фиксирует наблюдаемое состояние, но этот monitor read-only и
+никогда не вызывает `Reload`. Если оператор независимо перезапустил plugin при
+работающем Core, replica остаётся degraded до ручного перезапуска Core. Startup
+reconciliation повторно сверяет identity и active generation и инициирует
+`Reload` при расхождении. Core не перезапускает plugin и не повторяет
+пользовательский Call.
 
 ## Частичный rollout и rollback
 
 Принята стратегия **roll-forward**. После продвижения candidate `active` не
 возвращается автоматически к старой версии из-за частичного отказа. Подтвердившие
 replicas обслуживают новый active generation; отставшие исключены из зависимого
-traffic/peer calls, instance отмечен degraded, а Core повторяет `Reload` только
-для отставших. Operation завершается после ACK всех обязательных replicas.
+traffic/peer calls, instance отмечен degraded. Core не повторяет `Reload` в
+фоновом режиме: периодический monitor только читает readiness. После исправления
+replica оператор перезапускает Core, и startup reconciliation повторно объявляет
+active generation только replica с расхождением. Успешная начальная operation завершается
+после ACK всех обязательных replicas; уже завершённая как `failed` попытка
+остаётся в истории со своим исходом, даже если последующий reconcile устранил
+drift.
 Повтор не replay-ит пользовательский plugin Call с неизвестным исходом.
 
 Core Management API `POST /api/plugins/{pluginId}/rollback` начинает новое
@@ -132,7 +145,8 @@ roll-forward на содержимое `previous`: Core атомарно мен�
 специальную rollback-команду: Core вызывает обычный `Reload` с generation,
 ставшим active.
 Подтвердившие rollback generation replicas остаются eligible; отставшие
-fenced/degraded и получают retry. Автоматической compensation назад нет.
+fenced/degraded до startup reconciliation после ручного перезапуска Core.
+Автоматической compensation назад нет.
 
 Плагин удаляет отозванные revision-bound secret bytes из памяти после
 подтверждённой смены конфигурации либо shutdown. Secret grants выдаются через
@@ -170,7 +184,7 @@ plugin Manifest, REST lifecycle, settings, health API, secret redemption или
 | До SQLite transaction | Авторитетными остаются прежние `active`/`previous`; Reload не отправлен. |
 | После transaction, до Reload | Новый `active` и прежний `active` как `previous` уже durable; Core продолжает roll-forward после restart. |
 | После promotion в active, до Reload | Core продолжает ту же durable operation и уведомляет replicas. |
-| После частичных ACK | Roll-forward; подтверждённые остаются eligible на target, остальные повторно получают Reload и fenced. |
+| После частичных ACK | Roll-forward; подтверждённые остаются eligible на target, остальные fenced до startup reconciliation после ручного перезапуска Core. |
 | После всех ACK, до operation completion | Core сверяет replica digest и завершает ту же operation; slot pointers уже committed. |
 | После slot promotion, до публикации snapshot | Snapshot строится из committed SQLite state и не допускает stale replicas к target traffic. |
 | Во время reconnect | Неизвестный Call не воспроизводится; затронутый stream закрывается, replica fenced до сверки. |
@@ -178,9 +192,12 @@ plugin Manifest, REST lifecycle, settings, health API, secret redemption или
 Повреждённая БД, digest mismatch или невозможность однозначно восстановить
 generation блокирует только соответствующие instance/bindings и требует
 операторского решения; Core не угадывает конфигурацию из runtime плагина.
-Backup Core включает согласованную SQLite backup и Core configuration
-artifacts. Backup plugin volumes выполняется отдельно и включает plugin-owned
-данные, например Caddy site releases и ACME state.
+Backup Core включает согласованный SQLite snapshot, создаваемый CLI-командой
+`database backup`, и отдельно сохранённые Core bootstrap/configuration
+artifacts. Restore выполняется только при остановленном Core; CLI проверяет
+schema version, integrity и foreign keys и заменяет файл атомарно. Backup
+plugin volumes выполняется отдельно и включает plugin-owned данные, например
+Server site releases и ACME state.
 
 Подробные публичные errors, operations и endpoints описаны в
 [Management API](/spec/management.openapi.yaml), [error catalog](/spec/errors.json)

@@ -12,7 +12,6 @@ import (
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/presentation/api/handlers"
 )
 
 type Server struct {
@@ -20,8 +19,7 @@ type Server struct {
 	ServiceAccounts    []models.ServiceAccount
 	mu                 sync.RWMutex
 	Operations         application.OperationService
-	AdminSurfaces      []handlers.AdminSurface
-	AdminDispatcher    *plugins.Dispatcher
+	PluginAdminControl *plugins.SDKAdminControl
 	Plugins            []any
 	PluginIDField      string
 	Audit              *application.AuditService

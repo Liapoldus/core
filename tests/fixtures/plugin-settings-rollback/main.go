@@ -130,8 +130,8 @@ type seededRevision struct {
 
 func seedInstance(ctx context.Context, database *sql.DB, id string, revisions []seededRevision) {
 	if _, err := database.ExecContext(ctx,
-		`INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
-		id, "remote", []byte(`{"name":"fixture"}`), "configured"); err != nil {
+		`INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+		id, []byte(`{"name":"fixture"}`), "configured"); err != nil {
 		panic(err)
 	}
 	for _, revision := range revisions {

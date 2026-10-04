@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -219,6 +220,13 @@ func (service *PluginConfigurationService) scheduleApply(command ApplyPluginConf
 		}
 		_, err := service.Apply(workerContext, command)
 		if err != nil {
+			code := service.OperationFailureCodes.ApplyFailed
+			var conflict models.PluginConfigurationConflict
+			if errors.As(err, &conflict) {
+				code = service.OperationFailureCodes.Conflict
+			}
+			_ = service.Operations.Transition(workerContext, operation.ID,
+				service.OperationStates.Running, service.OperationStates.Failed, code)
 			return
 		}
 		_ = service.Operations.Transition(workerContext, operation.ID, service.OperationStates.Running, service.OperationStates.Succeeded, "")

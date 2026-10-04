@@ -22,7 +22,7 @@ func main() {
 	database, err := openDatabase(ctx, databasePath, contract)
 	check(err)
 	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances
-		(id, mode, manifest_json, state) VALUES (?, 'remote', ?, 'configured')`, "fixture", []byte(`{"name":"fixture"}`))
+		(id, manifest_json, state) VALUES (?, ?, 'configured')`, "fixture", []byte(`{"name":"fixture"}`))
 	check(err)
 	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
 		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)

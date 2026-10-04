@@ -49,11 +49,12 @@ async function waitForManagement(address: string, child: Awaited<ReturnType<type
 }
 
 describe("serve plugin composition", () => {
-  it("exposes only generic instance metadata for explicitly registered endpoints and supervises no process", async () => {
+	it("keeps Management available for an unreachable configured replica and supervises no process", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-serve-plugin-runtime-"));
     const binary = await buildCoreTestBinary();
     const address = await freeAddress();
     const controlAddress = await freeAddress();
+    const replicaAddress = await freeAddress();
     const certificate = join(directory, "management.crt");
     const privateKey = join(directory, "management.key");
     const controlCertificate = join(directory, "plugin-control.crt");
@@ -102,12 +103,12 @@ describe("serve plugin composition", () => {
         `    replicaClientCA: file:${replicaClientCA}`,
         `    replicaServerCA: file:${replicaServerCA}`,
         "plugins:",
-        "  - instanceId: catalog",
+        "  - instanceId: serve-fixture",
         "    replicas:",
-        "      - replicaId: catalog-a",
-        `        endpoint: https://${controlAddress}`,
+        "      - replicaId: serve-fixture-a",
+        `        endpoint: https://${replicaAddress}`,
         "        expectedPeerIdentity:",
-        "          commonName: catalog-a",
+        "          commonName: serve-fixture-a",
         "",
       ].join("\n"), "utf8");
 
@@ -120,7 +121,9 @@ describe("serve plugin composition", () => {
       });
       const seedReport = JSON.parse(seeded.stdout) as { columns: string[]; configurationColumns: string[]; seeded: boolean };
       expect(seedReport.seeded).toBe(true);
-      expect(seedReport.columns).toEqual(expect.arrayContaining(["id", "mode", "endpoint", "manifest_json", "state"]));
+      expect(seedReport.columns).toEqual(expect.arrayContaining(["id", "manifest_json", "state"]));
+      expect(seedReport.columns).not.toContain("mode");
+      expect(seedReport.columns).not.toContain("endpoint");
       expect(seedReport.columns).not.toContain("settings_json");
       expect(seedReport.configurationColumns).toEqual(expect.arrayContaining(["instance_id", "generation", "slot", "raw_json", "sha256"]));
 
@@ -129,9 +132,9 @@ describe("serve plugin composition", () => {
 
       const status = await request(address, "/api/status", token);
       expect(status.status).toBe(200);
-      expect(JSON.parse(status.body)).toMatchObject({
-        dataPlaneReadiness: { state: "ready" },
-      });
+      const statusBody = JSON.parse(status.body) as { drift: boolean; dataPlaneReadiness: { state: string } };
+      expect(statusBody.drift).toBe(true);
+      expect(statusBody.dataPlaneReadiness.state).toBe("not-ready");
 
       // Core owns generic instance metadata only. Manifest documents and
       // registered endpoints are plugin-owned and must not be surfaced.
@@ -139,7 +142,7 @@ describe("serve plugin composition", () => {
       expect(pluginList.status).toBe(200);
       const pluginListBody = JSON.parse(pluginList.body) as { items: Array<Record<string, unknown>> };
       expect(pluginListBody.items).toEqual([
-        { id: "serve-fixture", mode: "remote", state: "configured", revision: 1 },
+        { id: "serve-fixture", state: "configured", revision: 1 },
       ]);
       expect(pluginList.body).not.toContain("127.0.0.1:45678");
       expect(pluginList.body).not.toContain("fixture-private-value");
@@ -150,7 +153,7 @@ describe("serve plugin composition", () => {
       const pluginDetail = await request(address, "/api/plugins/serve-fixture", token);
       expect(pluginDetail.status).toBe(200);
       expect(JSON.parse(pluginDetail.body)).toEqual({
-        id: "serve-fixture", mode: "remote", state: "configured", revision: 1,
+        id: "serve-fixture", state: "configured", revision: 1,
       });
       expect(pluginDetail.body).not.toContain("fixture-private-value");
       expect(pluginDetail.body).not.toContain("127.0.0.1:45678");
@@ -160,10 +163,8 @@ describe("serve plugin composition", () => {
       expect(JSON.parse(unknownPlugin.body).status).toBe(404);
 
       const surfaces = await request(address, "/api/plugins/admin-surfaces", token);
-      expect(surfaces.status).toBe(200);
-      expect(JSON.parse(surfaces.body).items).not.toEqual(expect.arrayContaining([
-        expect.objectContaining({ plugin: "serve-fixture" }),
-      ]));
+      expect(surfaces.status).toBe(503);
+      expect(JSON.parse(surfaces.body).code).toBe("plugin_unavailable");
 
       // v1 Core owns no process lifecycle: install, restart and release are not
       // Management API operations.

@@ -19,14 +19,6 @@ import (
 // observed as having acknowledged it, which is what keeps startup from looking
 // like an unapplied configuration and re-announcing generations that no operator
 // asked to re-announce.
-const registerPluginInstanceSQL = `
-INSERT OR IGNORE INTO plugin_instances (id, mode, endpoint, manifest_json, state, updated_at)
-VALUES (?, 'remote', NULL, ?, ?, ?)`
-
-const registerPluginReplicaSQL = `
-INSERT OR IGNORE INTO plugin_replicas (instance_id, replica_id, observed_generation, observed_state, last_failure_code, observed_at)
-VALUES (?, ?, NULL, ?, '', ?)`
-
 // registerDeclaredPlugins is called once during startup, after the database and
 // configuration stores are open. A declared instance with no configuration yet
 // is registered in the configured state; the manifest stays an empty JSON object
@@ -35,11 +27,11 @@ VALUES (?, ?, NULL, ?, '', ?)`
 func registerDeclaredPlugins(ctx context.Context, database *sql.DB, registry pluginRegistry) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, instance := range registry.instances {
-		if _, err := database.ExecContext(ctx, registerPluginInstanceSQL, instance.InstanceID, []byte("{}"), "configured", now); err != nil {
+		if err := storage.RegisterPluginInstance(ctx, database, instance.InstanceID, []byte("{}"), "configured", now); err != nil {
 			return err
 		}
 		for _, replica := range instance.Replicas {
-			if _, err := database.ExecContext(ctx, registerPluginReplicaSQL, instance.InstanceID, replica.ReplicaID, storage.ReplicaObservedPending, now); err != nil {
+			if err := storage.RegisterPluginReplica(ctx, database, instance.InstanceID, replica.ReplicaID, storage.ReplicaObservedPending, now); err != nil {
 				return err
 			}
 		}

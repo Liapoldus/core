@@ -30,11 +30,16 @@ func access(options options) int {
 	if err != nil {
 		return configValidationFailure(options.output, err)
 	}
-	database, err := bootstrapruntime.OpenDatabase(context.Background(), bootstrap.StatePath)
+	database, unlock, err := bootstrapruntime.OpenExclusiveDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
+		if bootstrapruntime.DatabaseBusy(err) {
+			writeFailure(options.output, words.Exits.Conflict, words.Codes.DatabaseBusy, words.Diagnostics.DatabaseBusy)
+			return words.Exits.Conflict
+		}
 		writeFailure(options.output, words.Exits.Unavailable, words.Codes.ConfigInvalid, words.Diagnostics.ConfigInvalid)
 		return words.Exits.Unavailable
 	}
+	defer unlock()
 	defer database.Close()
 	keyStore, err := storage.NewSQLiteServiceKeyStore(database)
 	if err != nil {

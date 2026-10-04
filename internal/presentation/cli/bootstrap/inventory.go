@@ -18,7 +18,6 @@ func PresentPluginInventory(records []storage.PluginInstanceRecord, contract con
 		}
 		items = append(items, map[string]any{
 			contract.JSON.ID:       record.ID,
-			contract.JSON.Mode:     record.Mode,
 			contract.JSON.State:    record.State,
 			contract.JSON.Revision: record.Revision,
 		})

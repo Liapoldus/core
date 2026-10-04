@@ -159,8 +159,8 @@ func openDatabase(path string) *sql.DB {
 func seedPluginRevisions(database *sql.DB, id string) {
 	ctx := context.Background()
 	if _, err := database.ExecContext(ctx,
-		`INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
-		id, "local", []byte(`{"name":"fixture"}`), "configured"); err != nil {
+		`INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+		id, []byte(`{"name":"fixture"}`), "configured"); err != nil {
 		panic(err)
 	}
 	for _, generation := range []struct {

@@ -13,7 +13,45 @@ func OpenDatabase(ctx context.Context, path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return storage.OpenSQLite(ctx, path, storage.SQLiteOptions{
+	return storage.OpenSQLite(ctx, path, databaseOptions(contract), contract.Schema)
+}
+
+func OpenServingDatabase(ctx context.Context, path string) (*sql.DB, func(), error) {
+	contract, err := config.LoadSQLiteContract()
+	if err != nil {
+		return nil, nil, err
+	}
+	unlock, err := storage.AcquireSQLiteStateLock(path, contract.ParentDirectoryMode)
+	if err != nil {
+		return nil, nil, err
+	}
+	database, err := storage.OpenSQLite(ctx, path, databaseOptions(contract), contract.Schema)
+	if err != nil {
+		unlock()
+		return nil, nil, err
+	}
+	return database, unlock, nil
+}
+
+func OpenExclusiveDatabase(ctx context.Context, path string) (*sql.DB, func(), error) {
+	contract, err := config.LoadSQLiteContract()
+	if err != nil {
+		return nil, nil, err
+	}
+	unlock, err := storage.AcquireSQLiteStateLock(path, contract.ParentDirectoryMode)
+	if err != nil {
+		return nil, nil, err
+	}
+	database, err := storage.OpenSQLite(ctx, path, databaseOptions(contract), contract.Schema)
+	if err != nil {
+		unlock()
+		return nil, nil, err
+	}
+	return database, unlock, nil
+}
+
+func databaseOptions(contract config.SQLiteContract) storage.SQLiteOptions {
+	return storage.SQLiteOptions{
 		Driver:                 contract.Driver,
 		ParentDirectoryMode:    contract.ParentDirectoryMode,
 		DatabaseFileMode:       contract.DatabaseFileMode,
@@ -27,6 +65,7 @@ func OpenDatabase(ctx context.Context, path string) (*sql.DB, error) {
 		ForeignKeyCheckQuery:   contract.ForeignKeyCheckQuery,
 		IntegritySuccess:       contract.IntegritySuccess,
 		IntegrityError:         contract.IntegrityError,
+		BackupIntoQuery:        contract.BackupIntoQuery,
 		Pragmas:                contract.Pragmas,
-	}, contract.Schema)
+	}
 }

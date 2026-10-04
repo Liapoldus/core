@@ -98,3 +98,16 @@ type declaredReplicaTransport struct {
 func (transport *declaredReplicaTransport) Do(request *http.Request) (*http.Response, error) {
 	return transport.client.Do(request)
 }
+
+// DoArtifact uses the same pinned peer identity and verified mTLS transport as
+// every other Plugin SDK control call while preserving the long-lived streaming
+// request body. The SDK controls the deadline and multipart contract.
+func (transport *declaredReplicaTransport) DoArtifact(request *http.Request) (*http.Response, error) {
+	return transport.client.Do(request)
+}
+
+// DoAdminAction preserves the SDK's action deadline instead of routing the
+// request through a shorter generic control-call timeout.
+func (transport *declaredReplicaTransport) DoAdminAction(request *http.Request) (*http.Response, error) {
+	return transport.client.Do(request)
+}

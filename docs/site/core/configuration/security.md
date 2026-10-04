@@ -21,10 +21,46 @@ identities отдельно для каждой replica и регистриру�
 plugin private keys.
 
 Remote trust использует externally issued identities и signed CRL bundles.
-Неверная цепочка, issuer, подпись, срок, номер или отозванный serial закрывает
-новое peer connection. Обновление CRL закрывает существующие каналы и требует
-нового handshake; insecure downgrade запрещён. Peer transport contract — только в
-[pluginprotocol](https://github.com/Liapoldus/pluginprotocol).
+Для Core↔plugin REST задаются независимые `replicaClientCA` и
+`replicaServerCA`; для каждого trust root можно указать свой список
+`replicaClientCRLs` или `replicaServerCRLs`. При настроенном CRL Core проверяет
+его подпись, issuer и срок действия и отклоняет отозванный serial при каждом
+новом TLS handshake. Ошибка чтения или проверки CRL закрывает соединение.
+Core загружает эти файлы при старте; замена сертификатов, CA или CRL требует
+согласованного orderly restart Core и затронутых plugin replicas. Горячая
+ротация trust roots в v1 не поддерживается.
+
+### Плановая замена CA и workload identities
+
+V1 поддерживает замену CA и leaf-сертификатов только с плановым перерывом:
+
+1. Создайте и проверьте комплект новых credentials для Core и каждой plugin
+   replica. URI/CN identities должны совпадать с объявленными в `core.yaml`, а
+   новые trust roots должны быть доступны в нужных Core↔plugin bundle и отдельно
+   в plugin↔plugin bundle.
+2. Согласуйте резервное копирование Core SQLite и product-owned данных плагинов
+   по соответствующим процедурам. Не копируйте private keys в Core backup.
+3. Остановите Core и все затрагиваемые плагины штатными средствами оператора.
+   Не меняйте CA/CRL файлы при работающих процессах: они не перечитываются
+   автоматически.
+4. Атомарно замените сертификаты, private keys, trust-root bundles и подписанные
+   CRL bundles. Убедитесь, что каждый CRL выдан соответствующим новым issuer и
+   содержит корректные serials.
+5. Запустите plugin binaries вручную и дождитесь их HTTPS REST/peer listeners.
+   Затем запустите Core. Core восстановит SQLite snapshot и выполнит обычный
+   `Reload`/exact-generation pull/ACK.
+6. Проверьте `/api/status`: все объявленные replicas должны быть `ready`,
+   `drift` — `false`; проверьте реальный Server HTTP route и разрешённый
+   Server→forms-db вызов. Проверьте, что соединение со старой CA identity
+   отклоняется.
+
+Если любая проверка не проходит, остановите затронутые процессы и восстановите
+предыдущий согласованный комплект credentials и trust bundles; не удаляйте
+предыдущие данные или certificates до успешной проверки нового набора.
+
+Для plugin↔plugin peer transport применяются отдельные trust roots и CRL
+механизмы `pluginprotocol`; их профиль и правила reconnect описаны только в
+[контракте pluginprotocol](https://github.com/Liapoldus/pluginprotocol).
 
 ## Межплагинные вызовы и secrets
 

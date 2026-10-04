@@ -1,24 +1,33 @@
-# Логи, аудит и наблюдаемость
+# Наблюдаемость Core и plugins
 
-Core SQLite хранит durable operations, idempotency metadata, generation ACKs,
-service-key metadata и audit. Access/application logs и traces выдаются через
-явно подключённые sinks; Core не копирует request bodies или plugin payloads
-ради диагностики.
+В v1 Core предоставляет ограниченную наблюдаемость control plane:
 
-Audit фиксирует actor/binding, action, resource, operation ID, digest,
-timestamp, result и request ID. Он не содержит settings plaintext, Caddy
-runtime config, Authorization, secrets, private keys, cookie values или grant
-handles.
+- `GET /healthz` сообщает, что процесс Core отвечает.
+- `GET /api/status` возвращает readiness и drift по подключённым plugin
+  replicas.
+- Core CLI `inspect` показывает состояние SQLite, объявленные endpoints,
+  поколения конфигурации и durable operations в пределах своей безопасной
+  redacted-модели.
+- Management audit хранится в SQLite и фиксирует actor, действие, ресурс,
+  operation ID, digest, timestamp, результат и request ID.
 
-Metrics отражают singleton Core readiness, SQLite/storage health, registered
-plugin endpoint connectivity, desired/applied config и interaction generations,
-per-replica ACK, operation age, Server plugin health,
-ACME readiness по домену и HTTP health. Публичный L4 health относится к v2.
-Labels не должны содержать raw
-credentials, private endpoints, request payload, cookie values или grants.
+Core v1 не предоставляет Prometheus `/metrics`, экспорт трассировок,
+настраиваемые log sinks или централизованный сбор логов plugins. Не
+настраивайте scrape или alert на несуществующем Core metrics endpoint. Для
+проверки readiness используйте `/healthz`, `/api/status` и CLI inspection;
+доступ к Management API защищён согласно
+[модели безопасности](../api/authentication).
 
-Server plugin logs отделены от Core logs, но используют общую redaction policy.
-Caddy Admin port не публикуется; его API не является операторской или
-observability поверхностью. Незавершённые реализации отмечены в
-[roadmap](../architecture/v1-migration-roadmap) и
-[`core/TODO.md`](https://github.com/Liapoldus/core/blob/main/TODO.md).
+Plugin SDK предоставляет собственный lifecycle metrics endpoint и пишет
+структурированные JSON lifecycle logs в stdout/stderr каждого plugin process.
+Общий SDK-контракт описан в [документации Plugin SDK](/plugin-sdk/).
+Server и forms-db остаются отдельными источниками этих данных: Core не
+агрегирует их metrics/logs и не включает product-specific состояния, например
+ACME readiness или HTTP traffic, в собственную модель. Инструкции и границы
+SDK описаны в его owner-документации; детали продуктовых данных — в
+документации соответствующего plugin.
+
+Audit и диагностика не должны содержать settings plaintext, plugin payloads,
+Authorization, secret values/references, private keys, cookie values или grant
+handles. Для восстановления Core и резервирования SQLite используйте
+[backup/restore runbook](backup-restore).

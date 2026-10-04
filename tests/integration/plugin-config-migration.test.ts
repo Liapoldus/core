@@ -17,7 +17,7 @@ describe("plugin configuration SQLite migration", () => {
         cwd: coreRoot,
       });
       expect(JSON.parse(result.stdout)).toMatchObject({
-        migrationVersion: 8,
+        migrationVersion: 9,
         active: { generation: 2, raw: '{ "version" : 2 }' },
         previous: { generation: 1, raw: '{"version":1}' },
         staging: { generation: 3, raw: '{ "version" : 3 }' },
@@ -25,6 +25,9 @@ describe("plugin configuration SQLite migration", () => {
         payloadHasNoSettings: true,
         repeatedStartupPreserved: true,
         legacyTablesRemoved: true,
+        legacyTopologyColumnsRemoved: true,
+        replicaRowsPreserved: true,
+        foreignKeysValid: true,
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

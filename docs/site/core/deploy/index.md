@@ -9,17 +9,28 @@ Docker/Compose, Swarm, Kubernetes и автоматический local-process 
 
 Оператор устанавливает Core и каждый plugin binary отдельно. Порядок запуска:
 
-1. Настроить и запустить Core с его SQLite и Management API.
-2. Установить/настроить persistent directory и вручную запустить Server plugin.
-3. Вручную запустить forms-db plugin.
-4. Зарегистрировать fixed endpoints и ожидаемые mTLS identities плагинов через
-   Management API, загрузить их конфигурации и дождаться readiness/ACK.
+1. Подготовить `core.yaml`: в нём оператор заранее объявляет каждый plugin
+   instance, его фиксированные replica endpoints и ожидаемые mTLS identities;
+   настроить отдельные trust roots и сертификаты Core и плагинов.
+2. Настроить persistent directories и вручную запустить Server и forms-db
+   plugin binaries. Каждый plugin сам поднимает свой REST endpoint; Core не
+   устанавливает и не запускает эти процессы. До продолжения проверить их
+   control-plane health и mTLS identity.
+3. Запустить Core с `core.yaml`, SQLite и Management API. При старте Core
+   регистрирует объявленную топологию в SQLite и однократно сверяет активные
+   поколения с уже запущенными replicas. Недоступная replica видна как
+   degraded и не блокирует запуск Core.
+4. Через Management API создать/обновить plugin settings и дождаться
+   завершения operation и readiness/ACK нужных replicas.
 
 Core не устанавливает, не запускает, не останавливает, не перезапускает,
 масштабирует и не удаляет plugin processes или containers. Автозапуск и
 перезапуск после сбоя настраиваются оператором средствами ОС. После ручного
-рестарта plugin Core заново проверяет identity, Manifest, health и generation;
-пользовательские вызовы и оборванные streams не воспроизводятся.
+рестарта plugin Core заново проверяет identity, Manifest, health и generation.
+Если Core оставался запущен, его read-only readiness monitor отмечает replica
+как degraded, но не повторяет `Reload`; после проверки health оператор вручную
+перезапускает Core для startup reconciliation. Пользовательские вызовы и
+оборванные streams не воспроизводятся.
 
 ## Persistent state и резервное копирование
 
@@ -30,7 +41,7 @@ operations. Оператор отдельно резервирует Caddy ACME/
 packages и не принимает provider credentials.
 
 Restore выполняется оператором: остановить сервисы вручную, восстановить Core
-database и соответствующие plugin-owned data, затем запустить Core и плагины.
+database и соответствующие plugin-owned data, затем запустить плагины и Core.
 Core проверяет exact config generations и повторно инициирует `Reload`; он не
 выполняет process orchestration. Подробная процедура находится в
 [backup/restore](backup-restore).
@@ -45,3 +56,37 @@ policy через `pluginprotocol`.
 
 Детали deployment modes, container providers и автоматического управления
 plugin processes относятся к v2 и не являются частью v1 acceptance.
+
+## Команды оператора
+
+Ниже — форма команд, а не готовые production credentials. До запуска оператор
+создаёт `core.yaml`, выдаёт разные сертификаты для Core control listener,
+каждой plugin REST replica и plugin↔plugin peers, настраивает соответствующие
+trust roots/CRL и сохраняет абсолютные пути в командах плагинов. DNS SAN Core
+сертификата должен соответствовать `--core-server-name`; plugin REST certificate
+CN/URI должны совпадать с `expectedPeerIdentity`, а ожидаемые Core CN/URI — с
+SDK-флагами и SAN Core-сертификатов. Подробные обязательные флаги принадлежат
+руководствам [Server](/plugins/server) и
+[forms-db](/plugins/forms-db).
+
+Создать первый Management service key следует до постоянного запуска Core;
+токен показывается один раз и передаётся в защищённое хранилище оператора:
+
+```bash
+./core --config /absolute/path/to/core.yaml access bootstrap
+```
+
+Затем вручную запустить каждый plugin binary командами из его руководства и
+запустить Core:
+
+```bash
+./core --config /absolute/path/to/core.yaml serve
+```
+
+Проверить Management readiness, plugin inventory и подтверждённое активное
+поколение. Вызовы между Server и forms-db используют отдельный peer listener и
+отдельную mTLS trust chain; успешный Core control handshake сам по себе не
+проверяет plugin↔plugin доступность. Для остановки оператор штатно посылает
+`SIGTERM`: сначала остановить Core, затем плагины; при восстановлении запускать
+плагины и Core в порядке, описанном выше. Core не хранит PID и не повторно
+запускает процессы.

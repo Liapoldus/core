@@ -8,7 +8,7 @@ instance версионированный JSON через REST `Reload` + config
 
 | Компонент | Владелец | Состояние |
 | --- | --- | --- |
-| Management API и CLI | Core | Settings, заранее объявленные endpoints, scoped secret grants, operations и audit в SQLite. Plugin-to-plugin policies — вне v1. |
+| Management API и CLI | Core | Settings, наблюдения о заранее объявленной в `core.yaml` topology, scoped secret grants, operations и audit в SQLite. Сам endpoint/identity registry не редактируется API; plugin-to-plugin policies — вне v1. |
 | Plugin runtime | Operator + Plugin SDK REST | Оператор вручную запускает plugin; Core подключается по fixed endpoint и не управляет процессом или контейнером. |
 | HTTP data plane | Отдельный `plugins/server` process | В v1 одна replica; Caddy входит в plugin binary, а Caddy-L4/public L4 отложены до v2. |
 | Другие data-plane capabilities | Соответствующие plugins | Core видит только Manifest, schema, generic endpoint и Plugin SDK REST lifecycle. |

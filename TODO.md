@@ -10,6 +10,122 @@
 - [ ] После изменения Core docs синхронизировать pinned SHA в
   `liapoldus.github.io/docs-sources.json` и выполнить агрегаторный build.
 
+## Текущий статус — 2026-10-02
+
+Дополнение 2026-10-04: уточнённый owner contract для синхронных Admin Actions
+подтверждён отдельным успешным повтором в `plugin-admin-surface-forwarding`:
+два принятых запроса с одним `Idempotency-Key` оба достигают выбранной replica,
+получают разные request ID и создают отдельные audit-записи. Ключ — только
+correlation metadata; Core не дедуплицирует действие. Targeted Vitest прошёл на
+macOS и в Ubuntu 24.04.5 ARM64 VM под OrbStack; Core `make check`, `go vet
+./...` и `make staticcheck-u1000` после изменения прошли. Это не exactly-once:
+неизвестный результат сетевого вызова автоматически не повторяется.
+
+Дополнение 2026-10-04: исправлена оставшаяся ссылка на удалённый wire namespace
+`liapoldus.plugin.v1` в целевой архитектуре Core: указан актуальный generic
+`liapoldus.peer.v1`; тестовая manifest fixture больше не притворяется старым
+protocol manifest. `serve-plugin-runtime.test.ts` прошёл. VitePress `docs:sync`
+и `npm run build` прошли на локальных checkout. Published docs pin не менялся:
+owner worktree не закоммичен и публикация запрещена текущим v1 prompt.
+
+Дополнение 2026-10-04: `serve-plugin-runtime.test.ts` теперь отдельно доказывает,
+что active generation с недоступным declared endpoint не блокирует запуск Core:
+Management health доступен, status честно сообщает `not-ready`/`drift: true`.
+Targeted child-process тест прошёл на macOS и OrbStack Ubuntu; после добавления
+регрессии повторно прошли полный Core `make check` (70/128, 1 skip), `go vet
+./...`, `make staticcheck-u1000` и `git diff --check`.
+
+Дополнение 2026-10-04: Core SQLite schema v9 и plugin inventory больше не
+содержат deployment `mode` или plugin `endpoint`. Startup migration атомарно
+перестраивает старую `plugin_instances`, сохраняя manifest/state, конфигурации
+active/previous/staging и связанные replica observations; после миграции
+проверяется referential integrity. Проверено повторным запуском v5 fixture и
+inventory integration. Core `make check` прошёл (70 файлов Vitest, 128 тестов,
+один файл пропущен; Docker architecture lint), `go vet ./...`,
+`make staticcheck-u1000`, `go build ./...` и `git diff --check` прошли.
+Остальные release gates ниже остаются открытыми.
+
+Повторная межрепозиторная проверка 2026-10-04: Core SQL-backed production E2E
+прошёл 3/3 на одноразовых PostgreSQL 16, MySQL 8.0 и MariaDB 11.4; containers
+созданы только для этого прогона и остановлены. SDK 14/190, pluginprotocol
+9/138 + race 9/138, Server 30/79, forms-db 20/33 + Node 2/2 прошли актуальные
+suites и Go build/vet. Позднее все наборы повторно прошли в OrbStack Ubuntu
+guest; результаты описаны ниже. VitePress `npm run docs:sync && npm run build`
+прошёл по локальному workspace. Hosted CI, опубликованные docs pins и release
+artifact остаются открытыми.
+
+Дополнение 2026-10-03: production Core→Server→forms-db SQL walkthrough
+проверил отказ недоступного candidate, терминальный `failed` у операции,
+сохранение прежнего serving runtime и восстановление `submit`/`list` после
+rollback. PostgreSQL 16, MySQL 8.0 и MariaDB 11.4 прошли `3/3` на disposable
+контейнерах. Причина прежнего `503` была в panic forms-db при вызове `Close`
+на typed-nil SQL repository; исправление и отдельная регрессия находятся у
+владельца forms-db. Core `make check` после среза прошёл (70 файлов /
+128 тестов, один файл пропущен, Docker arch-lint), `go vet ./...`,
+`make staticcheck-u1000` и `git diff --check` также прошли. Это дополнение
+не заменяет полный release gate ниже.
+
+Дополнение 2026-10-03: настоящий Core mTLS API выдал forms-db одноразовый
+secret grant для active generation 1; после успешного Reload generation 2 тот
+же grant был отклонён контрактным `grant_denied`. Ответ, Core logs и durable
+SQLite/audit state не содержали secret handle. Production Core→Server→forms-db
+SQL walkthrough прошёл 3/3 на PostgreSQL 16, MySQL 8.0 и MariaDB 11.4.
+Семантика синхронных plugin Admin Actions закреплена отдельно от durable
+operation idempotency: одинаковый `Idempotency-Key` не дедуплицирует Admin
+Action, каждый принятый запрос выполняется и аудируется заново; это не
+exactly-once и неизвестный результат автоматически не replay-ится.
+
+Дополнение 2026-10-03: production `forms.list` теперь также доказывает
+отклонение generation-2 plugin при active generation 3: Core принимает
+настройки, не может уведомить forms-db из-за недоступного объявленного REST
+endpoint, а живой Server→forms-db peer вызов завершается только безопасным
+`503 storage_unavailable` без DSN, cursor secret или operation ID. После
+возврата endpoint Core повторно уведомляет plugin, и `forms.list` восстанавливается.
+Проверено в `manual-core-server.test.ts` (1/1) и SQL-backed
+`manual-core-server-sql.test.ts` (3/3: PostgreSQL 16, MySQL 8.0, MariaDB 11.4;
+одноразовые контейнеры удалены). Это закрывает только данный stale-generation
+путь. Дополнительно Core CRL отзывает forms-db replica client certificate,
+после чего реальный forms.list не может получить scoped grant и fail-closes;
+после возврата CRL Core/plugin сходятся. Это проверено на memory и SQL-backed
+production E2E (PostgreSQL 16, MySQL 8.0, MariaDB 11.4, 3/3). Полный
+security-negative matrix остаётся открытым. После изменения прошли `make check`
+(70 файлов Vitest, 128 тестов, 1 пропущенный;
+Go build и Docker arch-lint), `go vet ./...`, `make staticcheck-u1000`,
+`go test ./...` и `git diff --check` на macOS/arm64.
+
+Повторный прогон текущего дерева: `make check` прошёл (70 файлов / 128 тестов;
+один test file skipped; Docker architecture lint OK), `go vet ./...` и
+`make staticcheck-u1000` прошли. Дополнительно прошёл реальный
+`tests/integration/manual-core-server.test.ts` walkthrough (Core→Server→forms-db,
+включая settings generation/rollback, прямой submit/list, site publish, ручные
+restart/reconnect, backup и отклонение restore при работающем Core). Внутри
+walkthrough Core останавливается при работающих плагинах: forms list через
+Server fail-closes как `storage_unavailable` при недоступном Core scoped-grant
+endpoint и восстанавливается после ручного запуска Core.
+
+Core проходит `make check` (70 файлов / 128 тестов, включая Docker arch-lint; один
+существующий test file skipped),
+`go vet ./...` и `make staticcheck-u1000`. Реальный ручной E2E Core→Server→
+forms-db прошёл: exact settings, Reload/pull/ACK, HTTP generation change,
+разрешённый прямой Server→forms-db submit по pluginprotocol+mTLS, `forms.list`,
+rollback, Server/forms-db restart, artifact publish и site persistence after
+restart. Core-backed PostgreSQL E2E подтвердил SQL persistence после forms-db
+restart и восстановление Server peer-соединения без replay вызова; такой же
+production E2E 2026-10-02 прошёл на MySQL 8.0 и MariaDB 11.4. Cross-repository
+CI настроен запускать все три SQL backend.
+В E2E дочерние Core/Server/forms-db процессы не получают SQL DSN из
+test-selector environment variables; проверка это утверждает явно.
+E2E отдельно останавливает Server при работающем Core, проверяет переход в
+degraded/drift, запускает его снова и подтверждает, что read-only monitor не
+повторяет Reload: replica остаётся degraded. Затем E2E вручную перезапускает
+Core; startup reconciliation выполняет exact-generation Reload/pull/ACK, после
+чего `/api/status` возвращает `ready` и `drift: false`. Core не объявлять
+production-ready до полного release gate:
+Linux VM runtime matrix, документационная синхронизация, CI и semver
+релизный набор не закрыты. Server certificate `list/get` реализованы как
+read-only actions; ручные certificate renew/revoke actions исключены из v1,
+Caddy автоматически продлевает сертификаты.
+
 ## Зафиксированная граница v1
 
 - Состав v1: три сервиса — Core, Server plugin, forms-db plugin; две библиотеки —
@@ -73,15 +189,21 @@
   `plugin-config-snapshot`, `plugin-convergence-snapshot`,
   `serve-plugin-runtime` и полным `make check`. Сквозную проверку restart с
   реальными plugin-процессами учитывать в отдельном v1 acceptance gate.
-- [ ] Завершить SQLite backup/restore, integrity/foreign-key checks,
+- [x] Завершить SQLite backup/restore CLI, integrity/foreign-key checks,
   migrations и source-owned embedded SQL. Не добавлять PostgreSQL или S3.
   **ПРОВЕРЕНО 2026-09-30: частично.** Embedded source-owned SQL, `schema_migrations`
-  и проверка версии есть; апгрейд v6→v8 идёт идемпотентным применением схемы
+  и проверка версии есть; апгрейд v6→v9 идёт идемпотентным применением схемы
   (`sqlite.go:64` допускает меньшую версию, `sqlite-version-guard` это
   закрепляет). На production bootstrap добавлены `quick_check(1)` и
   `foreign_key_check` до/после schema apply; исполняемый тест отклоняет
-  осиротевший FK до открытия listener-ов. Backup/restore и проверка
-  восстановления из копии остаются открытыми.
+  осиротевший FK до открытия listener-ов. **РЕАЛИЗОВАНО:** `core database
+  backup` создаёт online snapshot через `VACUUM INTO`, проверяет schema,
+  integrity и foreign keys и публикует файл с режимом `0600`, не перезаписывая
+  существующий destination. `core database restore` проверяет backup и атомарно
+  заменяет state; работающий `serve` удерживает эксклюзивную блокировку, поэтому
+  restore при активном Core отклоняется. Сквозной CLI тест проверяет данные,
+  замену существующего файла, повреждённый backup и конфликт lock. Operator
+  procedure: `docs/site/core/deploy/backup-restore.md`.
 
 ## 2. Plugin SDK REST integration
 
@@ -104,12 +226,17 @@
   вычисляется из production-эвалуатора (`pluginDrift`/`pluginReadiness` в
   `plugin_registration.go`) по наблюдениям `plugin_replicas`, а при отсутствии
   источника evidence handler **fail-closed** отдаёт `drift: true`.
-  Надёжный startup (config + pluginControl trust material) и достижимость каждой
-  объявленной реплики теперь являются условием старта: `core serve` падает, а не
-  поднимается «наполовину». Покрыто:
+  Невосстановимая Core-конфигурация и отсутствующий/невалидный
+  `pluginControl` trust material блокируют startup. Недоступность plugin replica
+  сама по себе startup не блокирует: Core поднимается, фиксирует недоступную
+  replica, а после появления desired generation сообщает degraded/not-ready и
+  drift до её convergence. Покрыто:
   `tests/integration/management-api-characterization.test.ts` (drift: true без
   evidence), `tests/architecture/presentation-boundaries.test.ts`,
-  `tests/architecture/v1-migration-contracts.test.ts`.
+  `tests/architecture/v1-migration-contracts.test.ts` и
+  `tests/integration/serve-plugin-runtime.test.ts`: настоящий Core с active
+  generation стартует с закрытым replica endpoint, `/healthz` остаётся доступен,
+  а `/api/status` показывает `not-ready` и `drift: true`.
   Promotion-before-fan-out в `plugin_configuration_service.go` сохранён
   намеренно: durable `active`/`previous` двигается в той же транзакции, что и
   раньше, а компенсация деградации обеспечена fencing + наблюдениями, а не
@@ -123,18 +250,32 @@
   dependency/wiring через `pluginprotocol`. `go.mod`/`go.sum` не содержат
   `pluginprotocol`; SDK вызывается только через `internal/infrastructure/plugins`.
   Границы проверены `make arch-lint` и `pluginprotocol-sdk-boundary`.
-- [ ] Проверить reconnect после ручного operator restart: новый handshake,
-  identity/schema/generation validation и reload при расхождении; никакого
-  process launch, restart или replay со стороны Core.
-- [ ] Проверить redaction, Management authorization, workload credential
-  rotation/revocation, scoped secret grants, audit и разделённые trust roots.
-- [ ] Реализовать Core-side SDK secret-grant issue/redemption endpoints. Сейчас
-  их нет в production router/storage, хотя SDK contract и Core schema обещают
-  scoped Core REST grants. Это v1-блокер для plugin-конфигураций с opaque secret
-  references (включая persistent storage forms-db и custom TLS server plugin).
-  Грант должен быть one-use и scoped к аутентифицированной replica, точному
-  active generation, reference и purpose; никакого plugin-to-plugin interaction
-  authorization этим API не предоставляется.
+- [x] Проверить ручное восстановление после restart plugin: E2E подтверждает,
+  что самостоятельный restart при работающем Core оставляет replica degraded,
+  а ручной restart Core выполняет startup reconciliation и восстанавливает
+  exact active generation через mTLS readiness/Reload/pull/ACK. В v1 нет
+  background retry; Core не запускает plugin и не повторяет пользовательские
+  вызовы.
+- [x] Проверить Management authorization, service-key redaction, атомарность
+  выпуска ключа вместе с audit и срок хранения audit. Evidence:
+  `golden-vector-management-auth.test.ts`, `service-key-list.test.ts`,
+  `service-key-issuance.test.ts` и `sqlite-audit-retention.test.ts`.
+- [x] Проверить отказ отозванной workload identity в Core↔Plugin SDK mTLS:
+  `tests/integration/manual-core-server.test.ts` запускает Core и plugins с
+  отдельными trust roots/подписанным CRL, подтверждает успешный exact-generation
+  pull до отзыва и TLS-отказ после добавления serial в CRL и orderly restart
+  Core. Это доказывает CRL enforcement на Core pull listener. Полная coordinated
+  downtime rotation также исполняется тем же реальным Core→Server→forms-db
+  fixture: Core и обе plugin replicas останавливаются вручную, сертификаты и
+  Core↔plugin/peer trust root заменяются, после чего все процессы запускаются
+  снова; новые credentials сходятся, старый root отклоняется. Горячая ротация
+  по-прежнему не поддерживается и не входит в v1.
+- [x] Реализовать Core-side SDK secret-grant issue/redemption endpoints:
+  one-use grants bound к аутентифицированной replica, candidate/active
+  generation, opaque reference и purpose; значение выдаётся только через
+  scoped redemption и не попадает в API/log/error. Проверено
+  `plugin-secret-grants.test.ts` и настоящим Core→Server mTLS Reload с
+  custom certificate grants.
 
 ## 3. Plugin registration и product integration
 
@@ -155,10 +296,11 @@
   SQLite не хранит endpoint/identity/replica set: реплики и наблюдения — только
   из `core.yaml`, таблица `plugin_replicas` содержит исключительно
   observation/ACK-состояние.
-  ВНИМАНИЕ: физические колонки `plugin_instances.mode` и `plugin_instances.endpoint`
-  пока остались в схеме (см. «Требует решения владельца» про безопасную миграцию
-  parent-таблицы). Новые регистрации их не заполняют, inventory-запрос их не
-  читает, но формально колонки ещё существуют.
+- [x] Удалить исторические `plugin_instances.mode` и `plugin_instances.endpoint`
+  из схемы и inventory v1. Миграция перестраивает legacy parent table в одной
+  транзакции, сохраняет дочерние наблюдения и поколения, затем проверяет
+  foreign keys; интеграционный fixture подтверждает сохранность raw JSON и
+  repeat startup. Inventory API не раскрывает deployment mode.
 - [ ] ~~Довести Management API для CRUD generic plugin instance/replica fixed
   endpoints и ожидаемых identities~~ **Снято решением A:** объявление topology
   перенесено в `core.yaml`, поэтому Management API регистрации не появился и
@@ -167,35 +309,46 @@
   остаются только читаемые plugin instances, settings, rollback, Admin Surface,
   operations, audit и access. Docs commit `453b15e` опубликован в `main`;
   Pages deployment после этого commit нужно проверить отдельно.
-- [ ] Завершить интеграцию вручную запускаемого `plugins/server`: migration
-  на SDK REST уже собирается; child-process fixture подтвердил mTLS
-  Reload→exact pull→ACK→HTTP, а полный Server Vitest прошёл 19/19 файлов
-  (2026-10-01). Настоящий Core→SDK→Server smoke подтверждает первый PUT с
-  revision 0, второе поколение, точный digest в SQLite, смену HTTP upstream и
-  rollback с ACK и завершённой durable operation. Custom TLS grants и site
-  publish ещё не доказаны. Публичное имя — `server`.
-- [ ] Удалить Caddy-L4 dependency/registration и public TCP/UDP listener/relay
-  implementation из v1 build; держать их только в v2 backlog.
-- [ ] Завершить интеграцию вручную запускаемого forms-db: перенос на SDK REST,
-  product schema, generic peer handlers и сборка выполнены; `npm test`,
-  `go test/build/vet ./...` прошли локально. Contract-compatible Core fixture
-  проверяет настоящий forms-db binary, mTLS Reload/pull/ACK, scoped DSN grant,
-  peer submit и SQLite persistence после restart. Ещё нужны production Core→
-  SDK→forms-db smoke с SQL/grants, MySQL/PostgreSQL restart/failure и прямой
-  Server→forms-db вызов. Настоящий Core→SDK→forms-db child-process Reload/ACK
-  теперь проверен для memory-driver; это не заменяет SQL/grants gate.
-- [ ] Реализовать generic bounded artifact forwarding в Management API через
+- [x] Проверить интеграцию вручную запускаемого `plugins/server`: настоящий
+  Core→SDK→Server child-process smoke подтвердил PUT, точные поколения,
+  Reload/pull/ACK, изменение HTTP response, rollback, restart Server и
+  последующий Core restart со сходимостью по `ready`/`drift: false`.
+  Дополнительный Server child-process test подтвердил scoped custom TLS grants.
+  Core→Server site-publish child-process E2E подтвердил multipart upload без
+  `If-Match`, durable operation, serving результата и сохранность после restart.
+- [x] Удалить Caddy-L4 dependency/registration и public TCP/UDP listener/relay
+  implementation из v1; Caddy-L4 и relay остаются в v2.
+- [x] Проверить forms-db plugin suite и SQL adapters: настоящий Core→Server→
+forms-db process pair проверяет authorized HTTP submit через прямой peer
+dispatch; отдельный forms-db child-process suite с Core-compatible SDK
+fixture проверяет Reload/pull/ACK, grants, peer submit и SQLite restart.
+PostgreSQL 16, MySQL 8.0 и MariaDB 11.4 repository и child-process suites
+прошли на disposable DB containers. Core-backed E2E проверяет Settings/Reload,
+submit/list через Server и сохранность записи после ручного forms-db restart;
+Server сбрасывает потерянную peer-сессию и переподключается на следующем
+независимом вызове без replay. PostgreSQL был проверен ранее; 2026-10-02
+настоящий Core→Server→forms-db сценарий дополнительно прошёл на MySQL 8.0 и
+MariaDB 11.4 (2/2). Production Core→Server→forms-db E2E теперь также выполняет
+24 параллельных HTTP submissions и bounded cursor pagination на каждом из трёх
+SQL backend; PostgreSQL 16, MySQL 8.0 и MariaDB 11.4 прошли повторно.
+Cross-repository CI запускает все три backend.
+- [x] Реализовать generic bounded artifact forwarding в Management API через
   Plugin SDK REST stream. Core не импортирует peer-only `pluginprotocol`, не
   интерпретирует Server archive/site payload и не буферизует весь artifact;
   Server владеет publish metadata/receipt, валидацией и durable operation.
+- [x] Доказать artifact forwarding из Core до настоящего Server child process
+  и подтверждённую Server receipt/operation. Исправлены SDK transport adapters
+  для artifact/action deadlines и page binding операции status.
 - [ ] Не добавлять plugin-name/capability branches в Core. Не мигрировать и не
   собирать как Core v1 CAPTCHA/Identity.
 
 ## 4. Проверки и удаление старого lifecycle
 
-- [ ] Обновить TypeScript integration/E2E в `tests/`: два config slots,
-  byte-exact PUT→SQLite→pull, CAS/idempotency, Reload/ACK, manual restart,
-  fencing/recovery, authorization/audit/redaction и Core→SDK→Server/forms-db.
+- [x] Добавить Core TypeScript integration/E2E для raw bytes, slots,
+  CAS/idempotency, Reload/ACK, fencing/recovery, authorization/audit/redaction,
+  secret grants, Admin Surface/artifact forwarding, Core→Server/forms-db и
+  ручного Core process restart с проверкой plugin convergence; тесты должны
+  оставаться в `tests/`.
 - [x] Удалить старые Core process supervision, provider/TUF installation API,
   SQLite provider/workload state, неиспользуемые CLI commands и legacy protocol
   lifecycle. Регрессии закреплены `pluginprotocol-sdk-boundary`,
@@ -242,9 +395,40 @@
     VitePress build прошёл 2026-09-30; docs commit `453b15e` отправлен в `main`.
     Core `npx vitest run tests/architecture/contract-publication.test.ts`
     прошёл 2026-09-30 (1 file / 1 test).
-- [ ] Прогнать `make check`, `go vet ./...`, `make staticcheck-u1000`,
-  `go build ./...`, macOS/Linux builds и smoke с отдельно вручную запущенными
-  сервисами. Фиксировать только реально полученные результаты.
+- [x] Прогнать Core `make check`, `go vet ./...` и `make staticcheck-u1000`
+  на macOS 2026-10-02; последний `make check` прошёл: Go build, 70 Vitest files,
+  1 skipped / 128 tests, Docker architecture lint; `go vet ./...`,
+  `make staticcheck-u1000` и `git diff --check` также прошли. Реальный
+  Core→Server→forms-db тест плановой замены Core/plugin leaf credentials и
+  control/peer trust roots прошёл на memory и PostgreSQL 16, MySQL 8.0,
+  MariaDB 11.4; после замены новый root сходится, старый отвергается.
+- [x] Linux runtime matrix и сквозные проверки: Ubuntu 24.04.5 ARM64 VM под
+  OrbStack прошла Core `make check`/vet/staticcheck, SDK и protocol suites
+  (включая protocol race gate), Server suite/build/vet и forms-db suite/build/vet.
+  Настоящие Core, Server и forms-db процессы прошли manual walkthrough на
+  memory и на PostgreSQL 16, MySQL 8.0 и MariaDB 11.4; SQL matrix — 3/3, включая
+  concurrent submit/list, candidate refusal/rollback, outage/recovery,
+  persistence, grants, redaction и отсутствие DSN у дочерних процессов.
+  Server HTTP/1.1–3, ACME Pebble, site publish, WebSocket и SSE также проверены
+  в guest Linux. Отдельный bare-metal host не является v1 gate.
+- [x] Локальные финальные hygiene/docs проверки этого среза: `git diff --check`
+  прошёл во всех пяти owner repos; `npm run docs:sync && npm run build` прошёл
+  для VitePress на локальных worktrees.
+- [x] Пройти ручной security/recovery walkthrough на Linux VM:
+  `go run ./tests/fixtures/manual-core-server` выполнен из смонтированного
+  workspace внутри OrbStack VM, exit 0. Он подтвердил settings/rollback, HTTP
+  generation switch, site publish/restart persistence, forms submit/list/Admin
+  Surface/cursor, manual reconnect, mTLS rotation/revocation, redaction и
+  отсутствие peer payload в Core. Отдельные SQL E2E прошли на PostgreSQL 16,
+  MySQL 8.0 и MariaDB 11.4.
+- [ ] Закрыть внешние gates: hosted CI для согласованных published revisions,
+  docs pins/release metadata и публикация совместимых Go module revisions.
+  Сейчас SDK и protocol API берутся через локальные sibling `replace`: SDK ещё
+  не имеет опубликованного tag, а protocol `v1.0.0` старше используемого API
+  `v1.1.0`. После согласованной публикации убрать локальные `replace` у
+  потребителей и проверить каждый модуль из отдельного checkout с `GOWORK=off`.
+  Текущие проверки относятся к незакоммиченным worktrees; создать hosted run,
+  docs pins или совместимые module versions без отдельной публикации нельзя.
 
 ## Отложено до v2 — не включать в v1 gates
 
@@ -268,139 +452,3 @@
   lifecycle conformance, что и REST; отдельно запущенные plugins сохраняют
   REST+mTLS. Проверить отсутствие listener, duplicate Core runtime, утечек
   ресурсов и нарушения Core/plugin trust boundary.
-
-## Статус инкреста (preflight + миграция v1)
-
-Зафиксировано 2026-09-30. Baseline до изменений: `go build ./...` PASS,
-`go vet ./...` PASS, `npm --prefix tests test` — 13 failing / 97 passing.
-Branch `main`, HEAD `e07cc35`; worktree намеренно содержит большой
-pre-existing dirty/untracked changeset — не сбрасывать.
-
-### Решения владельца (приняты, не пересматривать)
-
-- Приватный listener exact-generation config pull
-  (`GET /internal/v1/plugin-config/{generation}`) с отдельным от Management
-  mTLS trust root остаётся в Core и объявляется блоком `pluginControl` в
-  bootstrap schema. Канонический `core.schema.json` в docs-repo требует
-  `["state","management"]` и не содержит `pluginControl` — это расхождение
-  закрывается владельцем `liapoldus.github.io`, Core его не редактирует.
-- Canonical docs для contract tests резолвятся из локального git-checkout
-  только если `HEAD == origin/main`, иначе REST API, иначе тест падает.
-  Молчаливый untracked fallback запрещён.
-
-### Выполнено
-
-- [x] `assets/contracts/core.schema.json`: удалены v2 `execution`, `artifacts`,
-      `pluginCatalog`; `required` = `["state","management","pluginControl"]`,
-      `additionalProperties: false`. `contracts/v1/**` пересобраны, digests
-      пересчитаны.
-- [x] `tests/architecture/v1-migration-contracts.test.ts` переписан под целевой
-      v1 контракт.
-- [x] `tests/support/canonical-contracts.ts`: verified-checkout резолвер.
-- [x] `management-error-catalog.test.ts` переведён на резолвер, ассерты сохранены.
-- [x] Единственный shared JSON response writer; устранён второй
-      `json.NewEncoder` в `plugin_config_pull.go`.
-- [x] Убран root-реэкспорт `PluginReplicaIdentityResolver` из
-      `internal/presentation/api`.
-- [x] Удалены `handlers.PluginRestart`, `PluginDependencies.RestartPlugin` и
-      путь `restart` из `management-fields.yaml`.
-- [x] `npx vitest run architecture/` — 31 file / 72 tests PASS.
-
-### BLOCKER — SDK-модуль не компилируется (вне владения Core) — РАЗРЕШЁН
-
-`core/go.mod` содержит `replace` на `../plugin-sdk`, из-за чего некомпилируемый
-SDK блокировал `go build ./...` и все Go-backed integration tests. Владелец SDK
-починил `infrastructure/plugin_client.go` и
-`infrastructure/core_config_source.go` (`MutualTLSClient`, `Plugin.Endpoints`
-как `map[string]Endpoint` с lookup-хелпером). Core использует только
-`NewCoreConfigurationSource`, `NewPluginClient` и `PullExact`; второй
-SDK-контракт не создавался. Приёмка
-«Management PUT -> SQLite -> Reload -> exact-generation pull -> ACK»
-выполнена (`tests/integration/plugin-sdk-config-pull.test.ts`).
-
-### Решение владельца по `staging` (принято, не пересматривать)
-
-- Durable `staging`-слот **сохраняется**. Он является внутренним рабочим
-  буфером и никогда не публикуется наружу: replica может pull-ить только
-  `active` и `previous`. Опубликованных durable config slots по-прежнему два.
-- Обязательный порядок при выпуске новой конфигурации: после validation exact
-  candidate bytes сохраняются в `staging` вместе с durable operation; до
-  promotion прежние `active`/`previous` остаются неизменными. Promotion одной
-  транзакцией удаляет старый `previous`, переносит прежний `active` в
-  `previous`, а candidate из `staging` в `active`.
-- При неуспешной validation `staging` не создаётся. При отказе после записи
-  candidate recovery завершает roll-forward либо удаляет staging-candidate по
-  durable operation state; plugin никогда не может pull-ить staging.
-- `OperationPayload` хранит только digest, а не settings bytes, поэтому
-  `staging` — load-bearing для recovery незавершённой операции: без него
-  прерванный rollout нельзя восстановить.
-- Slice C «убрать durable staging» **отменён**. Следствия ужесточены в
-  `core/AGENTS.md` и workspace `AGENTS.md`.
-
-### Осталось
-
-- [x] Slice D: `pluginprotocol` и process supervision удалены из Core, из
-      `go.mod`, fixtures, `Dockerfile` и `scripts/docker-smoke.sh`. Остаточный
-      checkout `pluginprotocol` удалён также из `.github/workflows/verify.yml`;
-      в Go-исходниках и `go.mod` ссылок нет.
-- [x] Fixtures и tests, передававшие удалённые `artifacts`/`execution`/
-      `pluginCatalog` в `core.yaml`, очищены; fixtures объявляют
-      `pluginControl` под новую схему.
-- [x] В write path settings body нет JSON-Schema валидации: `schemaVersion`
-      переносится как непрозрачное целое и проверяется на согласованность, а
-      мёртвая ветка `schemaViolation` удалена. Per `AGENTS.md` JSON Schema —
-      разрешённая («may validate»), но не обязательная опция v1, поэтому
-      product-специфичная валидация не добавляется.
-- [x] v2-утечка из `contracts/v1/management.openapi.yaml` устранена: удалены
-      `/install`, `/restart` и осиротевшая схема `PluginReleaseSelection`;
-      описания `Conflict`/`Invalid` синхронизированы с каноническим spec
-      (`plugin_mode_operation_forbidden`; без `plugin_catalog_untrusted`,
-      `plugin_release_incompatible`). Добавлен отсутствовавший в обоих
-      репозиториях маршрут `/api/plugins/{pluginId}/rollback`.
-      Остаточные contract расхождения проверяются вместе с docs owner после
-      синхронизации публичного spec; не добавлять исправленный текст в Core
-      зеркало в обход его publication workflow.
-
-### Потребители и межрепозиторная интеграция
-
-Core REST composition и per-replica registration/observation wiring добавлены
-в commit `dcc0a90`; Core `make check`, `go vet ./...` и
-`make staticcheck-u1000` проходят. Это не доказывает готовность product
-consumers: `plugins/server` и `plugins/forms-db` пока не компилируются против
-удалённого protocol lifecycle и нового SDK. Активные интеграционные действия
-закреплены в их repo-owned TODO. Не добавлять в Core fallback на legacy API.
-
-### Найдено при введении race-гейта — не чинилось, нужно решение владельца
-
-`PluginConfigurationService.Recover` пере-применяет операции в состоянии
-`running`, а на уже settled-базе является no-op. В v1 это недостижимо:
-`bootstrap.serveBootstrap` вызывает `Recover` ровно один раз до
-`management.Listen`, когда ни одного apply ещё нет. Но защиты у этого
-инварианта нет, и конкурентный вызов `Recover` даёт двойной apply.
-
-Обнаружено race-фикстурой: 49 вызовов `ApplyConfiguration` на 48 успешных
-операций. Обе цифры сходятся, если `Recover` вызывать только до начала
-работы и на settled-базе, как в реальном bootstrap.
-
-- [ ] Решить, нужен ли guard (например, запрет `Recover` при непустом
-      `operationWorkers`, либо перевод recover-worker'а на тот же
-      per-operation дедупликатор, что и `scheduleApply`). Поведение
-      наблюдаемое, поэтому без решения владельца не меняю.
-- [x] Race-гейт перестал быть вакуумным: `make test-race` больше не
-      выполняет `go test -race ./...` (в проекте нет Go `*_test.go`, он
-      компилировал пустоту и рапортовал успех). Теперь это
-      `tests/integration/race-detection.test.ts`, который собирает сервис и
-      фикстуры под `-race` с `GORACE=halt_on_error=1` и прогоняет 8 инстансов
-      × 6 раундов конкурентных apply/read/recovery через реальный
-      management handler. Гонка валидирована контрольным запуском: с
-      внедрённым несинхронизированным доступом gate падает (exit 2,
-      `DATA RACE`).
-
-### Внешние контракты
-
-Schema, OpenAPI, error catalog и manifest синхронизированы с docs commit
-`ae2a734`; Core `make check` прошёл после синхронизации. Если меняется публичный
-контракт, сначала меняется docs owner source, затем обновляется Core mirror и
-его digest/vector gate. Новый docs build прошёл, но deployed `/core/` пока
-отвечает `404`, а legacy `/gateway/` — `200`; доступность нового Pages build
-остаётся внешним deployment gate.

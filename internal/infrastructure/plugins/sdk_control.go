@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
@@ -114,12 +115,18 @@ type SDKConfigurationApplier struct {
 	Observations ReplicaObservationRecorder
 	Snapshot     ConfigurationSnapshot
 	Convergence  ConvergenceSnapshot
+	applyMu      sync.Mutex
 }
 
 var _ interfaces.PluginConfigurationApplier = (*SDKConfigurationApplier)(nil)
 
 func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, instanceID, generation string, rawJSON []byte) error {
-	if applier == nil || applier.Store == nil || instanceID == "" {
+	if applier == nil {
+		return ErrPluginUnavailable
+	}
+	applier.applyMu.Lock()
+	defer applier.applyMu.Unlock()
+	if applier.Store == nil || instanceID == "" {
 		return ErrPluginUnavailable
 	}
 	client := applier.Clients[instanceID]

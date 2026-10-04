@@ -7,6 +7,8 @@ paths:
   adminSurfaces: /api/plugins/admin-surfaces
   pluginIDSeparator: "/"
   adminPages: admin/pages
+  adminActions: actions
+  adminQueryAction: query
   operations: /api/operations
   audit: /api/audit
   serviceKeys: /api/access/service-keys

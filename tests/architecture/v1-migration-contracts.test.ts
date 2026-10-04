@@ -40,9 +40,8 @@ function structuralTokens(node: unknown, tokens: Set<string> = new Set(), key?: 
 
 describe("Core v1 management contracts", () => {
   it("defines only the minimal bootstrap surface", async () => {
-    const schema = JSON.parse(
-      await readFile(join(root, "assets/contracts/core.schema.json"), "utf8"),
-    ) as SchemaNode;
+    const schemaText = await readFile(join(root, "assets/contracts/core.schema.json"), "utf8");
+    const schema = JSON.parse(schemaText) as SchemaNode;
     const required = (schema.required ?? []) as string[];
     const properties = Object.keys((schema.properties ?? {}) as SchemaNode);
     const definitions = Object.keys((schema.$defs ?? {}) as SchemaNode);
@@ -56,6 +55,9 @@ describe("Core v1 management contracts", () => {
     expect(new Set(required), "every declared bootstrap block must be required").toEqual(
       new Set(properties),
     );
+    const definitionsText = schemaText.slice(schemaText.indexOf('"$defs":'));
+    expect(definitionsText.match(/^    "plugins"\s*:/gm), "plugin schema definition must be unique")
+      .toHaveLength(1);
     for (const removed of ["execution", "artifacts", "pluginCatalog", "site", "listener"]) {
       expect(properties, removed).not.toContain(removed);
       expect(definitions, removed).not.toContain(removed);

@@ -1,11 +1,16 @@
 package bootstrap
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"errors"
 	"net"
+	"time"
 
+	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/interfaces"
+	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
@@ -15,6 +20,7 @@ type PluginRESTControl struct {
 	ConfigPullTLS      *tls.Config
 	ResolveReplica     interfaces.PluginReplicaIdentityResolver
 	ReloadClients      map[string]plugins.SDKReloadClient
+	HTTPContract       plugins.SDKHTTPContract
 	// CloseReleases dials idle keep-alive connections to declared replicas on
 	// shutdown. A plugin is never restarted by Core, so leaving those sockets
 	// open would keep TLS sessions to a replica alive after Core stopped.
@@ -23,10 +29,10 @@ type PluginRESTControl struct {
 
 var errInvalidPluginRESTControl = errors.New("invalid plugin REST control configuration")
 
-// startPluginRESTControl serves the exact-generation configuration pull
-// endpoint. It is the only Core-to-plugin configuration path; it never starts,
+// startPluginRESTControl serves the Plugin SDK private control endpoints for
+// exact-generation config pulls and scoped secret grants. It never starts,
 // supervises, or relaunches a plugin process.
-func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.PluginRetainedConfigurationReader) (func(), error) {
+func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.PluginRetainedConfigurationReader, bootstrapPath string) (func(), error) {
 	if configuration == nil {
 		return nil, errInvalidPluginRESTControl
 	}
@@ -36,7 +42,31 @@ func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.P
 		len(configuration.ConfigPullTLS.Certificates) == 0 && configuration.ConfigPullTLS.GetCertificate == nil {
 		return nil, errInvalidPluginRESTControl
 	}
-	handler, err := api.NewPluginConfigurationPullHandler(store, configuration.ResolveReplica)
+	contract, err := plugins.LoadSDKHTTPContract()
+	if err != nil || bootstrapPath == "" {
+		return nil, errInvalidPluginRESTControl
+	}
+	grantPolicy, err := config.LoadPluginSecretGrantPolicy()
+	if err != nil {
+		return nil, errInvalidPluginRESTControl
+	}
+	grantService := &application.PluginSecretGrantService{
+		Configurations: store,
+		ResolveSecret: func(ctx context.Context, reference string, maximumBytes int64) ([]byte, error) {
+			return config.ReadSecretReference(bootstrapPath, reference, maximumBytes)
+		},
+		GrantTTL:            time.Duration(contract.Deadlines.CoreSecretGrantSeconds) * time.Second,
+		MaximumValueBytes:   contract.Core.SecretGrant.Redemption.MaximumResponseBytes,
+		MaximumOutstanding:  grantPolicy.MaximumOutstanding,
+		MaximumReferenceLen: contract.Core.SecretGrant.ReferenceMaximumLength,
+		MaximumPurposeLen:   contract.Core.SecretGrant.PurposeMaximumLength,
+		Now:                 time.Now,
+		Random:              rand.Reader,
+	}
+	if grantService.GrantTTL <= 0 || grantService.MaximumOutstanding <= 0 || grantService.MaximumReferenceLen <= 0 || grantService.MaximumPurposeLen <= 0 {
+		return nil, errInvalidPluginRESTControl
+	}
+	handler, err := api.NewPluginSDKControlHandler(store, configuration.ResolveReplica, grantService)
 	if err != nil {
 		return nil, errInvalidPluginRESTControl
 	}

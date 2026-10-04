@@ -64,8 +64,8 @@ func main() {
 	for index := 0; index < instanceCount; index++ {
 		instanceID := fmt.Sprintf("race-%d", index)
 		instanceIDs = append(instanceIDs, instanceID)
-		_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
-			instanceID, "remote", []byte(`{"name":"race"}`), "configured")
+		_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+			instanceID, []byte(`{"name":"race"}`), "configured")
 		check(err)
 		_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
 			(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)

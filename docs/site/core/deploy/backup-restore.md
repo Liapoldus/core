@@ -9,7 +9,7 @@
 
 | Данные | Владелец | Правило |
 | --- | --- | --- |
-| SQLite Core | Core | Включает plugin instances, точные JSON bytes поколений `active`/`previous`/`staging`, операции и audit. `staging` нужен для восстановления незавершённой операции и не выдаётся плагину. Используйте SQLite online backup API либо штатно остановите Core и сохраните всю согласованную базу. |
+| SQLite Core | Core | Включает plugin instances, точные JSON bytes поколений `active`/`previous`/`staging`, операции и audit. `staging` нужен для восстановления незавершённой операции и не выдаётся плагину. Используйте `core database backup`, который создаёт согласованный online snapshot. |
 | Core bootstrap и binary | Оператор | Сохраните `core.yaml`, версию Core и миграционные сведения. Не помещайте secret bytes в обычный архив. |
 | Server plugin state | Server plugin | Отдельно резервируйте persistent data: ACME/certificate state, site releases и `current`/`previous`. |
 | forms-db data | forms-db plugin | Используйте процедуру резервирования и восстановления, определённую владельцем plugin. |
@@ -26,9 +26,11 @@ private keys. Plugin data без соответствующего Core backup м
 1. Убедитесь, что Core доступен, текущая `active` generation подтверждена
    подключёнными replicas, а операции не находятся в неизвестном состоянии.
 2. На время согласованного backup приостановите административные изменения.
-3. Снимите согласованный backup SQLite штатным механизмом. Не копируйте только
-   `.db`, пока Core работает, если используемый SQLite backup method этого не
-   гарантирует.
+3. Выполните `core --config <core.yaml> database backup <destination>`.
+   Команда создаёт согласованный online backup через SQLite `VACUUM INTO`,
+   проверяет текущую schema version, `quick_check(1)` и `foreign_key_check`,
+   выставляет права `0600` и публикует файл только если destination ещё не
+   существует. Не копируйте `.db` вручную вместе или без WAL-файлов.
 4. Отдельно сохраните Caddy и forms-db data их штатными средствами. Не считайте
    копию активного plugin store согласованной без его backup procedure.
 5. Зафиксируйте версии, digests и состав файлов. Проверьте архив и периодически
@@ -41,15 +43,21 @@ private keys. Plugin data без соответствующего Core backup м
    При старте Core выполняет SQLite `quick_check(1)` и `foreign_key_check` до и
    после применения схемы; любой отказ не допускает открытия listener-ов. Эти
    проверки не заменяют пробное восстановление полной резервной копии.
-2. Восстановите Core bootstrap и SQLite. Core должен загрузить `active` и
+2. Остановите Core и выполните
+   `core --config <core.yaml> database restore <backup.sqlite>`. Команда
+   повторно проверит schema version, integrity и foreign keys, скопирует файл во
+   временный файл рядом с target и атомарно заменит SQLite. Если Core работает,
+   exclusive state lock отклонит restore, не меняя текущую базу.
+3. Восстановите Core bootstrap и SQLite. Core должен загрузить `active` и
    `previous` из долговременного хранилища и собрать runtime snapshot в памяти.
-3. Вручную запустите Caddy и forms-db из совместимых operator-managed binary
+4. Вручную запустите Caddy и forms-db из совместимых operator-managed binary
    releases, используя их восстановленные persistent data.
-4. Дождитесь mTLS handshake, health и ACK `active` generation от каждой
-   обязательной replica. Core может повторно вызвать REST `Reload`; plugin
-   самостоятельно запрашивает точное поколение. Не воспроизводите plugin-to-
-   plugin calls с неизвестным результатом.
-5. Проверьте audit, config digests, Caddy listeners/TLS/site state и forms-db
+5. Дождитесь mTLS handshake, health и ACK `active` generation от каждой
+   обязательной replica. При запуске Core выполняет startup reconciliation и
+   может повторно вызвать REST `Reload` для отстающей replica; plugin сам
+   запрашивает точное поколение. В работающем Core фонового повторного Reload
+   нет. Не воспроизводите plugin-to-plugin calls с неизвестным результатом.
+6. Проверьте audit, config digests, Caddy listeners/TLS/site state и forms-db
    data. Только после успешного smoke test открывайте административный доступ и
    публичный traffic.
 

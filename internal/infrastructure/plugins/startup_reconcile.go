@@ -26,11 +26,11 @@ type SDKReplicaReadinessClient interface {
 // exact generation.
 //
 // Core calls it once on startup, after the exact-generation pull listener is
-// serving and before it accepts Management traffic, so a restarted replica can
-// pull the active generation again once Core and the plugin have both been
-// down. The desired generation comes from the durable store, never from a
-// replica: a replica can never widen the set of generations it is allowed to
-// apply.
+// available. This restores replicas restarted while Core was offline. A replica
+// restarted independently while Core remains online requires an operator to
+// restart Core in v1; there is no background retry loop. The desired generation
+// comes from the durable store, never from a replica: a replica can never widen
+// the set of generations it is allowed to apply.
 //
 // It is compare-first. A replica that reports readiness for the desired
 // generation, digest and identity is left alone, so an ordinary Core restart
@@ -42,7 +42,12 @@ type SDKReplicaReadinessClient interface {
 // never prevents Core from starting: fencing such a replica is the caller's
 // decision, not a reason to abort the process.
 func (applier *SDKConfigurationApplier) ReconcileDeclaredReplicas(ctx context.Context) error {
-	if applier == nil || len(applier.Clients) == 0 {
+	if applier == nil {
+		return nil
+	}
+	applier.applyMu.Lock()
+	defer applier.applyMu.Unlock()
+	if len(applier.Clients) == 0 {
 		return nil
 	}
 	instanceIDs := make([]string, 0, len(applier.Clients))
@@ -74,11 +79,56 @@ func (applier *SDKConfigurationApplier) ReconcileDeclaredReplicas(ctx context.Co
 		}
 		for _, replica := range fanout.Replicas {
 			if replicaAppliedDesired(ctx, replica, instanceID, active) {
-				applier.recordOutcome(ctx, instanceID, replica.ReplicaID, active.Revision, true, false)
 				continue
 			}
 			_, err := replica.Client.Reload(ctx, reload)
 			applier.recordOutcome(ctx, instanceID, replica.ReplicaID, active.Revision, err == nil, isUnreachable(err))
+			if err != nil {
+				failures = append(failures, fmt.Errorf("replica %s/%s: %w", instanceID, replica.ReplicaID, err))
+			}
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// ObserveDeclaredReplicaReadiness records one read-only sample of the declared
+// replicas against the durable desired generation. It never calls Reload; the
+// periodic readiness monitor may update degraded status but cannot retry a
+// refused or unreachable configuration apply.
+func (applier *SDKConfigurationApplier) ObserveDeclaredReplicaReadiness(ctx context.Context) error {
+	if applier == nil || len(applier.Clients) == 0 {
+		return nil
+	}
+	applier.applyMu.Lock()
+	defer applier.applyMu.Unlock()
+	instanceIDs := make([]string, 0, len(applier.Clients))
+	for instanceID := range applier.Clients {
+		instanceIDs = append(instanceIDs, instanceID)
+	}
+	sort.Strings(instanceIDs)
+	var failures []error
+	for _, instanceID := range instanceIDs {
+		active, err := desiredRevision(ctx, applier.Store, instanceID)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("instance %s: %w", instanceID, err))
+			continue
+		}
+		if active.Revision == 0 {
+			continue
+		}
+		fanout, ok := applier.Clients[instanceID].(*SDKReloadFanout)
+		if !ok {
+			continue
+		}
+		for _, replica := range fanout.Replicas {
+			client, ok := replica.Client.(SDKReplicaReadinessClient)
+			if !ok {
+				failures = append(failures, fmt.Errorf("replica %s/%s: %w", instanceID, replica.ReplicaID, ErrPluginUnavailable))
+				continue
+			}
+			readiness, err := client.Readiness(ctx)
+			acknowledged := err == nil && readinessMatches(readiness, instanceID, replica.ReplicaID, active)
+			applier.recordOutcome(ctx, instanceID, replica.ReplicaID, active.Revision, acknowledged, isUnreachable(err))
 			if err != nil {
 				failures = append(failures, fmt.Errorf("replica %s/%s: %w", instanceID, replica.ReplicaID, err))
 			}
@@ -119,11 +169,15 @@ func replicaAppliedDesired(ctx context.Context, replica SDKReloadReplicaClient, 
 	if err != nil {
 		return false
 	}
+	return readinessMatches(readiness, instanceID, replica.ReplicaID, active)
+}
+
+func readinessMatches(readiness sdkmodels.Readiness, instanceID, replicaID string, active models.PluginConfigurationRevision) bool {
 	return readiness.Ready &&
 		readiness.Generation == strconv.FormatInt(active.Revision, 10) &&
 		readiness.SHA256 == active.Digest &&
 		readiness.InstanceID == instanceID &&
-		readiness.ReplicaID == replica.ReplicaID
+		readiness.ReplicaID == replicaID
 }
 
 // recordOutcome records one replica outcome when an observer is configured.

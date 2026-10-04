@@ -44,7 +44,7 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)", "fixture", "local", []byte(`{"name":"fixture"}`), "configured")
+	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)", "fixture", []byte(`{"name":"fixture"}`), "configured")
 	check(err)
 	initial := []byte(`{"origin":"before"}`)
 	digest := sha256.Sum256(initial)

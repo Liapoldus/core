@@ -60,14 +60,18 @@ describe("Core peer protocol boundary", () => {
     // startup_reconcile.go is the only place that re-establishes the committed
     // active generation on declared replicas after a restart, so both are
     // listed explicitly: a new file here must be a deliberate, reviewed
-    // addition to the plugin lifecycle layer rather than a silent one.
+    // addition to the plugin lifecycle layer rather than a silent one. TLS
+    // revocation is kept in this adapter so presentation never imports the SDK.
     expect(files.sort()).toEqual([
       "admin_dispatch.go",
       "admin_surface.go",
       "declared_replicas.go",
       "errors.go",
+      "sdk_admin_control.go",
+      "sdk_contract.go",
       "sdk_control.go",
       "startup_reconcile.go",
+      "tls_revocation.go",
     ]);
     expect(sdkControl).not.toMatch(/exec\.Command|"os\/exec"|net\.Listen|ListenLoopback|StartGrantBroker|StartRuntime/);
 

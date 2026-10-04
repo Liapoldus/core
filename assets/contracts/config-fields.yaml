@@ -31,6 +31,8 @@ pluginControlTLS:
   - key
   - replicaClientCA
   - replicaServerCA
+  - replicaClientCRLs
+  - replicaServerCRLs
 plugins:
   - instanceId
   - replicas

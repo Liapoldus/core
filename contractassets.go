@@ -7,20 +7,22 @@ import (
 )
 
 const (
-	ConfigFields               = "config-fields.yaml"
-	CLIFields                  = "cli-fields.yaml"
-	CoreSchema              = "core.schema.json"
-	ManagementFields           = "management-fields.yaml"
-	AuditFields                = "audit-fields.yaml"
-	ErrorsJSON                 = "errors.json"
-	SQLiteRuntime              = "sqlite-runtime.yaml"
-	SQLiteSchema               = "sqlite-schema.sql"
-	SQLiteAccess               = "sqlite-access.yaml"
-	SQLiteAuditStore           = "sqlite-audit-store.yaml"
-	SQLiteOperationStore       = "sqlite-operation-store.yaml"
-	SQLitePluginInstances      = "sqlite-plugin-instances.yaml"
-	SQLitePluginConfiguration  = "sqlite-plugin-configuration.yaml"
-	)
+	ConfigFields              = "config-fields.yaml"
+	CLIFields                 = "cli-fields.yaml"
+	CoreSchema                = "core.schema.json"
+	ManagementFields          = "management-fields.yaml"
+	AuditFields               = "audit-fields.yaml"
+	ErrorsJSON                = "errors.json"
+	SQLiteRuntime             = "sqlite-runtime.yaml"
+	SQLiteSchema              = "sqlite-schema.sql"
+	SQLiteAccess              = "sqlite-access.yaml"
+	SQLiteAuditStore          = "sqlite-audit-store.yaml"
+	SQLiteOperationStore      = "sqlite-operation-store.yaml"
+	SQLitePluginInstances     = "sqlite-plugin-instances.yaml"
+	SQLitePluginConfiguration = "sqlite-plugin-configuration.yaml"
+	PluginSecretGrants        = "plugin-secret-grants.yaml"
+	PluginReconciliation      = "plugin-reconciliation.yaml"
+)
 
 //go:embed assets/contracts
 var contracts embed.FS

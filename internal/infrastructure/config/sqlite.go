@@ -20,6 +20,7 @@ type SQLiteContract struct {
 	ForeignKeyCheckQuery   string `yaml:"foreignKeyCheckQuery"`
 	IntegritySuccess       string `yaml:"integritySuccess"`
 	IntegrityError         string `yaml:"integrityError"`
+	BackupIntoQuery        string `yaml:"backupIntoQuery"`
 	Pragmas                string `yaml:"pragmas"`
 	Schema                 []byte
 }

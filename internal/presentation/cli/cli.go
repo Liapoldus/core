@@ -68,6 +68,8 @@ func run(options options) int {
 		return serve(options)
 	case words.Commands.Access:
 		return access(options)
+	case words.Commands.Database:
+		return database(options)
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigInvalid, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments

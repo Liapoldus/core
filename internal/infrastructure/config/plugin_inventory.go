@@ -9,11 +9,9 @@ import (
 
 type PluginInventoryContract struct {
 	SelectInstances string   `yaml:"selectInstances"`
-	ValidModes      []string `yaml:"validModes"`
 	ValidStates     []string `yaml:"validStates"`
 	JSON            struct {
 		ID       string `yaml:"id"`
-		Mode     string `yaml:"mode"`
 		State    string `yaml:"state"`
 		Revision string `yaml:"revision"`
 	} `yaml:"json"`
@@ -33,8 +31,8 @@ func LoadPluginInventoryContract() (PluginInventoryContract, error) {
 	if err := yaml.Unmarshal(contents, &contract); err != nil {
 		return PluginInventoryContract{}, err
 	}
-	if contract.SelectInstances == "" || len(contract.ValidModes) == 0 || len(contract.ValidStates) == 0 ||
-		contract.JSON.ID == "" || contract.JSON.Mode == "" || contract.JSON.State == "" || contract.JSON.Revision == "" ||
+	if contract.SelectInstances == "" || len(contract.ValidStates) == 0 ||
+		contract.JSON.ID == "" || contract.JSON.State == "" || contract.JSON.Revision == "" ||
 		contract.Diagnostics.InvalidContract == "" || contract.Diagnostics.InvalidRecord == "" || contract.Diagnostics.InvalidManifest == "" {
 		return PluginInventoryContract{}, errors.New(contract.Diagnostics.InvalidContract)
 	}

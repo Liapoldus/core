@@ -81,6 +81,9 @@ func NewSQLitePluginConfigurationStore(database *sql.DB) (*SQLitePluginConfigura
 	if err := store.migrateLegacyConfiguration(context.Background()); err != nil {
 		return nil, err
 	}
+	if err := store.migrateLegacyPluginTopology(context.Background()); err != nil {
+		return nil, err
+	}
 	var rebuild bool
 	if err := database.QueryRowContext(context.Background(), queries.queries["operation-payload-needs-v8"]).Scan(&rebuild); err != nil {
 		return nil, err
@@ -526,10 +529,68 @@ func loadPluginConfigurationSQL(invalidContract string) (PluginConfigurationSQL,
 			statement.WriteByte('\n')
 		}
 	}
-	if scanner.Err() != nil || !storeStatement() || len(queries) != 26 {
+	if scanner.Err() != nil || !storeStatement() || len(queries) != 33 {
 		return PluginConfigurationSQL{}, errors.New(invalidContract)
 	}
 	return PluginConfigurationSQL{queries: queries}, nil
+}
+
+func (store *SQLitePluginConfigurationStore) migrateLegacyPluginTopology(ctx context.Context) (result error) {
+	conn, err := store.database.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	modeExists, err := columnExists(ctx, conn, store.queries, "plugin_instances", "mode")
+	if err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	endpointExists, err := columnExists(ctx, conn, store.queries, "plugin_instances", "endpoint")
+	if err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	if !modeExists && !endpointExists {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, store.queries.queries["disable-foreign-keys"]); err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	foreignKeysDisabled := true
+	defer func() {
+		if foreignKeysDisabled {
+			if _, enableErr := conn.ExecContext(ctx, store.queries.queries["enable-foreign-keys"]); result == nil && enableErr != nil {
+				result = errors.New(store.contract.Diagnostics.MigrationFailed)
+			}
+		}
+	}()
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	defer tx.Rollback()
+	for _, name := range []string{
+		"create-plugin-instances-v9", "copy-plugin-instances-v9", "drop-plugin-instances-v8", "rename-plugin-instances-v9",
+	} {
+		if _, err := tx.ExecContext(ctx, store.queries.queries[name]); err != nil {
+			return errors.New(store.contract.Diagnostics.MigrationFailed)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	if _, err := conn.ExecContext(ctx, store.queries.queries["enable-foreign-keys"]); err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	foreignKeysDisabled = false
+	rows, err := conn.QueryContext(ctx, store.queries.queries["foreign-key-check"])
+	if err != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	defer rows.Close()
+	if rows.Next() || rows.Err() != nil {
+		return errors.New(store.contract.Diagnostics.MigrationFailed)
+	}
+	return nil
 }
 
 func scanCurrentConfiguration(row *sql.Row, timestampLayout string) (models.PluginConfigurationRevision, models.PluginConfigurationPointers, error) {

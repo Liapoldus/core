@@ -8,6 +8,7 @@ audit:
     pluginSettingsApply: plugin_settings.apply
     pluginSettingsApplyFailed: plugin_settings.apply_failed
     pluginSettingsRollback: plugin_settings.rollback
+    pluginAdminAction: plugin_admin.action
   resources:
     serviceKeys: service-keys
   results:

@@ -10,6 +10,13 @@ cookies через собственный типизированный response 
 сохраняет атрибуты `Set-Cookie`; `pluginprotocol` остаётся транспортом
 непрозрачных plugin-defined payloads и не определяет HTTP cookies.
 
+Для входящих HTTP-запросов Server v1 допускает route-scoped `requestCookieNames`
+в настройках Server plugin. Server передаёт выбранной capability только cookies
+с явно перечисленными именами, сохраняя порядок и повторения; по умолчанию список
+пуст. Сырой заголовок `Cookie` и остальные cookies не пересылаются. Эта настройка
+принадлежит конфигурации Server route, а не Core: отдельный Core Management API и
+SQLite policy для cookies остаются вне v1.
+
 Для v2 требуется отдельно спроектировать per-instance/capability allow-list,
 версионирование и атомарную активацию policy. До принятия и реализации такого
 контракта не добавлять `/api/plugins/{id}/cookie-policies/*`, SQLite policy

@@ -7,8 +7,6 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 CREATE TABLE IF NOT EXISTS plugin_instances (
     id TEXT PRIMARY KEY,
-    mode TEXT NOT NULL CHECK (mode IN ('local', 'remote')),
-    endpoint TEXT,
     manifest_json BLOB NOT NULL,
     state TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -112,5 +110,6 @@ INSERT OR IGNORE INTO schema_migrations(version) VALUES (5);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (6);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (7);
 INSERT OR IGNORE INTO schema_migrations(version) VALUES (8);
+INSERT OR IGNORE INTO schema_migrations(version) VALUES (9);
 
 COMMIT;

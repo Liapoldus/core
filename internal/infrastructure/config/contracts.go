@@ -19,12 +19,17 @@ type ServiceKeyWords struct {
 
 type CLIWords struct {
 	Commands struct {
-		Serve  string `yaml:"serve"`
-		Access string `yaml:"access"`
+		Serve    string `yaml:"serve"`
+		Access   string `yaml:"access"`
+		Database string `yaml:"database"`
 	} `yaml:"commands"`
 	Access struct {
 		Bootstrap string `yaml:"bootstrap"`
 	} `yaml:"access"`
+	Database struct {
+		Backup  string `yaml:"backup"`
+		Restore string `yaml:"restore"`
+	} `yaml:"database"`
 	Flags struct {
 		Output string `yaml:"output"`
 		Config string `yaml:"config"`
@@ -42,6 +47,10 @@ type CLIWords struct {
 	} `yaml:"paths"`
 	Codes struct {
 		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
+		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
+		DatabaseRestoreFailed   string `yaml:"databaseRestoreFailed"`
+		DatabaseCommandUsage    string `yaml:"databaseCommandUsage"`
+		DatabaseBusy            string `yaml:"databaseBusy"`
 		ConfigNotFound          string `yaml:"configNotFound"`
 		ConfigInvalid           string `yaml:"configInvalid"`
 	} `yaml:"codes"`
@@ -76,6 +85,10 @@ type CLIWords struct {
 		ConfigRequired          string `yaml:"configRequired"`
 		ConfigLookupFailed      string `yaml:"configLookupFailed"`
 		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
+		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
+		DatabaseRestoreFailed   string `yaml:"databaseRestoreFailed"`
+		DatabaseCommandUsage    string `yaml:"databaseCommandUsage"`
+		DatabaseBusy            string `yaml:"databaseBusy"`
 	} `yaml:"diagnostics"`
 }
 
@@ -145,6 +158,8 @@ type ManagementWords struct {
 		PluginRollbackSuffix string `yaml:"pluginRollbackSuffix"`
 		AdminSurfaces        string `yaml:"adminSurfaces"`
 		AdminPages           string `yaml:"adminPages"`
+		AdminActions         string `yaml:"adminActions"`
+		AdminQueryAction     string `yaml:"adminQueryAction"`
 		Logs                 string `yaml:"logs"`
 		TLS                  string `yaml:"tls"`
 		Renew                string `yaml:"renew"`
@@ -350,6 +365,7 @@ type AuditWords struct {
 			PluginSettingsApply       string `yaml:"pluginSettingsApply"`
 			PluginSettingsApplyFailed string `yaml:"pluginSettingsApplyFailed"`
 			PluginSettingsRollback    string `yaml:"pluginSettingsRollback"`
+			PluginAdminAction         string `yaml:"pluginAdminAction"`
 		} `yaml:"actions"`
 		Resources struct {
 			ServiceKeys string `yaml:"serviceKeys"`

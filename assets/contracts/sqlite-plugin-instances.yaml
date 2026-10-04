@@ -1,6 +1,4 @@
-selectInstances: "SELECT instances.id, instances.mode, instances.state, active.generation, instances.manifest_json, active.raw_json FROM plugin_instances AS instances JOIN plugin_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' ORDER BY instances.id"
-validModes:
-  - remote
+selectInstances: "SELECT instances.id, instances.state, active.generation, instances.manifest_json, active.raw_json FROM plugin_instances AS instances JOIN plugin_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' ORDER BY instances.id"
 validStates:
   - configured
   - ready
@@ -8,7 +6,6 @@ validStates:
   - failed
 json:
   id: id
-  mode: mode
   state: state
   revision: revision
 diagnostics:

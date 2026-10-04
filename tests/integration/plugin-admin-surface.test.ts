@@ -33,6 +33,7 @@ describe("plugin admin surface boundary", () => {
     expect(existsSync(contract)).toBe(true);
     const parsed = JSON.parse(readFileSync(contract, "utf8"));
     expect(parsed.plugin).toBe("forms-db");
-    expect(parsed.requiredCapabilities).toContain("admin.surface.get");
+    expect(parsed.requiredCapabilities).toEqual(expect.arrayContaining(["forms.list", "forms.delete"]));
+    expect(parsed.requiredCapabilities).not.toContain("admin.surface.get");
   });
 });

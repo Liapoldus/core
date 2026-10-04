@@ -1,14 +1,14 @@
 # Bootstrap contract
 
 Подробная reference-страница переехала в
-[справочник `core.yaml`](yaml-reference). Bootstrap задаёт только то, что
-нужно самому единственному Core для старта: SQLite path, локальный package
-store, Management TLS и параметры trusted catalog. Deployment mode задаётся
-для каждого plugin instance отдельно и не выбирается глобальным флагом Core.
+[справочник `core.yaml`](yaml-reference). Bootstrap задаёт SQLite path,
+Management TLS, Plugin SDK control listener/trust roots и объявленную
+оператором статическую топологию plugin instances.
 
-Plugin settings и per-replica endpoints
-редактируются через Management API и сохраняются в SQLite. Они не находятся в
-`core.yaml`, `site.yaml`, Caddyfile или YAML includes. Plugin-to-plugin
+Plugin settings редактируются через Management API и сохраняются в SQLite.
+Фиксированные per-replica endpoints и ожидаемые identities объявляются только
+в `core.yaml`; Management API не регистрирует и не меняет topology. Они не
+находятся в `site.yaml`, Caddyfile или YAML includes. Plugin-to-plugin
 authorization policies в v1 принадлежат вызывающим plugins, а не Core. Caddy
 traffic JSON является Server-plugin-owned settings document. Machine-readable
 схема — [core.schema.json](/spec/core.schema.json).

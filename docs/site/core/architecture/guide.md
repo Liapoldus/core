@@ -15,13 +15,17 @@ imports входит в v1. Normative HTTP contract и API лежат в сам�
 
 ## Plugin control lifecycle
 
-В v1 оператор вручную запускает plugin binary и регистрирует его fixed endpoint
-в Core. Plugin предоставляет общий защищённый REST control surface SDK; Core
-обращается к каждой replica отдельно. Балансируемый endpoint не заменяет
-identity replica или её ACK. Core не управляет process/container lifecycle.
+В v1 оператор вручную запускает plugin binary и заранее объявляет его fixed
+endpoint и ожидаемую identity каждой replica в `core.yaml`. Core регистрирует
+эту топологию в SQLite при старте, но не принимает регистрацию через
+Management API. Plugin предоставляет общий защищённый REST control surface
+SDK; Core обращается к каждой replica отдельно. Балансируемый endpoint не
+заменяет identity replica или её ACK. Core не управляет process lifecycle.
 
-1. Оператор устанавливает и вручную запускает Core, затем каждый plugin SDK
-   server отдельно. Он настраивает startup/restart policy средствами ОС.
+1. Оператор устанавливает и вручную запускает Core и каждый plugin SDK server
+   отдельно, в любом порядке; Core допускает недоступные replicas как degraded
+   observations и не отказывает в старте всего процесса. Startup/restart policy
+   плагинов настраивается средствами ОС.
 2. Core аутентифицирует replica, получает её Manifest и settings schema и
    сверяет release identity.
 3. Core валидирует desired JSON и сохраняет точные bytes candidate в durable
@@ -52,11 +56,11 @@ names и handlers. `pluginprotocol` даёт общий peer call/listen/stream 
 product names. Изменение carrier не должно менять прикладные endpoint names и
 payload contracts.
 
-Peer calls проходят напрямую к адресату по deny-by-default policy, которую Core
-администрирует отдельно через Plugin SDK REST. Core не proxy-ит payload и не
-переисполняет вызов с неизвестным результатом. Opaque one-use grant, если он
-нужен вызову, выпускается/погашается у Core REST и лишь переносится peer
-transport как opaque metadata.
+Peer calls проходят напрямую к адресату. Решение о разрешении вызова принимает
+вызывающий plugin через собственную authorization policy и generic authorizer
+`pluginprotocol`; Core не хранит и не администрирует plugin-to-plugin policy,
+не proxy-ит payload и не переисполняет вызов с неизвестным результатом.
+Централизованные peer policies и grants отложены до v2.
 
 ## Проверки
 

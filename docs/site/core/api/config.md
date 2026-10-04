@@ -25,13 +25,15 @@ versioned Plugin SDK contract; config pull требует per-replica mTLS.
 непубликуемый `staging` вместе с durable operation. Promotion одной
 SQLite-транзакцией удаляет прежний `previous`, переносит бывший `active` в
 `previous` и `staging` в `active`, затем публикует snapshot до Reload fan-out.
-Operation остаётся pending/degraded, пока
-обязательные replicas не подтвердили новое active поколение; повторная mutation
-на время незавершённого rollout отклоняется.
-Частичный успех обрабатывается roll-forward: подтверждённые replicas обслуживают
-target, неподтвердившие fenced/degraded и повторно получают Reload. Rollback
-доступен через `POST /api/plugins/{pluginId}/rollback`: Core меняет `active` и
-`previous` до pull/ACK и уведомляет плагин обычным `Reload`.
+Core один раз уведомляет каждую обязательную replica. Если все подтвердили новое
+active поколение, operation завершается `succeeded`; при отказе или недоступности
+replica operation завершается `failed`, но desired `active` не откатывается.
+Подтвердившие replicas обслуживают target, неподтвердившие остаются
+fenced/degraded. Readiness monitor не повторяет `Reload` в фоне. После устранения
+причины оператор вручную перезапускает Core: startup reconciliation сверяет
+replicas и повторно уведомляет только отставшие.
+Rollback доступен через `POST /api/plugins/{pluginId}/rollback`: Core меняет
+`active` и `previous` до pull/ACK и выполняет тот же однократный fan-out.
 
 Caddy использует тот же generic plugin-settings flow. Его schema описывает
 traffic configuration в JSON; Server plugin компилирует её во внутреннюю

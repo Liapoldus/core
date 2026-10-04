@@ -38,6 +38,9 @@ func main() {
 
 	database, err := openCurrent(ctx, path, contract)
 	check(err)
+	if _, err := database.ExecContext(ctx, `INSERT INTO plugin_replicas(instance_id, replica_id, observed_state, observed_at) VALUES ('fixture', 'replica-fixture', 'pending', ?)`, timestamp); err != nil {
+		panic(err)
+	}
 	store, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
 	operationStore, err := storage.NewSQLiteOperationStore(database)
@@ -56,6 +59,12 @@ func main() {
 	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('operation_payloads') WHERE name = 'settings_json'`).Scan(&settingsColumn))
 	var legacyTablesRemoved bool
 	check(database.QueryRowContext(ctx, `SELECT COUNT(*) = 0 FROM sqlite_master WHERE type = 'table' AND name IN ('plugin_config_revisions', 'plugin_config_pointers')`).Scan(&legacyTablesRemoved))
+	var legacyTopologyColumnsRemoved bool
+	check(database.QueryRowContext(ctx, `SELECT COUNT(*) = 0 FROM pragma_table_info('plugin_instances') WHERE name IN ('mode', 'endpoint')`).Scan(&legacyTopologyColumnsRemoved))
+	var replicaRowsPreserved int
+	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM plugin_replicas WHERE instance_id = 'fixture' AND replica_id = 'replica-fixture'`).Scan(&replicaRowsPreserved))
+	var foreignKeyViolations int
+	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&foreignKeyViolations))
 	check(database.Close())
 
 	database, err = openCurrent(ctx, path, contract)
@@ -68,14 +77,17 @@ func main() {
 	var migrationVersion int
 	check(database.QueryRowContext(ctx, contract.MigrationVersionQuery).Scan(&migrationVersion))
 	report := map[string]any{
-		"migrationVersion":         migrationVersion,
-		"active":                   map[string]any{"generation": active.Revision, "raw": string(active.SettingsJSON)},
-		"previous":                 map[string]any{"generation": previous.Revision, "raw": string(previous.SettingsJSON)},
-		"staging":                  map[string]any{"generation": staging.Revision, "raw": string(staging.SettingsJSON)},
-		"operationState":           operation.State,
-		"payloadHasNoSettings":     found && payload.Valid() && settingsColumn == 0,
-		"repeatedStartupPreserved": reopenedActive.Revision == active.Revision && reopenedPointers.PreviousRevision == pointers.PreviousRevision && reopenedPointers.PendingRevision == pointers.PendingRevision,
-		"legacyTablesRemoved":      legacyTablesRemoved,
+		"migrationVersion":             migrationVersion,
+		"active":                       map[string]any{"generation": active.Revision, "raw": string(active.SettingsJSON)},
+		"previous":                     map[string]any{"generation": previous.Revision, "raw": string(previous.SettingsJSON)},
+		"staging":                      map[string]any{"generation": staging.Revision, "raw": string(staging.SettingsJSON)},
+		"operationState":               operation.State,
+		"payloadHasNoSettings":         found && payload.Valid() && settingsColumn == 0,
+		"repeatedStartupPreserved":     reopenedActive.Revision == active.Revision && reopenedPointers.PreviousRevision == pointers.PreviousRevision && reopenedPointers.PendingRevision == pointers.PendingRevision,
+		"legacyTablesRemoved":          legacyTablesRemoved,
+		"legacyTopologyColumnsRemoved": legacyTopologyColumnsRemoved,
+		"replicaRowsPreserved":         replicaRowsPreserved == 1,
+		"foreignKeysValid":             foreignKeyViolations == 0,
 	}
 	check(json.NewEncoder(os.Stdout).Encode(report))
 }

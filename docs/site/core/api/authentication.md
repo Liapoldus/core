@@ -62,8 +62,14 @@ environment permissions принадлежат Controller/Constructor, а не C
 | Чтение status, plugin metadata/settings, operations и audit | Нужен `platform-admin`; каждый запрос к `operationId` повторно авторизуется. |
 | Изменение settings и rollback | Нужны `Idempotency-Key` и `If-Match` согласно OpenAPI; операции проверяются deny-by-default. |
 | Plugin process/workload lifecycle | В v1 таких Management API операций нет. Оператор вручную запускает и обслуживает plugin processes; Core управляет только конфигурацией, объявленными endpoint/identity, scoped secret grants, health/readiness и audit. |
-| Plugin Admin Surface query/action | Нужны instance scope, active surface digest (`If-Match`), schema-valid metadata и action-specific limits. |
+| Plugin Admin Surface query/action | Нужны `platform-admin`, instance scope, active surface digest, schema-valid metadata и action-specific limits. Для JSON actions обязателен `If-Match`; multipart artifact action может опустить его только при создании первой revision, если plugin metadata определяет свой CAS. |
 | Выпуск service key | Только bootstrap/admin authority; raw token возвращается только в ответе выдачи и не доступен через list/read/audit. Rotation/revocation API отложены до v2. |
+
+В v1 Admin Surface forms-db доступен через Core только оператору с ролью
+`platform-admin`; это полномочие охватывает весь forms-db instance. Per-site
+allow-list/tenant ACL нет: `site` и `schemaName` ограничивают выборку, но не
+являются границей авторизации. Идентификаторы `permissions` в UI-декларации
+остаются отдельными Controller-side проверками и не заменяют Core authorization.
 
 Общие problem mappings: TLS client-certificate failure не является HTTP
 response; Bearer failure — `401`; authenticated authorization denial — `403`;

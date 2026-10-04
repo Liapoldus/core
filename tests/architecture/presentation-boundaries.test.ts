@@ -60,8 +60,7 @@ describe("presentation package ownership", () => {
       "ServiceAccounts",
       "mu",
       "Operations",
-      "AdminSurfaces",
-      "AdminDispatcher",
+      "PluginAdminControl",
       "Plugins",
       "PluginIDField",
       "Audit",
@@ -76,7 +75,7 @@ describe("presentation package ownership", () => {
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(17);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(16);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 

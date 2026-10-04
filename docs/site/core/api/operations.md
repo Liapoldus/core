@@ -20,7 +20,7 @@ pending → running → succeeded
 | `pending` | Запись операции и ключ идемпотентности сохранены; внешнее действие ещё не начато. |
 | `running` | Внешний процесс/plugin выполняет действие или ожидается ACK. |
 | `succeeded` | Требуемый effect подтверждён и durable pointer/state committed. |
-| `failed` | Действие завершилось ошибкой; active state не меняется. |
+| `failed` | Попытка завершилась ошибкой. Если ошибка возникла до promotion, `active` не меняется; после promotion новое поколение остаётся желаемым `active`, а не подтвердившие его replicas остаются fenced/degraded до reconcile или явного rollback. |
 | `degraded` | Effect мог частично примениться, компенсация не подтверждена либо recovery требует reconcile; затронутая capability fenced. |
 
 `succeeded`, `failed` и `degraded` — terminal для данной operation. Для
@@ -44,8 +44,11 @@ roll-forward и fencing: подтверждённые остаются на targ
 получают Reload, operation остаётся `degraded` до полного согласования; traffic
 получают только replicas с требуемым generation.
 
-Artifact Admin Action сначала проходит auth, `If-Match`, metadata schema,
-content-type и byte-limit проверки. Core резервирует operation ID, затем
+Artifact Admin Action сначала проходит auth, metadata schema, content-type и
+byte-limit проверки. `If-Match` передаётся плагину, если задан, но может быть
+опущен для создания первой revision: artifact metadata и plugin-owned CAS
+защищают публикацию от потери обновлений. Для последующих ревизий plugin
+сверяет `expectedCurrentRevision` с текущим состоянием. Core резервирует operation ID, затем
 потоково передаёт artifact plugin. `202 Accepted` возвращается только после
 подтверждения plugin, что operation и входной artifact приняты устойчиво.
 Application effects, archive staging и опубликованные файлы принадлежат plugin;
@@ -65,6 +68,20 @@ operation; повтор ключа с иным fingerprint даёт `409 idempot
 (`instance/page/action/surface digest`) и SHA-256 фактически принятого artifact;
 переданный клиентом размер или digest не заменяет подсчёт/хеширование Core.
 Границы multipart не включаются в fingerprint.
+
+Это правило относится к durable mutations и multipart artifact operations,
+которые создают `operationId`. Синхронный JSON-вызов plugin Admin Action не
+является durable operation: `Idempotency-Key` для него — только корреляционное
+значение для запроса и audit. Каждый отдельно принятый HTTP-запрос заново
+вызывает action, даже если actor, scope, ключ и payload совпадают; Core создаёт
+audit событие на каждое выполнение и не возвращает сохранённый ответ. Поэтому
+повторный `forms.delete` после успешного первого вызова выполняется снова и
+возвращает plugin-ошибку `not_found`, а не replay первого успешного ответа.
+Это не exactly-once механизм: после сетевой ошибки клиент сам решает, повторять
+ли запрос, и повтор может повторно выполнить внешние эффекты. Автоматический
+replay неизвестного результата не выполняется. Artifact Admin Actions, для
+которых создаётся durable operation, сохраняют operation-level deduplication,
+описанную выше.
 
 Operation ID непрозрачен и не является правом доступа: каждый GET повторно
 авторизуется. Запись содержит только безопасные kind/resource IDs, state,

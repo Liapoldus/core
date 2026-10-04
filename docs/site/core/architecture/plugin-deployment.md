@@ -3,17 +3,23 @@
 ## Core v1: ручное размещение
 
 Оператор устанавливает и запускает Core и каждый plugin самостоятельно.
-Core подключается к зарегистрированным REST endpoints по mTLS и управляет
-только generic состоянием: settings generations, Reload, health, grants,
-policy и audit. Core не устанавливает, не запускает, не останавливает, не
+Оператор объявляет фиксированные REST endpoints и ожидаемые replica identities
+в `core.yaml`; Core не принимает регистрацию endpoint или identity через
+Management API. Core подключается к объявленным endpoints по mTLS и управляет
+только generic состоянием: settings generations, Reload, health, secret grants
+и audit. Централизованная plugin-to-plugin policy относится к v2. Core не
+устанавливает, не запускает, не останавливает, не
 перезапускает, не масштабирует и не удаляет plugin workloads.
 
-Локальный процесс, контейнер Docker, Swarm service или Kubernetes Pod могут
-использоваться оператором как способ ручного размещения, но v1 Core не имеет
-provider API и не принимает ответственность за workload. Operator задаёт
-фиксированный endpoint и expected replica identity. После restart Core
-повторяет handshake и сверяет health/config generation; он не запускает
-бинарник и не повторяет неизвестный plugin call.
+Поддерживаемая v1-модель — отдельно установленный и вручную запускаемый plugin
+process. Размещение в Docker/Compose, Swarm или Kubernetes не входит в v1
+поддерживаемую матрицу, даже если workload запускается внешним оператором;
+контейнерные deployment-профили проектируются отдельно в v2. При запуске Core
+он однократно сверяет health/config generation у объявленных replicas и при
+расхождении вызывает `Reload`. Если plugin перезапущен при работающем Core,
+периодический monitor лишь отмечает его degraded; оператор после проверки
+health вручную перезапускает Core. Core не запускает бинарник и не повторяет
+неизвестный plugin call.
 
 ## Отложено до v2
 

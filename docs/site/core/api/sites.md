@@ -13,6 +13,9 @@ site release. Используется generic plugin Admin Action: JSON metadat
 бинарный `.tar.gz` передаются одним `multipart/form-data` запросом; Core
 потоково передаёт архив plugin через общий REST artifact endpoint Plugin SDK и
 не буферизует его целиком. Caddy-specific endpoint в Core не появляется.
+Для первой публикации `If-Match` можно опустить, поскольку ещё нет текущей
+revision; plugin проверяет отсутствие current при пустом
+`expectedCurrentRevision`. Для обновления передаётся точная текущая revision.
 
 V1 upload limit: artifact не более 128 MiB; JSON metadata — 64 KiB; multipart
 boundaries/part headers — ещё 64 KiB. Полный request body не превышает 128 MiB

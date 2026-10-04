@@ -22,22 +22,21 @@ lifecycle и новых config generations. Актуальные критери�
   выполняется roll-forward с ACK для каждой replica.
 - Constructor и `react-lib` заморожены.
 
-## Состояние миграции
+## Состояние реализации
 
-**Core v1 не готов: изолированные gates модулей зелёные, consumer integration
-ещё красная.** Состояние ниже сверено 2026-09-30; подробные владельческие
-backlogs и команды находятся в `TODO.md` каждого репозитория.
+**Core v1 пока не production-ready.** Состояние ниже сверено 2026-10-02;
+детальные владельческие backlogs и команды находятся в `TODO.md` каждого
+репозитория. Проверки доказывают сквозной Core→SDK→Server→forms-db путь на
+macOS и в Linux/arm64 container, но не закрывают полный release gate.
 
 | Компонент | Текущее подтверждение | Осталось для v1 |
 | --- | --- | --- |
-| Core | `make check`, `go vet ./...`, `make staticcheck-u1000` прошли. Добавлены REST composition, declared replica clients и SQLite replica observations. | In-memory snapshot, SQLite integrity/backup/restore, secret grant endpoints, reconnect/failure/recovery и сквозные security tests. |
-| Plugin SDK | `make check` прошёл: 176 TypeScript tests, `go build ./...`, `go vet ./...`. | Интеграция с активными consumers; migration на утверждённый `github.com/Liapoldus/plugin-sdk` и Linux runtime evidence. |
-| `pluginprotocol` | `make check` прошёл: 136 TypeScript tests, `go vet ./...`, `go build ./...`; публичная поверхность generic peer-to-peer. | Активным plugins нужно удалить обращения к удалённым lifecycle exports; отдельный multi-language implementation относится к v2. |
-| Server и forms-db | Изменения контрактов и SDK adapters существуют в локальных commit-ах. | Текущий общий `go test ./server/... ./forms-db/...` падает на импортированных удалённых protocol packages; Server дополнительно не совпадает с API SDK. Сквозного Core→SDK→plugin smoke нет. |
-| Документация | `npm run build` прошёл. | После push новые `/core/` маршруты отвечали `404`, тогда как `/gateway/configuration/` отвечал `200`; Pages deployment требует отдельной проверки. |
+| Core | На текущем дереве прошли `make check` (69 файлов / 127 tests), `go vet ./...`, `make staticcheck-u1000`; integration покрывает raw config generations, REST Reload/pull/ACK, rollback, recovery и forwarding. | Полный операторский security/recovery walkthrough, Linux host matrix, hosted CI и согласованный release metadata. |
+| Plugin SDK | На текущем дереве прошли `make check`, `go build ./...`, `go vet ./...`; REST lifecycle, mTLS и bounded artifact stream покрыты integration tests. | Финальный release gate consumers, platform evidence и module/version pinning. |
+| `pluginprotocol` | На текущем дереве прошли `make check` и `make check-race` (136 tests); surface ограничена generic plugin↔plugin communication. | Платформенная/release conformance и coordinated version pinning; отдельный multi-language implementation относится к v2. |
+| Server и forms-db | Их отдельные suites зелёные. Настоящие Core, Server и forms-db binaries прошли сквозной mTLS lifecycle; Server обслужил изменение traffic, опубликовал artifact, а HTTP submit прошёл напрямую в forms-db по peer mTLS. Production Core E2E для PostgreSQL, MySQL и MariaDB также проверяет 24 параллельные записи и cursor pagination. Read-only certificate list/get входит в v1; ACME renew автоматический, ручные renew/revoke actions не входят. | Остаются native Linux и hosted CI checks. |
+| Документация | Локальный `docs:sync` и VitePress build прошли на текущих owner checkouts. | Обновить закреплённые remote revisions и проверить удалённую сборку/опубликованные маршруты; до этих действий не считать docs release опубликованным. |
 
-Следующий критический путь — согласованно довести обе активные plugin migrations до
-сборки, затем проверить реальный Core→SDK REST/mTLS→Reload→exact pull→apply→ACK
-на Server и forms-db. После этого закрываются Core recovery/security/platform
-gates из [матрицы приёмки](../configuration/acceptance). CAPTCHA, Identity,
-Constructor и `react-lib` остаются заморожены и вне v1.
+Следующий критический путь — полный operator walkthrough и release/platform gates из
+[матрицы приёмки](../configuration/acceptance).
+CAPTCHA, Identity, Constructor и `react-lib` остаются заморожены и вне v1.

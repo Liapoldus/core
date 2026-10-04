@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 )
 
 type BootstrapConfig struct {
+	SourcePath               string
 	StatePath                string
 	ManagementListen         string
 	ManagementCertificate    string
@@ -25,6 +27,8 @@ type BootstrapConfig struct {
 	PluginControlKey         string
 	PluginReplicaClientCA    string
 	PluginReplicaServerCA    string
+	PluginReplicaClientCRLs  []string
+	PluginReplicaServerCRLs  []string
 	Plugins                  []PluginInstanceConfig
 }
 
@@ -101,7 +105,7 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err := yaml.Unmarshal(contents, &document); err != nil {
 		return BootstrapConfig{}, err
 	}
-	if len(document.Content) == 0 || len(fieldLists.State) != 1 || len(fieldLists.PluginControlTLS) != 4 {
+	if len(document.Content) == 0 || len(fieldLists.State) != 1 || len(fieldLists.PluginControlTLS) != 6 {
 		return BootstrapConfig{}, ErrInvalidDocument
 	}
 	root := document.Content[0]
@@ -137,6 +141,14 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
+	pluginReplicaClientCRLNodes, err := optionalScalarSequence(mappingValue(pluginControlTLS, fieldNameAt(fieldLists.PluginControlTLS, "replicaClientCRLs")))
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
+	pluginReplicaServerCRLNodes, err := optionalScalarSequence(mappingValue(pluginControlTLS, fieldNameAt(fieldLists.PluginControlTLS, "replicaServerCRLs")))
+	if err != nil {
+		return BootstrapConfig{}, err
+	}
 	managementListen, err := scalarValue(mappingValue(management, loaded.ManagementBootstrap.Listen))
 	if err != nil {
 		return BootstrapConfig{}, err
@@ -169,7 +181,16 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 		return BootstrapConfig{}, err
 	}
 
+	pluginReplicaClientCRLs := make([]string, 0, len(pluginReplicaClientCRLNodes))
+	for _, reference := range pluginReplicaClientCRLNodes {
+		pluginReplicaClientCRLs = append(pluginReplicaClientCRLs, resolveReference(path, reference, loaded.SecretReference.FilePrefix))
+	}
+	pluginReplicaServerCRLs := make([]string, 0, len(pluginReplicaServerCRLNodes))
+	for _, reference := range pluginReplicaServerCRLNodes {
+		pluginReplicaServerCRLs = append(pluginReplicaServerCRLs, resolveReference(path, reference, loaded.SecretReference.FilePrefix))
+	}
 	return BootstrapConfig{
+		SourcePath:               resolveRelative(path, path),
 		StatePath:                resolveRelative(path, statePath),
 		ManagementListen:         managementListen,
 		ManagementCertificate:    resolveReference(path, certificate, loaded.SecretReference.FilePrefix),
@@ -184,8 +205,30 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 		PluginControlKey:         resolveReference(path, pluginControlKey, loaded.SecretReference.FilePrefix),
 		PluginReplicaClientCA:    resolveReference(path, pluginReplicaClientCA, loaded.SecretReference.FilePrefix),
 		PluginReplicaServerCA:    resolveReference(path, pluginReplicaServerCA, loaded.SecretReference.FilePrefix),
+		PluginReplicaClientCRLs:  pluginReplicaClientCRLs,
+		PluginReplicaServerCRLs:  pluginReplicaServerCRLs,
 		Plugins:                  plugins,
 	}, nil
+}
+
+func optionalScalarSequence(node *yaml.Node) ([]string, error) {
+	if node == nil {
+		return nil, nil
+	}
+	if node.Kind != yaml.SequenceNode {
+		return nil, ErrInvalidDocument
+	}
+	values := make([]string, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || strings.TrimSpace(item.Value) == "" {
+			return nil, ErrInvalidDocument
+		}
+		values = append(values, item.Value)
+	}
+	if len(values) == 0 {
+		return nil, ErrInvalidDocument
+	}
+	return values, nil
 }
 
 // pluginInstances decodes the operator-declared plugin registry. It is the only
@@ -335,6 +378,33 @@ func resolveReference(bootstrapPath, value, prefix string) string {
 		return resolveRelative(bootstrapPath, value[len(prefix):])
 	}
 	return value
+}
+
+// ReadSecretReference uses the same file-reference prefix and relative-path
+// resolution as bootstrap credentials. It returns a bounded copy only to the
+// caller performing an authenticated one-use redemption.
+func ReadSecretReference(bootstrapPath, reference string, maximumBytes int64) ([]byte, error) {
+	prefix, err := LoadFileReferencePrefix()
+	if err != nil || bootstrapPath == "" || maximumBytes <= 0 ||
+		len(reference) <= len(prefix) || reference[:len(prefix)] != prefix {
+		return nil, ErrInvalidDocument
+	}
+	path := resolveReference(bootstrapPath, reference, prefix)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, ErrInvalidDocument
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maximumBytes {
+		return nil, ErrInvalidDocument
+	}
+	contents, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	if err != nil || int64(len(contents)) > maximumBytes {
+		clear(contents)
+		return nil, ErrInvalidDocument
+	}
+	return contents, nil
 }
 
 func mappingValue(node *yaml.Node, key string) *yaml.Node {

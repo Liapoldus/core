@@ -57,11 +57,12 @@ func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
 }
 
 func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
-	database, err := OpenDatabase(context.Background(), bootstrap.StatePath)
+	database, unlockState, err := OpenServingDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
 	}
+	defer unlockState()
 	defer database.Close()
 	stores, exitCode := loadBootstrapStores(options, bootstrap, database)
 	if exitCode != options.words.Exits.OK {
@@ -119,7 +120,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	}
 	management := newManagementServer(managementServerDependencies{
 		stores: stores, inventory: inventory, managementInputs: managementInputs,
-		registry: registry, convergence: convergenceSnapshot,
+		registry: registry, convergence: convergenceSnapshot, pluginControl: controlPlane,
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -161,20 +162,22 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err := convergenceSnapshot.Refresh(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	stopRESTControl, controlErr := startPluginRESTControl(controlPlane, configurationSnapshot)
+	stopRESTControl, controlErr := startPluginRESTControl(controlPlane, configurationSnapshot, bootstrap.SourcePath)
 	if controlErr != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
 	defer stopRESTControl()
-	// A restart must re-establish the committed active generation on every
-	// declared replica, not merely remember it. A replica that restarted with
-	// Core has applied nothing, and only this pass makes it pull the exact
-	// generation again; Recovery and the snapshot refresh above only reconcile
-	// in-flight operations. Per-replica failures are recorded as observations
-	// and derive into readiness/drift, so startup continues deliberately: an
-	// unreachable endpoint degrades a replica, it does not prevent Core from
-	// starting.
+	// Reconciliation at startup restores exact generations after a Core restart.
 	_ = applier.ReconcileDeclaredReplicas(context.Background())
+	reconciliationPolicy, policyErr := config.LoadPluginReconciliationPolicy()
+	if policyErr != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	// This monitor only observes readiness and records drift. It never sends
+	// Reload, so refused or unreachable generations require an explicit operator
+	// action rather than a background retry.
+	stopReplicaReadinessMonitor := startReplicaReadinessMonitor(ctx, reconciliationPolicy.ReadinessPollInterval(), applier)
+	defer stopReplicaReadinessMonitor()
 	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
@@ -219,7 +222,6 @@ func loadBootstrapInventory(options runContext, database *sql.DB) (bootstrapInve
 	}
 	inventory.records, err = storage.ListPluginInstances(context.Background(), database, storage.PluginInstanceQuery{
 		SelectInstances: inventory.contract.SelectInstances,
-		ValidModes:      inventory.contract.ValidModes,
 		ValidStates:     inventory.contract.ValidStates,
 		InvalidContract: inventory.contract.Diagnostics.InvalidContract,
 		InvalidRecord:   inventory.contract.Diagnostics.InvalidRecord,
@@ -254,6 +256,7 @@ type managementServerDependencies struct {
 	managementInputs managementInputs
 	registry         pluginRegistry
 	convergence      *storage.PluginConvergenceSnapshot
+	pluginControl    *PluginRESTControl
 }
 
 func newManagementServer(dependencies managementServerDependencies) *api.Server {
@@ -262,6 +265,28 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 	audit := inputs.auditWords
 	return &api.Server{
 		Operations: application.OperationService{Store: stores.operationStore},
+		PluginAdminControl: &plugins.SDKAdminControl{
+			Clients:      dependencies.pluginControl.ReloadClients,
+			HTTPContract: dependencies.pluginControl.HTTPContract,
+			EligibleReplicaIDs: func(ctx context.Context, instanceID string) ([]string, error) {
+				view, err := dependencies.convergence.Current()
+				if err != nil {
+					return nil, err
+				}
+				generation, active := view.Desired[instanceID]
+				if !active || generation < 1 {
+					return nil, nil
+				}
+				eligible := make([]string, 0)
+				for _, observation := range view.Records {
+					if observation.InstanceID == instanceID && observation.ObservedState == storage.ReplicaObservedAcknowledged &&
+						observation.ObservedGeneration.Valid && observation.ObservedGeneration.Int64 == generation {
+						eligible = append(eligible, observation.ReplicaID)
+					}
+				}
+				return eligible, nil
+			},
+		},
 		Audit: &application.AuditService{
 			Store: stores.auditStore, RetentionDays: audit.Audit.RetentionDays,
 			MinimumLimit: management.Pagination.LimitMin, DefaultLimit: management.Pagination.LimitDefault,

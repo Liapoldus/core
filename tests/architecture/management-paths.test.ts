@@ -22,7 +22,7 @@ describe("Management API route contract", () => {
     ];
     const contractFields = [
       "healthz:", "status:", "plugins:", "operations:", "audit:",
-      "adminSurfaces:", "adminPages:",
+      "adminSurfaces:", "adminPages:", "adminActions:", "adminQueryAction:",
     ];
 
     for (const field of contractFields) expect(contract).toContain(field);

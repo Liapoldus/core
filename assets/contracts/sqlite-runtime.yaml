@@ -3,7 +3,7 @@ parentDirectoryMode: 448
 databaseFileMode: 384
 maxOpenConnections: 1
 maxIdleConnections: 1
-schemaVersion: 8
+schemaVersion: 9
 systemGroupID: system
 hasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')"
 migrationVersionQuery: "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
@@ -12,6 +12,7 @@ integrityCheckQuery: "PRAGMA quick_check(1)"
 foreignKeyCheckQuery: "PRAGMA foreign_key_check"
 integritySuccess: "ok"
 integrityError: "SQLite state integrity check failed."
+backupIntoQuery: "VACUUM INTO ?"
 pragmas: |
   PRAGMA foreign_keys = ON;
   PRAGMA journal_mode = WAL;

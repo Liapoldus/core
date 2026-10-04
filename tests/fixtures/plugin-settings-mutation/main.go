@@ -60,8 +60,8 @@ func main() {
 	}, sqlite.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
-		"fixture", "remote", []byte(`{"name":"fixture"}`), "configured")
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+		"fixture", []byte(`{"name":"fixture"}`), "configured")
 	check(err)
 	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
 		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
@@ -138,7 +138,7 @@ func main() {
 	rejectedID, _ := rejectedAccepted[management.JSON.OperationID].(string)
 	var rejectedOperation map[string]any
 	if rejectedID != "" {
-		rejectedOperation = waitOperationInProgress(handler, rejectedID, management)
+		rejectedOperation = waitOperation(handler, rejectedID, management)
 		waitForApplyCalls(applier.calls, 2)
 	}
 	settingsAfterReject := perform(handler, http.MethodGet, settingsPath, nil, "", "", management)
@@ -166,8 +166,8 @@ func main() {
 	check(rows.Err())
 	check(rows.Close())
 	auditedActor, auditActions := readAudit(ctx, database)
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)`,
-		"fresh", "remote", []byte(`{"name":"fresh"}`), "configured")
+	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+		"fresh", []byte(`{"name":"fresh"}`), "configured")
 	check(err)
 	firstRaw := []byte(`{"initial":true}`)
 	first := perform(handler, http.MethodPut, management.Paths.Plugins+"/fresh"+management.Paths.PluginSettingsSuffix,
@@ -213,21 +213,6 @@ func waitOperation(handler http.Handler, id string, management config.Management
 		time.Sleep(10 * time.Millisecond)
 	}
 	panic("operation did not reach a terminal state")
-}
-
-func waitOperationInProgress(handler http.Handler, id string, management config.ManagementWords) map[string]any {
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		response := perform(handler, http.MethodGet, management.Paths.Operations+"/"+id, nil, "", "", management)
-		var operation map[string]any
-		check(json.Unmarshal(response.Body.Bytes(), &operation))
-		state, _ := operation[management.JSON.State].(string)
-		if state == management.Statuses.Running || state == management.Statuses.Succeeded || state == management.Statuses.Failed {
-			return operation
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	panic("operation did not begin")
 }
 
 func waitForApplyCalls(calls <-chan applyCall, count int) {

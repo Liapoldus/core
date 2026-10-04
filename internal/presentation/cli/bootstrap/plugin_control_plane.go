@@ -62,11 +62,16 @@ func pluginControlTLS(bootstrapConfig config.BootstrapConfig) (*tls.Config, erro
 	if err != nil {
 		return nil, err
 	}
+	verifyRevocation, err := plugins.NewTLSRevocationVerifier(bootstrapConfig.PluginReplicaClientCA, bootstrapConfig.PluginReplicaClientCRLs)
+	if err != nil {
+		return nil, errPluginRegistryIncomplete
+	}
 	return &tls.Config{
-		MinVersion:   tls.VersionTLS12,
-		Certificates: []tls.Certificate{certificate},
-		ClientCAs:    roots,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:       tls.VersionTLS12,
+		Certificates:     []tls.Certificate{certificate},
+		ClientCAs:        roots,
+		ClientAuth:       tls.RequireAndVerifyClientCert,
+		VerifyConnection: verifyRevocation,
 	}, nil
 }
 
@@ -82,11 +87,16 @@ func replicaDialTLS(bootstrapConfig config.BootstrapConfig, serverName string) (
 	if err != nil {
 		return nil, err
 	}
+	verifyRevocation, err := plugins.NewTLSRevocationVerifier(bootstrapConfig.PluginReplicaServerCA, bootstrapConfig.PluginReplicaServerCRLs)
+	if err != nil {
+		return nil, errPluginRegistryIncomplete
+	}
 	return &tls.Config{
-			MinVersion:   tls.VersionTLS12,
-			Certificates: []tls.Certificate{certificate},
-			RootCAs:      roots,
-			ServerName:   serverName,
+			MinVersion:       tls.VersionTLS12,
+			Certificates:     []tls.Certificate{certificate},
+			RootCAs:          roots,
+			ServerName:       serverName,
+			VerifyConnection: verifyRevocation,
 		},
 		nil
 }
@@ -157,11 +167,18 @@ func buildPluginRESTControl(bootstrapConfig config.BootstrapConfig) (*PluginREST
 		_ = listener.Close()
 		return nil, err
 	}
+	httpContract, err := plugins.LoadSDKHTTPContract()
+	if err != nil {
+		_ = listener.Close()
+		release()
+		return nil, errPluginRegistryIncomplete
+	}
 	return &PluginRESTControl{
 		ConfigPullListener: listener,
 		ConfigPullTLS:      pullTLS,
 		ResolveReplica:     replicaIdentityResolver(registry),
 		ReloadClients:      clients,
+		HTTPContract:       httpContract,
 		CloseReleases:      release,
 	}, nil
 }

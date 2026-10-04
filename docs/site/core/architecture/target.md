@@ -119,15 +119,20 @@ v1 API, таблицы, permissions или acceptance gates. Общие REST и 
 
 ### Ручной запуск и подключение
 
-Оператор устанавливает и запускает Core, затем отдельно устанавливает и
-запускает каждый plugin binary средствами ОС или выбранной им службы запуска.
-Плагины не получают settings через environment, argv или локальные application
-config files. Оператор задаёт Core fixed endpoint и ожидаемую replica identity;
-Core проверяет TLS/mTLS, REST manifest/schema и readiness, затем вызывает
+Оператор устанавливает Core и каждый plugin отдельно. При первичном запуске он
+сначала запускает plugin binaries средствами ОС или выбранной службы, проверяет
+их control-plane health и mTLS identity, затем запускает Core. Плагины не
+получают settings через environment, argv или локальные application config
+files. Core проверяет TLS/mTLS, REST manifest/schema и readiness, затем вызывает
 `Reload`. Plugin сам запрашивает точное активное поколение у Core, применяет
 его и возвращает digest ACK. Перезапуск/обновление plugin выполняет оператор;
-после reconnect Core повторно сверяет identity, health и generation, но не
-запускает бинарник и не replay-ит пользовательские вызовы.
+Core проверяет readiness при запуске и затем периодически только для наблюдения
+состояния и фиксации drift; интервал задаётся versioned contract asset. Монитор
+не вызывает `Reload` и не повторяет неуспешные операции. Если plugin перезапущен
+отдельно, пока Core продолжает работать, он останется degraded до ручного
+перезапуска Core: startup reconciliation сверит identity, health и active
+generation и вызовет `Reload` при расхождении. Core не запускает бинарник и не
+replay-ит пользовательские вызовы.
 
 ## REST Reload, поколения конфигурации и восстановление
 
@@ -202,7 +207,8 @@ plugins.
 
 Единственный владелец wire/transport/security API — репозиторий
 [pluginprotocol](https://github.com/Liapoldus/pluginprotocol); namespace
-`liapoldus.plugin.v1` сохраняется. Библиотека предоставляет только универсальные
+`liapoldus.peer.v1` используется для generic peer wire contract. Библиотека
+предоставляет только универсальные
 механизмы регистрации произвольных именованных методов/handlers, отправки
 сообщения, прослушивания peer endpoint и открытия двунаправленного потока.
 Она не содержит готовых продуктовых RPC, имён плагинов, Core API, Manifest,

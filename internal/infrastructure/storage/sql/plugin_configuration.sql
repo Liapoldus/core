@@ -115,3 +115,30 @@ ALTER TABLE plugin_instances DROP COLUMN revision;
 
 -- name: drop-legacy-operation-settings
 ALTER TABLE operation_payloads DROP COLUMN settings_json;
+
+-- name: disable-foreign-keys
+PRAGMA foreign_keys = OFF;
+
+-- name: enable-foreign-keys
+PRAGMA foreign_keys = ON;
+
+-- name: create-plugin-instances-v9
+CREATE TABLE plugin_instances_v9 (
+    id TEXT PRIMARY KEY,
+    manifest_json BLOB NOT NULL,
+    state TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- name: copy-plugin-instances-v9
+INSERT INTO plugin_instances_v9(id, manifest_json, state, updated_at)
+SELECT id, manifest_json, state, updated_at FROM plugin_instances;
+
+-- name: drop-plugin-instances-v8
+DROP TABLE plugin_instances;
+
+-- name: rename-plugin-instances-v9
+ALTER TABLE plugin_instances_v9 RENAME TO plugin_instances;
+
+-- name: foreign-key-check
+PRAGMA foreign_key_check;

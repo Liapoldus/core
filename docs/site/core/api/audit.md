@@ -14,10 +14,12 @@ Authorization, secrets, private keys, cookies, plugin payloads или grant
 handles. Для конфигурационных mutations фиксируются operation ID, revision,
 digest и результат без тела.
 
-Операции REST `Reload`, config pull и plugin-owned
-Admin Surface actions сохраняют state, idempotency fingerprint, timestamps и
-safe result/problem. После restart операция восстанавливается или явно
-помечается failed/recovery-required; она не теряется в памяти процесса.
+Durable REST operations сохраняют state, idempotency fingerprint, timestamps и
+safe result/problem; после restart операция восстанавливается или явно
+помечается failed/recovery-required. Синхронный plugin Admin Action не является
+durable operation и не сохраняет idempotency fingerprint: повтор с тем же
+`Idempotency-Key` исполняется заново и создаёт отдельную audit-запись. Никакие
+Admin Action payloads в audit не попадают.
 
 Для web-операций Core видит только authenticated Constructor binding и его
 service key; Core не принимает actor headers как источник identity или

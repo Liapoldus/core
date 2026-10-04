@@ -91,15 +91,7 @@ describe("Management API response characterization matrix", () => {
         },
       },
       invalidPluginPagination: problem(400, "invalid_pagination", "limit must be between 1 and 100"),
-      adminSurfaces: {
-        status: 200,
-        contentType: "application/json",
-        requestID: true,
-        body: {
-          items: [{ plugin: "fixture-a", namespace: "forms", version: "v1", title: "Forms", capabilities: ["admin.surface.get"] }],
-          requestId: requestID,
-        },
-      },
+      adminSurfaces: problem(503, "plugin_unavailable", "Подключённый plugin instance не отвечает."),
       pluginDetail: {
         status: 200,
         contentType: "application/json",
@@ -107,8 +99,8 @@ describe("Management API response characterization matrix", () => {
         body: { id: "fixture-a", name: "Alpha", state: "ready" },
       },
       pluginNotFound: problem(404, "plugin_not_found", "Указанный plugin instance не существует."),
-      pluginAdminUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
-      pluginAdminPostUnavailable: problem(503, "plugin_unavailable", "plugin admin surface is unavailable"),
+      pluginAdminUnavailable: problem(404, "not_found", "The requested operation does not exist."),
+      pluginAdminPostUnavailable: problem(404, "not_found", "The requested operation does not exist."),
       pluginRollbackUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       operationUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       auditEmpty: {

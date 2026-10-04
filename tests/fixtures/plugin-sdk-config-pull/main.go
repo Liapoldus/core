@@ -38,7 +38,7 @@ func main() {
 	database, err := openDatabase(ctx, os.Args[1])
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, mode, manifest_json, state) VALUES (?, ?, ?, ?)", "fixture", "remote", []byte(`{"name":"fixture"}`), "configured")
+	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)", "fixture", []byte(`{"name":"fixture"}`), "configured")
 	check(err)
 	configurations := []struct {
 		generation int

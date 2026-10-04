@@ -72,7 +72,7 @@ describe("plugin settings mutation API", () => {
       expect(report.activeRaw).toBe('{"reject":true}');
       expect(report.activeDigest).toBe(createHash("sha256").update(report.activeRaw).digest("hex"));
       expect(report.slots).toEqual(["active", "previous"]);
-      expect(report.rejectedOperation).toMatchObject({ state: "running" });
+      expect(report.rejectedOperation).toMatchObject({ state: "failed", errorCode: "activation_failed" });
       expect(report.settingsAfterReject).toMatchObject({ revision: "3", config: { reject: true } });
       expect(report.auditedActor).toBe("static-token");
       expect(report.auditActions).toContain("plugin_settings.apply");
