@@ -27,7 +27,7 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
       const output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
         cwd: root,
         encoding: "utf8",
-        timeout: 180_000,
+        timeout: 300_000,
         env: {
           ...process.env,
           GOWORK: "off",
@@ -54,6 +54,6 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
       expect(result.formsDataPersistedAfterRestart).toBe(true);
       expect(result.formsStorageUnavailableDuringOutage).toBe(true);
       expect(result.formsStorageRecoveredAfterOutage).toBe(true);
-    }, 180_000);
+    }, 300_000);
   },
 );

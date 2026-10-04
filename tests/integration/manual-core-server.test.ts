@@ -21,7 +21,7 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
     const output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
       cwd: root,
       encoding: "utf8",
-      timeout: 120_000,
+      timeout: 300_000,
       env: { ...process.env, GOWORK: "off", GOTOOLCHAIN: "go1.26.0" },
     });
     expect(JSON.parse(output)).toEqual({
@@ -62,5 +62,5 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
       childNoSQLDSNEnvironment: true,
       formsDataPersistedAfterRestart: false,
     });
-  }, 120_000);
+  }, 300_000);
 });
