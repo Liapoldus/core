@@ -7,8 +7,10 @@
 - [x] Канонические Core Markdown и Mermaid исходники принадлежат этому repo в
   `docs/site/core/` и `docs/site/diagrams/`. Агрегатор `liapoldus.github.io`
   собирает закреплённый commit SHA в единый сайт без редактируемой копии.
-- [ ] После изменения Core docs синхронизировать pinned SHA в
-  `liapoldus.github.io/docs-sources.json` и выполнить агрегаторный build.
+- [x] После изменения Core docs синхронизировать pinned SHA
+  `2c58af3e3e2a121cdf8b085baed209ba64cd8d46` в
+  `liapoldus.github.io/docs-sources.json`; `docs:sync`/VitePress build прошли,
+  GitHub Pages deployed (маршруты Core, protocol, Server и forms-db отвечают 200).
 
 ## Текущий статус — 2026-10-02
 
@@ -427,8 +429,9 @@ Cross-repository CI запускает все три backend.
   module major v2 отражает breaking API, wire namespace остаётся
   `liapoldus.peer.v1`. Server и forms-db используют опубликованные версии без
   локальных `replace` (`GOWORK=off` build/vet пройдены). Локальный
-  `manual-core-server` cross-process E2E прошёл 2026-10-05; hosted CI
-  потребителей и Core integration ещё выполняются/требуют повторного запуска.
+  `manual-core-server` cross-process E2E прошёл 2026-10-05; Core verify и
+  cross-repository integration прошли на commit `2c58af3`, включая SQL-backed
+  сценарии. `core-v1.0.1` опубликован, release contracts archive создан.
 
 ## Отложено до v2 — не включать в v1 gates
 
