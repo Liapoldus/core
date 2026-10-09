@@ -103,16 +103,10 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
-	// v1 connects to the operator-declared, already-running plugin replicas
-	// declared in core.yaml over the Plugin SDK REST API. The control plane is
-	// always built from the bootstrap document: a Core that accepted core.yaml
-	// and then silently dropped pluginControl would promote generations that no
-	// replica can ever fetch, so an unusable control plane fails startup instead.
+	// The control plane is built from the effective settings stored in SQLite.
+	// An invalid control listener or trust configuration fails startup before
+	// Core advertises readiness.
 	controlPlane, err := buildPluginRESTControl(bootstrap)
-	if err != nil {
-		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
-	}
-	registry, err := newPluginRegistry(bootstrap)
 	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -130,12 +124,9 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 			registration.Identity.InstanceID, registration.Identity.ReplicaID, []byte("{}"),
 			inventory.contract.ValidStates[0], storage.ReplicaObservedPending, now)
 	}
-	if err := registerDeclaredPlugins(context.Background(), database, registry); err != nil {
-		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
-	}
-	instanceIDs := make([]string, 0, len(registry.instances))
-	for _, instance := range registry.instances {
-		instanceIDs = append(instanceIDs, instance.InstanceID)
+	instanceIDs := make([]string, 0, len(inventory.records))
+	for _, record := range inventory.records {
+		instanceIDs = append(instanceIDs, record.ID)
 	}
 	configurationSnapshot, err := storage.NewPluginConfigurationSnapshot(context.Background(), stores.pluginConfigStore, instanceIDs)
 	if err != nil {
@@ -170,7 +161,6 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	}
 	applier := &plugins.SDKConfigurationApplier{
 		Store:        stores.pluginConfigStore,
-		Clients:      controlPlane.ReloadClients,
 		Registered:   controlPlane.RegisteredReloads,
 		Snapshot:     configurationSnapshot,
 		Convergence:  convergenceSnapshot,
@@ -236,7 +226,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	}
 	management := newManagementServer(managementServerDependencies{
 		stores: stores, inventory: inventory, managementInputs: managementInputs,
-		registry: registry, convergence: convergenceSnapshot, linkPolicy: linkPolicySnapshot, pluginControl: controlPlane,
+		convergence: convergenceSnapshot, linkPolicy: linkPolicySnapshot, pluginControl: controlPlane,
 		trafficRollouts: trafficRollouts, linkPolicyChanged: peerDirectoryChanges.Notify,
 	})
 	management.CoreSettings = coreSettings
@@ -255,18 +245,12 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
 	defer stopRESTControl()
-	// Reconciliation at startup restores exact generations after a Core restart.
-	_ = applier.ReconcileDeclaredReplicas(context.Background())
+	// Reconciliation at startup restores exact generations for live leases.
 	_ = applier.ReconcileRegisteredReplicas(context.Background())
 	reconciliationPolicy, policyErr := config.LoadPluginReconciliationPolicy()
 	if policyErr != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	// This monitor only observes readiness and records drift. It never sends
-	// Reload, so refused or unreachable generations require an explicit operator
-	// action rather than a background retry.
-	stopReplicaReadinessMonitor := startReplicaReadinessMonitor(ctx, reconciliationPolicy.ReadinessPollInterval(), applier)
-	defer stopReplicaReadinessMonitor()
 	stopRegisteredReplicaReconciler := startRegisteredReplicaReconciler(ctx, reconciliationPolicy.ReadinessPollInterval(), applier, func(recoveryContext context.Context) error {
 		if err := pluginConfigurationService.RecoverRegistered(recoveryContext, controlPlane.ReplicaDirectory.HasRegisteredInstance); err != nil {
 			return err
@@ -368,7 +352,6 @@ type managementServerDependencies struct {
 	stores            bootstrapStores
 	inventory         bootstrapInventory
 	managementInputs  managementInputs
-	registry          pluginRegistry
 	convergence       *storage.PluginConvergenceSnapshot
 	linkPolicy        *storage.PluginLinkPolicySnapshot
 	linkPolicyChanged func()
@@ -385,7 +368,38 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		TrafficRolloutAPI: inputs.trafficRolloutAPI,
 		TrafficRollouts:   dependencies.trafficRollouts,
 		PluginAdminControl: &plugins.SDKAdminControl{
-			Clients:      dependencies.pluginControl.ReloadClients,
+			Instances: func(ctx context.Context) ([]string, error) {
+				seen := make(map[string]struct{})
+				view, err := dependencies.convergence.Current()
+				if err != nil {
+					return nil, err
+				}
+				for instanceID := range view.Desired {
+					seen[instanceID] = struct{}{}
+				}
+				for _, live := range dependencies.pluginControl.RegisteredReloads.Source.Snapshot() {
+					seen[live.Registration.Identity.InstanceID] = struct{}{}
+				}
+				instances := make([]string, 0, len(seen))
+				for instanceID := range seen {
+					instances = append(instances, instanceID)
+				}
+				return instances, ctx.Err()
+			},
+			ResolveFanout: func(ctx context.Context, instanceID string) (*plugins.SDKReloadFanout, func(), bool, error) {
+				client, release, found, err := dependencies.pluginControl.RegisteredReloads.Resolve(ctx, instanceID)
+				if err != nil || !found {
+					return nil, release, found, err
+				}
+				fanout, ok := client.(*plugins.SDKReloadFanout)
+				if !ok {
+					if release != nil {
+						release()
+					}
+					return nil, nil, true, plugins.ErrPluginUnavailable
+				}
+				return fanout, release, true, nil
+			},
 			HTTPContract: dependencies.pluginControl.HTTPContract,
 			EligibleReplicaIDs: func(ctx context.Context, instanceID string) ([]string, error) {
 				view, err := dependencies.convergence.Current()
@@ -435,7 +449,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		},
 		TLSConfig: inputs.tlsConfiguration,
 		Plugins:   inventory.view, PluginIDField: inventory.contract.JSON.ID,
-		DataPlaneReadiness: pluginReadiness(dependencies.registry, dependencies.convergence, management),
-		DataPlaneDrift:     pluginDrift(dependencies.registry, dependencies.convergence),
+		DataPlaneReadiness: pluginReadiness(dependencies.pluginControl.ReplicaDirectory, dependencies.convergence, management),
+		DataPlaneDrift:     pluginDrift(dependencies.pluginControl.ReplicaDirectory, dependencies.convergence),
 	}
 }

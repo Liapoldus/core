@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { parseJsonObject } from "../support/json.js";
 
 const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
@@ -9,7 +10,7 @@ const coreRoot = join(import.meta.dirname, "../..");
 describe("Core live plugin replica directory", () => {
 	it("binds registration to the authenticated SAN, enforces lease/incarnation rules, and expires replicas", async () => {
 		const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/plugin-replica-directory"], { cwd: coreRoot });
-		const result = JSON.parse(stdout);
+		const result = parseJsonObject(stdout);
 
 		expect(result.validRegistration).toBe(true);
 		expect(result.activeDuplicateRenews).toBe(true);
@@ -26,9 +27,9 @@ describe("Core live plugin replica directory", () => {
 		expect(result.identityMismatchHTTPRejected).toBe(true);
 		expect(result.oversizedRegistrationRejected).toBe(true);
 		expect(result.concurrentRegistrationSurvivesPersistenceFailure).toBe(true);
-		expect(result.unregisteredIdentityUsesFallback).toBe(true);
-		expect(result.registeredIdentityOverridesFallback).toBe(true);
-		expect(result.expiredIdentityCannotDowngrade).toBe(true);
-		expect(result.replacedIncarnationCannotDowngrade).toBe(true);
+		expect(result.unregisteredIdentityRejected).toBe(true);
+		expect(result.registeredIdentityAdmitted).toBe(true);
+		expect(result.expiredIdentityRejected).toBe(true);
+		expect(result.replacedIncarnationIsFenced).toBe(true);
 	}, 30_000);
 });

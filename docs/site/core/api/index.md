@@ -1,9 +1,8 @@
 # Core Management API
 
 Management API управляет Core desired-state: plugin instance metadata и
-settings, access, operations и audit. Fixed endpoints и ожидаемые identities
-заранее объявляются оператором в `core.yaml`; API не регистрирует и не меняет
-plugin topology.
+settings, access, operations и audit. Membership plugin replicas определяется
+аутентифицированной регистрацией и активными leases.
 В v1 API не управляет plugin-to-plugin interaction policies. Оно не
 устанавливает, не запускает, не останавливает, не перезапускает, не
 масштабирует и не удаляет plugin processes/containers. Оно не проксирует public
@@ -14,7 +13,7 @@ group или TLS endpoints.
 
 | Область | Назначение |
 | --- | --- |
-| Plugins | Instance/replica observations, Manifest/schema, raw JSON settings, rollback и общий REST Reload/config-pull lifecycle. Fixed endpoints читаются из `core.yaml`. |
+| Plugins | Instance/replica observations, Manifest/schema, raw JSON settings, rollback и общий REST Reload/config-pull lifecycle. |
 | Admin Surface | Общая авторизованная граница для plugin-owned management actions и UI descriptors. |
 | Operations | Polling durable operations и generation/replica readiness. |
 | Access/Audit | Выпуск и чтение metadata service key, operator actor и append-only audit. |

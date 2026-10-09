@@ -56,26 +56,13 @@ func main() {
 	restartedDirectory, err := plugins.NewPluginReplicaDirectory(lifecycle, nil)
 	check(err)
 	restartedDirectory.MarkRegisteredInstances(registeredInstances)
-	fallback := func(certificate *x509.Certificate) (string, bool) {
-		if certificate == nil || len(certificate.URIs) == 0 {
-			return "", false
-		}
-		switch certificate.URIs[0].String() {
-		case identityURI:
-			return identity.InstanceID, true
-		case "spiffe://liapoldus/plugin/static-forms/replica-a/inc-a":
-			return "static-forms", true
-		default:
-			return "", false
-		}
-	}
-	_, registeredAllowed := restartedDirectory.ResolveWithFallback(certificate, fallback)
-	staticAllowed := &x509.Certificate{URIs: []*url.URL{{Scheme: "spiffe", Host: "liapoldus", Path: "/plugin/static-forms/replica-a/inc-a"}}}
-	_, staticResolved := restartedDirectory.ResolveWithFallback(staticAllowed, fallback)
+	_, registeredAdmitted := restartedDirectory.Resolve(certificate)
+	staticAllowed := certificateFor("spiffe://liapoldus/plugin/static-forms/replica-a/inc-a")
+	_, staticAdmitted := restartedDirectory.Resolve(staticAllowed)
 
 	check(json.NewEncoder(os.Stdout).Encode(map[string]bool{
-		"registeredInstanceCannotUseStaticFallbackAfterRestart": !registeredAllowed,
-		"unregisteredInstanceCanUseStaticFallback":              staticResolved,
+		"registeredInstanceRequiresFreshLeaseAfterRestart": !registeredAdmitted && restartedDirectory.HasRegisteredInstance(identity.InstanceID),
+		"unregisteredStaticIdentityRejected":               !staticAdmitted,
 	}))
 }
 

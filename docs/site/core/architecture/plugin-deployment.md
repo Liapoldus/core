@@ -1,27 +1,21 @@
 # Размещение plugins
 
-## Core v1: ручное размещение
+## Core v1: registration и leases
 
 Оператор устанавливает и запускает Core и каждый plugin самостоятельно.
-Оператор объявляет фиксированные REST endpoints и ожидаемые replica identities
-в `core.yaml`; Core не принимает регистрацию endpoint или identity через
-Management API. Core подключается к объявленным endpoints по mTLS и управляет
-только generic состоянием: settings generations, Reload, health, secret grants
-и audit. Централизованная plugin-to-plugin policy относится к v2. Core не
-устанавливает, не запускает, не останавливает, не
-перезапускает, не масштабирует и не удаляет plugin workloads.
+Plugin replica регистрирует себя через Plugin SDK REST+mTLS; Core проверяет
+identity, сохраняет membership и lease и использует только живые регистрации
+для управления generations. Runtime не читает YAML registry или статические
+endpoint declarations. Core не устанавливает, не запускает, не останавливает,
+не перезапускает, не масштабирует и не удаляет plugin workloads.
 
 Поддерживаемая v1-модель — отдельно установленный и вручную запускаемый plugin
-process. Размещение в Docker/Compose, Swarm или Kubernetes не входит в v1
-поддерживаемую матрицу, даже если workload запускается внешним оператором;
-контейнерные deployment-профили проектируются отдельно в v2. При запуске Core
-он однократно сверяет health/config generation у объявленных replicas и при
-расхождении вызывает `Reload`. Если plugin перезапущен при работающем Core,
-периодический monitor лишь отмечает его degraded; оператор после проверки
-health вручную перезапускает Core. Core не запускает бинарник и не повторяет
-неизвестный plugin call.
+process. Docker/Compose, Swarm и Kubernetes как официально поддерживаемые
+deployment-профили требуют собственных smoke gates и относятся к v2. После
+перезапуска plugin он регистрируется заново и получает новую lease; до этого
+исключён из membership. Core не повторяет неизвестный plugin call.
 
-## V2: саморегистрация без управления workload
+## V1: регистрация без управления workload
 
 Core остаётся одним экземпляром. Оператор, systemd, Docker, Swarm или Kubernetes
 запускает и масштабирует plugin workloads. Core **не** устанавливает, запускает,
@@ -43,11 +37,10 @@ incarnation и требует drain старой. Саморегистрация
 JSON generations, rollout intent, durable operations и audit, но не становится
 реестром заведомо живых адресов. Lease TTL — 30 секунд, renew — каждые 10 секунд;
 истечение или отрицательная health/readiness проверка исключает replica из
-новых вызовов. После рестарта Core все replicas регистрируются заново. Plugin
-SQLite сохраняет только маркер, что instance перешёл на self-registration:
-после рестарта его сертификат не может незаметно вернуться к статическому
-endpoint resolver. Этот маркер не содержит endpoint, identity, readiness или
-lease и не заменяет повторную регистрацию. SDK получает versioned
+новых вызовов. После рестарта Core все replicas регистрируются заново. Core
+SQLite может сохранять маркер прежней регистрации для recovery, но он не
+содержит endpoint, identity, readiness или lease и не заменяет регистрацию.
+SDK получает versioned
 peer-directory и обновления через защищённый long-poll;
 изменение набора реплик не создаёт новое поколение product settings. При
 недоступности Core новый rollout невозможен, но уже открытые data-plane
@@ -126,10 +119,8 @@ audit. Controller не может менять rollout plan, plugin settings, pe
 identities или service keys; неизвестная либо отозванная identity отклоняется.
 Trust roots controller listener не объединяются с Management API, Plugin SDK
 REST или peer-protocol trust roots. Bind, server credentials, client CA, CRL и
-точные allowed identities задаются отдельным versioned v2 документом
-`contracts/v2/traffic-controller.schema.json`, передаваемым Core при запуске
-через отдельный `--traffic-controller-config`. Этот документ не расширяет
-минимальный v1 `core.yaml`.
+точные allowed identities входят в versioned Core settings и изменяются через
+Settings API; runtime не читает отдельный YAML/JSON файл.
 
 Platform-admin создаёт intent через `POST /api/plugins/{id}/rollouts`. Запрос
 содержит desired release SHA-256, точный JSON candidate document, ожидаемую
@@ -183,9 +174,9 @@ ACK, receipt и audit фиксируются одной SQLite-транзакц�
 или out-of-order stage отклоняется без изменения состояния. Продвижение разрешено
 только отдельным platform-admin approval после подтверждения веса и истечения
 минимального времени наблюдения. Controller никогда сам не одобряет следующую
-ступень. Listener подключается к `core serve` через отдельный
-`--traffic-controller-config`, использует собственные server/client trust roots,
-CRL и точную identity allow-list; Bearer и plaintext не принимаются.
+ступень. Listener включается typed-полем Core Settings API, хранится в SQLite и
+активируется при перезапуске Core. Он использует собственные server/client trust
+roots, CRL и точную identity allow-list; Bearer и plaintext не принимаются.
 
 ## V2: явные peer transports и смешанное размещение
 

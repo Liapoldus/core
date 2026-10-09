@@ -150,7 +150,12 @@ func PluginAdmin(deps PluginDependencies, response http.ResponseWriter, request 
 	}
 	mediaType, params, mediaErr := mime.ParseMediaType(request.Header.Get(deps.Management.Headers.ContentType))
 	artifactAction := mediaErr == nil && mediaType == deps.AdminLimits.MultipartMediaType
-	if !artifactAction && strings.TrimSpace(request.Header.Get(deps.Management.Headers.IfMatch)) == "" {
+	requestedSurfaceDigest := strings.TrimSpace(request.Header.Get(deps.Management.Headers.AdminSurfaceDigest))
+	if requestedSurfaceDigest == "" {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if !query && !artifactAction && strings.TrimSpace(request.Header.Get(deps.Management.Headers.IfMatch)) == "" {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
 		return
 	}
@@ -165,6 +170,10 @@ func PluginAdmin(deps PluginDependencies, response http.ResponseWriter, request 
 	surfaceDigest, err := deps.AdminSurfaceDigest(request.Context(), instanceID)
 	if err != nil || surfaceDigest == "" {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginUnavailable, requestID)
+		return
+	}
+	if requestedSurfaceDigest != surfaceDigest {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginRevisionConflict, requestID)
 		return
 	}
 	invocation := AdminInvocation{
@@ -298,10 +307,13 @@ func forwardPluginArtifact(deps PluginDependencies, response http.ResponseWriter
 	if checked.tooLarge {
 		return PluginAdminResult{}, errAdminArtifactTooLarge
 	}
-	if checked.read < limits.MinimumArtifact {
+	if checked.invalid {
 		return PluginAdminResult{}, errAdminArtifactInvalid
 	}
-	if checked.invalid {
+	if dispatchErr != nil {
+		return PluginAdminResult{}, dispatchErr
+	}
+	if checked.read < limits.MinimumArtifact {
 		return PluginAdminResult{}, errAdminArtifactInvalid
 	}
 	return result, dispatchErr

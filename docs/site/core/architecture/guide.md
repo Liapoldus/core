@@ -15,17 +15,15 @@ imports входит в v1. Normative HTTP contract и API лежат в сам�
 
 ## Plugin control lifecycle
 
-В v1 оператор вручную запускает plugin binary и заранее объявляет его fixed
-endpoint и ожидаемую identity каждой replica в `core.yaml`. Core регистрирует
-эту топологию в SQLite при старте, но не принимает регистрацию через
-Management API. Plugin предоставляет общий защищённый REST control surface
-SDK; Core обращается к каждой replica отдельно. Балансируемый endpoint не
-заменяет identity replica или её ACK. Core не управляет process lifecycle.
+Оператор выбранными средствами запускает plugin binary. Каждая replica
+аутентифицируется и регистрируется через Plugin SDK REST+mTLS; Core сохраняет
+наблюдения, lease и конфигурационные поколения в SQLite. Core обращается к
+replica по endpoint из живой регистрации. Балансируемый endpoint не заменяет
+identity replica или её ACK. Core не управляет process lifecycle.
 
-1. Оператор устанавливает и вручную запускает Core и каждый plugin SDK server
-   отдельно, в любом порядке; Core допускает недоступные replicas как degraded
-   observations и не отказывает в старте всего процесса. Startup/restart policy
-   плагинов настраивается средствами ОС.
+1. Оператор устанавливает и запускает Core и каждый plugin SDK server отдельно,
+   в любом порядке. Startup/restart policy плагинов настраивается выбранными
+   deployment средствами; membership появляется только после регистрации.
 2. Core аутентифицирует replica, получает её Manifest и settings schema и
    сверяет release identity.
 3. Core валидирует desired JSON и сохраняет точные bytes candidate в durable
@@ -69,7 +67,7 @@ capabilities, errors и Admin Surface. Общий SDK conformance отдельн
 REST lifecycle, exact pull, Reload, rollback, health, auth и redaction.
 `pluginprotocol` conformance проверяет только generic registration, carriers,
 peer identity/security, unary/stream cancellation, backpressure и close/reconnect.
-Внешнее размещение Docker/Swarm/Kubernetes — v2; Core не supervises процессы,
+Официальные deployment profiles Docker/Swarm/Kubernetes — v2; Core не supervises процессы,
 а установку и обновления выполняет оператор.
 Acceptance evidence и команды standalone-размещения собраны в
 [матрице Core](../configuration/acceptance).

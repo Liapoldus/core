@@ -41,11 +41,13 @@ func main() {
 	}
 	first := &fixtureReplica{surface: []byte("{ \"pages\" : [] }")}
 	second := &fixtureReplica{surface: []byte("{ \"pages\" : [] }")}
+	fanout := &plugins.SDKReloadFanout{InstanceID: "instance-a", Replicas: []plugins.SDKReloadReplicaClient{
+		{ReplicaID: "replica-a", Client: first}, {ReplicaID: "replica-b", Client: second},
+	}}
 	control := &plugins.SDKAdminControl{
-		Clients: map[string]plugins.SDKReloadClient{
-			"instance-a": &plugins.SDKReloadFanout{InstanceID: "instance-a", Replicas: []plugins.SDKReloadReplicaClient{
-				{ReplicaID: "replica-a", Client: first}, {ReplicaID: "replica-b", Client: second},
-			}},
+		Instances: func(context.Context) ([]string, error) { return []string{"instance-a"}, nil },
+		ResolveFanout: func(context.Context, string) (*plugins.SDKReloadFanout, func(), bool, error) {
+			return fanout, nil, true, nil
 		},
 		EligibleReplicaIDs: func(context.Context, string) ([]string, error) { return []string{"replica-b"}, nil },
 		HTTPContract: sdkinfrastructure.HTTPContract{Plugin: sdkinfrastructure.PluginContract{
@@ -115,7 +117,7 @@ func main() {
 		invocation := second.invocations[2]
 		actionContextOK = invocation.CallerID == auditWords.Audit.Actors.StaticToken && invocation.InstanceID == "instance-a" &&
 			invocation.PageID == "forms" && invocation.ActionID == "export" && invocation.RequestID != "" &&
-			invocation.IdempotencyKey == "fixture-idem" && invocation.IfMatch == `"surface-1"` &&
+			invocation.IdempotencyKey == "fixture-idem" && invocation.IfMatch == `"resource-1"` &&
 			invocation.SurfaceDigest == digestText
 	}
 	sameKeyReinvoked := len(second.invocations) == 3 && second.invocations[0].IdempotencyKey == second.invocations[1].IdempotencyKey &&
@@ -155,7 +157,9 @@ func main() {
 func actionHeaders(management config.ManagementWords) http.Header {
 	headers := make(http.Header)
 	headers.Set(management.Headers.ContentType, management.ContentTypes.JSON)
-	headers.Set(management.Headers.IfMatch, `"surface-1"`)
+	digest := sha256.Sum256([]byte("{ \"pages\" : [] }"))
+	headers.Set(management.Headers.AdminSurfaceDigest, "sha256:"+hex.EncodeToString(digest[:]))
+	headers.Set(management.Headers.IfMatch, `"resource-1"`)
 	headers.Set(management.Idempotency.Key, "fixture-idem")
 	return headers
 }

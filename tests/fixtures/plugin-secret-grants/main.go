@@ -72,7 +72,7 @@ func main() {
 	service := &application.PluginSecretGrantService{
 		Configurations: snapshot,
 		ResolveSecret: func(_ context.Context, reference string, maximumBytes int64) ([]byte, error) {
-			return config.ReadSecretReference(filepath.Join(directory, "core.yaml"), reference, maximumBytes)
+			return config.ReadSecretReference(filepath.Join(directory, "reference-base"), reference, maximumBytes)
 		},
 		GrantTTL:            time.Duration(contract.Deadlines.CoreSecretGrantSeconds) * time.Second,
 		MaximumValueBytes:   int64(contract.Core.SecretGrant.Redemption.MaximumResponseBytes),

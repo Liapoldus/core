@@ -99,6 +99,7 @@ json:
   config: config
 headers:
   ifMatch: If-Match
+  adminSurfaceDigest: X-Liapoldus-Admin-Surface-Digest
   contentType: Content-Type
   etag: ETag
   requestId: X-Request-ID

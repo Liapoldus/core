@@ -78,7 +78,7 @@ func (s Settings) Validate() error {
 	}
 	if s.TrafficController != nil {
 		controller := s.TrafficController
-		if validListen(controller.Listen) != nil || controller.SchemaVersion != 1 ||
+		if validListen(controller.Listen) != nil || controller.SchemaVersion != 2 ||
 			!filepath.IsAbs(controller.Certificate) || !filepath.IsAbs(controller.Key) || !filepath.IsAbs(controller.ClientCA) ||
 			len(controller.AllowedIdentities) == 0 {
 			return ErrInvalidDocument

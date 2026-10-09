@@ -3,6 +3,7 @@ package storage
 // configurationQueries returns a private set of parameterized statements.
 func configurationQueries() map[string]string {
 	return map[string]string{
+		"list-active-instances":               `SELECT DISTINCT instance_id FROM plugin_config_generations WHERE slot = ? ORDER BY instance_id;`,
 		"list-legacy-instance-configurations": `SELECT id, revision, settings_json FROM plugin_instances ORDER BY id;`,
 		"select-current": `SELECT active.instance_id, active.generation, active.schema_version, active.sha256, active.raw_json,
        active.slot, active.created_at,

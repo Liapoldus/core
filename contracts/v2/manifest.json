@@ -3,7 +3,6 @@
   "files": {
     "traffic-rollout.openapi.yaml": "sha256:1c72193b065ae3a53a278b4c45ac97b55f710fc65ff18b19a227635fdd828c94",
     "traffic-rollout-fields.yaml": "sha256:136b873bfdb5ee3f0cd0003ce9295f2932d842440dddbe5458b211d2fb3ea6d4",
-    "traffic-controller.schema.json": "sha256:0cbee519c45975134776d4ae2d01af75584b97d228482903ba677569d7adacc8",
-    "traffic-controller-fields.yaml": "sha256:58b14ab6249fba890751ae758ec30c517dba157c0b878438ccbdf9c0edf945b3"
+    "traffic-controller.schema.json": "sha256:86fe54d6e706bb0770dc5cb4f278f116a5546606b9f1afae576d58489e5d1de4"
   }
 }

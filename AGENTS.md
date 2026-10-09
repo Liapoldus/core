@@ -10,7 +10,7 @@ the plugin pulls that generation from Core. Core does not serve public traffic
 or implement product-specific data planes; those belong to independently
 connected plugins.
 
-The normative architecture, public Management API, bootstrap schema, public
+The normative architecture, public Management API, environment bootstrap, public
 error contract and Core implementation guides are owned by this repository in
 `docs/site/core/`. The VitePress aggregator publishes those files while
 preserving their public routes. The standalone
@@ -24,21 +24,20 @@ SDK REST client only and must not import or call `pluginprotocol`. Do not copy
 SDK or peer protocol contracts into Core except generated/mirrored build assets
 explicitly required by the contract-publication check.
 
-If a missing or contradictory requirement affects implementation, record the
-specific conflict in `TODO.md` and ask the user before changing observable
-behavior. Core v1 has no deployment modes or plugin workload management:
-operators manually install and start Core and each plugin. Core registers and
-connects to fixed plugin endpoints only. V2 adds externally managed placement,
-self-registration and rollout, but still no Core process supervision, install or
-replica-count management. Deployment and planned upgrades belong to the operator;
-Core does not depend on the operator's deployment tooling.
+Core's runtime bootstrap is ENV-only: `CORE_SQLITE_PATH` selects SQLite, and
+`CORE_INIT_*` is read only by the one-time `core init` command. Runtime settings
+are stored in Core SQLite and changed through versioned API. Runtime YAML/JSON
+loaders and static endpoint fallback are not supported. Replicas become eligible
+through authenticated Plugin SDK registration and active leases. Operators
+install and start Core and plugins; Core does not supervise or install
+workloads and has no dependency on deployment tooling.
 None of these future interfaces belong in v1 API, persistence, permissions or
 acceptance.
 
 ## Architecture and implementation rules
 
-- Core owns generic plugin instance metadata, desired settings, operator-declared
-  endpoint sets, durable operations, Core Management access and audit. Core v1
+- Core owns generic plugin instance metadata, desired settings, authenticated
+  replica observations and leases, durable operations, Core Management access and audit. Core v1
   does not own plugin-to-plugin interaction policies or interaction grants; that
   authorization surface is deferred to v2. This is distinct from scoped,
   one-use secret grants: Core must expose those through the Plugin SDK REST
@@ -63,7 +62,7 @@ acceptance.
   the exact stored UTF-8 bytes. Core may validate JSON syntax, size, duplicate
   keys, and a generic plugin-owned JSON Schema, but must not interpret
   product-specific fields. Runtime paths use immutable in-memory snapshots and
-  never read SQLite or configuration files. Core exposes an exact immutable
+  never read configuration files. Core exposes an exact immutable
   JSON generation; plugins pull it from Core only after REST
   `Reload(generation)`. Plugins must not read application settings from
   environment variables, argv, or application config files.
@@ -168,9 +167,9 @@ acceptance.
   vectors, macOS/Linux builds and manually deployed service smoke. Do not declare v1 ready while
   any required cross-component conformance gate remains open.
 
-## Contract ownership after v1
+## Contract ownership
 
-Only after Core v1 gates pass may contract ownership move into Core: generate
-OpenAPI, bootstrap schemas, public errors and vectors from code, publish them as
-versioned release assets, and then change the documentation site to consume
-those assets. Do not start that migration early.
+Code-owned models and declarations are canonical for generated OpenAPI, schemas,
+public errors and vectors. Generated public contracts are deterministic build
+artifacts. Protobuf remains the canonical wire source where applicable; do not
+add a second generator for the same protocol.

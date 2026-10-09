@@ -1,23 +1,29 @@
 # Миграция конфигурации
 
-Core не читает YAML/JSON-файлы при запуске. Bootstrap-параметры передаются
-через `CORE_SQLITE_PATH` и `CORE_INIT_*`, а рабочие настройки после `core init`
-хранятся в SQLite Core. Обновление выполняется через versioned Settings API с
-CAS/ETag; изменения, требующие перезапуска, остаются в `pending` до явного
-перезапуска.
+Production Core получает путь к SQLite через `CORE_SQLITE_PATH`. Первичные
+настройки передаются через `CORE_INIT_*` только при `core init`; последующие
+изменения выполняются через versioned Settings API и сохраняются в SQLite.
+Runtime не читает конфигурационные файлы и не ищет их по каталогам.
 
-Для перехода со старого bootstrap-документа используется только офлайн-команда:
+Старый YAML принимается только офлайн-командой:
 
-```bash
+```sh
 core-migrate --input /path/to/core.yaml --dry-run
-core-migrate --input /path/to/core.yaml --output /path/to/settings.json
+core-migrate --input /path/to/core.yaml --apply
 ```
 
-Команда сначала валидирует документ, сохраняет ссылки на секреты без чтения их
-содержимого и при перезаписи создаёт резервную копию результата. Runtime Core
-не вызывает этот loader и не выполняет поиск конфигурации по каталогам.
+`--dry-run` валидирует YAML, преобразование в typed Core settings и печатает
+план, не открывая SQLite на запись. `--apply` берёт exclusive SQLite lock,
+создаёт и проверяет backup до schema migration, затем одной транзакцией
+инициализирует первую Core settings revision. При неуспешном применении старая
+SQLite восстанавливается из backup автоматически; backup сохраняется и при
+успехе, и при rollback. Уже инициализированная settings store повторно не
+импортируется. Ссылки на secret-файлы переносятся как абсолютные пути;
+содержимое файлов не читается.
 
-Перед переносом остановите Core и сохраните резервную копию SQLite. Миграция не
-перезаписывает plugin settings, generations, audit или продуктовые данные:
-они остаются в существующих таблицах и переносятся отдельным transactional
-импортом в составе операционного runbook.
+YAML `plugins` больше не является источником runtime membership: dry-run и
+результат импорта перечисляют игнорируемые static instance IDs. После перехода
+plugin replicas должны заново пройти authenticated registration. Существующие
+plugin settings, точные bytes generations, audit rows и прочие SQLite-данные
+не декодируются и не переписываются. Импортируемая Core revision сначала
+остаётся pending; `core serve` валидирует и применяет её обычным startup path.

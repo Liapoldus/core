@@ -45,7 +45,7 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
       const result = JSON.parse(output);
       expect(result.formsDatabaseDriver).toBe(driver);
       expect(result.staleProductionGrantDenied).toBe(true);
-      expect(result.formsListStaleGenerationRejected).toBe(true);
+      expect(result.formsListWithoutLeaseRejected).toBe(true);
       expect(result.formsListRevokedReplicaDenied).toBe(true);
       expect(result.coreDidNotObservePeerPayload).toBe(true);
       expect(result.incomingCookiesRedactedEverywhere).toBe(true);

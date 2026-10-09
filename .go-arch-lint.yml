@@ -52,7 +52,7 @@ deps:
     canUse: [sqliteDriver, yaml]
   infrastructureSettings:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: []
+    canUse: [sqliteDriver]
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, pluginSDK]

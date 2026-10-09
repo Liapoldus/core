@@ -17,7 +17,6 @@ const (
 	SQLitePluginInstances   = "sqlite-plugin-instances.yaml"
 	PluginSecretGrants      = "plugin-secret-grants.yaml"
 	PluginReconciliation    = "plugin-reconciliation.yaml"
-	TrafficControllerFields = "v2/traffic-controller-fields.yaml"
 	TrafficRolloutFields    = "v2/traffic-rollout-fields.yaml"
 )
 

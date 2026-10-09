@@ -1,8 +1,8 @@
 # `core serve`
 
-`core serve` запускает только Core Management listener, восстанавливает
-SQLite desired state и подключается к заранее вручную запущенным plugin
-endpoints. Core не запускает и не supervises plugin binaries/containers.
+`core serve` запускает Core Management listener из настроек, активированных в
+SQLite. Environment задаёт путь `CORE_SQLITE_PATH`; `CORE_INIT_*` при serve не
+читаются. Core не запускает plugin processes.
 
 Startup считается готовым после восстановления SQLite/journal, загрузки
 active in-memory snapshot и подключения к зарегистрированным плагинам для
@@ -16,7 +16,7 @@ Core бинарника. В v1 его instance ровно один; Core не с
 с ним capabilities сообщают bounded unavailable. Невосстановимая ошибка
 SQLite или generation journal блокирует Management readiness.
 
-Bootstrap fields описаны в [core.yaml reference](../configuration/yaml-reference),
+Bootstrap fields описаны в [руководстве запуска](../configuration/bootstrap),
 а полная lifecycle model — в
 [target architecture](../architecture/target) и
 [plugin deployment](../architecture/plugin-deployment).

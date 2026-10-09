@@ -1,7 +1,7 @@
 # Секреты и grants
 
 Core SQLite хранит только secret references; plaintext secret values и private
-keys не попадают в DB, `core.yaml`, plugin settings JSON, audit, error или
+keys не попадают в DB, legacy YAML, plugin settings JSON, audit, error или
 logs. Plugin SDK REST config pull отдаёт versioned config и opaque references.
 Значение выдаёт scoped grant через защищённый Core REST endpoint; он ограничен
 instance и settings revision либо одним конкретным call.

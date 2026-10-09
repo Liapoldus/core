@@ -80,10 +80,11 @@ type bootstrapFieldLists struct {
 	PeerIdentity            []string `yaml:"peerIdentity"`
 }
 
-// LoadBootstrap validates and decodes bootstrap configuration. Relative paths
-// and file references are resolved against the bootstrap document directory;
-// callers receive paths, never secret contents.
-func LoadBootstrap(path string) (BootstrapConfig, error) {
+// LoadLegacyBootstrap validates and decodes the retired YAML format for the
+// offline migration command only. Runtime bootstrap always comes from ENV and
+// persisted SQLite settings. Paths are resolved relative to the legacy file;
+// secret contents are never read.
+func LoadLegacyBootstrap(path string) (BootstrapConfig, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return BootstrapConfig{}, err

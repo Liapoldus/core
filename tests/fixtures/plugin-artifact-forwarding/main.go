@@ -41,10 +41,12 @@ func main() {
 	digest := sha256.Sum256(surface)
 	replica.surface = surface
 	replica.surfaceDigest = "sha256:" + hex.EncodeToString(digest[:])
+	fanout := &plugins.SDKReloadFanout{InstanceID: "forms-a", Replicas: []plugins.SDKReloadReplicaClient{{ReplicaID: "replica-a", Client: replica}}}
 	control := &plugins.SDKAdminControl{
-		Clients: map[string]plugins.SDKReloadClient{"forms-a": &plugins.SDKReloadFanout{
-			InstanceID: "forms-a", Replicas: []plugins.SDKReloadReplicaClient{{ReplicaID: "replica-a", Client: replica}},
-		}},
+		Instances: func(context.Context) ([]string, error) { return []string{"forms-a"}, nil },
+		ResolveFanout: func(context.Context, string) (*plugins.SDKReloadFanout, func(), bool, error) {
+			return fanout, nil, true, nil
+		},
 		EligibleReplicaIDs: func(context.Context, string) ([]string, error) { return []string{"replica-a"}, nil },
 		HTTPContract: sdkinfrastructure.HTTPContract{Plugin: sdkinfrastructure.PluginContract{
 			AdminAction:  sdkinfrastructure.AdminActionContract{MaximumRequestBytes: 64 * 1024},
@@ -75,23 +77,28 @@ func main() {
 		management.Paths.AdminPages + management.Paths.PluginIDSeparator + "sites" + management.Paths.PluginIDSeparator +
 		management.Paths.AdminActions + management.Paths.PluginIDSeparator + "publish"
 	validBody, contentType := multipartBody(metadata, artifact, true)
-	valid := send(client, listener.URL+path, token, contentType, validBody, management.Headers.ContentType, management.Headers.IfMatch,
+	valid := send(client, listener.URL+path, token, contentType, validBody, management.Headers.ContentType,
+		management.Headers.AdminSurfaceDigest, replica.surfaceDigest, management.Headers.IfMatch,
 		management.Idempotency.Key, "artifact-idempotency", `"site-revision-1"`)
 	validInvocation := replica.invocation
 	validArtifactBytes := replica.artifactBytes
 
 	noMatchBody, noMatchType := multipartBody(metadata, artifact[:1], true)
-	noMatch := send(client, listener.URL+path, token, noMatchType, noMatchBody, management.Headers.ContentType, management.Headers.IfMatch,
+	noMatch := send(client, listener.URL+path, token, noMatchType, noMatchBody, management.Headers.ContentType,
+		management.Headers.AdminSurfaceDigest, replica.surfaceDigest, management.Headers.IfMatch,
 		management.Idempotency.Key, "artifact-create", "")
 	noMatchForwarded := replica.invocation.IfMatch == ""
 
 	missingKeyBody, missingKeyType := multipartBody(metadata, artifact[:1], true)
-	missingKey := send(client, listener.URL+path, token, missingKeyType, missingKeyBody, management.Headers.ContentType, management.Headers.IfMatch,
+	missingKey := send(client, listener.URL+path, token, missingKeyType, missingKeyBody, management.Headers.ContentType,
+		management.Headers.AdminSurfaceDigest, replica.surfaceDigest, management.Headers.IfMatch,
 		management.Idempotency.Key, "", `"site-revision-1"`)
 	invalid := send(client, listener.URL+path, token, "multipart/form-data; boundary=broken", strings.NewReader("not multipart"), management.Headers.ContentType,
-		management.Headers.IfMatch, management.Idempotency.Key, "artifact-idempotency", `"site-revision-1"`)
+		management.Headers.AdminSurfaceDigest, replica.surfaceDigest, management.Headers.IfMatch,
+		management.Idempotency.Key, "artifact-idempotency", `"site-revision-1"`)
 	unauthorized := send(client, listener.URL+path, "", contentType, strings.NewReader(""), management.Headers.ContentType,
-		management.Headers.IfMatch, management.Idempotency.Key, "artifact-idempotency", `"site-revision-1"`)
+		management.Headers.AdminSurfaceDigest, replica.surfaceDigest, management.Headers.IfMatch,
+		management.Idempotency.Key, "artifact-idempotency", `"site-revision-1"`)
 
 	var accepted map[string]any
 	if err := json.Unmarshal(valid.body, &accepted); err != nil {
@@ -158,7 +165,7 @@ type httpResult struct {
 	body   []byte
 }
 
-func send(client *http.Client, url, bearer, contentType string, body io.Reader, contentTypeHeader, ifMatchHeader, idempotencyHeader, idempotencyValue, ifMatch string) httpResult {
+func send(client *http.Client, url, bearer, contentType string, body io.Reader, contentTypeHeader, surfaceDigestHeader, surfaceDigest, ifMatchHeader, idempotencyHeader, idempotencyValue, ifMatch string) httpResult {
 	request, err := http.NewRequest(http.MethodPost, url, body)
 	if err != nil {
 		panic(err)
@@ -167,6 +174,7 @@ func send(client *http.Client, url, bearer, contentType string, body io.Reader, 
 		request.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	request.Header.Set(contentTypeHeader, contentType)
+	request.Header.Set(surfaceDigestHeader, surfaceDigest)
 	if ifMatch != "" {
 		request.Header.Set(ifMatchHeader, ifMatch)
 	}

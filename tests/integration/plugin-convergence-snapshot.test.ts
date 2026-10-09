@@ -11,6 +11,7 @@ describe("plugin convergence snapshot", () => {
     const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/plugin-convergence-snapshot"], { cwd: root });
     expect(JSON.parse(stdout)).toEqual({
       desiredGeneration: 1,
+      configurationGeneration: 1,
       observedGeneration: 1,
       observations: 1,
       unavailableAfterInvalidation: true,

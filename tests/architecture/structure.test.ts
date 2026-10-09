@@ -56,7 +56,7 @@ describe("Core architecture", () => {
     expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
     expect(await directories(join(root, "internal", "presentation", "api"))).toEqual(["handlers"]);
     expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual(["bootstrap"]);
-    expect(await directories(join(root, "cmd"))).toEqual(["core"]);
+    expect(await directories(join(root, "cmd"))).toEqual(["core", "core-migrate"]);
   });
 
   it("keeps assets static and places its embed adapter outside assets", async () => {

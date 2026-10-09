@@ -5,13 +5,11 @@ import { describe, expect, it } from "vitest";
 
 const root = join(import.meta.dirname, "../..");
 
-describe("Core v2 traffic-controller bootstrap contract", () => {
-	it("pins a separate strict listener config without extending the v1 bootstrap", async () => {
-		const [manifestBytes, schemaBytes, fieldsBytes, assetFieldsBytes, bootstrapBytes] = await Promise.all([
+describe("Core traffic-controller settings contract", () => {
+	it("pins strict typed SQLite settings without a runtime config-file path", async () => {
+		const [manifestBytes, schemaBytes, bootstrapBytes] = await Promise.all([
 			readFile(join(root, "contracts/v2/manifest.json")),
 			readFile(join(root, "contracts/v2/traffic-controller.schema.json")),
-			readFile(join(root, "contracts/v2/traffic-controller-fields.yaml")),
-			readFile(join(root, "assets/contracts/v2/traffic-controller-fields.yaml")),
 			readFile(join(root, "assets/contracts/core.schema.json"), "utf8"),
 		]);
 		const manifest = JSON.parse(manifestBytes.toString("utf8")) as { version: string; files: Record<string, string> };
@@ -19,13 +17,8 @@ describe("Core v2 traffic-controller bootstrap contract", () => {
 		expect(manifest.files["traffic-controller.schema.json"]).toBe(
 			`sha256:${createHash("sha256").update(schemaBytes).digest("hex")}`,
 		);
-		expect(manifest.files["traffic-controller-fields.yaml"]).toBe(
-			`sha256:${createHash("sha256").update(fieldsBytes).digest("hex")}`,
-		);
-		expect(assetFieldsBytes).toEqual(fieldsBytes);
-		expect(fieldsBytes.toString("utf8")).toContain('cliFlag: "--traffic-controller-config"');
-		expect(fieldsBytes.toString("utf8")).toContain("forbiddenCode: forbidden");
-		expect(fieldsBytes.toString("utf8")).toContain("unavailableCode: management_unavailable");
+		expect(schemaBytes.toString("utf8")).toContain("stored in SQLite");
+		expect(schemaBytes.toString("utf8")).not.toContain("--traffic-controller-config");
 
 		const schema = JSON.parse(schemaBytes.toString("utf8")) as {
 			additionalProperties?: boolean;

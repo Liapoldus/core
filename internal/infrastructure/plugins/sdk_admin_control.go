@@ -24,7 +24,7 @@ type SDKAdminReplicaClient interface {
 }
 
 // PluginAdminSurface is the exact plugin-owned surface document bound to its
-// declared instance. RawMessage keeps the descriptor a JSON document in the
+// registered instance. RawMessage keeps the descriptor a JSON document in the
 // Management API response instead of double-encoding it as a JSON string.
 type PluginAdminSurface struct {
 	InstanceID string          `json:"instanceId"`
@@ -45,11 +45,11 @@ type SDKAdminLimits struct {
 	MetadataMediaType  string
 }
 
-// SDKAdminControl forwards generic Admin Surface requests only to operator-
-// declared replicas. EligibleReplicaIDs must return replicas observed at the
-// current active generation; Core never retries a request after dispatch.
+// SDKAdminControl forwards generic Admin Surface requests only to live,
+// authenticated registrations acknowledged at the active generation.
 type SDKAdminControl struct {
-	Clients            map[string]SDKReloadClient
+	Instances          func(context.Context) ([]string, error)
+	ResolveFanout      func(context.Context, string) (*SDKReloadFanout, func(), bool, error)
 	EligibleReplicaIDs func(context.Context, string) ([]string, error)
 	HTTPContract       sdkinfrastructure.HTTPContract
 }
@@ -76,22 +76,28 @@ func (control *SDKAdminControl) AdminLimits() SDKAdminLimits {
 	}
 }
 
-// Surfaces reads every declared replica and requires exact document and digest
+// Surfaces reads every live replica and requires exact document and digest
 // agreement. A partial or inconsistent view is not advertised to operators.
 func (control *SDKAdminControl) Surfaces(ctx context.Context) ([]PluginAdminSurface, error) {
-	if control == nil || len(control.Clients) == 0 {
+	if control == nil || control.Instances == nil || control.ResolveFanout == nil {
 		return nil, ErrPluginUnavailable
 	}
-	instanceIDs := make([]string, 0, len(control.Clients))
-	for instanceID := range control.Clients {
-		instanceIDs = append(instanceIDs, instanceID)
+	instanceIDs, err := control.Instances(ctx)
+	if err != nil {
+		return nil, ErrPluginUnavailable
 	}
 	sort.Strings(instanceIDs)
 	result := make([]PluginAdminSurface, 0, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
-		fanout, ok := control.Clients[instanceID].(*SDKReloadFanout)
-		if !ok || len(fanout.Replicas) == 0 {
+		fanout, release, found, err := control.ResolveFanout(ctx, instanceID)
+		if err != nil || !found || fanout == nil || len(fanout.Replicas) == 0 {
+			if release != nil {
+				release()
+			}
 			return nil, ErrPluginUnavailable
+		}
+		if release != nil {
+			defer release()
 		}
 		var agreed *sdkinfrastructure.AdminSurfaceDocument
 		for _, replica := range fanout.Replicas {
@@ -122,12 +128,18 @@ func (control *SDKAdminControl) Surfaces(ctx context.Context) ([]PluginAdminSurf
 }
 
 func (control *SDKAdminControl) SurfaceDigest(ctx context.Context, instanceID string) (string, error) {
-	if control == nil || instanceID == "" {
+	if control == nil || control.ResolveFanout == nil || instanceID == "" {
 		return "", ErrPluginUnavailable
 	}
-	fanout, ok := control.Clients[instanceID].(*SDKReloadFanout)
-	if !ok || len(fanout.Replicas) == 0 {
+	fanout, release, found, err := control.ResolveFanout(ctx, instanceID)
+	if err != nil || !found || fanout == nil || len(fanout.Replicas) == 0 {
+		if release != nil {
+			release()
+		}
 		return "", ErrPluginUnavailable
+	}
+	if release != nil {
+		defer release()
 	}
 	var agreed *sdkinfrastructure.AdminSurfaceDocument
 	for _, replica := range fanout.Replicas {
@@ -167,17 +179,23 @@ func validSurfaceDigest(document sdkinfrastructure.AdminSurfaceDocument, algorit
 	return hex.EncodeToString(digest[:]) == encodedDigest
 }
 
-func (control *SDKAdminControl) selectedClient(ctx context.Context, instanceID string) (SDKAdminReplicaClient, error) {
-	if control == nil || control.EligibleReplicaIDs == nil {
-		return nil, ErrPluginUnavailable
+func (control *SDKAdminControl) selectedClient(ctx context.Context, instanceID string) (SDKAdminReplicaClient, func(), error) {
+	if control == nil || control.EligibleReplicaIDs == nil || control.ResolveFanout == nil {
+		return nil, nil, ErrPluginUnavailable
 	}
-	client, ok := control.Clients[instanceID].(*SDKReloadFanout)
-	if !ok || client == nil {
-		return nil, ErrPluginUnavailable
+	client, release, found, err := control.ResolveFanout(ctx, instanceID)
+	if err != nil || !found || client == nil {
+		if release != nil {
+			release()
+		}
+		return nil, nil, ErrPluginUnavailable
 	}
 	eligible, err := control.EligibleReplicaIDs(ctx, instanceID)
 	if err != nil || len(eligible) == 0 {
-		return nil, ErrPluginUnavailable
+		if release != nil {
+			release()
+		}
+		return nil, nil, ErrPluginUnavailable
 	}
 	sort.Strings(eligible)
 	allowed := make(map[string]struct{}, len(eligible))
@@ -192,16 +210,22 @@ func (control *SDKAdminControl) selectedClient(ctx context.Context, instanceID s
 		}
 		adminClient, ok := replica.Client.(SDKAdminReplicaClient)
 		if ok {
-			return adminClient, nil
+			return adminClient, release, nil
 		}
 	}
-	return nil, ErrPluginUnavailable
+	if release != nil {
+		release()
+	}
+	return nil, nil, ErrPluginUnavailable
 }
 
 func (control *SDKAdminControl) Action(ctx context.Context, invocation models.AdminActionInvocation, input []byte) (sdkinfrastructure.AdminActionResult, error) {
-	client, err := control.selectedClient(ctx, invocation.InstanceID)
+	client, release, err := control.selectedClient(ctx, invocation.InstanceID)
 	if err != nil {
 		return sdkinfrastructure.AdminActionResult{}, err
+	}
+	if release != nil {
+		defer release()
 	}
 	result, err := client.AdminAction(ctx, invocation, input)
 	if err != nil {
@@ -211,10 +235,13 @@ func (control *SDKAdminControl) Action(ctx context.Context, invocation models.Ad
 }
 
 func (control *SDKAdminControl) Artifact(ctx context.Context, invocation models.ArtifactInvocation, metadata []byte, contentType string, artifact io.ReadCloser) (sdkinfrastructure.ArtifactStreamResult, error) {
-	client, err := control.selectedClient(ctx, invocation.InstanceID)
+	client, release, err := control.selectedClient(ctx, invocation.InstanceID)
 	if err != nil {
 		_ = artifact.Close()
-		return sdkinfrastructure.ArtifactStreamResult{}, err
+		return sdkinfrastructure.ArtifactStreamResult{}, ErrPluginUnavailable
+	}
+	if release != nil {
+		defer release()
 	}
 	result, err := client.ArtifactStream(ctx, invocation, metadata, contentType, artifact)
 	if err != nil {

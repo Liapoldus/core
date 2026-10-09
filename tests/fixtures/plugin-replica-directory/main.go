@@ -197,34 +197,28 @@ func main() {
 	check(err)
 	_, concurrentReplicaEligible := raceDirectory.Resolve(parsedClientCertificate)
 
-	// Once an identity has participated in lifecycle registration, an expired
-	// or replaced incarnation must not fall back to a legacy identity resolver.
-	var fallbackNow = time.Now().UTC()
-	fallbackDirectory, err := plugins.NewPluginReplicaDirectory(contract, func() time.Time { return fallbackNow })
+	// Membership requires a live authenticated registration. No static resolver
+	// can admit an unregistered or expired identity.
+	var membershipNow = time.Now().UTC()
+	membershipDirectory, err := plugins.NewPluginReplicaDirectory(contract, func() time.Time { return membershipNow })
 	check(err)
-	fallback := func(certificate *x509.Certificate) (string, bool) {
-		if certificate == nil || len(certificate.URIs) == 0 {
-			return "", false
-		}
-		return "legacy-instance", strings.HasPrefix(certificate.URIs[0].String(), "spiffe://liapoldus/plugin/")
-	}
 	dynamicIdentity := sdkmodels.PeerReplicaID{InstanceID: "forms-dynamic", ReplicaID: "replica-a", IncarnationID: "inc-a", PlacementID: "node-a"}
 	dynamicCertificate := certificateFor(takeURI(contract, dynamicIdentity))
-	unregisteredInstance, unregisteredAuthorized := fallbackDirectory.ResolveWithFallback(dynamicCertificate, fallback)
+	_, unregisteredAuthorized := membershipDirectory.Resolve(dynamicCertificate)
 	dynamicRegistration := registrationFor(contract, dynamicIdentity)
-	dynamicLease, err := fallbackDirectory.Register(dynamicRegistration, dynamicCertificate)
+	dynamicLease, err := membershipDirectory.Register(dynamicRegistration, dynamicCertificate)
 	check(err)
-	resolvedInstance, activeAuthorized := fallbackDirectory.ResolveWithFallback(dynamicCertificate, fallback)
-	fallbackNow = dynamicLease.LeaseExpiresAt.Add(time.Second)
-	_, expiredAuthorized := fallbackDirectory.ResolveWithFallback(dynamicCertificate, fallback)
+	resolvedInstance, activeAuthorized := membershipDirectory.Resolve(dynamicCertificate)
+	membershipNow = dynamicLease.LeaseExpiresAt.Add(time.Second)
+	_, expiredAuthorized := membershipDirectory.Resolve(dynamicCertificate)
 
 	nextDynamicIdentity := dynamicIdentity
 	nextDynamicIdentity.IncarnationID = "inc-b"
 	nextDynamicCertificate := certificateFor(takeURI(contract, nextDynamicIdentity))
 	nextDynamicRegistration := registrationFor(contract, nextDynamicIdentity)
-	_, err = fallbackDirectory.Register(nextDynamicRegistration, nextDynamicCertificate)
+	_, err = membershipDirectory.Register(nextDynamicRegistration, nextDynamicCertificate)
 	check(err)
-	_, replacedAuthorized := fallbackDirectory.ResolveWithFallback(dynamicCertificate, fallback)
+	_, replacedAuthorized := membershipDirectory.Resolve(dynamicCertificate)
 
 	result := map[string]bool{
 		"validRegistration":                          err == nil && !firstLease.LeaseExpiresAt.IsZero(),
@@ -243,10 +237,10 @@ func main() {
 		"oversizedRegistrationRejected":              oversizedStatus == contract.Problems["invalidRequest"].Status && callbackCount == 1,
 		"concurrentRegistrationSurvivesPersistenceFailure": firstStatus == contract.Problems["unavailable"].Status &&
 			secondStatus == contract.Responses["register"].Status && concurrentReplicaEligible,
-		"unregisteredIdentityUsesFallback":    unregisteredAuthorized && unregisteredInstance == "legacy-instance",
-		"registeredIdentityOverridesFallback": activeAuthorized && resolvedInstance == dynamicIdentity.InstanceID,
-		"expiredIdentityCannotDowngrade":      !expiredAuthorized,
-		"replacedIncarnationCannotDowngrade":  !replacedAuthorized,
+		"unregisteredIdentityRejected": !unregisteredAuthorized,
+		"registeredIdentityAdmitted":   activeAuthorized && resolvedInstance == dynamicIdentity.InstanceID,
+		"expiredIdentityRejected":      !expiredAuthorized,
+		"replacedIncarnationIsFenced":  !replacedAuthorized,
 	}
 	check(json.NewEncoder(os.Stdout).Encode(result))
 }

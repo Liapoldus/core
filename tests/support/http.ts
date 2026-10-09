@@ -1,7 +1,4 @@
 import { createServer } from "node:net";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 export async function freeAddress(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -16,45 +13,4 @@ export async function freeAddress(): Promise<string> {
       server.close((error) => (error ? reject(error) : resolve(`127.0.0.1:${address.port}`)));
     });
   });
-}
-
-export function portOf(address: string): string {
-  const separator = address.lastIndexOf(":");
-  return separator >= 0 ? address.slice(separator + 1) : "";
-}
-
-export async function writeCoreConfig(contents: string): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "liapoldus-core-config-"));
-  const path = join(directory, "core.yaml");
-  await writeFile(path, contents, "utf8");
-  return path;
-}
-
-export interface CoreHTTPResponse {
-  status: number;
-  text: string;
-  headers: Headers;
-}
-
-export async function waitReady(address: string): Promise<void> {
-	// Full acceptance runs start several real Core binaries in sequence; on
-	// emulated CI hosts process startup can exceed three seconds even though the
-	// listener is healthy. Keep polling long enough to distinguish startup
-	// latency from an actual bind/configuration failure.
-	for (let attempt = 0; attempt < 120; attempt += 1) {
-    try {
-      const response = await fetch(`http://${address}/missing.txt`);
-      response.body?.cancel();
-      return;
-    } catch {
-      // not up yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`core never became ready at ${address}`);
-}
-
-export async function request(address: string, path: string, init?: RequestInit): Promise<CoreHTTPResponse> {
-  const response = await fetch(`http://${address}${path}`, init);
-  return { status: response.status, text: await response.text(), headers: response.headers };
 }

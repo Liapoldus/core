@@ -24,7 +24,6 @@ type PluginRESTControl struct {
 	ReplicaLifecycle    plugins.SDKReplicaLifecycleContract
 	RegisterReplica     func(context.Context, plugins.SDKReplicaRegistrationRequest) error
 	OnReplicaRegistered func(context.Context, string, string) error
-	ReloadClients       map[string]plugins.SDKReloadClient
 	RegisteredReloads   *plugins.RegisteredReplicaReloadResolver
 	HTTPContract        plugins.SDKHTTPContract
 	// PeerDirectory supplies the Plugin SDK v2 authenticated peer-directory
@@ -35,9 +34,7 @@ type PluginRESTControl struct {
 	PeerDirectoryRules   func(callerInstanceID string) []models.PeerLinkRule
 	PeerDirectoryChanges func() (<-chan struct{}, func())
 	PeerDirectoryTTL     time.Duration
-	// CloseReleases dials idle keep-alive connections to declared replicas on
-	// shutdown. A plugin is never restarted by Core, so leaving those sockets
-	// open would keep TLS sessions to a replica alive after Core stopped.
+	// CloseReleases closes idle connections opened for live registration leases.
 	CloseReleases func()
 }
 

@@ -29,9 +29,13 @@ func main() {
 	check(err)
 	configurations, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
+	configurationSnapshot, err := storage.NewPluginConfigurationSnapshot(ctx, configurations, nil)
+	check(err)
 	replicas := storage.NewPluginReplicaStore(database, "invalid observation")
 	check(replicas.Record(ctx, storage.PluginReplicaObservation{InstanceID: "fixture", ReplicaID: "replica-1", ObservedGeneration: sql.NullInt64{Int64: 1, Valid: true}, ObservedState: storage.ReplicaObservedAcknowledged}))
-	snapshot, err := storage.NewPluginConvergenceSnapshot(ctx, configurations, replicas, []string{"fixture"})
+	snapshot, err := storage.NewPluginConvergenceSnapshot(ctx, configurations, replicas, nil)
+	check(err)
+	configuration, _, err := configurationSnapshot.Current(ctx, "fixture")
 	check(err)
 	check(database.Close())
 	view, err := snapshot.Current()
@@ -40,6 +44,7 @@ func main() {
 	_, unavailable := snapshot.Current()
 	check(json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"desiredGeneration":            view.Desired["fixture"],
+		"configurationGeneration":      configuration.Revision,
 		"observedGeneration":           view.Records[0].ObservedGeneration.Int64,
 		"observations":                 len(view.Records),
 		"unavailableAfterInvalidation": unavailable != nil,

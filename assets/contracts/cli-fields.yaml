@@ -9,7 +9,6 @@ database:
   restore: restore
 flags:
   output: --output
-  config: --config
 serviceKey:
   rolePlatformAdmin: platform-admin
   keyBytes: 32
@@ -17,10 +16,6 @@ serviceKey:
 outputs:
   text: text
   json: json
-environment:
-  coreConfig: LIAPOLDUS_CORE_CONFIG
-paths:
-  defaultConfig: /etc/liapoldus/core.yaml
 codes:
   accessBootstrapConflict: access_bootstrap_conflict
   databaseBackupFailed: database_backup_failed
@@ -36,10 +31,6 @@ exits:
   validation: 3
   conflict: 4
   unavailable: 7
-sources:
-  flag: flag
-  environment: environment
-  system: system
 json:
   ok: ok
   problem: problem
@@ -53,8 +44,6 @@ diagnostics:
   configNotFound: Файл конфигурации не найден.
   configInvalid: Конфигурация не прошла проверку.
   outputInvalid: --output должен иметь значение text или json
-  configRequired: --config требует путь к core.yaml
-  configLookupFailed: core.yaml не найден или является каталогом
   accessBootstrapConflict: активный ключ доступа уже существует
   databaseBackupFailed: Не удалось создать проверенную резервную копию SQLite.
   databaseRestoreFailed: Не удалось безопасно восстановить состояние SQLite.

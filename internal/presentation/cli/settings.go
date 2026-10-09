@@ -82,7 +82,9 @@ func initialSettings() (config.Settings, error) {
 			MaxBodyBytes: 1048576, HeaderTimeout: value("HEADER_TIMEOUT", "5s"), RequestTimeout: value("REQUEST_TIMEOUT", "30s")},
 		PluginControl: config.ControlSettings{Listen: value("CONTROL_LISTEN", "127.0.0.1:8081"), PublicURL: value("CONTROL_PUBLIC_URL", "https://localhost:8081"),
 			TLS:             config.TLSReferences{Certificate: value("CONTROL_CERTIFICATE", ""), Key: value("CONTROL_KEY", "")},
-			ReplicaClientCA: value("REPLICA_CLIENT_CA", ""), ReplicaServerCA: value("REPLICA_SERVER_CA", "")},
+			ReplicaClientCA: value("REPLICA_CLIENT_CA", ""), ReplicaServerCA: value("REPLICA_SERVER_CA", ""),
+			ReplicaClientCRLs: filepath.SplitList(value("REPLICA_CLIENT_CRLS", "")),
+			ReplicaServerCRLs: filepath.SplitList(value("REPLICA_SERVER_CRLS", ""))},
 		SecretRoot: value("SECRET_ROOT", ""),
 	}
 	if max, ok := os.LookupEnv("CORE_INIT_MAX_BODY_BYTES"); ok {

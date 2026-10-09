@@ -28,7 +28,6 @@ describe("Plugin SDK exact-generation configuration pull", () => {
 				reloadGeneration: "3",
 				reloadPulledRaw: "{\"origin\":\"staging\"}",
 				dynamicReplicaPulledRaw: "{\"origin\":\"staging\"}",
-				staticReloadCalls: 0,
 				dynamicReloadCalls: 2,
 				registrationReloadAcknowledged: true,
 				activatedGeneration: 3,

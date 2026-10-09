@@ -20,6 +20,7 @@ describe("target Core CLI surface", () => {
     expect(commands).not.toMatch(/(?:config|accounts|site):/);
     expect(contracts).not.toMatch(/^subcommands:/m);
     expect(contracts).not.toMatch(/^site:/m);
+    expect(contracts).not.toMatch(/--config|LIAPOLDUS_CORE_CONFIG|core\.yaml/);
     expect(source).not.toMatch(/func (config|accounts|site)\(/);
   });
 });

@@ -1,14 +1,11 @@
-import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
 import { buildCoreTestBinary, startCore } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
-
-const execFileAsync = promisify(execFile);
+import { initializeCore } from "../support/initialize.js";
 
 interface ResponseValue {
   readonly status: number;
@@ -42,62 +39,8 @@ async function prepareCore(directory: string) {
   const binary = await buildCoreTestBinary();
   const address = await freeAddress();
   const pluginControlAddress = await freeAddress();
-  const certificate = join(directory, "management.crt");
-  const privateKey = join(directory, "management.key");
-  const pluginControlCertificate = join(directory, "plugin-control.crt");
-  const pluginControlKey = join(directory, "plugin-control.key");
-  const replicaClientCA = join(directory, "plugin-replica-ca.crt");
-  const replicaServerCA = join(directory, "plugin-replica-server-ca.crt");
-  const database = join(directory, "core.db");
-  const config = join(directory, "core.yaml");
-  await execFileAsync("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-    "-subj", "/CN=localhost",
-    "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-    "-keyout", privateKey, "-out", certificate,
-  ]);
-  await execFileAsync("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-    "-subj", "/CN=plugin-control",
-    "-keyout", pluginControlKey, "-out", pluginControlCertificate,
-  ]);
-  await execFileAsync("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-    "-subj", "/CN=plugin-replica-ca",
-    "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
-  ]);
-  await execFileAsync("openssl", [
-    "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-    "-subj", "/CN=plugin-replica-server-ca",
-    "-keyout", join(directory, "plugin-replica-server-ca.key"), "-out", replicaServerCA,
-  ]);
-  await writeFile(config, [
-    "state:",
-    `  path: ${database}`,
-    "management:",
-    `  listen: ${address}`,
-    "  tls:",
-    `    certificate: file:${certificate}`,
-    `    key: file:${privateKey}`,
-    "pluginControl:",
-    `  listen: ${pluginControlAddress}`,
-    `  publicURL: https://${pluginControlAddress}`,
-    "  tls:",
-    `    certificate: file:${pluginControlCertificate}`,
-    `    key: file:${pluginControlKey}`,
-    `    replicaClientCA: file:${replicaClientCA}`,
-    `    replicaServerCA: file:${replicaServerCA}`,
-    "plugins:",
-    "  - instanceId: catalog",
-    "    replicas:",
-    "      - replicaId: catalog-a",
-    `        endpoint: https://catalog-a.internal:9443`,
-    "        expectedPeerIdentity:",
-    "          commonName: catalog-a",
-    "",
-  ].join("\n"), "utf8");
-  const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);
-  return { address, config, database, bootstrapToken: bootstrap.stdout.trim() };
+  const initialized = await initializeCore(binary, directory, address, pluginControlAddress);
+  return { address, environment: initialized.environment, database: initialized.database, bootstrapToken: initialized.bootstrapToken };
 }
 
 async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startCore>>["process"]): Promise<void> {
@@ -118,7 +61,7 @@ describe("service-key metadata listing", () => {
     let core: Awaited<ReturnType<typeof startCore>> | undefined;
     try {
       const prepared = await prepareCore(directory);
-      core = await startCore(["--config", prepared.config, "serve"]);
+      core = await startCore(["serve"], prepared.environment);
       await waitForManagement(prepared.address, core.process);
 
       const created = await request(prepared.address, "POST", "/api/access/service-keys", prepared.bootstrapToken, { name: "controller" });

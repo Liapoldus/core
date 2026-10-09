@@ -19,16 +19,14 @@ type SDKReloadClient interface {
 	Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error)
 }
 
-// SDKReloadFanout announces one generation concurrently to every declared
-// replica of a single plugin instance. A generation is converged only when every
-// declared replica accepted it. Results and errors retain declaration order.
+// SDKReloadFanout announces one generation concurrently to every live replica
+// in a resolved lease snapshot. Results retain the snapshot order.
 type SDKReloadFanout struct {
 	InstanceID string
 	Replicas   []SDKReloadReplicaClient
 }
 
-// SDKReloadReplicaClient is one declared replica's control client plus the
-// replica id the operator declared for it in core.yaml.
+// SDKReloadReplicaClient is one authenticated replica's control client and id.
 type SDKReloadReplicaClient struct {
 	ReplicaID string
 	Client    SDKReloadClient
@@ -36,8 +34,7 @@ type SDKReloadReplicaClient struct {
 
 // RegisteredReplicaSource exposes the current authenticated lease snapshot and
 // remembers whether an instance has ever registered during this Core process.
-// The history bit prevents an expired or not-ready v2 instance from silently
-// falling back to a static endpoint list.
+// The history bit prevents an expired lease from being mistaken for a new one.
 type RegisteredReplicaSource interface {
 	Snapshot() []LivePluginReplica
 	HasRegisteredInstance(string) bool
@@ -238,8 +235,8 @@ func (applier *SDKConfigurationApplier) LostConfigurationTargets(
 }
 
 // Resolve returns found=false only when this instance has never registered.
-// That lets a not-yet-migrated legacy instance use its declared clients without
-// allowing a known-but-expired remote instance to downgrade to that path.
+// Previously registered but expired instances remain unavailable until a new
+// authenticated lease is admitted.
 func (resolver *RegisteredReplicaReloadResolver) Resolve(ctx context.Context, instanceID string) (SDKReloadClient, func(), bool, error) {
 	if resolver == nil || resolver.Source == nil || resolver.Build == nil || instanceID == "" {
 		return nil, nil, false, ErrPluginUnavailable
@@ -324,9 +321,8 @@ func (resolver *RegisteredReplicaReloadResolver) ResolveReplica(ctx context.Cont
 	return nil, nil, false, nil
 }
 
-// Reload announces the generation to every declared replica. Its returned
-// error identifies all failed replicas so degradation remains attributable to
-// declared endpoints. Calls are never replayed here: whether to retry an
+// Reload announces the generation to every replica in this resolved snapshot.
+// Its returned error identifies failed replicas. Calls are never replayed here: whether to retry an
 // announcement is a Core operation decision, not a client one.
 func (fanout *SDKReloadFanout) Reload(ctx context.Context, reload sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
 	acknowledged, _, err := fanout.ReloadObserved(ctx, reload)
@@ -335,7 +331,7 @@ func (fanout *SDKReloadFanout) Reload(ctx context.Context, reload sdkmodels.Relo
 
 // ReplicaReloadResult is the per-replica outcome of one announcement. Core
 // records these as observations so readiness and drift can be derived from what
-// each declared replica actually did.
+// each live replica actually did.
 type ReplicaReloadResult struct {
 	ReplicaID    string
 	Acknowledged bool
@@ -345,7 +341,7 @@ type ReplicaReloadResult struct {
 	Unreachable bool
 }
 
-// ReloadObserved announces the generation to every declared replica and reports
+// ReloadObserved announces the generation to every resolved replica and reports
 // each outcome. Failed replicas remain fenced while successfully acknowledged
 // replicas may serve the desired generation.
 func (fanout *SDKReloadFanout) ReloadObserved(ctx context.Context, reload sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, []ReplicaReloadResult, error) {
@@ -425,9 +421,8 @@ func isUnreachable(err error) bool {
 	return errors.Is(err, ErrPluginUnavailable)
 }
 
-// ReplicaObservationRecorder records what a declared replica was last observed
-// doing. Observations never redefine the declared replica set, endpoint or
-// identity; they only make the declared set observable.
+// ReplicaObservationRecorder records the latest outcome for an authenticated
+// replica. Observations do not extend a lease or change registered identity.
 type ReplicaObservationRecorder interface {
 	RecordReplicaObservation(ctx context.Context, instanceID, replicaID string, generation int64, acknowledged, unreachable bool)
 }
@@ -445,7 +440,6 @@ type ConvergenceSnapshot interface {
 
 type SDKConfigurationApplier struct {
 	Store                  interfaces.PluginConfigurationStore
-	Clients                map[string]SDKReloadClient
 	Registered             *RegisteredReplicaReloadResolver
 	Observations           ReplicaObservationRecorder
 	Snapshot               ConfigurationSnapshot
@@ -476,23 +470,17 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	if !bytes.Equal(revision.SettingsJSON, rawJSON) {
 		return ErrProtocolViolation
 	}
-	client := applier.Clients[instanceID]
-	var release func()
-	registeredInstance := false
-	if applier.Registered != nil {
-		registeredClient, registeredRelease, found, resolveErr := applier.Registered.Resolve(ctx, instanceID)
-		if resolveErr != nil {
-			if found {
-				return models.PluginConfigurationConvergencePending{}
-			}
-			return resolveErr
-		}
-		if found {
-			registeredInstance = true
-			client, release = registeredClient, registeredRelease
-		}
+	if applier.Registered == nil {
+		return ErrPluginUnavailable
 	}
-	if client == nil {
+	client, release, found, resolveErr := applier.Registered.Resolve(ctx, instanceID)
+	if resolveErr != nil {
+		if found {
+			return models.PluginConfigurationConvergencePending{}
+		}
+		return resolveErr
+	}
+	if !found || client == nil {
 		return ErrPluginUnavailable
 	}
 	if release != nil {
@@ -516,15 +504,14 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 		SHA256:        revision.Digest,
 		SchemaVersion: strconv.FormatInt(revision.SchemaVersion, 10),
 	}
-	// When the instance fans out to declared replicas, record every replica
-	// outcome so readiness reflects which declared endpoints actually converged
-	// rather than whether one representative replica answered.
+	// Record every live registration outcome so readiness reflects the exact
+	// authenticated replicas that converged rather than one representative.
 	if fanout, isFanout := client.(*SDKReloadFanout); isFanout && applier.Observations != nil {
 		_, results, fanoutErr := fanout.ReloadObserved(ctx, reload)
 		for _, result := range results {
 			applier.Observations.RecordReplicaObservation(ctx, instanceID, result.ReplicaID, generationNumber, result.Acknowledged, result.Unreachable)
 		}
-		if fanoutErr != nil && registeredInstance {
+		if fanoutErr != nil {
 			return models.PluginConfigurationConvergencePending{}
 		}
 		return fanoutErr
@@ -534,7 +521,7 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	} else {
 		_, err = client.Reload(ctx, reload)
 	}
-	if err != nil && registeredInstance {
+	if err != nil {
 		return models.PluginConfigurationConvergencePending{}
 	}
 	return err

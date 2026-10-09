@@ -39,17 +39,6 @@ type TrafficControllerJSONFields struct {
 	ControllerRevision                  string `yaml:"controllerRevision"`
 }
 
-type trafficRolloutFields struct {
-	Management TrafficRolloutAPIContract `yaml:"management"`
-}
-
 func LoadTrafficRolloutAPIContract() (TrafficRolloutAPIContract, error) {
 	return rolloutDefinitions(), nil
-}
-
-func validTrafficControllerJSONFields(fields TrafficControllerJSONFields) bool {
-	return fields.Rollouts != "" && fields.ID != "" && fields.PluginID != "" && fields.ActiveGeneration != "" && fields.Revision != "" &&
-		fields.ReleaseSHA256 != "" && fields.Stages != "" && fields.StageID != "" && fields.State != "" &&
-		fields.LastConfirmedCandidateWeightPercent != "" && fields.CandidateWeightPercent != "" && fields.MinimumObservationSeconds != "" &&
-		fields.RequireManualApproval != "" && fields.AppliedCandidateWeightPercent != "" && fields.ControllerRevision != ""
 }

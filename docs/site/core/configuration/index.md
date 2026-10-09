@@ -1,17 +1,16 @@
 # Конфигурация Core
 
-У Core один источник desired-конфигурации подключённых сервисов — SQLite.
-Plugin-specific JSON settings и Caddy traffic configuration изменяются через
-Management API, валидируются schema подключённого plugin, затем Core вызывает
-REST `Reload` и plugin pull-ит точные исходные bytes новой generation.
-`core.yaml` содержит только bootstrap самого Core; маршруты и сервисные
-настройки в YAML/Caddyfile не задаются.
+Core читает при запуске только bootstrap-переменную `CORE_SQLITE_PATH`. Первые
+настройки создаются командой `core init` из `CORE_INIT_*`; затем собственные
+настройки Core и подключённых plugins хранятся в SQLite. Environment больше не
+переопределяет сохранённые значения. Plugin settings изменяются через
+Management API с CAS/ETag и audit.
 
 | Документ | Назначение |
 | --- | --- |
-| [Bootstrap schema](bootstrap) | Минимальный `core.yaml` и startup граница. |
-| [Публичная JSON Schema](/spec/core.schema.json) | Machine-readable bootstrap contract. |
+| [Bootstrap и запуск](bootstrap) | ENV, `core init` и источник настроек при старте. |
 | [Plugin configuration API](/core/api/config) | CAS, versioned JSON, REST Reload/config pull и operation lifecycle. |
+| [Миграция](migration) | Офлайн-переход со старого YAML bootstrap. |
 | [Безопасность](security) | Раздельные REST и peer-network identities, grants и redaction. |
 | [Транспорты](transports) | Трафик, который обслуживает отдельный Server plugin. |
 | [Каталог ошибок](errors) | Публичные safe errors и problem response. |

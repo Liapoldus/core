@@ -1,18 +1,18 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
 
-describe("typed bootstrap loading", () => {
-  it("validates and exposes only the bootstrap fields required to start Core", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "liapoldus-bootstrap-loader-"));
+describe("legacy bootstrap migration input", () => {
+  it("validates migration data and reports settings without preserving static membership", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "liapoldus-core-migration-input-"));
     const coreConfig = join(directory, "core.yaml");
-    const binary = join(directory, "bootstrap-loader");
+    const binary = join(directory, "core-migrate");
     try {
       await writeFile(coreConfig, [
         "state:",
@@ -44,52 +44,36 @@ describe("typed bootstrap loading", () => {
         "          commonName: catalog-b",
         "",
       ].join("\n"), "utf8");
-      await execFileAsync("go", ["build", "-o", binary, "./tests/fixtures/bootstrap-loader"], { cwd: coreRoot });
-      const result = await execFileAsync(binary, [coreConfig], { cwd: coreRoot });
+      await execFileAsync("go", ["build", "-o", binary, "./cmd/core-migrate"], { cwd: coreRoot });
+      const result = await execFileAsync(binary, ["--input", coreConfig, "--dry-run"], { cwd: coreRoot });
 
       expect(JSON.parse(result.stdout)).toMatchObject({
-        StatePath: resolve(directory, "state/core.db"),
-        ManagementListen: "127.0.0.1:9443",
-        ManagementCertificate: "/run/secrets/management.crt",
-        ManagementKey: "/run/secrets/management.key",
-        PluginControlListen: "127.0.0.1:9444",
-        PluginControlPublicURL: "https://core.internal:9444",
-        PluginControlCertificate: "/run/secrets/plugin-control.crt",
-        PluginControlKey: "/run/secrets/plugin-control.key",
-        PluginReplicaClientCA: "/run/secrets/plugin-replica-ca.crt",
-        PluginReplicaServerCA: "/run/secrets/plugin-replica-server-ca.crt",
-        Plugins: [
-          {
-            InstanceID: "catalog",
-            Replicas: [
-              {
-                ReplicaID: "catalog-a",
-                Endpoint: "https://catalog-a.internal:9443",
-                ExpectedPeerIdentity: {
-                  CommonName: "catalog-a",
-                  UniformResourceIdentifier: "spiffe://liapoldus/plugin/catalog-a",
-                },
-              },
-              {
-                ReplicaID: "catalog-b",
-                Endpoint: "https://catalog-b.internal:9443",
-                ExpectedPeerIdentity: { CommonName: "catalog-b" },
-              },
-            ],
+        schemaVersion: 1,
+        settings: {
+          management: {
+            listen: "127.0.0.1:9443",
+            tls: {
+              certificate: "/run/secrets/management.crt",
+              key: "/run/secrets/management.key",
+            },
           },
-        ],
+          pluginControl: {
+            listen: "127.0.0.1:9444",
+            publicURL: "https://core.internal:9444",
+            tls: {
+              certificate: "/run/secrets/plugin-control.crt",
+              key: "/run/secrets/plugin-control.key",
+            },
+            replicaClientCA: "/run/secrets/plugin-replica-ca.crt",
+            replicaServerCA: "/run/secrets/plugin-replica-server-ca.crt",
+          },
+          secretRoot: directory,
+        },
+        ignoredStaticPluginInstances: ["catalog"],
       });
 
-      expect(JSON.parse(result.stdout)).not.toMatchObject({
-        ArtifactsPath: expect.any(String),
-        ExecutionProfile: expect.any(String),
-        PluginCatalogURL: expect.any(String),
-      });
-
-      // The declared registry is the only source of replica endpoints and
-      // identities, so each of these must fail closed at load time. A registry
-      // Core cannot interpret would otherwise surface later as a replica that
-      // silently never converges, or as an identity Core failed to verify.
+      // The retired static registry is not migrated. Invalid or ambiguous
+      // declarations must still be rejected rather than silently discarded.
       const validRegistry = [
         "plugins:",
         "  - instanceId: catalog",
@@ -162,7 +146,7 @@ describe("typed bootstrap loading", () => {
           registry,
         ].filter((line) => line !== "").join("\n") + "\n";
         await writeFile(coreConfig, candidate, "utf8");
-        await expect(execFileAsync(binary, [coreConfig], { cwd: coreRoot }), reason).rejects.toBeDefined();
+        await expect(execFileAsync(binary, ["--input", coreConfig, "--dry-run"], { cwd: coreRoot }), reason).rejects.toBeDefined();
       }
 
       const legacy = [
@@ -185,11 +169,11 @@ describe("typed bootstrap loading", () => {
         "",
       ].join("\n");
       await writeFile(coreConfig, legacy, "utf8");
-      await expect(execFileAsync(binary, [coreConfig], { cwd: coreRoot })).rejects.toBeDefined();
+      await expect(execFileAsync(binary, ["--input", coreConfig, "--dry-run"], { cwd: coreRoot })).rejects.toBeDefined();
 
       const insecureRemote = legacy.replace("127.0.0.1:9443", "core.internal:9443").replace("listeners: {}\n", "");
       await writeFile(coreConfig, insecureRemote, "utf8");
-      await expect(execFileAsync(binary, [coreConfig], { cwd: coreRoot })).rejects.toBeDefined();
+      await expect(execFileAsync(binary, ["--input", coreConfig, "--dry-run"], { cwd: coreRoot })).rejects.toBeDefined();
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

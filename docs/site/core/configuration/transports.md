@@ -8,11 +8,11 @@ traffic sockets.
 Caddy-specific JSON settings хранятся в Core SQLite и выдаются через Plugin SDK
 REST config pull после `Reload`; Server plugin преобразует их в runtime-конфигурацию. Это не
 Caddyfile API и не вторая Core route DSL. Публичные порты открывает сам
-plugin. Оператор вручную запускает Caddy с необходимыми OS permissions и
-обеспечивает публикацию портов; Core не открывает public sockets и не
-управляет listener/container resources. Docker/Compose, Swarm, Kubernetes и
-саморегистрация replicas относятся к v2; Core process supervision не входит в
-целевую модель; установку и обновления выполняет оператор.
+plugin. Core не открывает public sockets и не управляет listener/container
+resources. Deployment automation обращается к Core API и внешним providers
+через самостоятельные адаптеры. Поддерживаемыми
+считаются только профили, прошедшие отдельные native smoke gates; наличие
+playbook или manifest само по себе support не подтверждает.
 
 Публичные TCP/UDP listeners, relay, Caddy-L4 и P2P не входят в v1/v2 и
 перенесены в v3. Транспорт TCP или QUIC внутри `pluginprotocol` — отдельная внутренняя

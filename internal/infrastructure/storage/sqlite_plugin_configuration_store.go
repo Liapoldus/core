@@ -49,6 +49,7 @@ type SQLitePluginConfigurationStore struct {
 }
 
 var _ interfaces.PluginConfigurationStore = (*SQLitePluginConfigurationStore)(nil)
+var _ interfaces.PluginConfigurationInstanceLister = (*SQLitePluginConfigurationStore)(nil)
 
 func NewSQLitePluginConfigurationStore(database *sql.DB) (*SQLitePluginConfigurationStore, error) {
 	contract := ConfigurationDefinitions()
@@ -106,6 +107,32 @@ func (store *SQLitePluginConfigurationStore) Current(ctx context.Context, instan
 			models.PluginConfigurationPointers{InstanceID: instanceID}, nil
 	}
 	return revision, pointers, err
+}
+
+// ListActiveInstances is the durable source for configuration snapshots. It
+// deliberately does not infer runtime membership; only active settings rows
+// are listed here, while live plugin instances remain lease-owned.
+func (store *SQLitePluginConfigurationStore) ListActiveInstances(ctx context.Context) ([]string, error) {
+	if store == nil || store.database == nil {
+		return nil, sql.ErrConnDone
+	}
+	rows, err := store.database.QueryContext(ctx, store.queries.queries["list-active-instances"], store.contract.Slots.Active)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	instances := make([]string, 0)
+	for rows.Next() {
+		var instanceID string
+		if err := rows.Scan(&instanceID); err != nil {
+			return nil, err
+		}
+		instances = append(instances, instanceID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return instances, nil
 }
 
 func (store *SQLitePluginConfigurationStore) GetRevision(ctx context.Context, instanceID string, generation int64) (models.PluginConfigurationRevision, error) {

@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// PluginReplicaObservation is what Core last saw a declared replica doing. It is
-// an observation only: the replica set, its endpoint and its expected identity
-// are owned by core.yaml, so an observation never redefines desired topology.
+// PluginReplicaObservation is what Core last saw an authenticated replica doing.
+// It is an observation only; current membership and endpoints come from live
+// registration leases and are never reconstructed from this table.
 type PluginReplicaObservation struct {
 	InstanceID         string
 	ReplicaID          string

@@ -26,7 +26,6 @@ type PluginReplicaDirectory struct {
 	contract  sdkinfrastructure.ReplicaLifecycleContract
 	now       func() time.Time
 	entries   map[replicaDirectoryKey]LivePluginReplica
-	known     map[string]struct{}
 	instances map[string]struct{}
 	notify    func()
 }
@@ -49,7 +48,6 @@ func NewPluginReplicaDirectory(contract sdkinfrastructure.ReplicaLifecycleContra
 		contract:  contract,
 		now:       now,
 		entries:   make(map[replicaDirectoryKey]LivePluginReplica),
-		known:     make(map[string]struct{}),
 		instances: make(map[string]struct{}),
 	}, nil
 }
@@ -92,7 +90,7 @@ func (directory *PluginReplicaDirectory) RegisterAndPersist(
 	if !directory.certificateMatches(certificate, request.Identity) {
 		return sdkmodels.ReplicaRegistrationResponse{}, sdkmodels.ErrReplicaIdentityMismatch
 	}
-	identityURI, err := directory.contract.ReplicaIdentityURI(request.Identity)
+	_, err := directory.contract.ReplicaIdentityURI(request.Identity)
 	if err != nil {
 		return sdkmodels.ReplicaRegistrationResponse{}, sdkmodels.ErrInvalidReplicaRegistration
 	}
@@ -123,7 +121,6 @@ func (directory *PluginReplicaDirectory) RegisterAndPersist(
 	}
 	leaseExpires := now.Add(time.Duration(directory.contract.Lease.TTLSeconds) * time.Second)
 	directory.entries[key] = LivePluginReplica{Registration: cloneRegistration(request), LeaseExpires: leaseExpires}
-	directory.known[identityURI] = struct{}{}
 	directory.instances[request.Identity.InstanceID] = struct{}{}
 	changed = true
 	return sdkmodels.ReplicaRegistrationResponse{
@@ -212,7 +209,18 @@ func (directory *PluginReplicaDirectory) Deregister(request sdkmodels.ReplicaDer
 // Resolve returns the registered logical instance for a verified certificate
 // only while that exact replica lease remains active.
 func (directory *PluginReplicaDirectory) Resolve(certificate *x509.Certificate) (string, bool) {
-	return directory.ResolveWithFallback(certificate, nil)
+	if directory == nil || certificate == nil {
+		return "", false
+	}
+	now := directory.now().UTC()
+	directory.mu.RLock()
+	defer directory.mu.RUnlock()
+	for _, entry := range directory.entries {
+		if entry.LeaseExpires.After(now) && directory.certificateMatches(certificate, entry.Registration.Identity) {
+			return entry.Registration.Identity.InstanceID, true
+		}
+	}
+	return "", false
 }
 
 // ResolveIdentity returns the full authenticated replica identity of the exact
@@ -232,48 +240,6 @@ func (directory *PluginReplicaDirectory) ResolveIdentity(certificate *x509.Certi
 		}
 	}
 	return sdkmodels.PeerReplicaID{}, false
-}
-
-// ResolveWithFallback allows the v1 declared resolver to serve identities that
-// have never registered, while preventing an expired, deregistered or replaced
-// v2 incarnation from downgrading into that legacy allow-list.
-func (directory *PluginReplicaDirectory) ResolveWithFallback(
-	certificate *x509.Certificate,
-	fallback func(*x509.Certificate) (string, bool),
-) (string, bool) {
-	if directory == nil || certificate == nil {
-		return "", false
-	}
-	now := directory.now().UTC()
-	directory.mu.RLock()
-	for _, entry := range directory.entries {
-		if entry.LeaseExpires.After(now) && directory.certificateMatches(certificate, entry.Registration.Identity) {
-			directory.mu.RUnlock()
-			return entry.Registration.Identity.InstanceID, true
-		}
-	}
-	known := false
-	for _, identifier := range certificate.URIs {
-		if _, exists := directory.known[identifier.String()]; exists {
-			known = true
-			break
-		}
-	}
-	directory.mu.RUnlock()
-	if known || fallback == nil {
-		return "", false
-	}
-	instanceID, authorized := fallback(certificate)
-	if !authorized || instanceID == "" {
-		return "", false
-	}
-	directory.mu.RLock()
-	_, previouslyRegistered := directory.instances[instanceID]
-	directory.mu.RUnlock()
-	if previouslyRegistered {
-		return "", false
-	}
-	return instanceID, true
 }
 
 // MarkRegisteredInstances restores only the durable source-of-truth markers.
@@ -330,10 +296,9 @@ func (directory *PluginReplicaDirectory) RegisteredInstanceIDs() []string {
 	return result
 }
 
-// HasRegisteredInstance reports whether this Core process has admitted at
-// least one incarnation for an instance. It deliberately survives lease expiry
-// and deregistration for the lifetime of the directory to prevent static
-// endpoint fallback after a registered instance goes offline.
+// HasRegisteredInstance reports whether an instance has a durable registration
+// record. The marker survives lease expiry and deregistration so recovery can
+// resume settings only after an authenticated replica returns.
 func (directory *PluginReplicaDirectory) HasRegisteredInstance(instanceID string) bool {
 	if directory == nil || instanceID == "" {
 		return false

@@ -36,7 +36,6 @@ describe("architecture lint boundaries", () => {
 
   it("keeps generic infrastructure adapters explicit about their vendor dependencies", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
-    const dependencies = architecture.slice(architecture.indexOf("deps:"));
 
     expect(architecture).toMatch(/yaml:\s*\{ in: \[gopkg\.in\/yaml\.v3\] \}/);
     expect(architecture).toMatch(/textNormalization:\s*\{ in: \[golang\.org\/x\/text\/cases, golang\.org\/x\/text\/unicode\/norm\] \}/);

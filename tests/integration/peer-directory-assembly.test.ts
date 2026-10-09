@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseJsonObject } from "../support/json.js";
 import { createGoWorkspace } from "../support/workspace.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,7 +24,7 @@ describe("Core peer directory assembly", () => {
 			cwd: coreRoot,
 			env: { ...process.env, GOWORK: workspace.path },
 		});
-		const result = JSON.parse(stdout);
+		const result = parseJsonObject(stdout);
 
 		expect(result.parsedValid).toBe(true);
 		expect(result.linkCount).toBe(true);

@@ -117,9 +117,7 @@ func cliDefinitions() CLIWords {
 			Restore: "restore"},
 		Flags: struct {
 			Output string "yaml:\"output\""
-			Config string "yaml:\"config\""
-		}{Output: "--output",
-			Config: "--config"},
+		}{Output: "--output"},
 		ServiceKey: ServiceKeyWords{RolePlatformAdmin: "platform-admin",
 			KeyBytes: 32,
 			HashCost: 12},
@@ -128,12 +126,6 @@ func cliDefinitions() CLIWords {
 			JSON string "yaml:\"json\""
 		}{Text: "text",
 			JSON: "json"},
-		Environment: struct {
-			CoreConfig string "yaml:\"coreConfig\""
-		}{CoreConfig: "LIAPOLDUS_CORE_CONFIG"},
-		Paths: struct {
-			DefaultConfig string "yaml:\"defaultConfig\""
-		}{DefaultConfig: "/etc/liapoldus/core.yaml"},
 		Codes: struct {
 			AccessBootstrapConflict string "yaml:\"accessBootstrapConflict\""
 			DatabaseBackupFailed    string "yaml:\"databaseBackupFailed\""
@@ -162,13 +154,6 @@ func cliDefinitions() CLIWords {
 			Validation:  3,
 			Conflict:    4,
 			Unavailable: 7},
-		Sources: struct {
-			Flag        string "yaml:\"flag\""
-			Environment string "yaml:\"environment\""
-			System      string "yaml:\"system\""
-		}{Flag: "flag",
-			Environment: "environment",
-			System:      "system"},
 		JSON: struct {
 			OK      string "yaml:\"ok\""
 			Problem string "yaml:\"problem\""
@@ -188,8 +173,6 @@ func cliDefinitions() CLIWords {
 			ConfigNotFound          string "yaml:\"configNotFound\""
 			ConfigInvalid           string "yaml:\"configInvalid\""
 			OutputInvalid           string "yaml:\"outputInvalid\""
-			ConfigRequired          string "yaml:\"configRequired\""
-			ConfigLookupFailed      string "yaml:\"configLookupFailed\""
 			AccessBootstrapConflict string "yaml:\"accessBootstrapConflict\""
 			DatabaseBackupFailed    string "yaml:\"databaseBackupFailed\""
 			DatabaseRestoreFailed   string "yaml:\"databaseRestoreFailed\""
@@ -199,8 +182,6 @@ func cliDefinitions() CLIWords {
 			ConfigNotFound:          "Файл конфигурации не найден.",
 			ConfigInvalid:           "Конфигурация не прошла проверку.",
 			OutputInvalid:           "--output должен иметь значение text или json",
-			ConfigRequired:          "--config требует путь к core.yaml",
-			ConfigLookupFailed:      "core.yaml не найден или является каталогом",
 			AccessBootstrapConflict: "активный ключ доступа уже существует",
 			DatabaseBackupFailed:    "Не удалось создать проверенную резервную копию SQLite.",
 			DatabaseRestoreFailed:   "Не удалось безопасно восстановить состояние SQLite.",
@@ -511,18 +492,20 @@ func managementDefinitions() ManagementWords {
 			MinimumVersion:          "minimumVersion",
 			MaximumVersionExclusive: "maximumVersionExclusive"},
 		Headers: struct {
-			IfMatch     string "yaml:\"ifMatch\""
-			ContentType string "yaml:\"contentType\""
-			ETag        string "yaml:\"etag\""
-			RequestID   string "yaml:\"requestId\""
-			Location    string "yaml:\"location\""
-			RetryAfter  string "yaml:\"retryAfter\""
+			IfMatch            string "yaml:\"ifMatch\""
+			AdminSurfaceDigest string "yaml:\"adminSurfaceDigest\""
+			ContentType        string "yaml:\"contentType\""
+			ETag               string "yaml:\"etag\""
+			RequestID          string "yaml:\"requestId\""
+			Location           string "yaml:\"location\""
+			RetryAfter         string "yaml:\"retryAfter\""
 		}{IfMatch: "If-Match",
-			ContentType: "Content-Type",
-			ETag:        "ETag",
-			RequestID:   "X-Request-ID",
-			Location:    "Location",
-			RetryAfter:  "Retry-After"},
+			AdminSurfaceDigest: "X-Liapoldus-Admin-Surface-Digest",
+			ContentType:        "Content-Type",
+			ETag:               "ETag",
+			RequestID:          "X-Request-ID",
+			Location:           "Location",
+			RetryAfter:         "Retry-After"},
 		ContentTypes: struct {
 			YAML    string "yaml:\"yaml\""
 			JSON    string "yaml:\"json\""

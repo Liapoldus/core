@@ -6,19 +6,18 @@ versioned JSON самим plugin.
 Public traffic обслуживает отдельный Server plugin; Management API не
 проксирует traffic и не встраивает Caddy.
 
-v1 включает ровно три сервиса — Core, Server plugin и forms-db plugin — и две
-библиотеки: Plugin SDK и `pluginprotocol`. Оператор вручную устанавливает и
-запускает все три сервиса; Core только подключается к заранее настроенным
-plugin endpoints и не управляет их процессами или контейнерами. Docker/Compose,
-Swarm/Kubernetes как внешнее размещение и self-registration относятся к v2;
-Core supervision/install отложены до v3 и не включают автоматическое
-масштабирование по нагрузке.
+Core принимает регистрации plugin replicas по mTLS, выдаёт leases и исключает
+replica после истечения lease или отзыва identity. Bootstrap задаётся через ENV;
+операционные настройки Core хранятся в SQLite и меняются через versioned API.
+Core не управляет процессами или контейнерами plugins и не зависит от
+deployment-провайдера. Deployment profiles принимаются только после
+прохождения соответствующих smoke gates.
 
 | Область | Канон |
 | --- | --- |
 | Bootstrap | [ENV и SQLite settings](configuration/migration) |
 | Configurations | [SQLite, REST Reload и два поколения](architecture/control-plane) |
-| Plugin startup | [Ручное размещение v1 и будущая автоматизация v2](architecture/plugin-deployment) |
+| Plugin lifecycle | [Регистрация, leases и конфигурация](architecture/plugin-deployment) |
 | API | [Core Management API](api/) |
 | Security/deployment | [Security](configuration/security), [Deployment](deploy/) |
-| Архитектура и этапы | [Целевой контракт](architecture/target), [Roadmap](architecture/v1-migration-roadmap) |
+| Архитектура и этапы | [Целевой контракт](architecture/target), [Roadmap v2/v3](architecture/v1-migration-roadmap) |

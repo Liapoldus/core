@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := check
 
-.PHONY: build test test-ts test-race docker-smoke arch-lint staticcheck-u1000 check
+.PHONY: build test test-ts typecheck lint test-race docker-smoke arch-lint staticcheck-u1000 check
 
 build:
 	go build ./...
@@ -8,8 +8,16 @@ build:
 test:
 	go test ./...
 	npm --prefix tests test
+	npm --prefix tests run typecheck
+	npm --prefix tests run lint
 
 test-ts: test
+
+typecheck:
+	npm --prefix tests run typecheck
+
+lint:
+	npm --prefix tests run lint
 
 # Core has no Go *_test.go files by design, so `go test -race ./...` compiles
 # nothing and would report success vacuously. The real race gate builds the

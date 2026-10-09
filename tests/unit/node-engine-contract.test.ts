@@ -12,8 +12,8 @@ async function engines(path: string): Promise<string | undefined> {
 }
 
 describe("Node runtime requirement", () => {
-  it("declares Node.js 22 or newer for the Core test runner", async () => {
-    await expect(engines(join(testDirectory, "../../package.json"))).resolves.toBe(">=22");
-    await expect(engines(join(testDirectory, "../package.json"))).resolves.toBe(">=22");
+  it("declares the minimum Node.js version required by the Core test toolchain", async () => {
+    await expect(engines(join(testDirectory, "../../package.json"))).resolves.toBe(">=22.13");
+    await expect(engines(join(testDirectory, "../package.json"))).resolves.toBe(">=22.13");
   });
 });

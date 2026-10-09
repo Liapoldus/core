@@ -52,7 +52,6 @@ describe("API plugin handler ownership", () => {
 
   it("removes plugin request handling and plugin DTOs from the API root", async () => {
     const adapter = await readFile(join(apiRoot, "adapter.go"), "utf8").catch(() => "");
-    const codec = await readFile(join(apiRoot, "codec.go"), "utf8");
 
     for (const method of [
       "handlePluginRestart",

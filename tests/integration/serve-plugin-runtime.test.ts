@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -7,6 +7,7 @@ import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
 import { buildCoreTestBinary, startCore } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
+import { initializeCore } from "../support/initialize.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -49,71 +50,17 @@ async function waitForManagement(address: string, child: Awaited<ReturnType<type
 }
 
 describe("serve plugin composition", () => {
-	it("keeps Management available for an unreachable configured replica and supervises no process", async () => {
+	it("keeps Management available while a desired instance has no live registration lease", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-serve-plugin-runtime-"));
     const binary = await buildCoreTestBinary();
     const address = await freeAddress();
     const controlAddress = await freeAddress();
-    const replicaAddress = await freeAddress();
-    const certificate = join(directory, "management.crt");
-    const privateKey = join(directory, "management.key");
-    const controlCertificate = join(directory, "plugin-control.crt");
-    const controlKey = join(directory, "plugin-control.key");
-    const replicaClientCA = join(directory, "plugin-replica-ca.crt");
-  const replicaServerCA = join(directory, "plugin-replica-server-ca.crt");
-    const database = join(directory, "core.db");
-    const config = join(directory, "core.yaml");
     let core: Awaited<ReturnType<typeof startCore>> | undefined;
 
     try {
-      for (const [key, out] of [[privateKey, certificate], [controlKey, controlCertificate]] as const) {
-        await execFileAsync("openssl", [
-          "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-          "-subj", "/CN=localhost",
-          "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-          "-keyout", key, "-out", out,
-        ]);
-      }
-      await execFileAsync("openssl", [
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=plugin-replica-ca",
-        "-keyout", join(directory, "plugin-replica-ca.key"), "-out", replicaClientCA,
-      ]);
-      await execFileAsync("openssl", [
-        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-        "-subj", "/CN=plugin-replica-server-ca",
-        "-keyout", join(directory, "plugin-replica-server-ca.key"), "-out", replicaServerCA,
-      ]);
-      // v1 core.yaml is exactly state + management + pluginControl. There is no
-      // artifacts store, no execution profile and no package catalog in Core.
-      await writeFile(config, [
-        "state:",
-        `  path: ${database}`,
-        "management:",
-        `  listen: ${address}`,
-        "  tls:",
-        `    certificate: file:${certificate}`,
-        `    key: file:${privateKey}`,
-        "pluginControl:",
-        `  listen: ${controlAddress}`,
-        "  publicURL: https://core.internal:9444",
-        "  tls:",
-        `    certificate: file:${controlCertificate}`,
-        `    key: file:${controlKey}`,
-        `    replicaClientCA: file:${replicaClientCA}`,
-        `    replicaServerCA: file:${replicaServerCA}`,
-        "plugins:",
-        "  - instanceId: serve-fixture",
-        "    replicas:",
-        "      - replicaId: serve-fixture-a",
-        `        endpoint: https://${replicaAddress}`,
-        "        expectedPeerIdentity:",
-        "          commonName: serve-fixture-a",
-        "",
-      ].join("\n"), "utf8");
-
-      const bootstrap = await execFileAsync(binary, ["--config", config, "access", "bootstrap"]);
-      const token = bootstrap.stdout.trim();
+      const initialized = await initializeCore(binary, directory, address, controlAddress);
+      const { database, environment } = initialized;
+      const token = initialized.bootstrapToken;
       expect(token.length).toBeGreaterThan(0);
 
       const seeded = await execFileAsync("go", ["run", "./tests/fixtures/serve-plugin-runtime", database], {
@@ -127,14 +74,14 @@ describe("serve plugin composition", () => {
       expect(seedReport.columns).not.toContain("settings_json");
       expect(seedReport.configurationColumns).toEqual(expect.arrayContaining(["instance_id", "generation", "slot", "raw_json", "sha256"]));
 
-      core = await startCore(["--config", config, "serve"]);
+      core = await startCore(["serve"], environment);
       await waitForManagement(address, core.process);
 
       const status = await request(address, "/api/status", token);
       expect(status.status).toBe(200);
       const statusBody = JSON.parse(status.body) as { drift: boolean; dataPlaneReadiness: { state: string } };
-      expect(statusBody.drift).toBe(true);
-      expect(statusBody.dataPlaneReadiness.state).toBe("not-ready");
+		expect(statusBody.drift).toBe(true);
+		expect(statusBody.dataPlaneReadiness.state).toBe("not-ready");
 
       // Core owns generic instance metadata only. Manifest documents and
       // registered endpoints are plugin-owned and must not be surfaced.

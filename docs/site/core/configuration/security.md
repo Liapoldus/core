@@ -56,7 +56,8 @@ Core загружает эти файлы при старте; замена се
 V1 поддерживает замену CA и leaf-сертификатов только с плановым перерывом:
 
 1. Создайте и проверьте комплект новых credentials для Core и каждой plugin
-   replica. URI/CN identities должны совпадать с объявленными в `core.yaml`, а
+   replica. URI/CN identities должны совпадать с identity аутентифицированной
+   регистрации, а
    новые trust roots должны быть доступны в нужных Core↔plugin bundle и отдельно
    в plugin↔plugin bundle.
 2. Согласуйте резервное копирование Core SQLite и product-owned данных плагинов
@@ -97,8 +98,8 @@ peer-link policy, service keys или другие Management resources. Под�
 trust roots и allow-list точных certificate identities; они раздельны с
 Management API, Plugin SDK REST и `pluginprotocol`. Неизвестный, отозванный или
 неразрешённый сертификат отклоняется до обработки HTTP-запроса. Bearer token или
-plaintext не являются fallback. Listener включается отдельным
-`--traffic-controller-config` при `core serve`. GET списка возвращает только
+plaintext не являются fallback. Listener задаётся в Core Settings API,
+сохраняется в SQLite и активируется после безопасного перезапуска Core. GET списка возвращает только
 rollout-ы после candidate ACK-барьера, общий ETag и per-rollout revision.
 Confirmation использует strong per-rollout `If-Match`, `Idempotency-Key`,
 ограниченный JSON body, точный active stage и вес. Повтор дедуплицируется по

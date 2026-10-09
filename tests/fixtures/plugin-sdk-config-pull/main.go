@@ -130,7 +130,7 @@ func main() {
 	check(err)
 	reloadClient, err := pluginsdk.NewPluginClient(httpContract, "https://localhost:"+itoa(pluginListener.Addr().(*net.TCPAddr).Port), coreTransport, peerIdentity)
 	check(err)
-	staticReloadCalls, dynamicReloadCalls := 0, 0
+	dynamicReloadCalls := 0
 	registered := registeredReplicaSource{replicas: []plugins.LivePluginReplica{{
 		Registration: sdkmodels.ReplicaRegistrationRequest{
 			Identity:     sdkmodels.PeerReplicaID{InstanceID: "fixture", ReplicaID: "replica-dynamic", IncarnationID: "inc-1", PlacementID: "node-a"},
@@ -144,7 +144,6 @@ func main() {
 	}, nil)
 	applier := &plugins.SDKConfigurationApplier{
 		Store: store, Snapshot: snapshot,
-		Clients:    map[string]plugins.SDKReloadClient{"fixture": countingReloadClient{delegate: reloadClient, count: &staticReloadCalls}},
 		Registered: registeredReloads,
 	}
 	service := application.PluginConfigurationService{Store: store, Applier: applier,
@@ -165,7 +164,7 @@ func main() {
 		"exactDigest": active.Configuration.SHA256 == digest(active.Configuration.RawJSON), "unknownGenerationRejected": unknownErr != nil,
 		"otherInstanceRejected": otherErr != nil, "unauthenticatedRejected": unauthenticatedErr != nil,
 		"reloadAcknowledged": reloadErr == nil, "reloadGeneration": "3", "reloadPulledRaw": string(reloadPulled),
-		"dynamicReplicaPulledRaw": string(reloadPulled), "staticReloadCalls": staticReloadCalls, "dynamicReloadCalls": dynamicReloadCalls,
+		"dynamicReplicaPulledRaw": string(reloadPulled), "dynamicReloadCalls": dynamicReloadCalls,
 		"registrationReloadAcknowledged": registrationReloadErr == nil,
 		"activatedGeneration":            activated.Revision, "activeAfterReload": pointers.CurrentRevision,
 		"previousAfterReload": pointers.PreviousRevision, "stagingCleared": pointers.PendingRevision == 0,

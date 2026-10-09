@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2024",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["unit/**/*.ts", "integration/**/*.ts", "support/**/*.ts"]
+  "include": ["**/*.ts"]
 }

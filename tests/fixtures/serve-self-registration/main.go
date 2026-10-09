@@ -76,17 +76,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	staticIdentity := sdkmodels.PeerReplicaID{
-		InstanceID: staticInstanceID, ReplicaID: "static-replica", IncarnationID: "inc-1", PlacementID: dynamicPlacement,
-	}
-	staticCertificate, err := issueReplica(lifecycle, root, rootKey, staticIdentity)
-	if err != nil {
-		return err
-	}
 	for name, value := range map[string][]byte{
 		"root.pem": rootPEM, "core.pem": coreCertificate.pem, "core.key": coreCertificate.key,
 		"dynamic.pem": dynamicCertificate.pem, "dynamic.key": dynamicCertificate.key,
-		"static.pem": staticCertificate.pem, "static.key": staticCertificate.key,
 	} {
 		if err := os.WriteFile(filepath.Join(directory, name), value, 0o600); err != nil {
 			return err
@@ -101,36 +93,35 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	staticEndpoint := "https://" + dynamicPlacement + ".static.internal:9443"
 	databasePath := filepath.Join(directory, "core.sqlite")
-	configuration := filepath.Join(directory, "core.yaml")
-	contents := strings.Join([]string{
-		"state:", "  path: " + databasePath,
-		"management:", "  listen: " + managementAddress,
-		"  tls:", "    certificate: file:" + filepath.Join(directory, "core.pem"),
-		"    key: file:" + filepath.Join(directory, "core.key"),
-		"pluginControl:", "  listen: " + controlAddress,
-		"  publicURL: https://" + controlAddress,
-		"  tls:", "    certificate: file:" + filepath.Join(directory, "core.pem"),
-		"    key: file:" + filepath.Join(directory, "core.key"),
-		"    replicaClientCA: file:" + filepath.Join(directory, "root.pem"),
-		"    replicaServerCA: file:" + filepath.Join(directory, "root.pem"),
-		"plugins:", "  - instanceId: " + staticInstanceID, "    replicas:",
-		"      - replicaId: static-replica", "        endpoint: " + staticEndpoint,
-		"        expectedPeerIdentity:", "          commonName: " + staticInstanceID, "",
-	}, "\n")
-	if err := os.WriteFile(configuration, []byte(contents), 0o600); err != nil {
-		return err
-	}
+	environment := append(os.Environ(),
+		"CORE_SQLITE_PATH="+databasePath,
+		"CORE_INIT_MANAGEMENT_LISTEN="+managementAddress,
+		"CORE_INIT_MANAGEMENT_CERTIFICATE="+filepath.Join(directory, "core.pem"),
+		"CORE_INIT_MANAGEMENT_KEY="+filepath.Join(directory, "core.key"),
+		"CORE_INIT_CONTROL_LISTEN="+controlAddress,
+		"CORE_INIT_CONTROL_PUBLIC_URL=https://"+controlAddress,
+		"CORE_INIT_CONTROL_CERTIFICATE="+filepath.Join(directory, "core.pem"),
+		"CORE_INIT_CONTROL_KEY="+filepath.Join(directory, "core.key"),
+		"CORE_INIT_REPLICA_CLIENT_CA="+filepath.Join(directory, "root.pem"),
+		"CORE_INIT_REPLICA_SERVER_CA="+filepath.Join(directory, "root.pem"),
+		"CORE_INIT_SECRET_ROOT="+directory,
+	)
 
 	coreRoot := repositoryRoot()
 	coreBinary := filepath.Join(directory, "core")
 	if err := build(coreRoot, coreBinary, "./cmd/core"); err != nil {
 		return err
 	}
-	bootstrap := exec.Command(coreBinary, "--config", configuration, "access", "bootstrap")
+	initialize := exec.Command(coreBinary, "init")
+	initialize.Dir = coreRoot
+	initialize.Env = environment
+	if output, err := initialize.CombinedOutput(); err != nil {
+		return fmt.Errorf("core init: %w: %s", err, output)
+	}
+	bootstrap := exec.Command(coreBinary, "access", "bootstrap")
 	bootstrap.Dir = coreRoot
-	bootstrap.Env = os.Environ()
+	bootstrap.Env = environment
 	tokenOutput, err := bootstrap.Output()
 	if err != nil {
 		return fmt.Errorf("core access bootstrap: %w", err)
@@ -153,7 +144,7 @@ func run() error {
 	}
 	controlBase := "https://" + controlAddress
 
-	process, err := startCore(coreBinary, configuration, coreRoot)
+	process, err := startCore(coreBinary, environment, coreRoot)
 	if err != nil {
 		return err
 	}
@@ -198,7 +189,7 @@ func run() error {
 	durableMarkerPersisted := contains(markers, dynamicIdentity.InstanceID)
 	staticInstanceNotMarked := !contains(markers, staticInstanceID)
 
-	process, err = startCore(coreBinary, configuration, coreRoot)
+	process, err = startCore(coreBinary, environment, coreRoot)
 	if err != nil {
 		return err
 	}
@@ -407,10 +398,10 @@ func count(values []string, target string) int {
 	return matches
 }
 
-func startCore(binary, configuration, workingDirectory string) (*exec.Cmd, error) {
-	process := exec.Command(binary, "--config", configuration, "serve")
+func startCore(binary string, environment []string, workingDirectory string) (*exec.Cmd, error) {
+	process := exec.Command(binary, "serve")
 	process.Dir = workingDirectory
-	process.Env = os.Environ()
+	process.Env = environment
 	process.Stdout = io.Discard
 	process.Stderr = io.Discard
 	if err := process.Start(); err != nil {

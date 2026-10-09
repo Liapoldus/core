@@ -9,16 +9,9 @@ import (
 	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
 )
 
-// DeclaredReplica is one operator-declared replica, reduced to the values Core
-// needs to reach it. The transport is supplied by the caller because TLS
-// material is Core-owned infrastructure, while constructing the SDK control
-// client is this adapter's job.
-//
-// Endpoint and expected identity are exactly the values from core.yaml. Core
-// never learns either from a redirect, a manifest or a plugin advertisement, and
-// this adapter is the only place that turns them into a live client, so a
-// declared replica cannot be reached by any other address.
-type DeclaredReplica struct {
+// RegisteredReplicaTarget is a live lease snapshot reduced to the values Core
+// needs to dial it. TLS material remains Core-owned; the SDK owns the protocol.
+type RegisteredReplicaTarget struct {
 	InstanceID                 string
 	ReplicaID                  string
 	Endpoint                   *url.URL
@@ -30,15 +23,9 @@ type DeclaredReplica struct {
 	Transport *http.Transport
 }
 
-// DeclaredReplicaFanouts builds one SDK control client per declared replica,
-// grouped into a fanout per declared instance. It returns a release function that
-// closes the idle connections this adapter opened.
-//
-// A replica whose client cannot be built is a startup failure. A control plane
-// that silently omitted a declared replica would fence it and strand a
-// generation Core had already promoted, so the operator is told at startup
-// instead of at the next rollout.
-func DeclaredReplicaFanouts(replicas []DeclaredReplica) (map[string]SDKReloadClient, func(), error) {
+// RegisteredReplicaFanouts builds one SDK control client per live lease,
+// grouped by instance, and returns a release function for their idle connections.
+func RegisteredReplicaFanouts(replicas []RegisteredReplicaTarget) (map[string]SDKReloadClient, func(), error) {
 	clients := make(map[string]SDKReloadClient)
 	opened := make([]*http.Transport, 0, len(replicas))
 	contract, err := sdkinfrastructure.LoadHTTPContract()
@@ -56,7 +43,7 @@ func DeclaredReplicaFanouts(replicas []DeclaredReplica) (map[string]SDKReloadCli
 			return nil, nil, ErrPluginUnavailable
 		}
 		// The SDK is the authority on the exact peer identity. Core validated the
-		// same rules at load time, so disagreement here means the declaration is
+		// same rules at registration time, so disagreement here means the identity is
 		// unusable rather than something to work around.
 		peer, err := sdkmodels.NewPeerIdentity(replica.ExpectedCommonName, replica.ExpectedResourceIdentifier)
 		if err != nil {

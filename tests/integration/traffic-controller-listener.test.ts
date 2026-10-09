@@ -8,6 +8,7 @@ import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
 import { buildCoreTestBinary, startCoreWithOutput } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
+import { initializeCore } from "../support/initialize.js";
 
 const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
@@ -18,14 +19,7 @@ describe("private traffic-controller listener", () => {
 		const binary = await buildCoreTestBinary();
 		const managementAddress = await freeAddress();
 		const pluginControlAddress = await freeAddress();
-		const pluginAddress = await freeAddress();
 		const controllerAddress = await freeAddress();
-		const managementCertificate = join(directory, "management.crt");
-		const managementKey = join(directory, "management.key");
-		const pluginCertificate = join(directory, "plugin-control.crt");
-		const pluginKey = join(directory, "plugin-control.key");
-		const pluginClientCA = join(directory, "plugin-client-ca.crt");
-		const pluginServerCA = join(directory, "plugin-server-ca.crt");
 		const controllerCertificate = join(directory, "controller.crt");
 		const controllerKey = join(directory, "controller.key");
 		const controllerServerCertificate = join(directory, "controller-server.crt");
@@ -33,43 +27,34 @@ describe("private traffic-controller listener", () => {
 		const deniedCertificate = join(directory, "denied.crt");
 		const deniedKey = join(directory, "denied.key");
 		const controllerCA = join(directory, "controller-ca.crt");
-		const database = join(directory, "core.db");
-		const bootstrap = join(directory, "core.yaml");
-		const controllerConfig = join(directory, "traffic-controller.yaml");
+		let database = "";
+		let environment: NodeJS.ProcessEnv = {};
 		let core: Awaited<ReturnType<typeof startCoreWithOutput>> | undefined;
 
 		try {
-			await createCertificate(directory, "management", managementCertificate, managementKey, "DNS:localhost,IP:127.0.0.1");
-			await createCertificate(directory, "plugin-control", pluginCertificate, pluginKey, "DNS:localhost,IP:127.0.0.1");
-			await createCA(directory, "plugin-client", pluginClientCA);
-			await createCA(directory, "plugin-server", pluginServerCA);
+			const initialized = await initializeCore(binary, directory, managementAddress, pluginControlAddress);
+			database = initialized.database;
+			environment = initialized.environment;
 			await createCA(directory, "traffic-controller", controllerCA);
 			await createCertificate(directory, "traffic-controller-server", controllerServerCertificate, controllerServerKey, "DNS:localhost,IP:127.0.0.1");
 			await createSignedClient(directory, "controller", controllerCA, controllerCertificate, controllerKey,
 				"URI:spiffe://liapoldus/controller/traffic");
 			await createSignedClient(directory, "denied", controllerCA, deniedCertificate, deniedKey,
 				"URI:spiffe://liapoldus/controller/unrelated");
-			await writeFile(bootstrap, [
-				"state:", `  path: ${database}`, "management:", `  listen: ${managementAddress}`,
-				"  tls:", `    certificate: file:${managementCertificate}`, `    key: file:${managementKey}`,
-				"pluginControl:", `  listen: ${pluginControlAddress}`, "  publicURL: https://core.internal:9444",
-				"  tls:", `    certificate: file:${pluginCertificate}`, `    key: file:${pluginKey}`,
-				`    replicaClientCA: file:${pluginClientCA}`, `    replicaServerCA: file:${pluginServerCA}`,
-				"plugins:", "  - instanceId: fixture", "    replicas:", "      - replicaId: fixture-r1",
-				`        endpoint: https://${pluginAddress}`, "        expectedPeerIdentity:", "          commonName: fixture-r1", "",
-			].join("\n"), "utf8");
-			await writeFile(controllerConfig, [
-				"schemaVersion: 2", `listen: ${controllerAddress}`, "tls:",
-				`  certificate: file:${controllerServerCertificate}`, `  key: file:${controllerServerKey}`,
-				`  clientCA: file:${controllerCA}`, "allowedIdentities:",
-				"  - commonName: controller", "    uniformResourceIdentifier: spiffe://liapoldus/controller/traffic", "",
-			].join("\n"), "utf8");
-			const initialized = await execFileAsync(binary, ["--config", bootstrap, "access", "bootstrap"]);
 			await execFileAsync("go", ["run", "./tests/fixtures/traffic-rollout-store", database, "create"], { cwd: coreRoot });
-			core = await startCoreWithOutput(["--config", bootstrap, "serve", "--traffic-controller-config", controllerConfig]);
+			core = await startCoreWithOutput(["serve"], environment);
+			await waitForManagement(managementAddress, core.process);
+			const current = await managementRequest(managementAddress, "/api/v2/settings", initialized.bootstrapToken);
+			expect(current.status, current.body).toBe(200);
+			const settings = JSON.parse(current.body).settings as Record<string, unknown>;
+			settings.trafficController = { schemaVersion: 2, listen: controllerAddress, certificate: controllerServerCertificate, key: controllerServerKey, clientCA: controllerCA, allowedIdentities: [{ CommonName: "controller", UniformResourceIdentifier: "spiffe://liapoldus/controller/traffic" }] };
+			const updated = await updateCoreSettings(managementAddress, initialized.bootstrapToken, settings);
+			expect(updated.status, updated.body).toBe(200);
+			await core.stop();
+			core = await startCoreWithOutput(["serve"], environment);
 			await waitForTLS(controllerAddress, core.process, {
 				cert: controllerCertificate, key: controllerKey, ca: controllerCA,
-				path: "/internal/v2/traffic-rollouts", details: () => core?.stderr ?? "",
+				details: () => core?.stderr ?? "",
 			});
 			const allowed = await request(controllerAddress, "/internal/v2/traffic-rollouts", {
 				cert: controllerCertificate, key: controllerKey, ca: controllerCA,
@@ -96,7 +81,7 @@ describe("private traffic-controller listener", () => {
 				cert: deniedCertificate, key: deniedKey, ca: controllerCA,
 			});
 			const denied = await request(controllerAddress, "/internal/v2/traffic-rollouts", { ca: controllerCA });
-			expect(initialized.stdout.trim().length).toBeGreaterThan(0);
+			expect(initialized.bootstrapToken.length).toBeGreaterThan(0);
 			expect(allowed.status).toBe(200);
 			expect(allowed.headers.etag).toMatch(/^"[a-f0-9]{64}"$/);
 			expect(listed.rollouts).toEqual([expect.objectContaining({
@@ -118,6 +103,38 @@ describe("private traffic-controller listener", () => {
 });
 
 type TLSOptions = { cert?: string; key?: string; ca: string; ifNoneMatch?: string | string[]; method?: string; body?: string; headers?: Record<string, string> };
+
+async function waitForManagement(address: string, child: Awaited<ReturnType<typeof startCoreWithOutput>>["process"]): Promise<void> {
+	for (let attempt = 0; attempt < 120; attempt += 1) {
+		if (child.exitCode !== null) throw new Error(`Core exited before Management API became ready (${child.exitCode}).`);
+		try {
+			const response = await managementRequest(address, "/healthz");
+			if (response.status === 200) return;
+		} catch { await new Promise((resolve) => setTimeout(resolve, 50)); }
+	}
+	throw new Error("Core Management API did not become ready.");
+}
+
+function managementRequest(address: string, path: string, token?: string, settings?: unknown): Promise<{ status: number; body: string }> {
+	const port = Number(address.slice(address.lastIndexOf(":") + 1));
+	return new Promise((resolve, reject) => {
+		const body = settings === undefined ? undefined : JSON.stringify(settings);
+		const outgoing = httpsRequest({ hostname: "127.0.0.1", port, path,
+			method: settings === undefined ? "GET" : "PUT", rejectUnauthorized: false,
+			headers: { ...(token === undefined ? {} : { Authorization: `Bearer ${token}` }),
+				...(body === undefined ? {} : { "Content-Type": "application/json", "If-Match": '"core-settings-1"' }) } }, (incoming) => {
+			const chunks: Buffer[] = [];
+			incoming.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+			incoming.once("end", () => resolve({ status: incoming.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+		});
+		outgoing.once("error", reject);
+		outgoing.end(body);
+	});
+}
+
+async function updateCoreSettings(address: string, token: string, settings: unknown) {
+	return managementRequest(address, "/api/v2/settings", token, settings);
+}
 
 function request(address: string, path: string, options: TLSOptions): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
 	const port = Number(address.slice(address.lastIndexOf(":") + 1));

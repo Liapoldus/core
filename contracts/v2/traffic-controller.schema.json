@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://liapoldus.github.io/spec/core/v2/traffic-controller.schema.json",
-  "title": "Core v2 traffic-controller listener configuration",
-  "description": "Отдельный файл конфигурации v2 listener-а внешнего traffic-controller. Не является расширением минимального v1 core.yaml.",
+  "title": "Core traffic-controller settings",
+  "description": "Typed Core settings stored in SQLite and changed through the versioned Settings API.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "listen", "tls", "allowedIdentities"],
@@ -52,7 +52,7 @@
     }
   },
   "x-liapoldus-invariants": [
-    "Этот контракт включается отдельным v2 `--traffic-controller-config`; поля не добавляются в v1 core.yaml.",
+    "Настройки сохраняются в SQLite Core; runtime не читает отдельный конфигурационный файл.",
     "Listener требует TLS и mTLS; plaintext и Bearer authentication не поддерживаются.",
     "Trust roots listener-а отделены от Management API, Plugin SDK REST и plugin peer transport.",
     "Каждая разрешённая identity проверяется exact-match по Common Name и/или URI SAN; wildcard запрещён."

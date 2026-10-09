@@ -67,11 +67,11 @@ describe("Core peer protocol boundary", () => {
       "peer_directory_broadcaster.go",
       "registered_reconciliation.go",
       "replica_directory.go",
+      "replica_observation.go",
       "sdk_admin_control.go",
       "sdk_contract.go",
       "sdk_control.go",
       "sdk_control_validation_test.go",
-      "startup_reconcile.go",
       "tls_revocation.go",
     ]);
     expect(sdkControl).not.toMatch(/exec\.Command|"os\/exec"|net\.Listen|ListenLoopback|StartGrantBroker|StartRuntime/);

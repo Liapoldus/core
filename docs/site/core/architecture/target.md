@@ -34,7 +34,7 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 
 | Владелец | Ответственность |
 | --- | --- |
-| Core | SQLite desired state, Management API/CLI, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Plugin-to-plugin interaction policies и interaction grants относятся к v2. В v1 Core подключается к вручную запущенным plugin REST endpoints. Core не содержит product-specific branches. |
+| Core | SQLite desired state, Management API/CLI, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Plugin-to-plugin interaction policies и interaction grants относятся к v2. Replicas регистрируются через Plugin SDK mTLS. Core не содержит product-specific branches и не управляет процессами/workloads. |
 | Plugin SDK | Отдельный независимый Go-модуль. В v1/v2 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v3. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
 | Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v3. |
@@ -48,9 +48,11 @@ API.
 
 ## Будущие этапы после v1
 
-В v2, а не в v1, входят саморегистрация replicas, rollout и внешнее размещение
-в Docker/Swarm/Kubernetes без управления workload из Core, Domain, Runtime и
-смешанные peer transports. Caller→target link policies — редактируемое
+Саморегистрация replicas и leases входят в текущий Core runtime. Следующий v2
+этап добавляет candidate rollout с весами и traffic-controller confirmation,
+а также smoke-gated deployment profiles Docker/Swarm/Kubernetes без управления
+workload из Core, Domain и Runtime и смешанные peer transports. Caller→target
+link policies — редактируемое
 Core-owned desired state в SQLite и Management API, не статический bootstrap
 YAML. Server и forms-db остаются на текущем v1 baseline;
 их repositories не изменяются в v2, а generic rollout проверяется на fixtures.
@@ -141,14 +143,14 @@ Core остаётся одним экземпляром; active-active и shared
 перезапуск, лимиты ресурсов и сетевую доступность. Core не получает shell,
 process-control, Docker socket или provider credentials и не может запускать,
 останавливать, перезапускать, устанавливать, масштабировать либо удалять
-плагины. Для каждого plugin instance оператор регистрирует фиксированные REST
-endpoint и ожидаемую identity replica. Core выполняет только handshake,
+плагины. Каждая replica регистрирует REST endpoint и подтверждённую mTLS
+identity через Plugin SDK. Core выполняет только handshake,
 per-replica mTLS, health/readiness, конфигурационный `Reload`, scoped secret
 grants и аудит. Централизованные peer policies в v1 отсутствуют. Запуск
 плагинов в контейнерах и управление контейнерами не входят в v1.
 
-Саморегистрация и rollout/drain внешне управляемых Docker/Swarm/Kubernetes
-workloads — v2; установку и обновление выполняет оператор.
+Candidate rollout с traffic weights и deployment профили Docker/Swarm/Kubernetes
+внешне управляемых workloads — v2; установку и обновление выполняет оператор.
 Локальное process supervision Core не планируется. Проектирование не добавляет
 v1 API, таблицы, permissions или acceptance gates. Общие REST и plugin-to-plugin
 контракты остаются одинаковыми и не зависят от будущего способа размещения.
@@ -313,8 +315,7 @@ Server plugin преобразует именно этот JSON в свою Cadd
 artifact, не редактируемый source of truth. Ни Caddy Admin API, ни файл
 Caddyfile нельзя независимо изменить так, чтобы обойти конфигурацию Core.
 
-Server plugin в v1 вручную запускается оператором как одна replica и хранит на
-своём persistent filesystem ACME/CertMagic state и опубликованные site
+Server plugin хранит на своём persistent filesystem ACME/CertMagic state и опубликованные site
 releases. `current` и `previous` ссылаются на immutable release IDs;
 activation/rollback атомарны в границах plugin storage. Оператор отвечает за
 persistent filesystem и его backup/restore. PostgreSQL, S3,

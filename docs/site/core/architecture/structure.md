@@ -83,7 +83,6 @@ SQLite и удалённым plugin нет общей ACID transaction: durable 
 последующего GC; dangling metadata references недопустимы.
 
 Подробная карта Core storage и восстановления: [Control plane и ER-модель](control-plane).
-Нормативные роли и ручной v1 startup: [целевая архитектура](target). Local
-саморегистрация/rollout внешних контейнеров — v2; provider install — v3.
-Core supervision не планируется. Импортные
-границы и слои дополнительно закрепляются architecture lint в Core.
+Регистрация, leases и ответственность deployment-клиента описаны в
+[целевой архитектуре](target). Core не устанавливает и не супервизирует
+workloads. Импортные границы и слои закрепляются architecture lint в Core.

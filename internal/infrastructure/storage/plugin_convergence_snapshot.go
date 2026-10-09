@@ -52,8 +52,13 @@ func (snapshot *PluginConvergenceSnapshot) Refresh(ctx context.Context) error {
 	}
 	snapshot.mu.Lock()
 	defer snapshot.mu.Unlock()
-	desired := make(map[string]int64, len(snapshot.instanceIDs))
-	for _, instanceID := range snapshot.instanceIDs {
+	instanceIDs, err := configurationInstanceIDs(ctx, snapshot.configurations, snapshot.instanceIDs)
+	if err != nil {
+		snapshot.state.Store(nil)
+		return err
+	}
+	desired := make(map[string]int64, len(instanceIDs))
+	for _, instanceID := range instanceIDs {
 		if instanceID == "" {
 			snapshot.state.Store(nil)
 			return models.PluginConfigurationUnavailable{}
@@ -70,6 +75,7 @@ func (snapshot *PluginConvergenceSnapshot) Refresh(ctx context.Context) error {
 			desired[instanceID] = active.Revision
 		}
 	}
+	snapshot.instanceIDs = append([]string(nil), instanceIDs...)
 	records, err := snapshot.replicas.List(ctx)
 	if err != nil {
 		snapshot.state.Store(nil)

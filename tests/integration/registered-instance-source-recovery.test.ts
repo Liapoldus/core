@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
 
 describe("registered plugin instance source recovery", () => {
-	it("keeps registered instances fenced from static fallback after Core restart", async () => {
+	it("requires fresh registration after restart and rejects unregistered static identities", async () => {
 		const directory = mkdtempSync(join(tmpdir(), "core-registered-source-"));
 		try {
 			const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/registered-source-recovery", join(directory, "core.sqlite")], {
@@ -17,8 +17,8 @@ describe("registered plugin instance source recovery", () => {
 				maxBuffer: 1024 * 1024,
 			});
 			expect(JSON.parse(stdout)).toEqual({
-				registeredInstanceCannotUseStaticFallbackAfterRestart: true,
-				unregisteredInstanceCanUseStaticFallback: true,
+				registeredInstanceRequiresFreshLeaseAfterRestart: true,
+				unregisteredStaticIdentityRejected: true,
 			});
 		} finally {
 			rmSync(directory, { recursive: true, force: true });

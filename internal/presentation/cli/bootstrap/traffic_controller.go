@@ -18,15 +18,15 @@ import (
 func trafficControllerTLS(configuration config.TrafficControllerConfig) (*tls.Config, error) {
 	certificate, err := loadKeyPair(configuration.Certificate, configuration.Key)
 	if err != nil {
-		return nil, errPluginRegistryIncomplete
+		return nil, errPluginControlTrustInvalid
 	}
 	roots, err := certPool(configuration.ClientCA)
 	if err != nil {
-		return nil, errPluginRegistryIncomplete
+		return nil, errPluginControlTrustInvalid
 	}
 	verifyRevocation, err := plugins.NewTLSRevocationVerifier(configuration.ClientCA, configuration.ClientCRLs)
 	if err != nil {
-		return nil, errPluginRegistryIncomplete
+		return nil, errPluginControlTrustInvalid
 	}
 	return &tls.Config{
 		MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate},

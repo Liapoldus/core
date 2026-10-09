@@ -30,19 +30,12 @@ type CLIWords struct {
 	} `yaml:"database"`
 	Flags struct {
 		Output string `yaml:"output"`
-		Config string `yaml:"config"`
 	} `yaml:"flags"`
 	ServiceKey ServiceKeyWords `yaml:"serviceKey"`
 	Outputs    struct {
 		Text string `yaml:"text"`
 		JSON string `yaml:"json"`
 	} `yaml:"outputs"`
-	Environment struct {
-		CoreConfig string `yaml:"coreConfig"`
-	} `yaml:"environment"`
-	Paths struct {
-		DefaultConfig string `yaml:"defaultConfig"`
-	} `yaml:"paths"`
 	Codes struct {
 		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
 		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
@@ -60,11 +53,6 @@ type CLIWords struct {
 		Conflict    int `yaml:"conflict"`
 		Unavailable int `yaml:"unavailable"`
 	} `yaml:"exits"`
-	Sources struct {
-		Flag        string `yaml:"flag"`
-		Environment string `yaml:"environment"`
-		System      string `yaml:"system"`
-	} `yaml:"sources"`
 	JSON struct {
 		OK      string `yaml:"ok"`
 		Problem string `yaml:"problem"`
@@ -80,8 +68,6 @@ type CLIWords struct {
 		ConfigNotFound          string `yaml:"configNotFound"`
 		ConfigInvalid           string `yaml:"configInvalid"`
 		OutputInvalid           string `yaml:"outputInvalid"`
-		ConfigRequired          string `yaml:"configRequired"`
-		ConfigLookupFailed      string `yaml:"configLookupFailed"`
 		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
 		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
 		DatabaseRestoreFailed   string `yaml:"databaseRestoreFailed"`
@@ -257,12 +243,13 @@ type ManagementWords struct {
 		MaximumVersionExclusive string `yaml:"maximumVersionExclusive"`
 	} `yaml:"json"`
 	Headers struct {
-		IfMatch     string `yaml:"ifMatch"`
-		ContentType string `yaml:"contentType"`
-		ETag        string `yaml:"etag"`
-		RequestID   string `yaml:"requestId"`
-		Location    string `yaml:"location"`
-		RetryAfter  string `yaml:"retryAfter"`
+		IfMatch            string `yaml:"ifMatch"`
+		AdminSurfaceDigest string `yaml:"adminSurfaceDigest"`
+		ContentType        string `yaml:"contentType"`
+		ETag               string `yaml:"etag"`
+		RequestID          string `yaml:"requestId"`
+		Location           string `yaml:"location"`
+		RetryAfter         string `yaml:"retryAfter"`
 	} `yaml:"headers"`
 	ContentTypes struct {
 		YAML    string `yaml:"yaml"`

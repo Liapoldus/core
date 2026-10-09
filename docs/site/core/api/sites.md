@@ -13,6 +13,10 @@ site release. Используется generic plugin Admin Action: JSON metadat
 бинарный `.tar.gz` передаются одним `multipart/form-data` запросом; Core
 потоково передаёт архив plugin через общий REST artifact endpoint Plugin SDK и
 не буферизует его целиком. Caddy-specific endpoint в Core не появляется.
+Каждый Admin Action передаёт digest текущего Admin Surface в обязательном
+`X-Liapoldus-Admin-Surface-Digest`; Core сравнивает его с активным descriptor и
+отклоняет устаревший digest до вызова plugin. `If-Match` остаётся отдельным
+resource-level CAS и не используется для surface digest.
 Для первой публикации `If-Match` можно опустить, поскольку ещё нет текущей
 revision; plugin проверяет отсутствие current при пустом
 `expectedCurrentRevision`. Для обновления передаётся точная текущая revision.

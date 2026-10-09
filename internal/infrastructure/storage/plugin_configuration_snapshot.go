@@ -40,6 +40,10 @@ func NewPluginConfigurationSnapshot(ctx context.Context, source interfaces.Plugi
 	if source == nil {
 		return nil, models.PluginConfigurationUnavailable{}
 	}
+	instanceIDs, err := configurationInstanceIDs(ctx, source, instanceIDs)
+	if err != nil {
+		return nil, err
+	}
 	entries := make(map[string]configurationSnapshotEntry, len(instanceIDs))
 	for _, instanceID := range instanceIDs {
 		if instanceID == "" {
@@ -66,8 +70,13 @@ func (snapshot *PluginConfigurationSnapshot) RefreshAll(ctx context.Context) err
 	}
 	snapshot.mu.Lock()
 	defer snapshot.mu.Unlock()
+	instanceIDs, err := configurationInstanceIDs(ctx, snapshot.source, snapshot.instanceIDs)
+	if err != nil {
+		snapshot.state.Store(nil)
+		return err
+	}
 	entries := make(map[string]configurationSnapshotEntry, len(snapshot.instanceIDs))
-	for _, instanceID := range snapshot.instanceIDs {
+	for _, instanceID := range instanceIDs {
 		entry, found, err := readConfigurationSnapshotEntry(ctx, snapshot.source, instanceID)
 		if err != nil {
 			snapshot.state.Store(nil)
@@ -77,6 +86,7 @@ func (snapshot *PluginConfigurationSnapshot) RefreshAll(ctx context.Context) err
 			entries[instanceID] = entry
 		}
 	}
+	snapshot.instanceIDs = append([]string(nil), instanceIDs...)
 	snapshot.state.Store(&configurationSnapshotState{entries: entries})
 	return nil
 }
@@ -100,11 +110,30 @@ func (snapshot *PluginConfigurationSnapshot) Refresh(ctx context.Context, instan
 	}
 	if found {
 		entries[instanceID] = entry
+		if !containsInstanceID(snapshot.instanceIDs, instanceID) {
+			snapshot.instanceIDs = append(snapshot.instanceIDs, instanceID)
+		}
 	} else {
 		delete(entries, instanceID)
 	}
 	snapshot.state.Store(&configurationSnapshotState{entries: entries})
 	return nil
+}
+
+func configurationInstanceIDs(ctx context.Context, source interfaces.PluginConfigurationReader, fallback []string) ([]string, error) {
+	if lister, ok := source.(interfaces.PluginConfigurationInstanceLister); ok {
+		return lister.ListActiveInstances(ctx)
+	}
+	return append([]string(nil), fallback...), nil
+}
+
+func containsInstanceID(instanceIDs []string, target string) bool {
+	for _, instanceID := range instanceIDs {
+		if instanceID == target {
+			return true
+		}
+	}
+	return false
 }
 
 func readConfigurationSnapshotEntry(ctx context.Context, source interfaces.PluginConfigurationReader, instanceID string) (configurationSnapshotEntry, bool, error) {

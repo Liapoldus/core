@@ -3,12 +3,12 @@ info:
   title: Liapoldus Core Management API
   version: 1.0.0
   description: >-
-    Control-plane API единственного Core instance. Состав plugin topology
-    объявляется оператором в core.yaml и статичен на время процесса; Management
-    API не регистрирует и не удаляет instances, а Core не управляет их
-    process/container lifecycle. Desired plugin configuration хранится в SQLite
-    и доставляется репликам через Plugin SDK REST Reload. Public traffic не
-    проходит через этот API. Caddy Admin/group/TLS endpoints отсутствуют.
+    Control-plane API единственного Core instance. Plugin instances входят в
+    membership через аутентифицированную регистрацию и активные leases;
+    Management API не управляет их process/container lifecycle. Desired plugin
+    configuration хранится в SQLite и доставляется репликам через Plugin SDK
+    REST Reload. Public traffic не проходит через этот API. Caddy
+    Admin/group/TLS endpoints отсутствуют.
 servers:
   - url: /
 security:
@@ -261,7 +261,7 @@ paths:
         in: path
         required: true
         schema: { type: string }
-      - $ref: '#/components/parameters/IfMatch'
+      - $ref: '#/components/parameters/AdminSurfaceDigest'
     post:
       operationId: queryPluginAdminPage
       summary: Выполнить schema-bound Admin Surface query
@@ -294,6 +294,7 @@ paths:
         in: path
         required: true
         schema: { type: string }
+      - $ref: '#/components/parameters/AdminSurfaceDigest'
       - $ref: '#/components/parameters/PluginActionIfMatch'
       - $ref: '#/components/parameters/IdempotencyKey'
     post:
@@ -446,16 +447,22 @@ components:
       in: header
       required: true
       schema: { type: string }
-      description: Strong ETag текущего ресурса.
+      description: Strong ETag целевого plugin-owned ресурса; не Admin Surface digest.
+    AdminSurfaceDigest:
+      name: X-Liapoldus-Admin-Surface-Digest
+      in: header
+      required: true
+      schema: { type: string, pattern: '^sha256:[a-f0-9]{64}$' }
+      description: Точный digest из активного Admin Surface для plugin instance.
     PluginActionIfMatch:
       name: If-Match
       in: header
       required: false
       schema: { type: string }
       description: >-
-        Required for JSON actions. Multipart artifact actions may omit this
-        header when creating the first revision; the plugin enforces its
-        metadata-level expectedCurrentRevision CAS.
+        Resource-level CAS precondition. Required for JSON actions. Multipart
+        artifact actions may omit it when creating the first revision; the
+        plugin enforces its metadata-level expectedCurrentRevision CAS.
     IdempotencyKey:
       name: Idempotency-Key
       in: header
