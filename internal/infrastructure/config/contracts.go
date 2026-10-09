@@ -125,6 +125,8 @@ type ManagementWords struct {
 		PluginLinks            string `yaml:"pluginLinks"`
 		PluginLinkTargetSuffix string `yaml:"pluginLinkTargetSuffix"`
 		PluginIDSeparator      string `yaml:"pluginIDSeparator"`
+		ConfigBundlePlan       string `yaml:"configBundlePlan"`
+		ConfigBundleApply      string `yaml:"configBundleApply"`
 	} `yaml:"paths"`
 	OperationKinds struct {
 		PluginSettingsApply    string `yaml:"pluginSettingsApply"`

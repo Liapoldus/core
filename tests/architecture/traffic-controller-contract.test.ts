@@ -7,10 +7,9 @@ const root = join(import.meta.dirname, "../..");
 
 describe("Core traffic-controller settings contract", () => {
 	it("pins strict typed SQLite settings without a runtime config-file path", async () => {
-		const [manifestBytes, schemaBytes, bootstrapBytes] = await Promise.all([
+		const [manifestBytes, schemaBytes] = await Promise.all([
 			readFile(join(root, "contracts/v2/manifest.json")),
 			readFile(join(root, "contracts/v2/traffic-controller.schema.json")),
-			readFile(join(root, "assets/contracts/core.schema.json"), "utf8"),
 		]);
 		const manifest = JSON.parse(manifestBytes.toString("utf8")) as { version: string; files: Record<string, string> };
 		expect(manifest.version).toBe("liapoldus.core.v2");
@@ -28,7 +27,6 @@ describe("Core traffic-controller settings contract", () => {
 		expect(schema.additionalProperties).toBe(false);
 		expect(schema.required).toEqual(["schemaVersion", "listen", "tls", "allowedIdentities"]);
 		expect(Object.keys(schema.properties ?? {}).sort()).toEqual(["allowedIdentities", "listen", "schemaVersion", "tls"]);
-		expect(JSON.parse(bootstrapBytes).properties).not.toHaveProperty("trafficController");
 	});
 
 	it("requires dedicated TLS trust and an exact non-empty identity allow-list", async () => {

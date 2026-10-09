@@ -70,35 +70,6 @@ func auditDefinitions() AuditWords {
 		InvalidLimit: "audit page limit is invalid"}}
 }
 
-func bootstrapDefinitions() bootstrapFieldLists {
-	return bootstrapFieldLists{State: []string{"path"},
-		Management: []string{"listen",
-			"tls",
-			"requestLimits"},
-		ManagementTLS: []string{"certificate",
-			"key",
-			"clientCA"},
-		ManagementRequestLimits: []string{"maxBodyBytes",
-			"headerTimeout",
-			"requestTimeout"},
-		PluginControl: []string{"listen",
-			"publicURL",
-			"tls"},
-		PluginControlTLS: []string{"certificate",
-			"key",
-			"replicaClientCA",
-			"replicaServerCA",
-			"replicaClientCRLs",
-			"replicaServerCRLs"},
-		Plugins: []string{"instanceId",
-			"replicas"},
-		PluginReplica: []string{"replicaId",
-			"endpoint",
-			"expectedPeerIdentity"},
-		PeerIdentity: []string{"commonName",
-			"uniformResourceIdentifier"}}
-}
-
 func runtimeContractDefinitions() RuntimeWords {
 	return RuntimeWords{Commands: struct {
 		Serve    string "yaml:\"serve\""
@@ -187,18 +158,6 @@ func runtimeContractDefinitions() RuntimeWords {
 			DatabaseRestoreFailed:   "Не удалось безопасно восстановить состояние SQLite.",
 			DatabaseCommandUsage:    "команда database требует действие backup или restore и один путь",
 			DatabaseBusy:            "Core использует это состояние; остановите Core перед восстановлением."}}
-}
-
-func fileDefinitions() contractFile {
-	return contractFile{Root: []string{"state",
-		"management",
-		"pluginControl",
-		"plugins"},
-		ManagementBootstrap: managementBootstrapFields{Section: "management",
-			Listen:   "listen",
-			TLS:      "tls",
-			ClientCA: "clientCA"},
-		SecretReference: contractSecretReference{FilePrefix: "file:"}}
 }
 
 func grantDefinitions() PluginSecretGrantPolicy {
@@ -291,6 +250,8 @@ func managementDefinitions() ManagementWords {
 			PluginLinks            string "yaml:\"pluginLinks\""
 			PluginLinkTargetSuffix string "yaml:\"pluginLinkTargetSuffix\""
 			PluginIDSeparator      string "yaml:\"pluginIDSeparator\""
+			ConfigBundlePlan       string "yaml:\"configBundlePlan\""
+			ConfigBundleApply      string "yaml:\"configBundleApply\""
 		}{Healthz: "/healthz",
 			Status:                 "/api/status",
 			Config:                 "",
@@ -315,7 +276,9 @@ func managementDefinitions() ManagementWords {
 			ServiceKeys:            "/api/access/service-keys",
 			PluginLinks:            "/api/plugin-links",
 			PluginLinkTargetSuffix: "/{callerInstanceId}/{targetInstanceId}",
-			PluginIDSeparator:      "/"},
+			PluginIDSeparator:      "/",
+			ConfigBundlePlan:       "/api/config-bundles/plan",
+			ConfigBundleApply:      "/api/config-bundles/apply"},
 		OperationKinds: struct {
 			PluginSettingsApply    string "yaml:\"pluginSettingsApply\""
 			PluginSettingsRollback string "yaml:\"pluginSettingsRollback\""

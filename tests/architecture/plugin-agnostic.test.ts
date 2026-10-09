@@ -9,7 +9,6 @@ const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 describe("plugin-agnostic Core core", () => {
   it("contains no built-in plugin names or plugin-specific dispatch models", async () => {
     const files = [
-      "assets/contracts/core.schema.json",
       "assets/contracts/errors.json",
       "contracts/v1/security-runtime.json",
       "internal/infrastructure/config/bootstrap.go",

@@ -31,7 +31,7 @@ describe("Core release contract bundle", () => {
   it("accepts a bundle whose payload and SHA-256 values match the manifest", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-contract-bundle-"));
     try {
-      await writeBundle(directory, { "errors.json": "{}", "core.schema.json": "{}" });
+		await writeBundle(directory, { "errors.json": "{}" });
       await expect(execFileAsync("node", [verifier, directory])).resolves.toBeDefined();
     } finally {
       await rm(directory, { recursive: true, force: true });

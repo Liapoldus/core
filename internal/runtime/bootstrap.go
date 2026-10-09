@@ -231,6 +231,12 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	})
 	management.CoreSettings = coreSettings
 	management.ValidateSettings = func(raw []byte) error { _, err := config.DecodeSettings(raw); return err }
+	management.ConfigBundles = &application.ConfigBundleService{
+		Configurations: pluginConfigurationService,
+		Operations:     application.OperationService{Store: stores.operationStore},
+		OperationKind:  inventory.management.OperationKinds.PluginSettingsApply,
+		Pending:        inventory.management.Statuses.Pending,
+	}
 	if err := pluginConfigurationService.Recover(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}

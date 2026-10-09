@@ -148,6 +148,7 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if server.dispatchReadiness(response, request, path, requestID) ||
+		server.dispatchConfigBundles(response, request, path, requestID, actor) ||
 		server.dispatchAccess(response, request, path, requestID, actor) ||
 		server.dispatchPluginCollections(response, request, path, requestID, actor) ||
 		server.dispatchPluginLinks(response, request, path, requestID, actor) ||
@@ -157,6 +158,30 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		return
 	}
 	server.writeProblem(response, 404, "not_found", "resource not found", requestID)
+}
+
+func (server *Server) dispatchConfigBundles(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	planPath := server.Management.Paths.ConfigBundlePlan
+	applyPath := server.Management.Paths.ConfigBundleApply
+	if server.ConfigBundles == nil || (path != planPath && path != applyPath) {
+		return false
+	}
+	deps := handlers.ConfigBundleDependencies{
+		WriteJSON: server.writeJSON, WriteProblem: server.writeProblem,
+		WriteCatalogProblem: server.writeCatalogProblem,
+		Plan:                server.ConfigBundles.Plan, Apply: server.ConfigBundles.Apply,
+	}
+	switch {
+	case path == planPath && request.Method == server.Management.Methods.Post:
+		handlers.ConfigBundlePlan(deps, response, request, requestID)
+		return true
+	case path == applyPath && request.Method == server.Management.Methods.Post:
+		handlers.ConfigBundleApply(deps, response, request, requestID, actor)
+		return true
+	default:
+		server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "unsupported config bundle method", requestID)
+		return true
+	}
 }
 
 func (server *Server) authorizeManagementRequest(response http.ResponseWriter, request *http.Request, requestID string) (string, bool) {

@@ -4,8 +4,6 @@
   "version": "1.0.0",
   "errors": [
     {"code":"invalid_request","status":400,"title":"Некорректный запрос","detail":"Тело запроса отсутствует, повреждено или не соответствует опубликованной схеме."},
-    {"code":"bootstrap_invalid","status":422,"title":"Некорректная bootstrap-конфигурация","detail":"Bootstrap core.yaml не соответствует опубликованной схеме."},
-    {"code":"unknown_field","status":422,"title":"Неизвестное поле","detail":"Обнаружено поле вне разрешённой bootstrap-схемы."},
     {"code":"plugin_not_found","status":404,"title":"Плагин не найден","detail":"Указанный plugin instance не существует."},
     {"code":"plugin_config_invalid","status":422,"title":"Некорректная конфигурация плагина","detail":"JSON settings не соответствует schema активного Manifest."},
     {"code":"plugin_revision_conflict","status":412,"title":"Версия конфигурации устарела","detail":"If-Match не соответствует текущей revision; active config не изменён."},

@@ -3,121 +3,42 @@ package config
 import (
 	"encoding/json"
 	"errors"
-	"net"
+	"io"
 	"os"
+	"path/filepath"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"gopkg.in/yaml.v3"
 )
 
-var (
-	ErrUnknownField    = errors.New("unknown bootstrap field")
-	ErrInvalidDocument = errors.New("invalid core bootstrap document")
-)
+var ErrInvalidDocument = errors.New("invalid core document")
 
-type contractSecretReference struct {
-	FilePrefix string `yaml:"filePrefix"`
-}
-
-func LoadFileReferencePrefix() (string, error) {
-	loaded, err := loadContractFile()
-	if err != nil || loaded.SecretReference.FilePrefix == "" {
-		return "", ErrInvalidDocument
+// ReadSecretReference resolves the narrow file: reference used by the private
+// SDK control plane. It is not a Core bootstrap parser and never exposes the
+// reference outside the one authenticated redemption call.
+func ReadSecretReference(bootstrapPath, reference string, maximumBytes int64) ([]byte, error) {
+	const prefix = "file:"
+	if bootstrapPath == "" || maximumBytes <= 0 || len(reference) <= len(prefix) || reference[:len(prefix)] != prefix {
+		return nil, ErrInvalidDocument
 	}
-	return loaded.SecretReference.FilePrefix, nil
-}
-
-type contractFile struct {
-	Root                []string                  `yaml:"root"`
-	ManagementBootstrap managementBootstrapFields `yaml:"managementBootstrap"`
-	SecretReference     contractSecretReference   `yaml:"secretReference"`
-}
-
-// Validate validates a bootstrap document without reading or compiling any
-// traffic configuration, which is owned by the configured traffic plugin.
-func Validate(path string) error {
-	contents, err := os.ReadFile(path)
+	path := reference[len(prefix):]
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(filepath.Dir(bootstrapPath), path)
+	}
+	file, err := os.Open(filepath.Clean(path))
 	if err != nil {
-		return err
+		return nil, ErrInvalidDocument
 	}
-	return ValidateYAML(string(contents))
-}
-
-// ValidateYAML applies the versioned bootstrap schema and network security
-// invariants to an in-memory document.
-func ValidateYAML(document string) error {
-	loaded, err := loadContractFile()
-	if err != nil {
-		return err
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maximumBytes {
+		return nil, ErrInvalidDocument
 	}
-	var parsed yaml.Node
-	if err := yaml.Unmarshal([]byte(document), &parsed); err != nil {
-		return err
+	contents, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	if err != nil || int64(len(contents)) > maximumBytes {
+		clear(contents)
+		return nil, ErrInvalidDocument
 	}
-	if len(parsed.Content) == 0 || parsed.Content[0].Kind != yaml.MappingNode {
-		return ErrInvalidDocument
-	}
-	root := parsed.Content[0]
-	for index := 0; index+1 < len(root.Content); index += 2 {
-		if !contains(loaded.Root, root.Content[index].Value) {
-			return ErrUnknownField
-		}
-	}
-	if err := validateSchema(root); err != nil {
-		return err
-	}
-	return validateManagementSecurity(root, loaded.ManagementBootstrap)
-}
-
-func loadContractFile() (contractFile, error) {
-	return fileDefinitions(), nil
-}
-
-func validateManagementSecurity(root *yaml.Node, fields managementBootstrapFields) error {
-	management := mappingNode(root, fields.Section)
-	listen, ok := fieldValue(management, fields.Listen)
-	if !ok {
-		return ErrInvalidDocument
-	}
-	host, _, err := net.SplitHostPort(listen)
-	if err != nil {
-		return ErrInvalidDocument
-	}
-	address := net.ParseIP(host)
-	if address != nil && address.IsLoopback() {
-		return nil
-	}
-	tls := mappingNode(management, fields.TLS)
-	clientCA := mappingNode(tls, fields.ClientCA)
-	if clientCA == nil || clientCA.Kind != yaml.ScalarNode || clientCA.Value == "" {
-		return ErrInvalidDocument
-	}
-	return nil
-}
-
-func validateSchema(root *yaml.Node) error {
-	contents, err := assets.Contract(assets.CoreSchema)
-	if err != nil {
-		return err
-	}
-	return validateDocumentSchema(root, contents)
-}
-
-func validateDocumentSchema(root *yaml.Node, contents []byte) error {
-	var raw any
-	if err := root.Decode(&raw); err != nil {
-		return err
-	}
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	var instance any
-	if err := json.Unmarshal(encoded, &instance); err != nil {
-		return err
-	}
-	return validateJSONSchemaValue(instance, contents)
+	return contents, nil
 }
 
 // ValidateJSONSchemaDocument applies a plugin-owned JSON Schema to an opaque
@@ -150,33 +71,4 @@ func validateJSONSchemaValue(instance any, contents []byte) error {
 		return err
 	}
 	return schema.Validate(instance)
-}
-
-func mappingNode(node *yaml.Node, name string) *yaml.Node {
-	if node == nil || node.Kind != yaml.MappingNode {
-		return nil
-	}
-	for index := 0; index+1 < len(node.Content); index += 2 {
-		if node.Content[index].Value == name {
-			return node.Content[index+1]
-		}
-	}
-	return nil
-}
-
-func fieldValue(node *yaml.Node, name string) (string, bool) {
-	value := mappingNode(node, name)
-	if value == nil || value.Kind != yaml.ScalarNode {
-		return "", false
-	}
-	return value.Value, true
-}
-
-func contains(values []string, candidate string) bool {
-	for _, value := range values {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
 }

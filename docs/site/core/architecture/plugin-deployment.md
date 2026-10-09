@@ -195,7 +195,7 @@ mTLS и проверка peer identity обязательны также пов�
 Windows named-pipe профиль нельзя объявлять поддерживаемым до отдельного
 conformance. Меж-Pod соединение использует явно заданное сетевое правило.
 
-Источник desired policy — SQLite Core, а не `core.yaml` и не статический
+Источник desired policy — SQLite Core, а не project files и не статический
 contract asset. Management API предоставляет список и ресурс пары
 `callerInstanceId/targetInstanceId`; `PUT` целиком заменяет набор правил пары,
 `DELETE` удаляет его. Каждая запись имеет монотонную revision и strong ETag:

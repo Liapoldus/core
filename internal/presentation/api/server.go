@@ -22,6 +22,7 @@ type Server struct {
 	ServiceAccounts    []models.ServiceAccount
 	mu                 sync.RWMutex
 	Operations         application.OperationService
+	ConfigBundles      *application.ConfigBundleService
 	PluginAdminControl *plugins.SDKAdminControl
 	PluginLinks        *application.PluginLinkPolicyService
 	TrafficRollouts    *application.TrafficRolloutService

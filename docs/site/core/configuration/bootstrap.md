@@ -20,5 +20,5 @@ restart, остаются pending до явного перезапуска оп�
 
 Plugin instances входят в membership после аутентифицированной регистрации и
 активной lease. Static endpoint registry и файловые override не читаются.
-См. [Settings API](../api/config), [миграцию](migration) и
+См. [Settings API](../api/config) и
 [модель регистрации replicas](../architecture/plugin-deployment).

@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS plugin_config_generations (
 );
 
 -- Replica rows are observations of declared replicas, never a declaration. The
--- replica set, each endpoint and each expected peer identity are owned by
--- core.yaml, so this table intentionally has no endpoint, identity or
+-- replica set, each endpoint and each expected peer identity are owned by the
+-- deployment/runtime registration layer, so this table intentionally has no endpoint, identity or
 -- composition column: it only records what a replica was last observed doing so
 -- readiness and drift can be derived without Core re-deriving desired topology.
 CREATE TABLE IF NOT EXISTS plugin_replicas (

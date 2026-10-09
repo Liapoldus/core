@@ -1,7 +1,6 @@
 {
   "files": [
     { "source": "errors.json", "target": "errors.json" },
-    { "source": "core.schema.json", "target": "core.schema.json" },
     { "source": "management-fields.yaml", "target": "management-fields.yaml" }
   ]
 }

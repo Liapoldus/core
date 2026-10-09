@@ -9,7 +9,7 @@ Management API с CAS/ETag и audit.
 | --- | --- |
 | [Bootstrap и запуск](bootstrap) | SQLite state и источник настроек при старте. |
 | [Plugin configuration API](/core/api/config) | CAS, versioned JSON, REST Reload/config pull и operation lifecycle. |
-| [Миграция](migration) | Внешний CLI workflow для старого YAML bootstrap. |
+| [Config bundles](/core/api/config-bundles) | API-only доставка Git revision из standalone CLI. |
 | [Безопасность](security) | Раздельные REST и peer-network identities, grants и redaction. |
 | [Транспорты](transports) | Трафик, который обслуживает отдельный Server plugin. |
 | [Каталог ошибок](errors) | Публичные safe errors и problem response. |

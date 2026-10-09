@@ -55,6 +55,47 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/config-bundles/plan:
+    post:
+      operationId: planConfigBundle
+      summary: Валидировать project config bundle без записи desired state
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigBundleRequest' }
+      responses:
+        '200':
+          description: Read-only plan с текущими revision/digest по services
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigBundlePlanResponse' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /api/config-bundles/apply:
+    post:
+      operationId: applyConfigBundle
+      summary: Принять bundle и создать Core operations
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigBundleRequest' }
+      responses:
+        '202':
+          description: Service-scoped Core operations созданы
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigBundleApplyResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /api/plugin-links:
     get:
       operationId: listPeerLinkPolicies
@@ -599,6 +640,78 @@ components:
             state: { type: string, enum: [ready, degraded, recovering, unavailable, 'not-ready'] }
             reason: { type: string }
           additionalProperties: false
+        requestId: { type: string }
+      additionalProperties: false
+    ConfigBundleRequest:
+      type: object
+      required: [project, bundle, target]
+      properties:
+        project:
+          type: object
+          required: [id, revision]
+          properties:
+            id: { type: string, minLength: 1 }
+            repository: { type: string }
+            revision: { type: string, minLength: 1 }
+          additionalProperties: false
+        bundle:
+          type: object
+          required: [schemaVersion, digest]
+          properties:
+            schemaVersion: { type: string, const: core-config/v2 }
+            digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+            services:
+              type: array
+              uniqueItems: true
+              items:
+                type: object
+                required: [id, settings]
+                properties:
+                  id: { type: string, minLength: 1 }
+                  settings: { type: object, additionalProperties: true }
+                additionalProperties: false
+            links:
+              type: array
+              items: { type: object, additionalProperties: true }
+          additionalProperties: false
+        target:
+          type: object
+          required: [environment]
+          properties:
+            environment: { type: string, minLength: 1 }
+            expectedGeneration: { type: integer, minimum: 0 }
+          additionalProperties: false
+      additionalProperties: false
+    ConfigBundlePlanResponse:
+      type: object
+      required: [plan, requestId]
+      properties:
+        plan:
+          type: object
+          required: [valid, digest, services]
+          properties:
+            valid: { type: boolean }
+            digest: { type: string }
+            services:
+              type: array
+              items:
+                type: object
+                required: [id, currentRevision, currentDigest, schemaVersion]
+                properties:
+                  id: { type: string }
+                  currentRevision: { type: integer, minimum: 0 }
+                  currentDigest: { type: string }
+                  schemaVersion: { type: integer, minimum: 0 }
+                additionalProperties: false
+            warnings: { type: array, items: { type: string } }
+          additionalProperties: false
+        requestId: { type: string }
+      additionalProperties: false
+    ConfigBundleApplyResponse:
+      type: object
+      required: [operations, requestId]
+      properties:
+        operations: { type: array, items: { type: string, minLength: 1 } }
         requestId: { type: string }
       additionalProperties: false
     PluginInstance:

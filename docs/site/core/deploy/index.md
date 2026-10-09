@@ -34,6 +34,3 @@ audit и durable operations. Резервную копию создавайте 
 остановите Core и плагины, восстановите согласованные Core/plugin данные, затем
 запустите plugin replicas и Core. При старте Core валидирует effective settings;
 невалидная desired revision остаётся pending.
-
-Старые YAML-файлы не входят в runtime backup requirement. Их можно передать
-только offline migration tool; см. [миграцию конфигурации](../configuration/migration).

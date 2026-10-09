@@ -7,8 +7,6 @@ import (
 )
 
 const (
-	ConfigFields            = "config-fields.yaml"
-	CoreSchema              = "core.schema.json"
 	ManagementFields        = "management-fields.yaml"
 	AuditFields             = "audit-fields.yaml"
 	ErrorsJSON              = "errors.json"

@@ -23,8 +23,6 @@ func ErrorDefinitions() ErrorPublication {
 		ProblemFormat: "application/problem+json; details contain no secret values, filesystem paths, private keys or raw plugin payloads.",
 		Errors: []ErrorDefinition{
 			{Code: "invalid_request", Status: 400, Title: "Некорректный запрос", Detail: "Тело запроса отсутствует, повреждено или не соответствует опубликованной схеме."},
-			{Code: "bootstrap_invalid", Status: 422, Title: "Некорректная bootstrap-конфигурация", Detail: "Bootstrap core.yaml не соответствует опубликованной схеме."},
-			{Code: "unknown_field", Status: 422, Title: "Неизвестное поле", Detail: "Обнаружено поле вне разрешённой bootstrap-схемы."},
 			{Code: "plugin_not_found", Status: 404, Title: "Плагин не найден", Detail: "Указанный plugin instance не существует."},
 			{Code: "plugin_config_invalid", Status: 422, Title: "Некорректная конфигурация плагина", Detail: "JSON settings не соответствует schema активного Manifest."},
 			{Code: "plugin_revision_conflict", Status: 412, Title: "Версия конфигурации устарела", Detail: "If-Match не соответствует текущей revision; active config не изменён."},
