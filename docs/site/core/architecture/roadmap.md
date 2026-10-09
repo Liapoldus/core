@@ -79,7 +79,7 @@ v2 считается готовой только как согласованн�
   long-poll directory. Проверены policy update/remove, deny-by-default,
   caller-scoping, directory wake-up и немедленное исключение replica после
   lease expiry без отдельного фонового reaper.
-- **Server и forms-db:** их текущая v1 реализация остаётся regression baseline;
+- **Server и forms-db:** их текущая реализация остаётся regression baseline;
   Server-specific scaling/storage/ACME conformance и forms-db multi-replica
   SQL/cohort compatibility перенесены в v3. В v2 Core/SDK rollout и product
   compatibility проверяются на нейтральных fixtures; эти product repositories
@@ -89,7 +89,7 @@ v2 считается готовой только как согласованн�
   migration/rollback. Runtime проходит WASM sandbox/limits, artifact integrity,
   compatibility rollout и Domain authorization/fencing без cross-plugin ACID
   обещаний. Runtime-side HTTP terminal adapter использует только неизменённый
-  v1 Server contract; изменение Server repository или переход на новую Server
+  опубликованный Server contract; изменение Server repository или переход на новую Server
   API входит в v3.
 - **Сквозной и эксплуатационный gate:** clean-environment сценарий запускает один
   Core и отдельно размещённые плагины; проверяет restart/reconnect, конфигурацию,
@@ -108,13 +108,13 @@ v2 считается готовой только как согласованн�
 prompts — в `bigpikle/`; эти каталоги не публикуются VitePress и не заменяют
 нормативные owner TODO.
 
-## Будущие этапы — вне v1
+## Будущие этапы — после Core v2
 
-Не создавать v1 API, SQLite state, dependencies или acceptance под функции
-будущих этапов. v2 охватывает self-registration/rollout, внешнее размещение,
+Не создавать дополнительные Core API, SQLite state, dependencies или acceptance
+под функции будущих этапов. Core v2 охватывает self-registration/rollout, внешнее размещение,
 смешанные peer transports, Domain и Runtime. Server/forms-db repositories не
-меняются в v2; их v1 paths — только regression targets. Studio развивается
-отдельно и не входит в текущий v2 план. Caddy-L4/public TCP/UDP, CAPTCHA/Identity,
+меняются в v2; их текущие paths — только regression targets. Studio и standalone
+CLI входят в текущий v2 межрепозиторный workflow. Caddy-L4/public TCP/UDP, CAPTCHA/Identity,
 Python FFI binding поверх C ABI, Core embedding API, Plugin SDK in-process/static
 composition, все дальнейшие Server/forms-db product changes (включая Server
 scaling/shared storage и forms-db multi-replica SQL compatibility/website content),
@@ -177,8 +177,8 @@ process сохраняет REST+mTLS и тот же lifecycle contract. Ни о�
 ### V3: Server и forms-db product development
 
 В v3 возобновить работу в `plugins/server/` и `plugins/forms-db/`; до этого их
-текущие v1 behavior/contracts не менять, кроме отдельно одобренного исправления
-критического v1 дефекта. Server scope объединяет multi-replica registration,
+  текущие behavior/contracts не менять, кроме отдельно одобренного исправления
+  критического дефекта. Server scope объединяет multi-replica registration,
 release compatibility, shared site/CertMagic storage и ACME conformance с
 Caddy-L4/public TCP/UDP отдельными gates. forms-db scope объединяет replica и
 SQL schema compatibility/rollout для PostgreSQL, MySQL и MariaDB с website/
@@ -192,7 +192,7 @@ plugins, а общие v2 lifecycle gates покрываются fixtures.
 через plugin-owned UI, а endpoint/порт панели отделён от публичной доставки
 сайта. Публикацию и HTTP listener необходимо согласовать с Server plugin; Core
 хранит только opaque plugin settings и остаётся product-agnostic. Эта задача не
-меняет v1 contracts и не предполагает, что текущие права `platform-admin`
+меняет опубликованные contracts и не предполагает, что текущие права `platform-admin`
 автоматически являются пользовательской ролевой моделью сайта.
 
 Порядок: (1) выбрать ownership между одним расширенным forms-db и отдельным

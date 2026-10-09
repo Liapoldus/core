@@ -25,7 +25,7 @@ pending → running → succeeded
 
 `succeeded`, `failed` и `degraded` — terminal для данной operation. Для
 исправления создаётся новая mutation/operation с актуальным `If-Match`; отдельного
-endpoint отмены в v1 нет. Отмена HTTP запроса до принятия durable operation не
+endpoint отмены нет. Отмена HTTP запроса до принятия durable operation не
 означает отмену уже начатого внешнего effect.
 
 Каждая mutation сначала сохраняет Core operation reservation и scope ключа

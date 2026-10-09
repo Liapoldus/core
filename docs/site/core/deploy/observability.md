@@ -1,6 +1,6 @@
 # Наблюдаемость Core и plugins
 
-В v1 Core предоставляет ограниченную наблюдаемость control plane:
+Core предоставляет ограниченную наблюдаемость control plane:
 
 - `GET /healthz` сообщает, что процесс Core отвечает.
 - `GET /api/status` возвращает readiness и drift по подключённым plugin
@@ -11,7 +11,7 @@
 - Management audit хранится в SQLite и фиксирует actor, действие, ресурс,
   operation ID, digest, timestamp, результат и request ID.
 
-Core v1 не предоставляет Prometheus `/metrics`, экспорт трассировок,
+Core не предоставляет Prometheus `/metrics`, экспорт трассировок,
 настраиваемые log sinks или централизованный сбор логов plugins. Не
 настраивайте scrape или alert на несуществующем Core metrics endpoint. Для
 проверки readiness используйте `/healthz`, `/api/status` и standalone CLI;

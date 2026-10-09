@@ -3,9 +3,9 @@
 Audit и durable operations хранятся в SQLite, а не в JSONL-файлах. Контракт
 полей и API pagination задан в [OpenAPI](/spec/management.openapi.yaml).
 
-> **Статус:** описанная ниже поверхность — нормативная цель Core v1; она не
+> **Статус:** описанная ниже поверхность — нормативная цель Core v2; она не
 > является утверждением, что вся реализация уже готова. Проверенные gates и
-> открытые работы перечислены в [roadmap Core v1](../architecture/v1-migration-roadmap#порядок-реализации).
+> открытые работы перечислены в [roadmap Core v2](../architecture/roadmap#порядок-реализации).
 
 Core audit фиксирует actor service-key/Controller-binding ID, action,
 resource type/ID, result, timestamp, request ID и применимые digests. Он не

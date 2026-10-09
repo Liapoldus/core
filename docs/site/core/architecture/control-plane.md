@@ -7,7 +7,7 @@
 отдельной библиотеке Plugin SDK. `pluginprotocol` в этой модели не участвует в
 управлении Core и используется только для plugin-to-plugin взаимодействия.
 
-## Состояние Core в v1
+## Состояние Core в v2
 
 SQLite хранит только control-plane state, нужный для восстановления и объяснения
 операций:
@@ -32,7 +32,7 @@ Core проверяет БД и контрольные данные, восст�
 
 - Core SQLite: desired JSON generations, replica endpoints/identities, scoped
   secret-grant metadata, operations, audit и active generation. Peer policies
-  и plugin-to-plugin grants не входят в v1.
+  и plugin-to-plugin grants не входят в текущий v2 scope.
 - Plugin binaries: оператор устанавливает, запускает, обновляет и резервирует
   их отдельно; Core не хранит package store и не имеет process-control API.
 - Plugin storage: продуктовые данные и runtime artifacts. Server plugin отдельно
@@ -142,7 +142,7 @@ reconciliation повторно сверяет identity и active generation и 
 `Reload` при расхождении. Core не перезапускает plugin и не повторяет
 пользовательский Call.
 
-## Частичный rollout и rollback в v1
+## Частичный rollout и rollback в v2
 
 Принята стратегия **roll-forward**. После продвижения candidate `active` не
 возвращается автоматически к старой версии из-за частичного отказа. Подтвердившие
@@ -211,16 +211,16 @@ recovery gate. Потеря exact incarnation имеет terminal outcome
 Plugin SDK REST только для раскрытия plugin-owned secret references. Их нельзя
 использовать для разрешения межплагинных вызовов.
 
-## Межплагинная авторизация: граница v2
+## Межплагинная авторизация
 
-В v1 Core не хранит peer policy, не распространяет её и не выдаёт
-plugin-to-plugin interaction grants. Каждый вызывающий plugin отвечает за свою
-authorization policy; protocol library получает только generic consumer-supplied
-authorizer и не знает продуктов или именованных capability contracts.
+В Core v2 Core хранит peer policy, распространяет её и выдаёт
+plugin-to-plugin interaction grants. Каждый plugin получает только разрешённую
+выборку policy для своей replica; protocol library не знает продуктов или
+именованных capability contracts.
 Централизованные caller/target policies, generation/ACK и bounded drain
-отложены до v2 и не являются частью Core v1 SQLite или Management API.
+являются частью Core v2 SQLite и Management API.
 
-В v2 caller→target policy становится Core-owned durable desired state в
+Caller→target policy становится Core-owned durable desired state в
 SQLite и редактируется только защищённым Management API. `GET/PUT/DELETE`
 ресурса пары использует монотонную revision/ETag и CAS; успешная мутация
 аудируется и публикует новый immutable in-memory snapshot. Bootstrap YAML не

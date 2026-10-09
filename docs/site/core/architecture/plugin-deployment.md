@@ -1,6 +1,6 @@
 # Размещение plugins
 
-## Core v1: registration и leases
+## Core v2: registration и leases
 
 Оператор устанавливает и запускает Core и каждый plugin самостоятельно.
 Plugin replica регистрирует себя через Plugin SDK REST+mTLS; Core проверяет
@@ -9,13 +9,13 @@ identity, сохраняет membership и lease и использует тол�
 endpoint declarations. Core не устанавливает, не запускает, не останавливает,
 не перезапускает, не масштабирует и не удаляет plugin workloads.
 
-Поддерживаемая v1-модель — отдельно установленный и вручную запускаемый plugin
-process. Docker/Compose, Swarm и Kubernetes как официально поддерживаемые
-deployment-профили требуют собственных smoke gates и относятся к v2. После
+Поддерживаемая базовая модель — отдельно установленный и вручную запускаемый
+plugin process. Docker/Compose, Swarm и Kubernetes как официально поддерживаемые
+deployment-профили требуют собственных smoke gates. После
 перезапуска plugin он регистрируется заново и получает новую lease; до этого
 исключён из membership. Core не повторяет неизвестный plugin call.
 
-## V1: регистрация без управления workload
+## Регистрация без управления workload
 
 Core остаётся одним экземпляром. Оператор, systemd, Docker, Swarm или Kubernetes
 запускает и масштабирует plugin workloads. Core **не** устанавливает, запускает,
@@ -46,7 +46,7 @@ peer-directory и обновления через защищённый long-poll
 недоступности Core новый rollout невозможен, но уже открытые data-plane
 соединения не проксируются через Core и не переигрываются.
 
-## V2: единая модель rollout
+## Единая модель rollout
 
 Единица rollout — пара `(release digest, config generation)`. Core назначает
 replicas в старую и новую когорты, вызывает REST `Reload`, сверяет ACK и

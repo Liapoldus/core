@@ -1,4 +1,4 @@
-# Критерии готовности Core v1
+# Критерии готовности Core v2
 
 Страница задаёт обязательные acceptance gates. Она не является журналом
 прошлых запусков: gate считается пройденным только при наличии свежего
@@ -18,29 +18,29 @@
 | Plugin operation | Оператор выбранными средствами устанавливает и запускает Core, Server plugin и forms-db plugin. Caddy — внутренняя реализация Server plugin. Replicas регистрируются через Plugin SDK mTLS и удерживают membership leases; Core не выполняет install/start/stop/restart/scale/delete ни в одной версии. Deployment profiles подтверждаются отдельными native smoke gates. |
 | Peer networking | `pluginprotocol` — generic peer-only library в четырёх слоях; собственные plugin methods регистрируются вызывающим plugin. TCP/QUIC и security profile выбираются без изменения application API; remote/production требует mTLS, а явный plaintext разрешён только для TCP loopback development без fallback. |
 | Security | Management API, per-replica REST mTLS, peer-network trust roots и grants разделены. Проверены identity mismatch, revocation, secret redaction, authorization, audit и отсутствие credentials/secrets в API, logs, errors и durable config. |
-| Server plugin | HTTP/1.1, HTTP/2/3, TLS/ACME, static, proxy/upstream pools, WebSocket, SSE, plugin dispatch, site manifest/artifact, `current`/`previous` и restart recovery проходят plugin-owned conformance. Caddy-L4, TCP/UDP listeners и relay не входят в v1/v2 scope. Ни одного Caddy runtime/data-plane кода в Core. |
-| Product plugins | `forms-db` соответствует собственным схемам и runtime tests; общий lifecycle использует Plugin SDK. `captcha` и `identity` полностью заморожены и исключены из v1/v2 acceptance. Core остаётся product-agnostic. |
+| Server plugin | HTTP/1.1, HTTP/2/3, TLS/ACME, static, proxy/upstream pools, WebSocket, SSE, plugin dispatch, site manifest/artifact, `current`/`previous` и restart recovery проходят plugin-owned conformance. Caddy-L4, TCP/UDP listeners и relay не входят в текущий Core scope. Ни одного Caddy runtime/data-plane кода в Core. |
+| Product plugins | `forms-db` соответствует собственным схемам и runtime tests; общий lifecycle использует Plugin SDK. `captcha` и `identity` полностью заморожены и исключены из v2 acceptance. Core остаётся product-agnostic. |
 | Durable recovery | SQLite, immutable in-memory snapshot, operation journal, replica ACK и слоты `active`/`previous`/`staging` согласуются после каждого crash point; оператор отдельно восстанавливает plugin-owned persistent data по runbook. |
 | SQLite backup/restore | `liapoldus core database backup/restore` вызывает поддержанный Core API/execution adapter. Backup создаёт новый файл через online snapshot и проверяет schema version, `quick_check(1)`, foreign keys и права `0600`; overwrite запрещён. Restore валидирует файл, атомарно заменяет существующий SQLite state и отказывает при удерживаемом Core state lock. Восстановление сохраняет конфигурационные bytes и не включает plugin-owned data или secret bytes. |
 | API and documentation | OpenAPI, versioned bundle/apply contracts, generated mirrors, standalone CLI, security и recovery docs совпадают с runtime. В Core нет активной user-facing CLI surface и нет дублирующих исторических acceptance summaries. |
-| Platform gate | VitePress build; `core`: `make check`, `go vet ./...`, `make staticcheck-u1000`, macOS/Linux builds; `plugin-sdk`: tests, `go build`, `go vet`; `pluginprotocol`: `make check`, `go build`, `go vet`; активные plugins (`server`, `forms-db`): contract suite, `go test ./...`, `go build ./...`, `go vet ./...`; smoke вручную размещённых plugin endpoints на поддерживаемых ОС. Caddy-L4 и Core process/workload management не входят в v1. |
+| Platform gate | VitePress build; `core`: `make check`, `go vet ./...`, `make staticcheck-u1000`, macOS/Linux builds; `plugin-sdk`: tests, `go build`, `go vet`; `pluginprotocol`: `make check`, `go build`, `go vet`; активные plugins (`server`, `forms-db`): contract suite, `go test ./...`, `go build ./...`, `go vet ./...`; smoke вручную размещённых plugin endpoints на поддерживаемых ОС. Caddy-L4 и Core process/workload management не входят в Core scope. |
 
 ## Рабочее evidence
 
 У каждой строки implementation owner хранит исполняемые тесты и команды в своём
 `TODO.md`. После завершения slice он обновляет соответствующий TODO и ссылку
 здесь на тест/команду. Числа тестов и старые результаты в этой странице не
-копируются. Пока все обязательные gates выше не имеют свежего PASS, Core v1
+копируются. Пока все обязательные gates выше не имеют свежего PASS, Core v2
 не считается готовым или production-ready.
 
 ## Рамки
 
 - CAPTCHA, Identity/OIDC/OAuth и их продуктовые реализации отложены до v3;
-  их репозитории не входят в active workspace/v1/v2 gates. Это не исключает обязательную
+  их репозитории не входят в active workspace и v2 gates. Это не исключает обязательную
   authentication/authorization, mTLS, аудит и redaction самого Management API.
 - `archive/plugins/tls-issuer/` и `test/` не входят в runtime workspace.
 - Реализация не зависит от настроенного Git remote. Canonical SDK module path
   утверждён как `github.com/Liapoldus/plugin-sdk`; неизвестные URLs других
   repos не угадываются, а публикация требует отдельного запроса.
-- PostgreSQL/S3 не входят в Core v1; forms-db product storage — отдельный scope.
-  Multi-Core deployment не входит в v1.
+- PostgreSQL/S3 не входят в Core; forms-db product storage — отдельный scope.
+  Multi-Core deployment не входит в текущий v2 scope.

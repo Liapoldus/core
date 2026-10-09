@@ -2,7 +2,7 @@
 
 Management API — отдельная control-plane поверхность Core. Все операции
 авторизуются на сервере; browser-клиент не получает Core service credential.
-В v1 Core имеет одну системную роль `platform-admin`; персональные учётные
+В Core v2 есть одна системная роль `platform-admin`; персональные учётные
 записи и RBAC-модель не входят в Core.
 
 ## Сетевые клиенты
@@ -29,8 +29,8 @@ identity Core проверяется, Bearer credential хранится в за
 
 Первый `platform-admin` credential создаётся локальной bootstrap-командой и
 показывается ровно один раз. SQLite хранит только verifier и metadata.
-Management API v1 поддерживает выпуск и чтение metadata credentials; отдельные
-API rotation/revocation в v1 не входят. Срок действия проверяется при каждом
+Management API поддерживает выпуск и чтение metadata credentials; отдельные
+API rotation/revocation не входят в текущий scope. Срок действия проверяется при каждом
 запросе. Mutation записывает actor key, action, resource, result и request ID
 в audit; raw credentials и TLS material туда не попадают.
 
@@ -41,13 +41,13 @@ Management TLS roots отделены от plugin workload roots и Server ACME 
 
 За исключением unauthenticated `/healthz`, все `/api/**` endpoints требуют
 валидный Bearer key с ролью `platform-admin`. Более мелкие пользовательские
-роли и permissions в v1 не предоставляются.
+роли и permissions в Core v2 не предоставляются.
 
 | Операция | Дополнительное правило |
 | --- | --- |
 | Чтение status, plugin metadata/settings, operations и audit | Нужен `platform-admin`; каждый запрос к `operationId` повторно авторизуется. |
 | Изменение settings и rollback | Нужны `Idempotency-Key` и `If-Match` согласно OpenAPI; операции проверяются deny-by-default. |
-| Plugin process/workload lifecycle | В v1 таких Management API операций нет. Оператор вручную запускает и обслуживает plugin processes. |
+| Plugin process/workload lifecycle | Таких Management API операций нет. Оператор вручную запускает и обслуживает plugin processes. |
 | Plugin Admin Surface query/action | Нужны `platform-admin`, instance scope, active surface digest, schema-valid metadata и action-specific limits. |
 | Выпуск service key | Только bootstrap/admin authority; raw token возвращается только при выдаче и не доступен через list/read/audit. |
 

@@ -7,7 +7,7 @@ Caddy runtime config и применяет его без изменения Core
 Management pass-through.
 
 ACME issuance/renewal и readiness сертификата принадлежат Server plugin и
-CertMagic. В v1 у него одна active replica и persistent filesystem для
+CertMagic. В Core v2 у него одна active replica и persistent filesystem для
 сертификатов; Core не хранит Caddy certificate state и не предоставляет
 `/api/tls` endpoints. Site artifacts и `current/previous` также принадлежат
 plugin storage.

@@ -39,13 +39,13 @@ an operator-managed adapter; Core does not supervise or install workloads.
 ## Architecture and implementation rules
 
 - Core owns generic plugin instance metadata, desired settings, authenticated
-  replica observations and leases, durable operations, Core Management access and audit. Core v1
+  replica observations and leases, durable operations, Core Management access and audit. Core
   does not own plugin-to-plugin interaction policies or interaction grants; that
   authorization surface is deferred to v2. This is distinct from scoped,
   one-use secret grants: Core must expose those through the Plugin SDK REST
   control API for opaque secret references used by a plugin's own configuration.
   Secret grants are not plugin-to-plugin permissions and must never be added to
-  `pluginprotocol`. Keep the v1 grant API generic and bound to the authenticated
+  `pluginprotocol`. Keep the grant API generic and bound to the authenticated
   replica, exact active generation, reference and purpose. Core must not contain
   plugin-name, capability-name, provider, or product-specific branches.
 - In v2, generic caller→target peer-link policy is Core-owned desired state in
@@ -85,7 +85,7 @@ an operator-managed adapter; Core does not supervise or install workloads.
   `Rollback` swaps `active` and `previous` before notifying replicas. Partial
   rollout is roll-forward: keep the promoted generation as desired, record
   per-replica acknowledgements, mark the instance degraded, and fence replicas
-  that have not acknowledged that generation. Core v1 has no background retry
+  that have not acknowledged that generation. Core has no background retry
   loop; reconciliation after a Core/plugin restart may re-announce the same
   immutable generation, relying on the Plugin SDK's idempotent Reload contract.
   Do not replay a non-idempotent operation whose outcome is unknown. Secrets are never
@@ -155,7 +155,7 @@ an operator-managed adapter; Core does not supervise or install workloads.
 - `tests/unit/` covers deterministic public behavior through CLI/controlled
   fixtures. `tests/integration/` covers the compiled Core process, Management
   API, SQLite recovery, filesystem state and plugin child-process behavior.
-- Until v1 is complete, contract tests fetch the canonical documentation
+- Until the Core v2 contract is complete, contract tests fetch the canonical documentation
   contracts from `Liapoldus/liapoldus.github.io` `main`; network failure must
   fail verification rather than silently use an untracked fallback.
 
@@ -167,7 +167,7 @@ an operator-managed adapter; Core does not supervise or install workloads.
 - `make arch-lint` uses the repository's Docker image as CI does; do not replace
   it with a host-installed linter.
 - At milestone completion, also run applicable race checks, executable golden
-  vectors, macOS/Linux builds and manually deployed service smoke. Do not declare v1 ready while
+  vectors, macOS/Linux builds and manually deployed service smoke. Do not declare Core v2 ready while
   any required cross-component conformance gate remains open.
 
 ## Contract ownership

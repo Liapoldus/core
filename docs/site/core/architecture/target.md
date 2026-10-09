@@ -25,29 +25,29 @@ commit в standalone `liapoldus` CLI. CLI materializes canonical config bundle,
 выполняет plan/approval и вызывает Core Management API. Core не содержит Git,
 project parser, deployment provider или пользовательский CLI.
 
-Caddy — реализация отдельного first-party Server plugin process. В v1 plugin
+Caddy — реализация отдельного first-party Server plugin process. В Core v2 plugin
 обслуживает только публичный HTTP/HTTPS traffic; L4 и Caddy-L4 исключены из
-бинарника и acceptance v1 и перенесены в v3. Core не встраивает Caddy,
+бинарника и текущего acceptance scope. Core не встраивает Caddy,
 не запускает отдельный Caddy binary и не содержит Caddy-specific data plane.
 Оператор вручную запускает Server plugin и forms-db binaries; Core подключается
 к ним.
-В v1 Server plugin имеет ровно одну active replica.
+В Core v2 Server plugin имеет ровно одну active replica.
 
-Состав v1 фиксирован: **три запускаемых сервиса** — Core, Server plugin и
+Состав Core v2 фиксирован: **три запускаемых сервиса** — Core, Server plugin и
 forms-db plugin — и **две общие Go-библиотеки** — Plugin SDK и
-`pluginprotocol`. CAPTCHA и Identity остаются замороженными вне v1.
+`pluginprotocol`. CAPTCHA и Identity остаются замороженными вне Core v2.
 
 | Владелец | Ответственность |
 | --- | --- |
 | Core | SQLite applied desired state, Management API, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Config bundle provenance, commit SHA, digest, CAS и idempotency принимаются через API. Git, project parsing и CLI принадлежат standalone CLI. Core не содержит product-specific branches и не управляет процессами/workloads. |
-| Plugin SDK | Отдельный независимый Go-модуль. В v1/v2 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v3. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
+| Plugin SDK | Отдельный независимый Go-модуль. Предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter относится к следующему этапу. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
 | Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v3. |
 | forms-db plugin | Простые формы, собственные schemas, capabilities и данные; отдельный управляемый оператором сервис. |
 
 `plugins/captcha` и `plugins/identity` (OIDC/OAuth) полностью заморожены и
-исключены из active workspace и v1/v2 до явной разморозки для v3. Их исходники, тесты и contracts не
-изменяются и не входят в acceptance v1. Это не
+исключены из active workspace и Core v2 до явной разморозки. Их исходники, тесты и contracts не
+изменяются и не входят в acceptance Core v2. Это не
 отменяет authentication/authorization, mTLS, аудит и redaction Core Management
 API.
 
@@ -66,16 +66,15 @@ generation/operation/replica rollout. Один и тот же flow исполь�
 для удалённого Core и в GitHub CI; target isolation и remote approval проверяет
 CLI/CI до API request.
 
-## Будущие этапы после v1
+## Будущие этапы после Core v2
 
-Саморегистрация replicas и leases входят в текущий Core runtime. Следующий v2
-этап добавляет candidate rollout с весами и traffic-controller confirmation,
+Саморегистрация replicas и leases входят в текущий Core runtime. Следующий этап
+может добавить candidate rollout с весами и traffic-controller confirmation,
 а также smoke-gated deployment profiles Docker/Swarm/Kubernetes без управления
 workload из Core, Domain и Runtime и смешанные peer transports. Caller→target
-link policies — редактируемое
-Core-owned desired state в SQLite и Management API, не статический bootstrap
-YAML. Server и forms-db остаются на текущем v1 baseline;
-их repositories не изменяются в v2, а generic rollout проверяется на fixtures.
+link policies — редактируемое Core-owned desired state в SQLite и Management API,
+не статический bootstrap YAML. Server и forms-db остаются на текущем baseline;
+их repositories не изменяются в Core v2, а generic rollout проверяется на fixtures.
 Studio и standalone CLI входят в v2 межрепозиторный deployment workflow. Публичный L4/Caddy-L4,
 Identity/CAPTCHA, pluginprotocol C ABI/Python FFI, Core embedding и SDK
 in-process/static composition, все новые Server/forms-db product changes
@@ -84,7 +83,7 @@ in-process/static composition, все новые Server/forms-db product changes
 принадлежат оператору. Core не зависит от инструментов размещения и не управляет
 workloads ни в одной версии.
 Core никогда не выполняет autoscaling по нагрузке. До открытия этих этапов нет
-активного v1 API, таблиц SQLite, разрешений, бинарных зависимостей или
+дополнительного API, таблиц SQLite, разрешений, бинарных зависимостей или
 acceptance gates. Внутренние carriers `pluginprotocol` обслуживают только
 межплагинное взаимодействие и не означают публичный L4 relay; их доступный
 набор по версиям системы описан в [границе протокола](protocol).
@@ -151,13 +150,13 @@ Embedding и in-process plugins образуют одну границу дов�
 получают process isolation или Core↔plugin mTLS; режим предназначен только для
 доверенного кода. Встроенные плагины нельзя независимо обновить без пересборки
 host binary. Реализационные этапы и gates приведены в
-[v3 roadmap](v1-migration-roadmap). Публичный L4/Caddy-L4 и Identity/CAPTCHA
+[v3 roadmap](roadmap). Публичный L4/Caddy-L4 и Identity/CAPTCHA
 также относятся к v3; их product contracts принадлежат соответствующим owners.
 
-## Запуск плагинов в v1
+## Запуск плагинов в Core v2
 
 Core остаётся одним экземпляром; active-active и shared SQLite не поддерживаются.
-В v1 нет deployment modes и управления workload. Оператор отдельно устанавливает
+В Core v2 нет deployment modes и управления workload. Оператор отдельно устанавливает
 и вручную запускает Core, Server plugin и forms-db plugin. Оператор отвечает за
 их process lifecycle, обновление бинарников, автозапуск после перезагрузки ОС,
 перезапуск, лимиты ресурсов и сетевую доступность. Core не получает shell,
@@ -166,13 +165,13 @@ process-control, Docker socket или provider credentials и не может з
 плагины. Каждая replica регистрирует REST endpoint и подтверждённую mTLS
 identity через Plugin SDK. Core выполняет только handshake,
 per-replica mTLS, health/readiness, конфигурационный `Reload`, scoped secret
-grants и аудит. Централизованные peer policies в v1 отсутствуют. Запуск
-плагинов в контейнерах и управление контейнерами не входят в v1.
+grants и аудит. Централизованные peer policies принадлежат следующему этапу.
+Запуск плагинов в контейнерах и управление контейнерами не входят в Core v2.
 
 Candidate rollout с traffic weights и deployment профили Docker/Swarm/Kubernetes
-внешне управляемых workloads — v2; установку и обновление выполняет оператор.
+внешне управляемых workloads — следующий этап; установку и обновление выполняет оператор.
 Локальное process supervision Core не планируется. Проектирование не добавляет
-v1 API, таблицы, permissions или acceptance gates. Общие REST и plugin-to-plugin
+дополнительные API, таблицы, permissions или acceptance gates. Общие REST и plugin-to-plugin
 контракты остаются одинаковыми и не зависят от будущего способа размещения.
 
 ### Ручной запуск и подключение
@@ -246,9 +245,9 @@ application config files: он сам запрашивает их у Core по R
 redemption проверяет instance, replica, revision, purpose и срок grant. Плагин
 удаляет secret bytes при смене revision или shutdown. V1 grants не являются
 разрешением на plugin-to-plugin вызов; централизованные call grants отложены
-до v2.
+до следующего этапа.
 
-## Plugin-to-plugin взаимодействие в v1
+## Plugin-to-plugin взаимодействие
 
 `pluginprotocol` даёт plugins общий транспорт, но Core не хранит peer policy,
 не формирует peer directory и не авторизует вызовы. Вызывающий plugin владеет
@@ -258,8 +257,8 @@ default — deny. Вызов идёт напрямую между plugins, Core 
 plugins.
 
 Централизованные `caller → target/method/transport` rules, их generation,
-распространение через Core и rollout/drain относятся к v2. Не добавлять для
-них v1 endpoints, SQLite tables или Plugin SDK methods.
+распространение через Core и rollout/drain относятся к следующему этапу. Не
+добавлять для них дополнительные endpoints, SQLite tables или Plugin SDK methods.
 
 ## `pluginprotocol`: универсальная межплагинная сеть
 
@@ -303,7 +302,7 @@ plugin; peer-соединения и там остаются на `pluginprotoco
 
 ## Независимый Plugin SDK и Core↔plugin control plane
 
-Plugin SDK — отдельный Go-модуль, не импортирующий `pluginprotocol`. В v1 он
+Plugin SDK — отдельный Go-модуль, не импортирующий `pluginprotocol`. В Core v2 он
 даёт plugin общий REST server/client, endpoints для Manifest и settings schema,
 health/readiness, `Reload`, exact-generation config pull и общие
 структуры settings, метрик, структурированных логов и безопасной обработки
@@ -321,7 +320,7 @@ ACK не меняется; в in-process режиме config source читает
 snapshot через instance-scoped interface. Детали и ограничения границы доверия
 зафиксированы в [v3-модели SDK](protocol#целевое-расширение-v3-in-process-adapter-и-монолитная-композиция).
 
-В v1 Core импортирует Plugin SDK REST client, но не `pluginprotocol`. Plugin может
+В Core v2 Core импортирует Plugin SDK REST client, но не `pluginprotocol`. Plugin может
 независимо импортировать Plugin SDK, `pluginprotocol`, обе библиотеки или ни одну
 из них в зависимости от своих функций. Утверждённый canonical module path SDK —
 `github.com/Liapoldus/plugin-sdk`; текущий временный local path и imports должны
@@ -339,7 +338,7 @@ Server plugin хранит на своём persistent filesystem ACME/CertMagic 
 releases. `current` и `previous` ссылаются на immutable release IDs;
 activation/rollback атомарны в границах plugin storage. Оператор отвечает за
 persistent filesystem и его backup/restore. PostgreSQL, S3,
-shared RWX volume и Caddy HA в v1 не требуются. Масштабирование Caddy выше одной
+shared RWX volume и Caddy HA в Core v2 не требуются. Масштабирование Caddy выше одной
 replica — отдельное будущее изменение: оно потребует общего storage с
 распределёнными lock semantics и новым conformance gate; CertMagic координирует
 сертификаты между экземплярами только при общем storage
@@ -359,7 +358,7 @@ Core применяет общие authorization, grants, audit и protocol boun
 Эта schema владеет всеми public HTTP/HTTPS listener-ами; Management bind
 остаётся в bootstrap Core. Каждый route имеет ровно один terminal handler:
 static release, reverse proxy или plugin capability с объявленным mode.
-Middleware chain и общий `continue`/authorization decision отсутствуют в v1:
+Middleware chain и общий `continue`/authorization decision не входят в Core v2:
 plugin capability завершает HTTP response. Routes рассматриваются в порядке
 массива, первый совпавший route завершается своим terminal handler; предикаты
 одного matcher объединяются через AND. Identical matcher отклоняется при
@@ -400,7 +399,7 @@ Management listener полностью отделён от public traffic; Serve
 становится reverse proxy для этого API. Core управляет generic plugin
 instances/settings, заранее зарегистрированными endpoints, scoped secret
 grants, operations, service credentials и audit. Plugin-to-plugin interactions
-не входят в API v1. API не
+не входят в Core Management API. API не
 предоставляет Caddy Admin pass-through, Caddy TLS endpoints или Caddy group
 endpoints. Caddy-specific действия доступны только как plugin-declared Admin
 Surface через общий авторизованный REST action boundary.
@@ -413,7 +412,7 @@ port-forward или managed agent, если это объявлено target cap
 `platform-admin` на каждом запросе,
 пишет audit без token/body/secret и не размещает Management API за Caddy public
 listener. Пользовательские роли и environment-scoped permissions не входят в
-Core v1.
+Core v2.
 
 ## SQLite и модель данных
 
@@ -465,10 +464,10 @@ SQLite integrity и foreign-key validation, проверяет journal/pointers 
 всех обязательных Core-owned files, затем восстанавливает in-memory snapshot и
 согласует его с plugin ACK. Backup Core включает согласованный SQLite backup и
 Core-owned versioned package/config artifacts; backup Caddy release/ACME data
-выполняется отдельно на его persistent volume. У Core v1 нет PostgreSQL/S3
+выполняется отдельно на его persistent volume. У Core v2 нет PostgreSQL/S3
 dependencies; product plugins могут иметь собственный storage scope.
 
-ER-модель целевого v1 control store показывает `plugin_instance`,
+ER-модель целевого Core v2 control store показывает `plugin_instance`,
 `plugin_config_generations` с slot rows `active`/`previous`/`staging`,
 `operation`,
 `replica_generation`, `service_key` и `audit_event`. Для plugin config это
@@ -483,7 +482,7 @@ JSON в отдельных plugin-specific таблицах.
 
 - Только Core SQLite является source of truth desired-конфигурации.
 - Plugin-specific settings не разбираются и не hardcode-ятся в Core.
-- Core всегда один; Server plugin в v1 также один active instance.
+- Core всегда один; Server plugin в Core v2 также один active instance.
 - Core уведомляет plugin через REST `Reload`, plugin сам pull-ит immutable
   versioned generation и возвращает exact acknowledgement; config push RPC
   для управления plugin lifecycle не используется.
@@ -491,9 +490,9 @@ JSON в отдельных plugin-specific таблицах.
   `staging` хранит недоступный извне candidate для recovery. Partial rollout и
   rollback следуют согласованному roll-forward правилу.
 - Все plugin processes вручную запускает и обслуживает оператор. Core никогда
-  не выполняет install/start/stop/restart/scale/delete для v1 plugins.
-- В v1 Core не централизует peer authorization; plugin-owned authorizer
-  применяется fail-closed. Центральный policy plane запланирован в v2.
+  не выполняет install/start/stop/restart/scale/delete для plugins.
+- В Core v2 Core не централизует peer authorization; plugin-owned authorizer
+  применяется fail-closed. Центральный policy plane запланирован на следующий этап.
 - Все активные HTTP/HTTPS listener-ы принадлежат Server plugin; Core не является traffic
   proxy и не включает Caddy runtime.
 - Public contracts и ошибки не должны обещать отсутствующие lifecycle,
@@ -502,5 +501,5 @@ JSON в отдельных plugin-specific таблицах.
   private paths или sensitive payloads не раскрываются в log/error/audit.
 
 Подробный порядок миграции и readiness gates находится в
-[плане Core v1](v1-migration-roadmap). Protocol source и JSON schemas —
+[плане Core v2](roadmap). Protocol source и JSON schemas —
 только в [pluginprotocol](https://github.com/Liapoldus/pluginprotocol).

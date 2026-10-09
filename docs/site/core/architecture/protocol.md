@@ -1,8 +1,9 @@
 # Плагинные библиотеки и граница взаимодействия
 
 В системе есть две независимые Go-библиотеки с разными назначениями. Общий
-Core↔plugin lifecycle принадлежит Plugin SDK: в v1/v2 отдельные процессы
-используют REST; in-process adapter для монолитной композиции относится к v3.
+Core↔plugin lifecycle принадлежит Plugin SDK: отдельные процессы используют
+REST; in-process adapter для монолитной композиции относится к следующему
+продуктовому этапу.
 Универсальная
 межплагинная сеть принадлежит `pluginprotocol`. Ни одна из библиотек не владеет
 контрактами конкретных продуктов: схемы и методы CAPTCHA, Caddy, forms-db и
@@ -18,14 +19,13 @@ OpenAPI конкретных владельцев.
 
 | Библиотека | Ответственность | Что не входит |
 | --- | --- | --- |
-| Plugin SDK, отдельный Go-модуль | В v1/v2 — общий REST server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи и безопасные ошибки. В v3 — тот же lifecycle contract через REST или явно выбранный in-process adapter для монолитной сборки. | Межплагинный transport, Core Management API operations и продуктовые capabilities. |
+| Plugin SDK, отдельный Go-модуль | Общий REST server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи и безопасные ошибки. В следующем этапе тот же lifecycle contract может получить явно выбранный in-process adapter для монолитной сборки. | Межплагинный transport, Core Management API operations и продуктовые capabilities. |
 | `pluginprotocol` | Generic plugin-to-plugin communication: регистрация пользовательских методов/handlers, connect/listen, unary calls и streams, физические transport/security providers. | Core lifecycle REST, config distribution, Manifest/settings/admin surfaces, готовые product RPC или имена plugin methods. |
 
 Plugin SDK и `pluginprotocol` не импортируют друг друга. Плагин использует одну
 библиотеку, обе или ни одну — в зависимости от того, нужен ли ему общий REST
 lifecycle и/или прямое взаимодействие с другими плагинами. Core использует
-Plugin SDK: в v1/v2 — REST client, в v3 — явно выбранный REST либо in-process
-adapter. Core не импортирует `pluginprotocol`.
+Plugin SDK через REST client. Core не импортирует `pluginprotocol`.
 
 TLS/mTLS реализуют библиотеки, а не конкретные плагины: Plugin SDK владеет
 Core↔plugin REST security, `pluginprotocol` — security peer carriers. Plugin
@@ -50,13 +50,13 @@ TLS.
 
 Локальное расположение модуля — соседний каталог `plugin-sdk/` workspace.
 Утверждённый canonical Go module path — `github.com/Liapoldus/plugin-sdk`;
-согласованная миграция текущих local imports остаётся частью v1.
+согласованная миграция текущих local imports остаётся частью Core v2.
 
-## Plugin SDK: REST lifecycle v1
+## Plugin SDK: REST lifecycle
 
 Каждый plugin предоставляет защищённый control endpoint по общему REST
 контракту SDK. Core адресует каждую зарегистрированную replica отдельно;
-Core↔plugin REST использует mTLS и уникальную identity каждой replica. В v1
+Core↔plugin REST использует mTLS и уникальную identity каждой replica. В Core v2
 оператор выдаёт credentials через внешний CA/PEM source; Core не выпускает
 identity и не внедряет её через process/container bootstrap. Trust roots control
 plane отделены от plugin-to-plugin trust roots. Plaintext или bearer-only
@@ -181,22 +181,22 @@ loopback TCP plaintext development profile допускается также в 
 аутентифицирует peer и не может обслуживать удалённый адрес. QUIC остаётся
 зашифрованным и аутентифицированным, а локальные IPC используют mTLS. SDK
 loopback plaintext development profile для Core REST — отдельное целевое
-расширение, не входящее в текущий v1 contract. Межплагинный trust не разделяет
+расширение, не входящее в текущий production contract. Межплагинный trust не разделяет
 trust roots с Core REST.
 
-В v1 Core не хранит и не распространяет caller→target/method/transport
-policies: вызывающий plugin владеет своей authorization policy и передаёт её
-consumer-у. В v2 generic caller→target link policy хранится в Core SQLite,
-авторизуется через Management API и публикуется SDK long-poll directory.
+В Core v2 caller→target/method/transport policies хранятся в Core SQLite,
+авторизуются через Management API и распространяются через SDK-defined
+directory. Plugin не владеет центральной policy и получает только разрешённую
+выборку для своей replica. `pluginprotocol` исполняет выбранный carrier.
 `pluginprotocol` только исполняет выбранный разрешённый carrier и не получает
 Core policy storage/API. Core не является CA и не стоит между peers как data
 proxy. `pluginprotocol` не выдаёт Core settings, не делает config pull и не
 предоставляет `Reload`.
 
-V1 secret grants относятся только к раскрытию opaque secret references из
+Secret grants относятся только к раскрытию opaque secret references из
 plugin settings и выдаются через Plugin SDK REST по его owner contract. Они не
 авторизуют межплагинные вызовы. Call-scoped plugin-to-plugin grants и их
-централизованная выдача относятся к v2; `pluginprotocol` не выпускает,
+централизованная выдача относятся к следующему этапу; `pluginprotocol` не выпускает,
 валидирует или погашает grants.
 
 ## Физический transport и безопасность
@@ -219,11 +219,11 @@ plugin-to-plugin connections используют разные identities и tru
 реализуются infrastructure adapters; presentation экспонирует публичный
 library facade. Product contracts в этот модуль не переносятся.
 
-### Целевое расширение v2: локальные IPC carriers
+### Следующий этап: локальные IPC carriers
 
-Поддержка локального IPC — задача v2. Она не входит в v1 acceptance и не должна
-добавляться в v1 как скрытый fallback или предварительный кодовый путь. До
-открытия v2 реализация и контракты v1 не меняются.
+Поддержка локального IPC относится к следующему этапу. Она не является частью
+Core v2 и не должна добавляться как скрытый fallback или предварительный кодовый
+путь. До отдельного утверждения реализация и контракты Core v2 не меняются.
 
 В v2 `pluginprotocol` предоставляет четыре явно выбираемых carrier-а:
 

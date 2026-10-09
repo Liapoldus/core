@@ -4,8 +4,8 @@
 [public/spec/management.openapi.yaml](/spec/management.openapi.yaml).
 Core endpoints управляют plugin desired state, settings apply, зарегистрированной
 replica membership, Admin Surface, operations, access и audit.
-Plugin-to-plugin interaction и cookie policies не входят в Core Management API
-v1. В v1 API не предоставляет installation или
+Plugin-to-plugin interaction и cookie policies не входят в Core Management API.
+API не предоставляет installation или
 process/container lifecycle operations для плагинов.
 
 Traffic settings сохраняются как raw plugin-owned JSON document; Server plugin

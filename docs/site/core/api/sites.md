@@ -1,6 +1,6 @@
 # Site publishing
 
-Core v1 не предоставляет `/api/sites` и не владеет Caddy group release API.
+Core не предоставляет `/api/sites` и не владеет Caddy group release API.
 Публикация site artifacts — функция Server plugin и доступна через его
 объявленную Admin Surface. Server plugin хранит immutable releases и
 `current/previous` на persistent filesystem; конфигурация самой traffic-схемы

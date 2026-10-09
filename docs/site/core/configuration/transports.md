@@ -1,7 +1,7 @@
 # Public transports
 
 HTTP/1.1, HTTP/2/3, TLS, WebSocket и SSE обслуживает отдельный
-`plugins/server` process на базе Caddy. В v1 у одного Core допускается ровно
+`plugins/server` process на базе Caddy. В текущем scope у одного Core допускается ровно
 одна active Server replica. Core не принимает public requests и не реализует
 traffic sockets.
 
@@ -14,7 +14,7 @@ resources. Deployment automation обращается к Core API и внешн�
 считаются только профили, прошедшие отдельные native smoke gates; наличие
 playbook или manifest само по себе support не подтверждает.
 
-Публичные TCP/UDP listeners, relay, Caddy-L4 и P2P не входят в v1/v2 и
-перенесены в v3. Транспорт TCP или QUIC внутри `pluginprotocol` — отдельная внутренняя
+Публичные TCP/UDP listeners, relay, Caddy-L4 и P2P не входят в текущий Core scope и
+отложены до следующего этапа. Транспорт TCP или QUIC внутри `pluginprotocol` — отдельная внутренняя
 сеть plugin↔plugin и не означает наличие публичного L4 data plane. См.
 [Acceptance](acceptance) и [целевую архитектуру](../architecture/target).

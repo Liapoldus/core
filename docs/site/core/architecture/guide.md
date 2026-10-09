@@ -8,10 +8,10 @@ schemas, ошибки и Admin Surface.
 
 Plugin SDK существует как отдельный Go module. Утверждённый canonical import
 path — `github.com/Liapoldus/plugin-sdk`; coordinated migration текущих local
-imports входит в v1. Normative HTTP contract и API лежат в самом SDK; этот гайд
+imports входит в Core v2. Normative HTTP contract и API лежат в самом SDK; этот гайд
 описывает только продуктовую последовательность.
 См. [границы библиотек](protocol), [целевую архитектуру](target) и
-[план перехода](v1-migration-roadmap).
+[план реализации](roadmap).
 
 ## Plugin control lifecycle
 

@@ -8,6 +8,6 @@ TLS verification и безопасный retry определены в [конт
 Отдельной Core upstream DSL нет.
 
 Plugin-to-plugin вызовы идут напрямую через `pluginprotocol`; Core не
-маршрутизирует payload и не хранит interaction policy в v1. Разрешения peer
+маршрутизирует payload и не хранит interaction policy в текущем базовом scope. Разрешения peer
 вызова принадлежат plugin-owned configuration и локальному policy consumer-а.
 См. [транспорты](transports) и [границы библиотек](../architecture/protocol).

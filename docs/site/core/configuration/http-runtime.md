@@ -18,12 +18,12 @@ Server plugin получает полную revision точным config pull. S
 Server plugin напрямую принимает public traffic и напрямую вызывает разрешённые
 plugins по mTLS. Он не обращается к Management API Core за пользовательскими
 запросами; Core остаётся control plane для конфигураций, grants, общих policy,
-operations и audit. В v1 разрешён ровно один active Caddy instance, а его
+operations и audit. В текущем scope разрешён ровно один active Caddy instance, а его
 ACME/site runtime state сохраняется на собственном persistent filesystem.
 
 Settings schema Server plugin задаёт только public HTTP/HTTPS listeners и ordered
 routes. Первый совпавший route выполняет ровно один terminal handler; route
-matchers не являются middleware chain и не поддерживают `continue` в v1.
+matchers не являются middleware chain и не поддерживают `continue`.
 Строгая schema не принимает Caddyfile или raw Caddy JSON. Режимы TLS —
 automatic ACME, custom secret refs или явно разрешённый plaintext; HTTP/3
 требует TLS. Reverse-proxy, matcher и TLS правила подробно закреплены на
@@ -36,5 +36,5 @@ Plugin SDK REST artifact endpoint, без буферизации artifact в Cor
 
 Поведение HTTP plugin actions описывает owner contract Server plugin; общий
 plugin lifecycle задаёт Plugin SDK, а peer calls — [pluginprotocol source](https://github.com/Liapoldus/pluginprotocol). Состав
-v1-проверок приведён в [acceptance matrix](acceptance), а целевая архитектура —
+Текущий набор проверок приведён в [acceptance matrix](acceptance), а целевая архитектура —
 в [каноническом документе](../architecture/target).

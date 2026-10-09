@@ -3,7 +3,7 @@
 Management API управляет Core desired-state: plugin instance metadata и
 settings, access, operations и audit. Membership plugin replicas определяется
 аутентифицированной регистрацией и активными leases.
-В v1 API не управляет plugin-to-plugin interaction policies. Оно не
+API не управляет plugin-to-plugin interaction policies. Оно не
 устанавливает, не запускает, не останавливает, не перезапускает, не
 масштабирует и не удаляет plugin processes/containers. Оно не проксирует public
 traffic, не предоставляет Caddy Admin API и не содержит Caddy-specific route,

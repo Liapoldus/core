@@ -1,12 +1,13 @@
 # Архитектура Core
 
 Каноническая модель — [целевая архитектура](target). Она определяет singleton
-Core, SQLite source of truth, REST pull-based plugin lifecycle, прямые
-plugin-to-plugin policies и отдельный Server plugin.
+Core API, SQLite source of truth, REST pull-based plugin lifecycle, прямые
+plugin-to-plugin policies и отдельный Server plugin. Проектом и deployment
+управляет внешний standalone CLI; Core не содержит пользовательскую CLI.
 
 | Документ | Назначение |
 | --- | --- |
-| [Roadmap v2/v3](v1-migration-roadmap) | Согласованные этапы и межрепозиторные gates. |
+| [Roadmap v2/v3](roadmap) | Согласованные этапы и межрепозиторные gates. |
 | [Целевые решения](target) | Нормативные роли, state и security. |
 | [Control plane](control-plane) | REST Reload/config pull, active/previous generations и internal staging для recovery. |
 | [Runtime components](core) | Компактная карта владельцев. |
@@ -17,4 +18,4 @@ plugin-to-plugin policies и отдельный Server plugin.
 Страница [статуса реализации](implementation) отделяет подтверждённое текущее
 поведение от целевой архитектуры. При расхождении implementation не меняет
 нормативный target: сначала зафиксировать gap в соответствующем TODO, затем
-закрыть его тестами и реализацией по [roadmap](v1-migration-roadmap).
+закрыть его тестами и реализацией по [roadmap](roadmap).
