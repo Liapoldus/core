@@ -4,11 +4,12 @@
 
 ```sh
 export CORE_SQLITE_PATH=/var/lib/liapoldus/core.sqlite
-core init
-core serve
+liapoldus core start --target local
 ```
 
-`core init` однократно создаёт SQLite и начальную revision собственных настроек.
+Core сам однократно создаёт SQLite и начальную revision собственных настроек до
+открытия Management API. `liapoldus core start` только передаёт environment и
+управляет процессом; он не открывает SQLite.
 Первоначальные значения можно передать через `CORE_INIT_MANAGEMENT_LISTEN`,
 `CORE_INIT_MANAGEMENT_CERTIFICATE`, `CORE_INIT_MANAGEMENT_KEY`,
 `CORE_INIT_MANAGEMENT_CLIENT_CA`, `CORE_INIT_CONTROL_LISTEN`,
@@ -18,7 +19,7 @@ core serve
 читаются только при первичной инициализации. Секреты передаются как ссылки на
 файлы/монтирования, а не как значения.
 
-Повторный `core init` для существующей базы завершается конфликтом. Для
+Повторный bootstrap для существующей базы завершается конфликтом. Для
 изменения настроек после инициализации используется versioned Settings API;
 Core хранит desired и effective revisions отдельно. Изменения, которым нужен
 restart, остаются pending до явного перезапуска оператором.

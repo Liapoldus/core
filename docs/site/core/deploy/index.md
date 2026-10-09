@@ -12,17 +12,19 @@ export CORE_SQLITE_PATH=/var/lib/liapoldus/core.sqlite
 export CORE_INIT_MANAGEMENT_LISTEN=127.0.0.1:8080
 export CORE_INIT_MANAGEMENT_CERTIFICATE=/run/secrets/management.crt
 export CORE_INIT_MANAGEMENT_KEY=/run/secrets/management.key
-core init
-core serve
+liapoldus core start --target local
 ```
 
-`core init` допустим только для новой базы. `CORE_INIT_*` читаются один раз;
-`core serve` их не использует. Bootstrap полный список переменных и поведение
-revision описывает в [руководстве bootstrap](../configuration/bootstrap).
+При первом старте Core сам однократно использует `CORE_INIT_*`, создаёт SQLite и
+начальную revision до открытия Management API. Core не имеет собственного CLI;
+`liapoldus` передаёт environment и управляет процессом через target adapter.
+Bootstrap полный список переменных и поведение revision описывает в
+[руководстве bootstrap](../configuration/bootstrap).
 
 ## Plugins и rollout
 
-Core API управляет plugin settings и rollout. Membership plugin replicas
+Core API управляет plugin settings и rollout. Standalone CLI собирает bundle из
+Git commit и отправляет его через API. Membership plugin replicas
 определяется аутентифицированной регистрацией и активными leases; статический
 список endpoints в конфигурационном файле отсутствует. Plugin процессы
 разворачивает и перезапускает оператор или отдельная deployment-система.
@@ -38,4 +40,4 @@ audit и durable operations. Резервную копию создавайте 
 невалидная desired revision остаётся pending.
 
 Старые YAML-файлы не входят в runtime backup requirement. Их можно передать
-только `core-migrate`; см. [миграцию конфигурации](../configuration/migration).
+только offline migration tool; см. [миграцию конфигурации](../configuration/migration).

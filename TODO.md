@@ -2,8 +2,9 @@
 
 ## Подготовка перед v2
 
-- [x] Runtime bootstrap читается из ENV; `core init` создаёт SQLite settings
-  один раз. `serve` не ищет YAML/JSON файлы и не применяет ENV overrides.
+- [ ] V2 bootstrap cutover: Core сам однократно создаёт SQLite settings из
+  `CORE_INIT_*` при первом запуске до открытия Management API; `core init` и
+  `core serve` удаляются, а запуском Core управляет standalone `liapoldus` CLI.
 - [x] Settings Core хранятся в SQLite с CAS revisions, audit, desired/effective
   состоянием, pending restart и offline recovery к прежней revision.
 - [x] SQL, storage schema/migrations и постоянные диагностические определения
@@ -20,7 +21,7 @@
   требующие повторной authenticated registration.
 - [x] Удалить runtime bootstrap-loader fixture и перевести legacy YAML smoke на
   `core-migrate --dry-run`. Runtime child-process сценарии используют
-  `CORE_SQLITE_PATH`, `core init` и settings API; оставшийся YAML golden-vector
+  `CORE_SQLITE_PATH`, bootstrap settings API и standalone CLI; оставшийся YAML golden-vector
   проверяет только validator миграционного формата. Lifecycle, backup/restore
   и Core→plugin E2E покрыты отдельно.
 - [ ] Завершить code-owned generation публичных schema/OpenAPI/error contracts
@@ -36,10 +37,24 @@
 
 ## V2 — приоритетный этап
 
+- [ ] Удалить Core CLI радикально одним breaking slice: `cmd/core` command
+  dispatcher, `internal/presentation/cli`, `cmd/core-migrate`, CLI
+  contracts/tests и CLI docs.
+- [ ] Согласовать и опубликовать Core Management API contract для canonical
+  config bundle: commit SHA, bundle digest, schema version, target metadata,
+  idempotency, CAS, plan/apply и operation observation.
+- [ ] Реализовать cross-repository contract tests с `Liapoldus/cli`; Core не
+  импортирует CLI и не открывает SQLite через CLI.
+- [ ] Перевести local/remote/multi-target deployment на standalone CLI и
+  GitHub CI. Core принимает только API requests; local process bootstrap и
+  lifecycle выполняет CLI/adapter.
+- [ ] Обновить backup/restore/observability runbooks на `liapoldus core`
+  commands и Management API; удалить `/core/cli/` как поддерживаемую surface.
 - Поддержать standalone Linux, Docker, Swarm и Kubernetes только после native
   smoke каждого профиля. Наличие deployment manifests само по себе не означает
   поддержку.
-- Изменение конфигурации и управление rollout выполняются через Core API.
+- Изменение конфигурации и управление rollout выполняются через Core API,
+  вызываемый standalone CLI из immutable Git revision.
 - Гарантировать seamless candidate rollout только на профилях с traffic
   controller, поддерживающим веса. Для standalone такую гарантию не заявлять.
 - Core остаётся независимым от Ansible и не содержит управления его playbooks,
@@ -49,10 +64,10 @@
 
 - Продолжить инфраструктуру Ansible в отдельном репозитории; продуктовые
   репозитории и Studio не зависят от него.
-- Развивать Studio как отдельную универсальную среду для Core и plugins: web
-  обслуживает конкретный Core, desktop работает с разными Core и локальным
-  монолитом. Plugin configuration UI поставляет plugin; Studio встраивает его
-  как изолированный iframe. Общий SSH bridge не принадлежит Ansible plugin.
+- Развивать Studio как отдельную среду проектов, файлов, Git и Studio plugins.
+  Studio не имеет Core API adapter; target connections, deploy и Core
+  lifecycle принадлежат standalone CLI/CI. Plugin configuration UI поставляет
+  plugin; Studio встраивает только declarative surfaces.
 - Отдельно описать и согласовать конкретные v3 API/contracts до реализации.
 
 ## Проверки последнего прохода

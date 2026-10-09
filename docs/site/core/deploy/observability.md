@@ -5,16 +5,16 @@
 - `GET /healthz` сообщает, что процесс Core отвечает.
 - `GET /api/status` возвращает readiness и drift по подключённым plugin
   replicas.
-- Core CLI `inspect` показывает состояние SQLite, объявленные endpoints,
-  поколения конфигурации и durable operations в пределах своей безопасной
-  redacted-модели.
+- Standalone `liapoldus status` и `liapoldus operation watch` получают через
+  Management API состояние SQLite-derived generations, endpoints и durable
+  operations в пределах безопасной redacted-модели.
 - Management audit хранится в SQLite и фиксирует actor, действие, ресурс,
   operation ID, digest, timestamp, результат и request ID.
 
 Core v1 не предоставляет Prometheus `/metrics`, экспорт трассировок,
 настраиваемые log sinks или централизованный сбор логов plugins. Не
 настраивайте scrape или alert на несуществующем Core metrics endpoint. Для
-проверки readiness используйте `/healthz`, `/api/status` и CLI inspection;
+проверки readiness используйте `/healthz`, `/api/status` и standalone CLI;
 доступ к Management API защищён согласно
 [модели безопасности](../api/authentication).
 

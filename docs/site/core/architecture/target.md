@@ -1,6 +1,6 @@
-# Целевая архитектура Core v1
+# Целевая архитектура Core v2
 
-Эта страница — каноническая нормативная цель Core v1. Она описывает
+Эта страница — каноническая нормативная цель Core v2. Она описывает
 архитектуру, к которой должна прийти реализация, и сама по себе не подтверждает
 готовность кода. Фактическое состояние и незакрытые проверки ведутся отдельно в
 [матрице реализации](implementation) и репозиторных TODO: [Core](https://github.com/Liapoldus/core/blob/main/TODO.md),
@@ -13,12 +13,17 @@ fallback и compatibility shims удаляются в том же законче
 
 ## Модель продукта
 
-Core — единственный экземпляр control plane и единственный источник
+Core — единственный экземпляр runtime control plane и источник применённой
 desired-конфигурации всех подключённых сервисов. Core сохраняет конфигурацию в
 SQLite, строит immutable in-memory generation и сообщает плагинам по REST, что
 появилось новое поколение. Плагин сам запрашивает у Core точную версию и
 применяет её; Core не отправляет конфигурацию в теле `Reload`. Запросы
 пользователя к публичным сайтам не проходят через Management API.
+
+Studio не обращается к Core. Она работает с Project/Git и передаёт immutable
+commit в standalone `liapoldus` CLI. CLI materializes canonical config bundle,
+выполняет plan/approval и вызывает Core Management API. Core не содержит Git,
+project parser, deployment provider или пользовательский CLI.
 
 Caddy — реализация отдельного first-party Server plugin process. В v1 plugin
 обслуживает только публичный HTTP/HTTPS traffic; L4 и Caddy-L4 исключены из
@@ -34,7 +39,7 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 
 | Владелец | Ответственность |
 | --- | --- |
-| Core | SQLite desired state, Management API/CLI, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Plugin-to-plugin interaction policies и interaction grants относятся к v2. Replicas регистрируются через Plugin SDK mTLS. Core не содержит product-specific branches и не управляет процессами/workloads. |
+| Core | SQLite applied desired state, Management API, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Config bundle provenance, commit SHA, digest, CAS и idempotency принимаются через API. Git, project parsing и CLI принадлежат standalone CLI. Core не содержит product-specific branches и не управляет процессами/workloads. |
 | Plugin SDK | Отдельный независимый Go-модуль. В v1/v2 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v3. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
 | Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v3. |
@@ -46,6 +51,21 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 отменяет authentication/authorization, mTLS, аудит и redaction Core Management
 API.
 
+## V2 deployment boundary
+
+При первом старте Core сам один раз создаёт SQLite и initial settings revision
+из `CORE_INIT_*`, затем открывает Management API. Команды `core init`, `core
+serve`, `core database` и `core inspect` не являются частью Core v2. `liapoldus
+core start` может передать bootstrap environment и управлять локальным процессом;
+CLI не открывает Core SQLite.
+
+`liapoldus apply --project ./project --revision <commit> --target <target>`
+читает exact Git revision, строит bundle и отправляет его через API. Core
+атомарно записывает bundle и provenance в SQLite, затем запускает обычный
+generation/operation/replica rollout. Один и тот же flow используется локально,
+для удалённого Core и в GitHub CI; target isolation и remote approval проверяет
+CLI/CI до API request.
+
 ## Будущие этапы после v1
 
 Саморегистрация replicas и leases входят в текущий Core runtime. Следующий v2
@@ -56,7 +76,7 @@ link policies — редактируемое
 Core-owned desired state в SQLite и Management API, не статический bootstrap
 YAML. Server и forms-db остаются на текущем v1 baseline;
 их repositories не изменяются в v2, а generic rollout проверяется на fixtures.
-Studio развивается отдельно и сейчас не входит в v2 работу. Публичный L4/Caddy-L4,
+Studio и standalone CLI входят в v2 межрепозиторный deployment workflow. Публичный L4/Caddy-L4,
 Identity/CAPTCHA, pluginprotocol C ABI/Python FFI, Core embedding и SDK
 in-process/static composition, все новые Server/forms-db product changes
 (масштабирование Server/shared storage/ACME, forms-db SQL cohort compatibility
@@ -385,13 +405,12 @@ grants, operations, service credentials и audit. Plugin-to-plugin interactions
 endpoints. Caddy-specific действия доступны только как plugin-declared Admin
 Surface через общий авторизованный REST action boundary.
 
-Management TLS всегда включён. Web Controller backend соединяется по private
-HTTPS с mTLS и отдельным Bearer service credential на binding; credential не
-попадает в browser. Desktop Go bridge устанавливает ограниченный SSH
-port-forward к loopback Management API, проверяет TLS identity Core и
-читает короткоживущий Bearer credential из OS credential store. SSH policy
-разрешает только нужный port forward и запрещает shell, SFTP и agent
-forwarding. Core проверяет полномочие `platform-admin` на каждом запросе,
+Management TLS всегда включён. `liapoldus` CLI соединяется по private HTTPS с
+mTLS и отдельным Bearer service credential на target; credential не попадает в
+Studio или browser. Для remote targets CLI может использовать ограниченный SSH
+port-forward или managed agent, если это объявлено target capability; SSH policy
+запрещает shell, SFTP и agent forwarding. Core проверяет полномочие
+`platform-admin` на каждом запросе,
 пишет audit без token/body/secret и не размещает Management API за Caddy public
 listener. Пользовательские роли и environment-scoped permissions не входят в
 Core v1.
@@ -415,6 +434,13 @@ SQLite хранит желаемое/подтверждённое состоян
 plugin; Core хранит только generic endpoint/settings references и состояние
 операций. Filesystem не подменяет SQLite для Core config, а Caddy-generated
 runtime JSON не подменяет Core desired JSON.
+
+В v2 каждая применённая конфигурация также хранит безопасную provenance:
+project/repository identity, immutable commit SHA, canonical bundle digest,
+bundle schema version, target/environment metadata, actor и operation link. Эти
+поля приходят от standalone CLI через Management API и записываются вместе с
+desired configuration в одной транзакции. Git остаётся source of source files;
+SQLite остаётся source of applied runtime state.
 
 Оператор устанавливает plugin binaries отдельно от Core и хранит их в
 операторской системе размещения. Plugin-owned site/certificate data остаются в

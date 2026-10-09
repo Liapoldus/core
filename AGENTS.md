@@ -24,15 +24,17 @@ SDK REST client only and must not import or call `pluginprotocol`. Do not copy
 SDK or peer protocol contracts into Core except generated/mirrored build assets
 explicitly required by the contract-publication check.
 
-Core's runtime bootstrap is ENV-only: `CORE_SQLITE_PATH` selects SQLite, and
-`CORE_INIT_*` is read only by the one-time `core init` command. Runtime settings
-are stored in Core SQLite and changed through versioned API. Runtime YAML/JSON
+Core's runtime bootstrap is ENV-only: `CORE_SQLITE_PATH` selects SQLite and
+`CORE_INIT_*` is consumed exactly once by Core itself during first startup. Core
+creates the initial SQLite settings revision before opening the Management API;
+there is no Core `init`, `serve`, database or inspection CLI. The standalone
+`liapoldus` CLI may start Core and provide the bootstrap environment, but never
+opens SQLite or imports Core internals. Runtime settings are stored in Core
+SQLite and changed through the versioned Management API. Runtime YAML/JSON
 loaders and static endpoint fallback are not supported. Replicas become eligible
-through authenticated Plugin SDK registration and active leases. Operators
-install and start Core and plugins; Core does not supervise or install
-workloads and has no dependency on deployment tooling.
-None of these future interfaces belong in v1 API, persistence, permissions or
-acceptance.
+through authenticated Plugin SDK registration and active leases. Deployment
+automation, including local process lifecycle, belongs to the standalone CLI or
+an operator-managed adapter; Core does not supervise or install workloads.
 
 ## Architecture and implementation rules
 
@@ -105,9 +107,10 @@ acceptance.
   constructors and model validation are permitted there. `internal/application`
   groups related use cases in subject subpackages with concise filenames.
   `internal/infrastructure` contains technical adapters in
-  focused subpackages. `internal/presentation` contains only `api/` and `cli/`
-  and their documented adapter subpackages. `cmd/core` is the composition
-  root.
+  focused subpackages. `internal/presentation` contains only the Management
+  `api/` adapter and its documented subpackages. The Core executable composition
+  root is `cmd/core`; it starts the runtime and API and contains no user-facing
+  command dispatcher.
 - SQL statements and migration history live as named parameterized Go definitions
   in storage adapters. Application and persistence failures use typed Go errors.
   Public error codes, field names, commands and diagnostics are code-owned;

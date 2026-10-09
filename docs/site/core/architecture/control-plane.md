@@ -190,7 +190,8 @@ config operation остаётся `running`, пока точная incarnation �
 `failed/target_lost` и закрывает rollout. Желаемый `active` не откатывается,
 новая incarnation не подставляется, а дальнейшее применение требует новой
 явной операции. TypeScript
-child-process fixture запускает реальный `core serve`, регистрирует replica по
+child-process fixture запускает реальный Core runtime process через target
+bootstrap, регистрирует replica по
 mTLS, проверяет directory poll, перезапускает Core и подтверждает, что
 зарегистрированный instance требует повторной регистрации и не использует
 static resolver fallback. Дополнительные SQLite/process fixtures проверяют
@@ -260,8 +261,8 @@ plugin Manifest, REST lifecycle, settings, health API, secret redemption или
 Повреждённая БД, digest mismatch или невозможность однозначно восстановить
 generation блокирует только соответствующие instance/bindings и требует
 операторского решения; Core не угадывает конфигурацию из runtime плагина.
-Backup Core включает согласованный SQLite snapshot, создаваемый CLI-командой
-`database backup`, и отдельно сохранённые Core bootstrap/configuration
+Backup Core включает согласованный SQLite snapshot, создаваемый standalone
+командой `liapoldus core database backup`, и отдельно сохранённые Core bootstrap/configuration
 artifacts. Restore выполняется только при остановленном Core; CLI проверяет
 schema version, integrity и foreign keys и заменяет файл атомарно. Backup
 plugin volumes выполняется отдельно и включает plugin-owned данные, например

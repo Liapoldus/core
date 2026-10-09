@@ -8,7 +8,7 @@ SQLite. См. [границы ответственности](../architecture/ta
 
 | Данные | Владелец | Правило |
 | --- | --- | --- |
-| SQLite Core | Core | Включает plugin instances, точные JSON bytes поколений `active`/`previous`/`staging`, операции и audit. `staging` нужен для восстановления незавершённой операции и не выдаётся плагину. Используйте `core database backup`, который создаёт согласованный online snapshot. |
+| SQLite Core | Core | Включает plugin instances, точные JSON bytes поколений `active`/`previous`/`staging`, operations и audit. `staging` нужен для восстановления незавершённой операции и не выдаётся плагину. Используйте `liapoldus core database backup`, который вызывает поддержанный Core API/execution adapter и создаёт согласованный online snapshot. |
 | Core bootstrap и binary | Оператор | Сохраните версию Core и references на внешние secret/TLS mounts. Не помещайте secret bytes в обычный архив. |
 | Server plugin state | Server plugin | Отдельно резервируйте persistent data: ACME/certificate state, site releases и `current`/`previous`. |
 | forms-db data | forms-db plugin | Используйте процедуру резервирования и восстановления, определённую владельцем plugin. |
@@ -25,7 +25,7 @@ private keys. Plugin data без соответствующего Core backup м
 1. Убедитесь, что Core доступен, текущая `active` generation подтверждена
    подключёнными replicas, а операции не находятся в неизвестном состоянии.
 2. На время согласованного backup приостановите административные изменения.
-3. Выполните `CORE_SQLITE_PATH=/absolute/path/core.sqlite core database backup <destination>`.
+3. Выполните `liapoldus core database backup --target <target> --output <destination>`.
    Команда создаёт согласованный online backup через SQLite `VACUUM INTO`,
    проверяет текущую schema version, `quick_check(1)` и `foreign_key_check`,
    выставляет права `0600` и публикует файл только если destination ещё не
@@ -42,8 +42,8 @@ private keys. Plugin data без соответствующего Core backup м
    При старте Core выполняет SQLite `quick_check(1)` и `foreign_key_check` до и
    после применения схемы; любой отказ не допускает открытия listener-ов. Эти
    проверки не заменяют пробное восстановление полной резервной копии.
-2. Остановите Core и выполните
-   `CORE_SQLITE_PATH=/absolute/path/core.sqlite core database restore <backup.sqlite>`. Команда
+2. Остановите Core через target adapter и выполните
+   `liapoldus core database restore --target <target> --input <backup.sqlite>`. Команда
    повторно проверит schema version, integrity и foreign keys, скопирует файл во
    временный файл рядом с target и атомарно заменит SQLite. Если Core работает,
    exclusive state lock отклонит restore, не меняя текущую базу.

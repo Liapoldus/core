@@ -9,8 +9,9 @@ backlog.
 ## Текущие архитектурные границы
 
 - Core — plugin-agnostic control plane и единственный writer своей SQLite.
-- Bootstrap-параметры поступают из ENV; рабочие настройки Core и plugins
-  сохраняются в SQLite и изменяются через защищённый versioned API.
+- Bootstrap-параметры поступают из ENV; Core сам один раз создаёт SQLite и
+  initial settings revision до открытия Management API. Рабочие настройки Core
+  и plugins изменяются через защищённый versioned API.
 - Configurations plugins — точные plugin-owned JSON bytes. Core валидирует
   envelope, digest/CAS, durable operations и generation lifecycle, но не
   интерпретирует product fields.
@@ -19,15 +20,21 @@ backlog.
 - Plugin replicas сами регистрируются с mTLS identity, получают leases и
   fenced при истечении lease, конфликте incarnation или отзыве credentials.
 - Core не запускает процессы, не управляет контейнерами и не выбирает deployment
-  provider. Deployment automation — внешний клиент Core API.
+  provider. Deployment automation — standalone `liapoldus` CLI и его adapters.
+- Core не содержит пользовательского CLI. Project/Git resolution, bundle
+  materialization, target selection, approval checks, local Core lifecycle и
+  GitHub CI принадлежат [`Liapoldus/cli`](https://github.com/Liapoldus/cli).
+- Studio работает только с Project/Git и импортированными CLI reports; она не
+  содержит Core API adapter или Core credentials.
 - Deployment profiles остаются внешней ответственностью. Ни описания, ни
   шаблоны не означают поддержку без воспроизводимого native smoke.
-- Studio остаётся независимым клиентом Core API; управление deployment не
-  является обязательной зависимостью Studio.
+- Studio и CLI являются разными продуктами: Studio готовит commit-backed source,
+  CLI выполняет plan/apply к одному или нескольким Core targets.
 
 ## Критерии реализации
 
-v2 включает завершение API-driven deployment/rollout, профили standalone,
+v2 включает завершение API-driven deployment/rollout через standalone CLI,
+одноразовый Core auto-bootstrap и cross-repository bundle contract; профили standalone,
 Docker, Swarm и Kubernetes только после smoke для каждого, traffic-weighted
 seamless rollout только при наличии traffic controller, а также согласованные
 Core/SDK/protocol/Domain/Runtime проверки. Полный v2 gate начинается ниже;
@@ -40,6 +47,19 @@ v2 считается готовой только как согласованн�
 отдельным зелёным сборкам. Контракты и доказательства принадлежат владельцам;
 эта секция задаёт общие сквозные критерии и не дублирует product schemas.
 
+- **CLI boundary:** Core starts without a user-facing command dispatcher, performs
+  one-time `CORE_INIT_*` bootstrap before opening API, accepts only canonical
+  bundle requests with immutable commit SHA/digest, and never reads Git or CLI
+  state. `liapoldus` local, remote and GitHub CI workflows use the same API
+  contract.
+- **Project-to-SQLite path:** CLI resolves a Git commit, validates and normalizes
+  project files, sends a bundle through Management API, and Core writes bundle
+  provenance plus desired configuration in one SQLite transaction. CLI never
+  opens Core SQLite; Studio never calls Core API.
+- **Approval and reproducibility:** apply is rejected without exact commit,
+  required remote approval, compatible schema/API, idempotency key and CAS
+  evidence. The evidence chain is commit → bundle digest → operation →
+  generation → replica acknowledgements.
 - **Replica lifecycle:** Core переживает рестарт с пустой in-memory directory;
   новые incarnation регистрируются с уникальной mTLS identity, leases истекают
   по TTL, stale/подменённая replica fenced, а peer-directory не создаёт новую
