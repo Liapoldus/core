@@ -69,6 +69,7 @@ capabilities, errors и Admin Surface. Общий SDK conformance отдельн
 REST lifecycle, exact pull, Reload, rollback, health, auth и redaction.
 `pluginprotocol` conformance проверяет только generic registration, carriers,
 peer identity/security, unary/stream cancellation, backpressure и close/reconnect.
-Docker/Compose, Swarm, Kubernetes и Core process supervision — v2 scope.
+Внешнее размещение Docker/Swarm/Kubernetes — v2; Core не supervises процессы,
+а установку и обновления выполняет оператор.
 Acceptance evidence и команды standalone-размещения собраны в
 [матрице Core](../configuration/acceptance).

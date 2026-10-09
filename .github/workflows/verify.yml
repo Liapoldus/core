@@ -23,6 +23,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
+      - name: Configure Core and Plugin SDK workspace
+        run: |
+          go work init ./core ./plugin-sdk
+          go work edit -go=1.26.0 go.work
       - uses: actions/setup-node@v4
         with:
           node-version: 24

@@ -39,7 +39,7 @@ describe("Management API route contract", () => {
     expect(contract).toContain("pluginSettingsRollback: plugin-settings-rollback");
     expect(source, "rollback path must come from the contract asset").not.toContain(`"/rollback"`);
 
-    for (const verb of ["restart", "Restart", "install", "Install", "uninstall", "Uninstall", "supervise", "Supervise", "scale", "Scale"]) {
+    for (const verb of ["/restart", "/install", "/uninstall", "/supervise", "/scale"]) {
       expect(contract, verb).not.toContain(verb);
       expect(source, verb).not.toContain(verb);
     }

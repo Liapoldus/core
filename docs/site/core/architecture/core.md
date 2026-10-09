@@ -10,12 +10,13 @@ instance версионированный JSON через REST `Reload` + config
 | --- | --- | --- |
 | Management API и CLI | Core | Settings, наблюдения о заранее объявленной в `core.yaml` topology, scoped secret grants, operations и audit в SQLite. Сам endpoint/identity registry не редактируется API; plugin-to-plugin policies — вне v1. |
 | Plugin runtime | Operator + Plugin SDK REST | Оператор вручную запускает plugin; Core подключается по fixed endpoint и не управляет процессом или контейнером. |
-| HTTP data plane | Отдельный `plugins/server` process | В v1 одна replica; Caddy входит в plugin binary, а Caddy-L4/public L4 отложены до v2. |
+| HTTP data plane | Отдельный `plugins/server` process | В v1 одна replica; Caddy входит в plugin binary, а Caddy-L4/public L4 отложены до v3. |
 | Другие data-plane capabilities | Соответствующие plugins | Core видит только Manifest, schema, generic endpoint и Plugin SDK REST lifecycle. |
 | Config generations | Core + Plugin SDK REST | Exact revision/digest pull и per-replica ACK; request path не читает SQLite. |
 
 В v1 есть три сервиса (Core, Server plugin, forms-db) и две библиотеки (Plugin SDK,
 `pluginprotocol`). Оператор запускает сервисы вручную. Docker/Compose, Swarm,
-Kubernetes и local process supervision — v2 scope; нормативная v1 граница
+Kubernetes как внешнее размещение — v2; Core installation через adapters — v3,
+а local process supervision Core не планируется. Нормативная v1 граница
 описана в [целевой архитектуре](target), а будущая автоматизация помечена в
 [plugin deployment](plugin-deployment).

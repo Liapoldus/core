@@ -5,10 +5,10 @@
   "version": "1.0.0",
   "management": {
     "loopback": "Management API may bind loopback; local CLI/desktop SSH forwarding requires Bearer service key and TLS server verification.",
-    "webConstructor": "A trusted web Constructor backend connects only over private HTTPS with mTLS and a separate Bearer platform-admin token per Core binding.",
-    "desktopConstructor": "Desktop uses an external OpenSSH/bastion short-lived user certificate restricted to port-forwarding into loopback Management API; the tunnel still uses TLS server verification and Bearer authorization.",
+    "webController": "A trusted web management backend connects only over private HTTPS with mTLS and a separate Bearer platform-admin token per Core binding.",
+    "desktopAccess": "A remote operator may use a restricted OpenSSH/bastion port-forward to loopback Management API; the client verifies server TLS and uses Bearer authorization.",
     "roles": ["platform-admin"],
-    "userAuthorization": "Constructor owns human users, roles, environment-scoped permissions and per-user audit; Core authenticates only the Controller binding principal.",
+    "userAuthorization": "Core v1 has no human user or role database; an external management backend may authenticate users before calling Core. Core authenticates and audits only the authenticated client binding principal.",
     "rawKey": "Service key plaintext is returned once during create/rotate; only a verifier/hash is persisted.",
     "trustRoots": "Management client trust roots and plugin workload trust roots MUST be distinct.",
     "health": "Unauthenticated health endpoint exposes process health only and no configuration or runtime inventory."

@@ -64,8 +64,11 @@ describe("Core architecture", () => {
     expect(await readFile(join(root, "contractassets.go"), "utf8")).toContain("go:embed assets/contracts");
   });
 
-  it("keeps Go tests out of production packages", async () => {
+  it("keeps native Go tests alongside a production package", async () => {
     const files = await sourceFiles(join(root, "internal"));
-    expect(files.filter((file) => file.endsWith("_test.go"))).toEqual([]);
+    for (const test of files.filter((file) => file.endsWith("_test.go"))) {
+      const siblings = await goFiles(dirname(test));
+      expect(siblings.some((file) => !file.endsWith("_test.go")), test).toBe(true);
+    }
   });
 });

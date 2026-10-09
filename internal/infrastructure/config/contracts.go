@@ -2,13 +2,11 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"sync"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"gopkg.in/yaml.v3"
+	"github.com/Liapoldus/core/internal/infrastructure/storage"
 )
 
 type ServiceKeyWords struct {
@@ -114,15 +112,7 @@ func LoadCLI() (CLIWords, error) {
 }
 
 func loadCLI() (CLIWords, error) {
-	contents, err := assets.Contract(assets.CLIFields)
-	if err != nil {
-		return CLIWords{}, err
-	}
-	var loaded CLIWords
-	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return CLIWords{}, err
-	}
-	return loaded, nil
+	return cliDefinitions(), nil
 }
 
 type ManagementWords struct {
@@ -137,6 +127,9 @@ type ManagementWords struct {
 		IdempotencyConflict    string `yaml:"idempotencyConflict"`
 		PluginConfigInvalid    string `yaml:"pluginConfigInvalid"`
 		PluginRevisionConflict string `yaml:"pluginRevisionConflict"`
+		PluginLinkConflict     string `yaml:"pluginLinkConflict"`
+		PluginLinkInvalid      string `yaml:"pluginLinkInvalid"`
+		TargetLost             string `yaml:"targetLost"`
 		ActivationFailed       string `yaml:"activationFailed"`
 		PluginUnavailable      string `yaml:"pluginUnavailable"`
 		PluginNotFound         string `yaml:"pluginNotFound"`
@@ -145,33 +138,38 @@ type ManagementWords struct {
 		OperationNotFound      string `yaml:"operationNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
-		Healthz              string `yaml:"healthz"`
-		Status               string `yaml:"status"`
-		Config               string `yaml:"config"`
-		ConfigValidate       string `yaml:"configValidate"`
-		ConfigReload         string `yaml:"configReload"`
-		Reload               string `yaml:"reload"`
-		Listeners            string `yaml:"listeners"`
-		Upstreams            string `yaml:"upstreams"`
-		Plugins              string `yaml:"plugins"`
-		PluginSettingsSuffix string `yaml:"pluginSettingsSuffix"`
-		PluginRollbackSuffix string `yaml:"pluginRollbackSuffix"`
-		AdminSurfaces        string `yaml:"adminSurfaces"`
-		AdminPages           string `yaml:"adminPages"`
-		AdminActions         string `yaml:"adminActions"`
-		AdminQueryAction     string `yaml:"adminQueryAction"`
-		Logs                 string `yaml:"logs"`
-		TLS                  string `yaml:"tls"`
-		Renew                string `yaml:"renew"`
-		Revoke               string `yaml:"revoke"`
-		Operations           string `yaml:"operations"`
-		Audit                string `yaml:"audit"`
-		ServiceKeys          string `yaml:"serviceKeys"`
-		PluginIDSeparator    string `yaml:"pluginIDSeparator"`
+		Healthz                string `yaml:"healthz"`
+		Status                 string `yaml:"status"`
+		Config                 string `yaml:"config"`
+		ConfigValidate         string `yaml:"configValidate"`
+		ConfigReload           string `yaml:"configReload"`
+		Reload                 string `yaml:"reload"`
+		Listeners              string `yaml:"listeners"`
+		Upstreams              string `yaml:"upstreams"`
+		Plugins                string `yaml:"plugins"`
+		PluginSettingsSuffix   string `yaml:"pluginSettingsSuffix"`
+		PluginRollbackSuffix   string `yaml:"pluginRollbackSuffix"`
+		AdminSurfaces          string `yaml:"adminSurfaces"`
+		AdminPages             string `yaml:"adminPages"`
+		AdminActions           string `yaml:"adminActions"`
+		AdminQueryAction       string `yaml:"adminQueryAction"`
+		Logs                   string `yaml:"logs"`
+		TLS                    string `yaml:"tls"`
+		Renew                  string `yaml:"renew"`
+		Revoke                 string `yaml:"revoke"`
+		Operations             string `yaml:"operations"`
+		Audit                  string `yaml:"audit"`
+		ServiceKeys            string `yaml:"serviceKeys"`
+		PluginLinks            string `yaml:"pluginLinks"`
+		PluginLinkTargetSuffix string `yaml:"pluginLinkTargetSuffix"`
+		PluginIDSeparator      string `yaml:"pluginIDSeparator"`
 	} `yaml:"paths"`
 	OperationKinds struct {
 		PluginSettingsApply    string `yaml:"pluginSettingsApply"`
 		PluginSettingsRollback string `yaml:"pluginSettingsRollback"`
+		PluginLinkCreate       string `yaml:"pluginLinkCreate"`
+		PluginLinkReplace      string `yaml:"pluginLinkReplace"`
+		PluginLinkDelete       string `yaml:"pluginLinkDelete"`
 	} `yaml:"operationKinds"`
 	Methods struct {
 		Get    string `yaml:"get"`
@@ -180,73 +178,83 @@ type ManagementWords struct {
 		Delete string `yaml:"delete"`
 	} `yaml:"methods"`
 	JSON struct {
-		RequestID          string `yaml:"requestId"`
-		OperationID        string `yaml:"operationId"`
-		State              string `yaml:"state"`
-		Items              string `yaml:"items"`
-		NextCursor         string `yaml:"nextCursor"`
-		YAML               string `yaml:"yaml"`
-		Digest             string `yaml:"digest"`
-		Valid              string `yaml:"valid"`
-		IdempotencyKey     string `yaml:"idempotencyKey"`
-		ErrorCode          string `yaml:"errorCode"`
-		ResourceID         string `yaml:"resourceId"`
-		ExpectedRevision   string `yaml:"expectedRevision"`
-		ID                 string `yaml:"id"`
-		ArtifactDigest     string `yaml:"artifactDigest"`
-		Frontends          string `yaml:"frontends"`
-		Files              string `yaml:"files"`
-		ReplyTo            string `yaml:"replyTo"`
-		Status             string `yaml:"status"`
-		Slug               string `yaml:"slug"`
-		Route              string `yaml:"route"`
-		Root               string `yaml:"root"`
-		CurrentRevision    string `yaml:"currentRevision"`
-		PreviousRevision   string `yaml:"previousRevision"`
-		CreatedAt          string `yaml:"createdAt"`
-		ExpiresAt          string `yaml:"expiresAt"`
-		RevokedAt          string `yaml:"revokedAt"`
-		UpdatedAt          string `yaml:"updatedAt"`
-		StartedAt          string `yaml:"startedAt"`
-		FinishedAt         string `yaml:"finishedAt"`
-		Result             string `yaml:"result"`
-		Problem            string `yaml:"problem"`
-		Timestamp          string `yaml:"timestamp"`
-		Actor              string `yaml:"actor"`
-		Action             string `yaml:"action"`
-		Resource           string `yaml:"resource"`
-		DigestBefore       string `yaml:"digestBefore"`
-		DigestAfter        string `yaml:"digestAfter"`
-		Name               string `yaml:"name"`
-		Role               string `yaml:"role"`
-		Token              string `yaml:"token"`
-		Type               string `yaml:"type"`
-		Address            string `yaml:"address"`
-		ActiveConnections  string `yaml:"activeConnections"`
-		Healthy            string `yaml:"healthy"`
-		Capabilities       string `yaml:"capabilities"`
-		Limits             string `yaml:"limits"`
-		Health             string `yaml:"health"`
-		Profile            string `yaml:"profile"`
-		Domain             string `yaml:"domain"`
-		Serial             string `yaml:"serial"`
-		NotAfter           string `yaml:"notAfter"`
-		Validity           string `yaml:"validity"`
-		Diagnostics        string `yaml:"diagnostics"`
-		Limit              string `yaml:"limit"`
-		Cursor             string `yaml:"cursor"`
-		Kind               string `yaml:"kind"`
-		Active             string `yaml:"active"`
-		Drift              string `yaml:"drift"`
-		RuntimeDigest      string `yaml:"runtimeDigest"`
-		CompositionDigest  string `yaml:"compositionDigest"`
-		DataPlaneReadiness string `yaml:"dataPlaneReadiness"`
-		Reason             string `yaml:"reason"`
-		InstanceID         string `yaml:"instanceId"`
-		Capability         string `yaml:"capability"`
-		AllowedNames       string `yaml:"allowedNames"`
-		Revision           string `yaml:"revision"`
-		Config             string `yaml:"config"`
+		RequestID               string `yaml:"requestId"`
+		OperationID             string `yaml:"operationId"`
+		State                   string `yaml:"state"`
+		Items                   string `yaml:"items"`
+		NextCursor              string `yaml:"nextCursor"`
+		YAML                    string `yaml:"yaml"`
+		Digest                  string `yaml:"digest"`
+		Valid                   string `yaml:"valid"`
+		IdempotencyKey          string `yaml:"idempotencyKey"`
+		ErrorCode               string `yaml:"errorCode"`
+		ResourceID              string `yaml:"resourceId"`
+		ExpectedRevision        string `yaml:"expectedRevision"`
+		ID                      string `yaml:"id"`
+		ArtifactDigest          string `yaml:"artifactDigest"`
+		Frontends               string `yaml:"frontends"`
+		Files                   string `yaml:"files"`
+		ReplyTo                 string `yaml:"replyTo"`
+		Status                  string `yaml:"status"`
+		Slug                    string `yaml:"slug"`
+		Route                   string `yaml:"route"`
+		Root                    string `yaml:"root"`
+		CurrentRevision         string `yaml:"currentRevision"`
+		PreviousRevision        string `yaml:"previousRevision"`
+		CreatedAt               string `yaml:"createdAt"`
+		ExpiresAt               string `yaml:"expiresAt"`
+		RevokedAt               string `yaml:"revokedAt"`
+		UpdatedAt               string `yaml:"updatedAt"`
+		StartedAt               string `yaml:"startedAt"`
+		FinishedAt              string `yaml:"finishedAt"`
+		Result                  string `yaml:"result"`
+		Problem                 string `yaml:"problem"`
+		Timestamp               string `yaml:"timestamp"`
+		Actor                   string `yaml:"actor"`
+		Action                  string `yaml:"action"`
+		Resource                string `yaml:"resource"`
+		DigestBefore            string `yaml:"digestBefore"`
+		DigestAfter             string `yaml:"digestAfter"`
+		Name                    string `yaml:"name"`
+		Role                    string `yaml:"role"`
+		Token                   string `yaml:"token"`
+		Type                    string `yaml:"type"`
+		Address                 string `yaml:"address"`
+		ActiveConnections       string `yaml:"activeConnections"`
+		Healthy                 string `yaml:"healthy"`
+		Capabilities            string `yaml:"capabilities"`
+		Limits                  string `yaml:"limits"`
+		Health                  string `yaml:"health"`
+		Profile                 string `yaml:"profile"`
+		Domain                  string `yaml:"domain"`
+		Serial                  string `yaml:"serial"`
+		NotAfter                string `yaml:"notAfter"`
+		Validity                string `yaml:"validity"`
+		Diagnostics             string `yaml:"diagnostics"`
+		Limit                   string `yaml:"limit"`
+		Cursor                  string `yaml:"cursor"`
+		Kind                    string `yaml:"kind"`
+		Active                  string `yaml:"active"`
+		Drift                   string `yaml:"drift"`
+		RuntimeDigest           string `yaml:"runtimeDigest"`
+		CompositionDigest       string `yaml:"compositionDigest"`
+		DataPlaneReadiness      string `yaml:"dataPlaneReadiness"`
+		Reason                  string `yaml:"reason"`
+		InstanceID              string `yaml:"instanceId"`
+		Capability              string `yaml:"capability"`
+		AllowedNames            string `yaml:"allowedNames"`
+		Revision                string `yaml:"revision"`
+		Config                  string `yaml:"config"`
+		CallerInstanceID        string `yaml:"callerInstanceId"`
+		TargetInstanceID        string `yaml:"targetInstanceId"`
+		Rules                   string `yaml:"rules"`
+		PlacementRule           string `yaml:"placementRule"`
+		Carrier                 string `yaml:"carrier"`
+		Weight                  string `yaml:"weight"`
+		RequiredContracts       string `yaml:"requiredContracts"`
+		ContractID              string `yaml:"contractId"`
+		MinimumVersion          string `yaml:"minimumVersion"`
+		MaximumVersionExclusive string `yaml:"maximumVersionExclusive"`
 	} `yaml:"json"`
 	Headers struct {
 		IfMatch     string `yaml:"ifMatch"`
@@ -277,6 +285,7 @@ type ManagementWords struct {
 		Renewing              string `yaml:"renewing"`
 		Pending               string `yaml:"pending"`
 		Running               string `yaml:"running"`
+		Completed             string `yaml:"completed"`
 		Succeeded             string `yaml:"succeeded"`
 		Empty                 string `yaml:"empty"`
 		NotReady              string `yaml:"notReady"`
@@ -326,14 +335,17 @@ type PluginConfigurationWords struct {
 }
 
 func LoadPluginConfiguration() (PluginConfigurationWords, error) {
-	contents, err := assets.Contract(assets.SQLitePluginConfiguration)
-	if err != nil {
-		return PluginConfigurationWords{}, err
-	}
+	definition := storage.ConfigurationDefinitions()
 	var loaded PluginConfigurationWords
-	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return PluginConfigurationWords{}, err
-	}
+	loaded.SchemaVersion = definition.SchemaVersion
+	loaded.MaximumPayloadBytes = definition.MaximumPayloadSize
+	loaded.Slots.Active = definition.Slots.Active
+	loaded.Slots.Previous = definition.Slots.Previous
+	loaded.Slots.Staging = definition.Slots.Staging
+	loaded.OperationStates.Pending = definition.OperationStates.Pending
+	loaded.OperationStates.Running = definition.OperationStates.Running
+	loaded.Diagnostics.InvalidContract = definition.Diagnostics.InvalidContract
+	loaded.Diagnostics.MigrationFailed = definition.Diagnostics.MigrationFailed
 	if loaded.SchemaVersion < 1 || loaded.MaximumPayloadBytes < 1 || loaded.Slots.Active == "" || loaded.Slots.Previous == "" || loaded.Slots.Staging == "" ||
 		loaded.OperationStates.Pending == "" || loaded.OperationStates.Running == "" || loaded.Diagnostics.InvalidContract == "" || loaded.Diagnostics.MigrationFailed == "" {
 		return PluginConfigurationWords{}, errors.New(loaded.Diagnostics.InvalidContract)
@@ -342,15 +354,7 @@ func LoadPluginConfiguration() (PluginConfigurationWords, error) {
 }
 
 func LoadManagement() (ManagementWords, error) {
-	contents, err := assets.Contract(assets.ManagementFields)
-	if err != nil {
-		return ManagementWords{}, err
-	}
-	var loaded ManagementWords
-	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return ManagementWords{}, err
-	}
-	return loaded, nil
+	return managementDefinitions(), nil
 }
 
 type AuditWords struct {
@@ -366,6 +370,9 @@ type AuditWords struct {
 			PluginSettingsApplyFailed string `yaml:"pluginSettingsApplyFailed"`
 			PluginSettingsRollback    string `yaml:"pluginSettingsRollback"`
 			PluginAdminAction         string `yaml:"pluginAdminAction"`
+			PluginLinkCreate          string `yaml:"pluginLinkCreate"`
+			PluginLinkReplace         string `yaml:"pluginLinkReplace"`
+			PluginLinkDelete          string `yaml:"pluginLinkDelete"`
 		} `yaml:"actions"`
 		Resources struct {
 			ServiceKeys string `yaml:"serviceKeys"`
@@ -383,26 +390,7 @@ type AuditWords struct {
 }
 
 func LoadAudit() (AuditWords, error) {
-	contents, err := assets.Contract(assets.AuditFields)
-	if err != nil {
-		return AuditWords{}, err
-	}
-	var loaded AuditWords
-	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return AuditWords{}, err
-	}
-	return loaded, nil
-}
-
-type errorCatalogFile struct {
-	Titles map[string]string `json:"titles"`
-	Errors []struct {
-		Code    string `json:"code"`
-		Status  int    `json:"status"`
-		Type    string `json:"type"`
-		Detail  string `json:"detail"`
-		CLIExit int    `json:"cliExit"`
-	} `json:"errors"`
+	return auditDefinitions(), nil
 }
 
 type ErrorCatalog struct {
@@ -415,23 +403,15 @@ func (catalog ErrorCatalog) Lookup(code string) (models.Problem, bool) {
 }
 
 func LoadErrorCatalog() (ErrorCatalog, error) {
-	contents, err := assets.Contract(assets.ErrorsJSON)
-	if err != nil {
-		return ErrorCatalog{}, err
-	}
-	var loaded errorCatalogFile
-	if err := json.Unmarshal(contents, &loaded); err != nil {
-		return ErrorCatalog{}, err
-	}
+	loaded := ErrorDefinitions()
 	catalog := ErrorCatalog{codes: make(map[string]models.Problem, len(loaded.Errors))}
 	for _, entry := range loaded.Errors {
 		catalog.codes[entry.Code] = models.Problem{
-			Type:    entry.Type,
-			Title:   loaded.Titles[entry.Code],
-			Status:  entry.Status,
-			Code:    entry.Code,
-			Detail:  entry.Detail,
-			CLIExit: entry.CLIExit,
+			Type:   "https://liapoldus.dev/problems/" + entry.Code,
+			Title:  entry.Title,
+			Status: entry.Status,
+			Code:   entry.Code,
+			Detail: entry.Detail,
 		}
 	}
 	return catalog, nil

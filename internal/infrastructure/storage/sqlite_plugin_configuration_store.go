@@ -1,12 +1,10 @@
 package storage
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,37 +13,32 @@ import (
 	"time"
 	"unicode/utf8"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"gopkg.in/yaml.v3"
 )
-
-//go:embed sql/plugin_configuration.sql
-var pluginConfigurationSQL embed.FS
 
 type PluginConfigurationSQL struct{ queries map[string]string }
 
 type pluginConfigurationStoreContract struct {
-	SchemaVersion      int64  `yaml:"schemaVersion"`
-	MaximumPayloadSize int    `yaml:"maximumPayloadBytes"`
-	TimestampLayout    string `yaml:"timestampLayout"`
-	MigrationActor     string `yaml:"migrationActor"`
+	SchemaVersion      int64
+	MaximumPayloadSize int
+	TimestampLayout    string
+	MigrationActor     string
 	Slots              struct {
-		Active   string `yaml:"active"`
-		Previous string `yaml:"previous"`
-		Staging  string `yaml:"staging"`
-	} `yaml:"slots"`
+		Active   string
+		Previous string
+		Staging  string
+	}
 	OperationStates struct {
-		Pending string `yaml:"pending"`
-		Running string `yaml:"running"`
-	} `yaml:"operationStates"`
+		Pending string
+		Running string
+	}
 	Diagnostics struct {
-		InvalidContract string `yaml:"invalidContract"`
-		InvalidDocument string `yaml:"invalidDocument"`
-		InvalidStore    string `yaml:"invalidStore"`
-		MigrationFailed string `yaml:"migrationFailed"`
-	} `yaml:"diagnostics"`
+		InvalidContract string
+		InvalidDocument string
+		InvalidStore    string
+		MigrationFailed string
+	}
 }
 
 type SQLitePluginConfigurationStore struct {
@@ -58,18 +51,8 @@ type SQLitePluginConfigurationStore struct {
 var _ interfaces.PluginConfigurationStore = (*SQLitePluginConfigurationStore)(nil)
 
 func NewSQLitePluginConfigurationStore(database *sql.DB) (*SQLitePluginConfigurationStore, error) {
-	contents, err := assets.Contract(assets.SQLitePluginConfiguration)
-	if err != nil {
-		return nil, err
-	}
-	var contract pluginConfigurationStoreContract
-	if err := yaml.Unmarshal(contents, &contract); err != nil {
-		return nil, err
-	}
-	queries, err := loadPluginConfigurationSQL(contract.Diagnostics.InvalidContract)
-	if err != nil {
-		return nil, err
-	}
+	contract := ConfigurationDefinitions()
+	queries := PluginConfigurationSQL{queries: configurationQueries()}
 	if database == nil || !validPluginConfigurationContract(contract) {
 		return nil, errors.New(contract.Diagnostics.InvalidContract)
 	}
@@ -159,6 +142,13 @@ func (store *SQLitePluginConfigurationStore) CreateCandidate(ctx context.Context
 	if pointers.CurrentRevision != expectedCurrent || pointers.PendingRevision != 0 {
 		return models.PluginConfigurationRevision{}, models.PluginConfigurationConflict{}
 	}
+	var openRollout bool
+	if err := tx.QueryRowContext(ctx, store.queries.queries["open-rollout-exists"], instanceID, instanceID).Scan(&openRollout); err != nil {
+		return models.PluginConfigurationRevision{}, err
+	}
+	if openRollout {
+		return models.PluginConfigurationRevision{}, models.PluginConfigurationConflict{}
+	}
 	var generation int64
 	if err := tx.QueryRowContext(ctx, store.queries.queries["next-generation"], instanceID).Scan(&generation); err != nil {
 		return models.PluginConfigurationRevision{}, err
@@ -197,14 +187,41 @@ func (store *SQLitePluginConfigurationStore) CreateCandidate(ctx context.Context
 }
 
 func (store *SQLitePluginConfigurationStore) ActivateCandidate(ctx context.Context, instanceID string, generation, expectedCurrent int64, audit models.AuditRecord) (models.PluginConfigurationPointers, error) {
-	return store.transitionCandidate(ctx, instanceID, generation, expectedCurrent, true, audit)
+	return store.transitionCandidate(ctx, instanceID, generation, expectedCurrent, true, audit, "", nil)
+}
+
+// ActivateCandidateWithTargets promotes the candidate and commits its exact
+// replica incarnation cohort in one SQLite transaction, before any Reload can
+// be sent. The operation row already exists and remains the durable rollout
+// identity across Core restarts.
+func (store *SQLitePluginConfigurationStore) ActivateCandidateWithTargets(
+	ctx context.Context,
+	operationID, instanceID string,
+	generation, expectedCurrent int64,
+	audit models.AuditRecord,
+	targets []models.PluginRolloutTarget,
+) (models.PluginConfigurationPointers, error) {
+	if operationID == "" {
+		return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+	}
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		if !target.Valid() {
+			return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+		}
+		if _, exists := seen[target.ReplicaID]; exists {
+			return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+		}
+		seen[target.ReplicaID] = struct{}{}
+	}
+	return store.transitionCandidate(ctx, instanceID, generation, expectedCurrent, true, audit, operationID, targets)
 }
 
 func (store *SQLitePluginConfigurationStore) FailCandidate(ctx context.Context, instanceID string, generation, expectedCurrent int64, audit models.AuditRecord) (models.PluginConfigurationPointers, error) {
-	return store.transitionCandidate(ctx, instanceID, generation, expectedCurrent, false, audit)
+	return store.transitionCandidate(ctx, instanceID, generation, expectedCurrent, false, audit, "", nil)
 }
 
-func (store *SQLitePluginConfigurationStore) transitionCandidate(ctx context.Context, instanceID string, generation, expectedCurrent int64, activate bool, audit models.AuditRecord) (models.PluginConfigurationPointers, error) {
+func (store *SQLitePluginConfigurationStore) transitionCandidate(ctx context.Context, instanceID string, generation, expectedCurrent int64, activate bool, audit models.AuditRecord, operationID string, targets []models.PluginRolloutTarget) (models.PluginConfigurationPointers, error) {
 	if store == nil || store.database == nil {
 		return models.PluginConfigurationPointers{}, sql.ErrConnDone
 	}
@@ -234,6 +251,42 @@ func (store *SQLitePluginConfigurationStore) transitionCandidate(ctx context.Con
 		return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
 	}
 	if activate {
+		if operationID != "" {
+			var operationInstance, operationState string
+			if err := tx.QueryRowContext(ctx, store.queries.queries["select-operation-rollout-identity"], operationID).Scan(&operationInstance, &operationState); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+				}
+				return models.PluginConfigurationPointers{}, err
+			}
+			if operationInstance != instanceID || operationState != store.contract.OperationStates.Running && operationState != store.contract.OperationStates.Pending {
+				return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+			}
+			var openRollout bool
+			if err := tx.QueryRowContext(ctx, store.queries.queries["active-rollout-for-instance"], instanceID).Scan(&openRollout); err != nil {
+				return models.PluginConfigurationPointers{}, err
+			}
+			if openRollout {
+				return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+			}
+			now := time.Now().UTC().Format(store.contract.TimestampLayout)
+			if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout"], operationID, instanceID, generation, now); err != nil {
+				if isUniqueConstraint(err) {
+					return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+				}
+				return models.PluginConfigurationPointers{}, err
+			}
+			for _, target := range targets {
+				if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout-target"], operationID,
+					target.ReplicaID, target.IncarnationID, target.ReleaseSHA256); err != nil {
+					return models.PluginConfigurationPointers{}, err
+				}
+				if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout-target-lease"], operationID,
+					target.ReplicaID, target.LeaseExpiresAt.UTC().Format(store.contract.TimestampLayout)); err != nil {
+					return models.PluginConfigurationPointers{}, err
+				}
+			}
+		}
 		if _, err := tx.ExecContext(ctx, store.queries.queries["delete-slot"], instanceID, store.contract.Slots.Previous); err != nil {
 			return models.PluginConfigurationPointers{}, err
 		}
@@ -267,6 +320,42 @@ func (store *SQLitePluginConfigurationStore) transitionCandidate(ctx context.Con
 }
 
 func (store *SQLitePluginConfigurationStore) RestorePrevious(ctx context.Context, instanceID string, expectedCurrent int64, audit models.AuditRecord) (models.PluginConfigurationPointers, error) {
+	return store.restorePrevious(ctx, "", "", instanceID, expectedCurrent, audit, nil)
+}
+
+// RestorePreviousWithTargets swaps active and previous while committing the
+// exact registered replica cohort in the same SQLite transaction. Recovery
+// therefore cannot widen a rollback to a replacement incarnation.
+func (store *SQLitePluginConfigurationStore) RestorePreviousWithTargets(
+	ctx context.Context,
+	operationID, operationKind, instanceID string,
+	expectedCurrent int64,
+	audit models.AuditRecord,
+	targets []models.PluginRolloutTarget,
+) (models.PluginConfigurationPointers, error) {
+	if operationID == "" || operationKind == "" || len(targets) == 0 {
+		return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+	}
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		if !target.Valid() {
+			return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+		}
+		if _, exists := seen[target.ReplicaID]; exists {
+			return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+		}
+		seen[target.ReplicaID] = struct{}{}
+	}
+	return store.restorePrevious(ctx, operationID, operationKind, instanceID, expectedCurrent, audit, targets)
+}
+
+func (store *SQLitePluginConfigurationStore) restorePrevious(
+	ctx context.Context,
+	operationID, operationKind, instanceID string,
+	expectedCurrent int64,
+	audit models.AuditRecord,
+	targets []models.PluginRolloutTarget,
+) (models.PluginConfigurationPointers, error) {
 	if store == nil || store.database == nil {
 		return models.PluginConfigurationPointers{}, sql.ErrConnDone
 	}
@@ -282,10 +371,48 @@ func (store *SQLitePluginConfigurationStore) RestorePrevious(ctx context.Context
 	if err != nil {
 		return models.PluginConfigurationPointers{}, err
 	}
-	if pointers.CurrentRevision != expectedCurrent || pointers.PreviousRevision == 0 {
+	if pointers.CurrentRevision != expectedCurrent || pointers.PreviousRevision == 0 || pointers.PendingRevision != 0 {
+		return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+	}
+	var openRollout bool
+	if err := tx.QueryRowContext(ctx, store.queries.queries["open-rollout-exists"], instanceID, instanceID).Scan(&openRollout); err != nil {
+		return models.PluginConfigurationPointers{}, err
+	}
+	if openRollout {
 		return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
 	}
 	now := time.Now().UTC()
+	if operationID != "" {
+		var actualKind, operationInstance, operationState string
+		if err := tx.QueryRowContext(ctx, store.queries.queries["select-operation-rollout-kind-identity"], operationID).
+			Scan(&actualKind, &operationInstance, &operationState); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+			}
+			return models.PluginConfigurationPointers{}, err
+		}
+		if actualKind != operationKind || operationInstance != instanceID ||
+			(operationState != store.contract.OperationStates.Pending && operationState != store.contract.OperationStates.Running) {
+			return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+		}
+		createdAt := now.Format(store.contract.TimestampLayout)
+		if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout"], operationID, instanceID, pointers.PreviousRevision, createdAt); err != nil {
+			if isUniqueConstraint(err) {
+				return models.PluginConfigurationPointers{}, models.PluginConfigurationConflict{}
+			}
+			return models.PluginConfigurationPointers{}, err
+		}
+		for _, target := range targets {
+			if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout-target"], operationID,
+				target.ReplicaID, target.IncarnationID, target.ReleaseSHA256); err != nil {
+				return models.PluginConfigurationPointers{}, err
+			}
+			if _, err := tx.ExecContext(ctx, store.queries.queries["insert-rollout-target-lease"], operationID,
+				target.ReplicaID, target.LeaseExpiresAt.UTC().Format(store.contract.TimestampLayout)); err != nil {
+				return models.PluginConfigurationPointers{}, err
+			}
+		}
+	}
 	if _, err := tx.ExecContext(ctx, store.queries.queries["delete-slot"], instanceID, store.contract.Slots.Staging); err != nil {
 		return models.PluginConfigurationPointers{}, err
 	}
@@ -493,46 +620,6 @@ func (store *SQLitePluginConfigurationStore) migrateLegacyConfiguration(ctx cont
 		}
 	}
 	return tx.Commit()
-}
-
-func loadPluginConfigurationSQL(invalidContract string) (PluginConfigurationSQL, error) {
-	contents, err := pluginConfigurationSQL.ReadFile("sql/plugin_configuration.sql")
-	if err != nil {
-		return PluginConfigurationSQL{}, errors.New(invalidContract)
-	}
-	queries := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(contents)))
-	name := ""
-	var statement strings.Builder
-	storeStatement := func() bool {
-		if name == "" {
-			return true
-		}
-		if _, exists := queries[name]; exists || strings.TrimSpace(statement.String()) == "" {
-			return false
-		}
-		queries[name] = strings.TrimSpace(statement.String())
-		return true
-	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "-- name: ") {
-			if !storeStatement() {
-				return PluginConfigurationSQL{}, errors.New(invalidContract)
-			}
-			name = strings.TrimSpace(strings.TrimPrefix(line, "-- name: "))
-			statement.Reset()
-			continue
-		}
-		if name != "" {
-			statement.WriteString(line)
-			statement.WriteByte('\n')
-		}
-	}
-	if scanner.Err() != nil || !storeStatement() || len(queries) != 33 {
-		return PluginConfigurationSQL{}, errors.New(invalidContract)
-	}
-	return PluginConfigurationSQL{queries: queries}, nil
 }
 
 func (store *SQLitePluginConfigurationStore) migrateLegacyPluginTopology(ctx context.Context) (result error) {

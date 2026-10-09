@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liapoldus.github.io/spec/core/v2/traffic-controller.schema.json",
+  "title": "Core v2 traffic-controller listener configuration",
+  "description": "Отдельный файл конфигурации v2 listener-а внешнего traffic-controller. Не является расширением минимального v1 core.yaml.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "listen", "tls", "allowedIdentities"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 2 },
+    "listen": { "type": "string", "minLength": 1 },
+    "tls": { "$ref": "#/$defs/tls" },
+    "allowedIdentities": { "$ref": "#/$defs/allowedIdentities" }
+  },
+  "$defs": {
+    "fileReference": {
+      "type": "string",
+      "minLength": 7,
+      "pattern": "^file:[^\\x00]+$",
+      "description": "Внешняя ссылка на файл; inline-секреты запрещены."
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["certificate", "key", "clientCA"],
+      "properties": {
+        "certificate": { "$ref": "#/$defs/fileReference" },
+        "key": { "$ref": "#/$defs/fileReference" },
+        "clientCA": { "$ref": "#/$defs/fileReference" },
+        "clientCRLs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileReference" },
+          "description": "Необязательные подписанные CRL, проверяемые по выделенному traffic-controller client CA. Некорректный CRL закрывает запуск."
+        }
+      }
+    },
+    "allowedIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commonName"],
+      "properties": {
+        "commonName": { "type": "string", "minLength": 1 },
+        "uniformResourceIdentifier": { "type": "string", "minLength": 1 }
+      }
+    },
+    "allowedIdentities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/allowedIdentity" }
+    }
+  },
+  "x-liapoldus-invariants": [
+    "Этот контракт включается отдельным v2 `--traffic-controller-config`; поля не добавляются в v1 core.yaml.",
+    "Listener требует TLS и mTLS; plaintext и Bearer authentication не поддерживаются.",
+    "Trust roots listener-а отделены от Management API, Plugin SDK REST и plugin peer transport.",
+    "Каждая разрешённая identity проверяется exact-match по Common Name и/или URI SAN; wildcard запрещён."
+  ]
+}

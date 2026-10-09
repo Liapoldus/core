@@ -10,7 +10,6 @@ import (
 
 	"github.com/Liapoldus/core/internal/application"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	bootstrapruntime "github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
@@ -21,16 +20,12 @@ func access(options options) int {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments
 	}
-	path, _, err := discoverConfig(options)
+	path, err := statePath()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
 		return words.Exits.Arguments
 	}
-	bootstrap, err := config.LoadBootstrap(path)
-	if err != nil {
-		return configValidationFailure(options.output, err)
-	}
-	database, unlock, err := bootstrapruntime.OpenExclusiveDatabase(context.Background(), bootstrap.StatePath)
+	database, unlock, err := bootstrapruntime.OpenExclusiveDatabase(context.Background(), path)
 	if err != nil {
 		if bootstrapruntime.DatabaseBusy(err) {
 			writeFailure(options.output, words.Exits.Conflict, words.Codes.DatabaseBusy, words.Diagnostics.DatabaseBusy)

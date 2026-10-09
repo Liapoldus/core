@@ -22,7 +22,7 @@ SQLite, строит immutable in-memory generation и сообщает плаг
 
 Caddy — реализация отдельного first-party Server plugin process. В v1 plugin
 обслуживает только публичный HTTP/HTTPS traffic; L4 и Caddy-L4 исключены из
-бинарника и acceptance v1 и переносятся в v2. Core не встраивает Caddy,
+бинарника и acceptance v1 и перенесены в v3. Core не встраивает Caddy,
 не запускает отдельный Caddy binary и не содержит Caddy-specific data plane.
 Оператор вручную запускает Server plugin и forms-db binaries; Core подключается
 к ним.
@@ -35,53 +35,84 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 | Владелец | Ответственность |
 | --- | --- |
 | Core | SQLite desired state, Management API/CLI, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Plugin-to-plugin interaction policies и interaction grants относятся к v2. В v1 Core подключается к вручную запущенным plugin REST endpoints. Core не содержит product-specific branches. |
-| Plugin SDK | Отдельный независимый Go-модуль. В v1 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v2. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
+| Plugin SDK | Отдельный независимый Go-модуль. В v1/v2 предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter — только v3. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
-| Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v2. |
+| Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v3. |
 | forms-db plugin | Простые формы, собственные schemas, capabilities и данные; отдельный управляемый оператором сервис. |
-| Constructor | Отдельный продукт и клиент Management API; до готовности Core v1 заморожен и в этом этапе не меняется. |
 
 `plugins/captcha` и `plugins/identity` (OIDC/OAuth) полностью заморожены и
-исключены из active workspace и v1 до реализации v2. Их исходники, тесты и contracts не
+исключены из active workspace и v1/v2 до явной разморозки для v3. Их исходники, тесты и contracts не
 изменяются и не входят в acceptance v1. Это не
 отменяет authentication/authorization, mTLS, аудит и redaction Core Management
 API.
 
-## Полный scope v2
+## Будущие этапы после v1
 
-В v2, а не в v1, входят публичный L4/TCP/UDP relay и Caddy-L4; CAPTCHA и
-Identity/OIDC/OAuth; TUF metadata/catalog и установка или обновление plugin
-binary через Core; автоматическое управление local processes и deployments в
-Docker/Compose, Swarm и Kubernetes. До открытия v2 эти возможности не имеют
+В v2, а не в v1, входят саморегистрация replicas, rollout и внешнее размещение
+в Docker/Swarm/Kubernetes без управления workload из Core, Domain, Runtime и
+смешанные peer transports. Caller→target link policies — редактируемое
+Core-owned desired state в SQLite и Management API, не статический bootstrap
+YAML. Server и forms-db остаются на текущем v1 baseline;
+их repositories не изменяются в v2, а generic rollout проверяется на fixtures.
+Studio развивается отдельно и сейчас не входит в v2 работу. Публичный L4/Caddy-L4,
+Identity/CAPTCHA, pluginprotocol C ABI/Python FFI, Core embedding и SDK
+in-process/static composition, все новые Server/forms-db product changes
+(масштабирование Server/shared storage/ACME, forms-db SQL cohort compatibility
+и website/content) относятся к v3. Установка и плановые обновления Core/plugins
+принадлежат оператору. Core не зависит от инструментов размещения и не управляет
+workloads ни в одной версии.
+Core никогда не выполняет autoscaling по нагрузке. До открытия этих этапов нет
 активного v1 API, таблиц SQLite, разрешений, бинарных зависимостей или
 acceptance gates. Внутренние carriers `pluginprotocol` обслуживают только
 межплагинное взаимодействие и не означают публичный L4 relay; их доступный
 набор по версиям системы описан в [границе протокола](protocol).
 
-Также только в v2 `pluginprotocol` расширяется локальными IPC carriers:
+В v3 планируется продуктовый website/content сценарий для forms-db:
+хранение редактируемого контента в принадлежащем plugin storage, административный
+интерфейс на отдельно настраиваемом endpoint/порту и интеграция публикации с
+Server plugin. Это пока направление проектирования, не готовый v3 контракт.
+Роли, аутентификация, публичный listener и выпуск/откат site releases должны
+быть согласованы до реализации; Core остаётся универсальным и не получает
+forms-db-specific модели. Канонический product backlog и открытые решения
+ведутся в [forms-db v3 документации](https://liapoldus.github.io/plugins/forms-db#направление-развития-в-v3-website-и-редактор-содержимого)
+и [TODO forms-db](https://github.com/Liapoldus/forms-db/blob/main/TODO.md).
+
+В v2 `pluginprotocol` расширяется локальными IPC carriers:
 Unix domain sockets для macOS/Linux и Windows named pipes для Windows. Все
-carriers выбираются явно; mTLS обязателен также для локальных соединений, а
+carriers выбираются явно; для production и remote connections требуется mTLS.
+`pluginprotocol` допускает отдельный, явно выбранный plaintext-профиль для TCP
+loopback в development. SDK WIP также содержит отдельный v2 loopback plaintext
+profile для Core↔plugin REST: только отдельный listener с literal loopback TCP
+address и generic `GET /_liapoldus/v1/health`; по умолчанию он выключен.
+Config pull, secret grants и все остальные SDK endpoints остаются mTLS-only.
+Профиль ещё не входит в опубликованную SDK/Core dependency revision и не
+считается доступным в поддерживаемом Core runtime до совместимого pin и
+сквозного conformance.
+Unix socket и Windows named pipe требуют mTLS даже при локальном размещении;
 filesystem permissions и pipe ACL являются дополнительными ограничениями.
-Автоматического выбора и fallback нет. Подробная спецификация и обязательные
+Автоматического выбора, fallback или downgrade нет. Подробная спецификация и обязательные
 platform conformance gates приведены в разделе
 [v2: локальные IPC carriers и mTLS](protocol#целевое-расширение-v2-локальные-ipc-carriers).
-В v2 Go остаётся единственной реализацией `pluginprotocol`; для Python и
+
+## V3: C ABI и монолитная композиция
+
+В v3 Go остаётся единственной реализацией `pluginprotocol`; для Python и
 последующих языков она открывается через версионированную native C ABI и FFI.
 Первый binding — Python `cffi`, поставляемый с platform-specific native library;
 независимый Python wire/session engine не создаётся. Полная поверхность,
 границы безопасности и conformance описаны в разделе
-[межъязыкового доступа через C ABI](protocol#межъязыковой-доступ-через-c-abi-в-v2).
+[межъязыкового доступа через C ABI](protocol#межъязыковой-доступ-через-c-abi-в-v3).
 
-V2 также добавляет единый бинарник/процессный профиль: статически выбранные
+V3 также добавляет единый бинарник/процессный профиль: статически выбранные
 доверенные Go plugins могут работать в том же процессе, что и Core, через
 in-process adapter Plugin SDK без REST и Core↔plugin mTLS. Отдельно запущенные
 или удалённые plugins продолжают использовать REST+mTLS. У обоих адаптеров одна
 семантика `Reload` и exact-generation pull; plugin-to-plugin общение остаётся в
 `pluginprotocol` с mTLS, без прямого Go-вызова между продуктами. Граница доверия
 и conformance описаны в
-[v2-модели Plugin SDK](protocol#целевое-расширение-v2-plugin-sdk-без-внутреннего-rest).
+[v3-модели Plugin SDK](protocol#целевое-расширение-v3-in-process-adapter-и-монолитная-композиция).
 
-Отдельно v2 предоставляет публичный Go host API для запуска Core как
+Отдельно v3 предоставляет публичный Go host API для запуска Core как
 библиотеки внутри Go-приложения. Он использует штатный Core composition root,
 SQLite desired state, Management API и lifecycle, не экспортирует `internal/`
 пакеты и не создаёт второй Core instance для той же state database. Единый
@@ -90,11 +121,16 @@ plugin factories; список plugin modules определяется сбор�
 loader. Этот composition совместим с REST/in-process выбором Plugin SDK и не
 заменяет plugin↔plugin обмен через `pluginprotocol`.
 
+Composition root и CI/build toolchain создают единый artifact; оператор
+устанавливает и запускает его выбранными средствами. Монолитный профиль не
+зависит от инфраструктурной автоматизации ни при сборке, ни при исполнении.
+
 Embedding и in-process plugins образуют одну границу доверия и отказа. Они не
 получают process isolation или Core↔plugin mTLS; режим предназначен только для
 доверенного кода. Встроенные плагины нельзя независимо обновить без пересборки
 host binary. Реализационные этапы и gates приведены в
-[v2 roadmap](v1-migration-roadmap).
+[v3 roadmap](v1-migration-roadmap). Публичный L4/Caddy-L4 и Identity/CAPTCHA
+также относятся к v3; их product contracts принадлежат соответствующим owners.
 
 ## Запуск плагинов в v1
 
@@ -111,9 +147,9 @@ per-replica mTLS, health/readiness, конфигурационный `Reload`, s
 grants и аудит. Централизованные peer policies в v1 отсутствуют. Запуск
 плагинов в контейнерах и управление контейнерами не входят в v1.
 
-Локальное process supervision, установка/обновление plugin releases из каталога,
-Docker Compose, Docker Swarm, Kubernetes, provider reconciliation, rollout/drain
-и mode migration — отдельный v2 scope. Его проектирование не должно добавлять
+Саморегистрация и rollout/drain внешне управляемых Docker/Swarm/Kubernetes
+workloads — v2; установку и обновление выполняет оператор.
+Локальное process supervision Core не планируется. Проектирование не добавляет
 v1 API, таблицы, permissions или acceptance gates. Общие REST и plugin-to-plugin
 контракты остаются одинаковыми и не зависят от будущего способа размещения.
 
@@ -224,10 +260,24 @@ deadlines, адреса, аутентификацию и encryption provider. Tr
 
 `pluginprotocol` владеет peer identity, client/server credentials,
 сертификатной проверкой и revocation для межплагинных соединений. Для remote
-соединений обязательны TLS/mTLS и fail-closed revocation; plaintext downgrade
-запрещён. Явное отключение шифрования допускается только для loopback/dev
-профиля и никогда не снимает внешний mTLS requirement. Core не является CA;
-Management REST использует отдельные trust roots и identities.
+соединений и всех production-профилей обязательны TLS/mTLS и fail-closed
+revocation; plaintext downgrade запрещён. Peer-протокол допускает явно
+выбранный plaintext-профиль для TCP loopback в development; он не шифрует и не
+аутентифицирует соединение. SDK WIP содержит отдельный loopback-only plaintext
+development profile для Core↔plugin REST, но опубликованная dependency revision
+Core его пока не предоставляет. В профиле разрешён только generic health
+endpoint; config pull и secret grants всегда защищены mTLS. QUIC всегда
+зашифрован и требует взаимной аутентификации, а локальные IPC в v2 не имеют
+plaintext-профиля.
+
+TLS реализации принадлежат библиотекам: Plugin SDK выполняет TLS/mTLS для
+Core↔plugin REST, `pluginprotocol` — для plugin↔plugin carriers. Plugin передаёт
+настройки профиля и credentials через API соответствующей библиотеки, но не
+создаёт свой TLS stack и не повторяет проверку сертификатов в product-коде.
+Trust roots SDK REST и peer protocol независимы. Core не является CA;
+Management REST имеет собственные trust roots и identities. In-process вызовы
+Plugin SDK в v3 не образуют сетевую границу и не используют mTLS между Core и
+plugin; peer-соединения и там остаются на `pluginprotocol`.
 
 ## Независимый Plugin SDK и Core↔plugin control plane
 
@@ -241,13 +291,13 @@ endpoint; runtime logs идут структурированным JSON в stdou
 а SDK гарантирует redaction чувствительных полей. Необработанное исключение не
 возвращает stack/private data клиенту.
 
-В v2 SDK сохраняет REST+mTLS для раздельных процессов и добавляет in-process
+В v3 SDK сохраняет REST+mTLS для раздельных процессов и добавляет in-process
 adapter для статически скомпонованных plugins в едином Go-процессе. Core
 импортирует generic SDK lifecycle facade, а не выбирает транспорт по имени
 plugin. Общая последовательность `Reload` → plugin pull-ит точную generation →
 ACK не меняется; в in-process режиме config source читает Core in-memory
 snapshot через instance-scoped interface. Детали и ограничения границы доверия
-зафиксированы в [v2-модели SDK](protocol#целевое-расширение-v2-plugin-sdk-без-внутреннего-rest).
+зафиксированы в [v3-модели SDK](protocol#целевое-расширение-v3-in-process-adapter-и-монолитная-композиция).
 
 В v1 Core импортирует Plugin SDK REST client, но не `pluginprotocol`. Plugin может
 независимо импортировать Plugin SDK, `pluginprotocol`, обе библиотеки или ни одну
@@ -342,9 +392,8 @@ port-forward к loopback Management API, проверяет TLS identity Core и
 разрешает только нужный port forward и запрещает shell, SFTP и agent
 forwarding. Core проверяет полномочие `platform-admin` на каждом запросе,
 пишет audit без token/body/secret и не размещает Management API за Caddy public
-listener. Пользовательские роли и environment-scoped permissions принадлежат
-Constructor; отдельный Constructor auth redesign отложен и не меняется в этой
-итерации.
+listener. Пользовательские роли и environment-scoped permissions не входят в
+Core v1.
 
 ## SQLite и модель данных
 

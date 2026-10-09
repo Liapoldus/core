@@ -8,22 +8,20 @@ import (
 	"strconv"
 	"time"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"gopkg.in/yaml.v3"
 )
 
 type sqliteAuditStoreContract struct {
-	InsertEvent       string `yaml:"insertAuditEvent"`
-	SelectFirstPage   string `yaml:"selectAuditFirstPage"`
-	SelectAfterCursor string `yaml:"selectAuditAfterCursor"`
-	DeleteExpired     string `yaml:"deleteExpiredAuditEvents"`
-	TimestampLayout   string `yaml:"timestampLayout"`
-	InvalidContract   string `yaml:"invalidContract"`
-	InvalidCursor     string `yaml:"invalidCursor"`
-	InvalidLimit      string `yaml:"invalidLimit"`
-	AppendFailure     string `yaml:"appendFailure"`
+	InsertEvent       string
+	SelectFirstPage   string
+	SelectAfterCursor string
+	DeleteExpired     string
+	TimestampLayout   string
+	InvalidContract   string
+	InvalidCursor     string
+	InvalidLimit      string
+	AppendFailure     string
 }
 
 type sqliteExecutor interface {
@@ -38,14 +36,7 @@ type SQLiteAuditStore struct {
 var _ interfaces.AuditStore = (*SQLiteAuditStore)(nil)
 
 func NewSQLiteAuditStore(database *sql.DB) (*SQLiteAuditStore, error) {
-	contents, err := assets.Contract(assets.SQLiteAuditStore)
-	if err != nil {
-		return nil, err
-	}
-	var contract sqliteAuditStoreContract
-	if err := yaml.Unmarshal(contents, &contract); err != nil {
-		return nil, err
-	}
+	contract := auditDefinitions()
 	if database == nil || contract.InsertEvent == "" || contract.SelectFirstPage == "" || contract.SelectAfterCursor == "" || contract.DeleteExpired == "" || contract.TimestampLayout == "" || contract.InvalidContract == "" || contract.InvalidCursor == "" || contract.InvalidLimit == "" || contract.AppendFailure == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}

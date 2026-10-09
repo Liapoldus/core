@@ -55,6 +55,109 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugin-links:
+    get:
+      operationId: listPeerLinkPolicies
+      summary: Список Core-owned caller-to-target peer policies
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Durable policies; отсутствие policy означает deny
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PeerLinkPolicyList' }
+        '400': { $ref: '#/components/responses/InvalidListParameters' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: createPeerLinkPolicy
+      summary: Создать deny-by-default caller-to-target policy
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PeerLinkPolicyCreate' }
+      responses:
+        '201':
+          description: Policy сохранена, snapshot и directory watchers обновлены
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PeerLinkPolicy' }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugin-links/{callerInstanceId}/{targetInstanceId}:
+    parameters:
+      - $ref: '#/components/parameters/CallerInstanceId'
+      - $ref: '#/components/parameters/TargetInstanceId'
+    get:
+      operationId: getPeerLinkPolicy
+      summary: Получить policy для logical caller/target пары
+      responses:
+        '200':
+          description: Durable policy и её CAS revision
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PeerLinkPolicy' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: replacePeerLinkPolicy
+      summary: Атомарно заменить набор link rules для пары
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PeerLinkPolicyReplace' }
+      responses:
+        '200':
+          description: Новая CAS revision сохранена, directory watchers уведомлены
+          headers:
+            ETag:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PeerLinkPolicy' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      operationId: deletePeerLinkPolicy
+      summary: Удалить link policy и отозвать разрешение
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': { description: Policy удалена, отсутствие policy означает deny }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/plugins/{pluginId}:
     parameters:
       - $ref: '#/components/parameters/PluginId'
@@ -320,14 +423,24 @@ components:
         Все /api/** operations требуют platform-admin service key поверх TLS.
         Web Controller дополнительно требует mTLS, проверяемый до HTTP; invalid
         client certificate завершает TLS handshake и не возвращает Problem body.
-        Bearer token никогда не выдаётся browser. Constructor user permissions
-        не передаются Core и проверяются до вызова Controller.
+        Bearer token никогда не выдаётся browser. Пользовательские permissions
+        остаются в клиентском backend и проверяются до обращения к Core.
   parameters:
     PluginId:
       name: pluginId
       in: path
       required: true
       schema: { type: string }
+    CallerInstanceId:
+      name: callerInstanceId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 256 }
+    TargetInstanceId:
+      name: targetInstanceId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 256 }
     IfMatch:
       name: If-Match
       in: header
@@ -501,6 +614,74 @@ components:
         nextCursor: { type: [string, 'null'] }
         requestId: { type: string }
       additionalProperties: false
+    PeerLinkPolicyList:
+      type: object
+      required: [items, nextCursor, requestId]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PeerLinkPolicy' } }
+        nextCursor: { type: [string, 'null'] }
+        requestId: { type: string }
+      additionalProperties: false
+    PeerLinkPolicy:
+      type: object
+      required: [callerInstanceId, targetInstanceId, revision, rules]
+      properties:
+        callerInstanceId: { type: string, minLength: 1, maxLength: 256 }
+        targetInstanceId: { type: string, minLength: 1, maxLength: 256 }
+        revision: { type: integer, minimum: 1 }
+        rules: { type: array, minItems: 1, items: { $ref: '#/components/schemas/PeerLinkRule' } }
+      additionalProperties: false
+    PeerLinkPolicyCreate:
+      type: object
+      required: [callerInstanceId, targetInstanceId, rules]
+      properties:
+        callerInstanceId: { type: string, minLength: 1, maxLength: 256 }
+        targetInstanceId: { type: string, minLength: 1, maxLength: 256 }
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { $ref: '#/components/schemas/PeerLinkRule' }
+      additionalProperties: false
+      description: >-
+        Создать logical-pair policy. Instance IDs могут ещё не быть
+        зарегистрированы; Core не раскрывает их endpoints, если для пары нет
+        разрешённого live peer-directory entry.
+    PeerLinkPolicyReplace:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { $ref: '#/components/schemas/PeerLinkRule' }
+      additionalProperties: false
+    PeerLinkRule:
+      type: object
+      required: [placementRule, carrier, weight]
+      properties:
+        placementRule: { type: string, enum: [same-placement, remote] }
+        carrier: { type: string, enum: [tcp, quic, unix, windows-named-pipe] }
+        weight: { type: integer, minimum: 1, maximum: 100 }
+        requiredContracts:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/PeerContractRange' }
+      additionalProperties: false
+      description: >-
+        Core validates only generic syntax and placement/carrier pairing:
+        same-placement permits unix/windows-named-pipe; remote permits tcp/quic.
+        Duplicate placement/carrier pairs are rejected.
+    PeerContractRange:
+      type: object
+      required: [contractId, minimumVersion, maximumVersionExclusive]
+      properties:
+        contractId: { type: string, minLength: 1, maxLength: 256 }
+        minimumVersion: { type: string, minLength: 1, maxLength: 64 }
+        maximumVersionExclusive: { type: string, minLength: 1, maxLength: 64 }
+      additionalProperties: false
+      description: Opaque plugin-owned contract compatibility claim; Core carries but does not interpret versions.
     AdminSurfaceList:
       type: object
       required: [items, requestId]

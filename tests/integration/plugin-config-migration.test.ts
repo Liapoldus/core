@@ -17,7 +17,7 @@ describe("plugin configuration SQLite migration", () => {
         cwd: coreRoot,
       });
       expect(JSON.parse(result.stdout)).toMatchObject({
-        migrationVersion: 9,
+        migrationVersion: 14,
         active: { generation: 2, raw: '{ "version" : 2 }' },
         previous: { generation: 1, raw: '{"version":1}' },
         staging: { generation: 3, raw: '{ "version" : 3 }' },

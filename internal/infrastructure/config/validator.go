@@ -71,15 +71,7 @@ func ValidateYAML(document string) error {
 }
 
 func loadContractFile() (contractFile, error) {
-	var loaded contractFile
-	contents, err := assets.Contract(assets.ConfigFields)
-	if err != nil {
-		return contractFile{}, err
-	}
-	if err := yaml.Unmarshal(contents, &loaded); err != nil {
-		return contractFile{}, err
-	}
-	return loaded, nil
+	return fileDefinitions(), nil
 }
 
 func validateManagementSecurity(root *yaml.Node, fields managementBootstrapFields) error {
@@ -105,6 +97,14 @@ func validateManagementSecurity(root *yaml.Node, fields managementBootstrapField
 }
 
 func validateSchema(root *yaml.Node) error {
+	contents, err := assets.Contract(assets.CoreSchema)
+	if err != nil {
+		return err
+	}
+	return validateDocumentSchema(root, contents)
+}
+
+func validateDocumentSchema(root *yaml.Node, contents []byte) error {
 	var raw any
 	if err := root.Decode(&raw); err != nil {
 		return err
@@ -117,10 +117,20 @@ func validateSchema(root *yaml.Node) error {
 	if err := json.Unmarshal(encoded, &instance); err != nil {
 		return err
 	}
-	contents, err := assets.Contract(assets.CoreSchema)
-	if err != nil {
-		return err
+	return validateJSONSchemaValue(instance, contents)
+}
+
+// ValidateJSONSchemaDocument applies a plugin-owned JSON Schema to an opaque
+// JSON document without decoding it into a Core product model.
+func ValidateJSONSchemaDocument(document, schemaContents []byte) error {
+	var instance any
+	if !json.Valid(document) || json.Unmarshal(document, &instance) != nil {
+		return ErrInvalidDocument
 	}
+	return validateJSONSchemaValue(instance, schemaContents)
+}
+
+func validateJSONSchemaValue(instance any, contents []byte) error {
 	var schemaDocument struct {
 		ID string `json:"$id"`
 	}

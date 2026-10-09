@@ -1,36 +1,28 @@
 package storage
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"database/sql"
-	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strconv"
-	"strings"
 	"time"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"gopkg.in/yaml.v3"
 )
 
-//go:embed sql/operation.sql
-var operationSQL embed.FS
-
 type sqliteOperationStoreContract struct {
-	TimestampLayout      string `yaml:"timestampLayout"`
-	ErrorCodeField       string `yaml:"errorCodeField"`
-	IdempotencyExpiresAt string `yaml:"idempotencyExpiresAt"`
-	OperationNotFound    string `yaml:"operationNotFound"`
-	InvalidContract      string `yaml:"invalidContract"`
-	InvalidReservation   string `yaml:"invalidReservation"`
-	TransitionConflict   string `yaml:"transitionConflict"`
-	IdempotencyConflict  string `yaml:"idempotencyConflict"`
+	TimestampLayout      string
+	ErrorCodeField       string
+	IdempotencyExpiresAt string
+	OperationNotFound    string
+	InvalidContract      string
+	InvalidReservation   string
+	TransitionConflict   string
+	IdempotencyConflict  string
 }
 
 type SQLiteOperationStore struct {
@@ -47,19 +39,12 @@ type sqliteOperationQueryer interface {
 var _ interfaces.OperationStore = (*SQLiteOperationStore)(nil)
 
 func NewSQLiteOperationStore(database *sql.DB) (*SQLiteOperationStore, error) {
-	contents, err := assets.Contract(assets.SQLiteOperationStore)
-	if err != nil {
-		return nil, err
-	}
-	var contract sqliteOperationStoreContract
-	if err := yaml.Unmarshal(contents, &contract); err != nil {
-		return nil, err
-	}
+	contract := operationDefinitions()
 	expiresAt, expiresErr := time.Parse(contract.TimestampLayout, contract.IdempotencyExpiresAt)
-	queries, queryErr := loadOperationSQL(contract.InvalidContract)
+	queries := operationQueries()
 	if database == nil || contract.TimestampLayout == "" || contract.ErrorCodeField == "" || expiresErr != nil ||
 		contract.OperationNotFound == "" || contract.InvalidContract == "" || contract.InvalidReservation == "" ||
-		contract.TransitionConflict == "" || contract.IdempotencyConflict == "" || queryErr != nil {
+		contract.TransitionConflict == "" || contract.IdempotencyConflict == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}
 	return &SQLiteOperationStore{database: database, contract: contract, queries: queries, idempotencyUntil: expiresAt}, nil
@@ -284,46 +269,6 @@ func findReservedOperation(ctx context.Context, queryer interface {
 	}
 	operation, err := readOperation(ctx, queryer, store, operationID)
 	return operation, err == nil, err
-}
-
-func loadOperationSQL(invalidContract string) (map[string]string, error) {
-	contents, err := operationSQL.ReadFile("sql/operation.sql")
-	if err != nil {
-		return nil, errors.New(invalidContract)
-	}
-	queries := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(contents)))
-	name := ""
-	var statement strings.Builder
-	storeStatement := func() bool {
-		if name == "" {
-			return true
-		}
-		if _, exists := queries[name]; exists || strings.TrimSpace(statement.String()) == "" {
-			return false
-		}
-		queries[name] = strings.TrimSpace(statement.String())
-		return true
-	}
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "-- name: ") {
-			if !storeStatement() {
-				return nil, errors.New(invalidContract)
-			}
-			name = strings.TrimSpace(strings.TrimPrefix(line, "-- name: "))
-			statement.Reset()
-			continue
-		}
-		if name != "" {
-			statement.WriteString(line)
-			statement.WriteByte('\n')
-		}
-	}
-	if scanner.Err() != nil || !storeStatement() || len(queries) != 9 {
-		return nil, errors.New(invalidContract)
-	}
-	return queries, nil
 }
 
 func validOperation(operation models.Operation) bool {

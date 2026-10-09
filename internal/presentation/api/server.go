@@ -9,17 +9,23 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 )
 
 type Server struct {
+	CoreSettings       interfaces.CoreSettings
+	ValidateSettings   func([]byte) error
 	Token              string
 	ServiceAccounts    []models.ServiceAccount
 	mu                 sync.RWMutex
 	Operations         application.OperationService
 	PluginAdminControl *plugins.SDKAdminControl
+	PluginLinks        *application.PluginLinkPolicyService
+	TrafficRollouts    *application.TrafficRolloutService
+	TrafficRolloutAPI  config.TrafficRolloutAPIContract
 	Plugins            []any
 	PluginIDField      string
 	Audit              *application.AuditService

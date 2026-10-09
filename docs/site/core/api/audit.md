@@ -21,11 +21,10 @@ durable operation и не сохраняет idempotency fingerprint: повто
 `Idempotency-Key` исполняется заново и создаёт отдельную audit-запись. Никакие
 Admin Action payloads в audit не попадают.
 
-Для web-операций Core видит только authenticated Constructor binding и его
-service key; Core не принимает actor headers как источник identity или
-authorization. Constructor audit связывает тот же request/operation ID с
-end-user, role, environment и target Core. Именно Constructor audit является
-источником персональной identity и решения о доступе.
+Для web-операций Core видит только authenticated client binding и его service
+key; Core не принимает actor headers как источник identity или authorization.
+Владелец клиентского backend-а отвечает за пользовательскую identity и её
+аудит-запись, связанную с Core request/operation ID.
 
 ## Выборка и пагинация
 

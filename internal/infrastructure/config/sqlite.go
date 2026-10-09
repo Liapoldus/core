@@ -1,8 +1,7 @@
 package config
 
 import (
-	assets "github.com/Liapoldus/core"
-	"gopkg.in/yaml.v3"
+	"github.com/Liapoldus/core/internal/infrastructure/storage"
 )
 
 type SQLiteContract struct {
@@ -26,17 +25,7 @@ type SQLiteContract struct {
 }
 
 func LoadSQLiteContract() (SQLiteContract, error) {
-	runtimeContents, err := assets.Contract(assets.SQLiteRuntime)
-	if err != nil {
-		return SQLiteContract{}, err
-	}
-	var contract SQLiteContract
-	if err := yaml.Unmarshal(runtimeContents, &contract); err != nil {
-		return SQLiteContract{}, err
-	}
-	contract.Schema, err = assets.Contract(assets.SQLiteSchema)
-	if err != nil {
-		return SQLiteContract{}, err
-	}
+	contract := sqliteDefinitions()
+	contract.Schema = []byte(storage.SchemaSQL)
 	return contract, nil
 }

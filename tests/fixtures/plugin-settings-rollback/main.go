@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/internal/presentation/api"
@@ -24,10 +26,28 @@ type applyCall struct {
 	Config   string `json:"config"`
 }
 
-type fixtureApplier struct{ calls []applyCall }
+type fixtureApplier struct {
+	mu        sync.Mutex
+	calls     []applyCall
+	blockNext bool
+	entered   chan struct{}
+	release   chan struct{}
+}
 
 func (applier *fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, configuration []byte) error {
+	applier.mu.Lock()
+	block := applier.blockNext
+	if block {
+		applier.blockNext = false
+	}
+	applier.mu.Unlock()
+	if block {
+		close(applier.entered)
+		<-applier.release
+	}
+	applier.mu.Lock()
 	applier.calls = append(applier.calls, applyCall{Revision: revision, Config: string(configuration)})
+	applier.mu.Unlock()
 	if bytes.Contains(configuration, []byte(`"reject"`)) {
 		return errors.New("configuration rejected")
 	}
@@ -73,6 +93,11 @@ func main() {
 		{1, "previous", `{"reject":true}`},
 		{2, "active", `{"origin":"current"}`},
 	})
+	seedInstance(ctx, database, "pending", []seededRevision{
+		{1, "previous", `{"origin":"pending-previous"}`},
+		{2, "active", `{"origin":"pending-active"}`},
+		{3, "staging", `{"origin":"pending-candidate"}`},
+	})
 	configurationStore, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
 	operationStore, err := storage.NewSQLiteOperationStore(database)
@@ -111,12 +136,59 @@ func main() {
 		`SELECT raw_json, sha256 FROM plugin_config_generations WHERE instance_id = ? AND slot = ?`,
 		"fixture", pluginConfigurationWords.Slots.Active).Scan(&activeRaw, &activeDigest))
 	rejectedState, rejectedErrorCode := readOperation(ctx, database)
+	pendingRollback := rollback("pending", `"2"`, "rollback-key-0007", nil)
+	pendingActiveRaw, pendingActivePresent := readSlot(ctx, database, "pending", pluginConfigurationWords.Slots.Active)
+	pendingCandidateRaw, pendingCandidatePresent := readSlot(ctx, database, "pending", pluginConfigurationWords.Slots.Staging)
+
+	applier.entered = make(chan struct{})
+	applier.release = make(chan struct{})
+	applier.mu.Lock()
+	applier.blockNext = true
+	applier.mu.Unlock()
+	applyDone := make(chan error, 1)
+	go func() {
+		_, applyErr := service.Apply(ctx, application.ApplyPluginConfigurationCommand{
+			InstanceID: "fixture", ExpectedRevision: 1, SchemaVersion: 1,
+			SettingsJSON:   []byte(`{"origin":"apply-before-rollback"}`),
+			CandidateAudit: models.AuditRecord{Actor: "operator", Action: "apply", Resource: "fixture", Result: "succeeded", RequestID: "apply-race"},
+			AppliedAudit:   models.AuditRecord{Actor: "operator", Action: "apply", Resource: "fixture", Result: "succeeded", RequestID: "apply-race"},
+		})
+		applyDone <- applyErr
+	}()
+	<-applier.entered
+	racingRollbackDone := make(chan observation, 1)
+	go func() { racingRollbackDone <- rollback("fixture", `"3"`, "rollback-race-key", nil) }()
+	rollbackCompletedWhileApplyBlocked := false
+	var raceRollback observation
+	select {
+	case raceRollback = <-racingRollbackDone:
+		rollbackCompletedWhileApplyBlocked = true
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(applier.release)
+	applyError := <-applyDone
+	if raceRollback.Status == 0 {
+		raceRollback = <-racingRollbackDone
+	}
+	if applyError != nil {
+		panic(applyError)
+	}
+	finalRaceActive, _, err := configurationStore.Current(ctx, "fixture")
+	check(err)
+	applier.mu.Lock()
+	allApplyCalls := append([]applyCall(nil), applier.calls...)
+	applier.mu.Unlock()
+	raceApplyCalls := allApplyCalls[len(allApplyCalls)-2:]
 	actor, actions := readAudit(ctx, database)
 	writeReport(map[string]any{
 		"accepted": accepted, "replay": replay, "conflicting": conflicting,
 		"missingIfMatch": missingIfMatch, "missingKey": missingKey,
 		"unknown": unknown, "withoutPrevious": withoutPrevious, "rejected": rejected,
 		"unauthorized": unauthorized, "rejectedState": rejectedState, "rejectedErrorCode": rejectedErrorCode,
+		"pendingRollback": pendingRollback, "pendingActiveRaw": pendingActiveRaw, "pendingActivePresent": pendingActivePresent,
+		"pendingCandidateRaw": pendingCandidateRaw, "pendingCandidatePresent": pendingCandidatePresent,
+		"rollbackCompletedWhileApplyBlocked": rollbackCompletedWhileApplyBlocked, "raceRollback": raceRollback,
+		"raceApplyCalls": raceApplyCalls, "raceFinalActiveRevision": finalRaceActive.Revision,
 		"applyCalls": applier.calls, "activeRaw": string(activeRaw), "activeDigest": activeDigest,
 		"auditedActor": actor, "auditActions": actions,
 	})
@@ -193,6 +265,17 @@ func readOperation(ctx context.Context, database *sql.DB) (string, string) {
 		check(json.Unmarshal(problem, &decoded))
 	}
 	return string(state), decoded.Code
+}
+
+func readSlot(ctx context.Context, database *sql.DB, instanceID, slot string) (string, bool) {
+	var raw []byte
+	err := database.QueryRowContext(ctx,
+		`SELECT raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = ?`, instanceID, slot).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false
+	}
+	check(err)
+	return string(raw), true
 }
 
 func readAudit(ctx context.Context, database *sql.DB) (string, []string) {

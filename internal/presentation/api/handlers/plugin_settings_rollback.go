@@ -100,21 +100,43 @@ func PluginSettingsRollback(
 		writePluginRollbackAccepted(deps, response, operation.ID, operation.State, path, requestID)
 		return
 	}
-	restored, err := restorePreviousConfiguration(deps, service, request, instanceID, expectedRevision, actor, requestID)
+	// Serialize the pointer swap and its Reload with configuration application.
+	// Otherwise a rollback can race a just-promoted generation and apply an older
+	// snapshot while the concurrent Apply is still finishing.
+	application.SnapshotActivationLock.Lock()
+	defer application.SnapshotActivationLock.Unlock()
+	restored, registered, err := restorePreviousConfiguration(service, request, operation.ID, instanceID, expectedRevision,
+		models.AuditRecord{
+			Actor: actor, Action: deps.AuditWords.Audit.Actions.PluginSettingsRollback,
+			Resource: instanceID, Result: deps.AuditWords.Audit.Results.Succeeded, RequestID: requestID,
+		})
 	if err != nil {
 		failPluginRollback(deps, response, request.Context(), operation.ID, requestID, err)
-		return
-	}
-	if err := service.Applier.ApplyConfiguration(request.Context(), instanceID,
-		strconv.FormatInt(restored.Revision, 10), restored.SettingsJSON); err != nil {
-		_ = deps.Operations.Transition(request.Context(), operation.ID,
-			deps.Management.Statuses.Pending, deps.Management.Statuses.Failed, deps.Management.Codes.ActivationFailed)
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginUnavailable, requestID)
 		return
 	}
 	if err := deps.Operations.Transition(request.Context(), operation.ID,
 		deps.Management.Statuses.Pending, deps.Management.Statuses.Running, ""); err != nil {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	var applyErr error
+	if registered {
+		applyErr = service.ApplyRestoredConfiguration(request.Context(), operation.ID, restored)
+	} else {
+		applyErr = service.Applier.ApplyConfiguration(request.Context(), instanceID,
+			strconv.FormatInt(restored.Revision, 10), restored.SettingsJSON)
+	}
+	if applyErr != nil {
+		if registered {
+			// Once the active pointer and frozen cohort are committed, this is a
+			// roll-forward operation. Keep it recoverable instead of failing a
+			// partially applied generation and leaving an open rollout barrier.
+			writePluginRollbackAccepted(deps, response, operation.ID, deps.Management.Statuses.Running, path, requestID)
+			return
+		}
+		_ = deps.Operations.Transition(request.Context(), operation.ID,
+			deps.Management.Statuses.Running, deps.Management.Statuses.Failed, deps.Management.Codes.ActivationFailed)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginUnavailable, requestID)
 		return
 	}
 	if err := deps.Operations.Transition(request.Context(), operation.ID,
@@ -144,20 +166,12 @@ func failPluginRollback(
 }
 
 func restorePreviousConfiguration(
-	deps PluginDependencies,
 	service *application.PluginConfigurationService,
 	request *http.Request,
-	instanceID string, expectedRevision int64, actor, requestID string,
-) (models.PluginConfigurationRevision, error) {
-	audit := models.AuditRecord{
-		Actor: actor, Action: deps.AuditWords.Audit.Actions.PluginSettingsRollback,
-		Resource: instanceID, Result: deps.AuditWords.Audit.Results.Succeeded, RequestID: requestID,
-	}
-	pointers, err := service.Store.RestorePrevious(request.Context(), instanceID, expectedRevision, audit)
-	if err != nil {
-		return models.PluginConfigurationRevision{}, err
-	}
-	return service.Store.GetRevision(request.Context(), instanceID, pointers.CurrentRevision)
+	operationID, instanceID string, expectedRevision int64,
+	audit models.AuditRecord,
+) (models.PluginConfigurationRevision, bool, error) {
+	return service.RestorePreviousConfiguration(request.Context(), operationID, instanceID, expectedRevision, audit)
 }
 
 func writePluginRollbackAccepted(deps PluginDependencies, response http.ResponseWriter, operationID, state, path, requestID string) {

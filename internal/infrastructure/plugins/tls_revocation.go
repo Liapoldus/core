@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 
+	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
 	sdkinfra "github.com/Liapoldus/plugin-sdk/infrastructure"
 )
 
@@ -59,4 +60,36 @@ func NewTLSRevocationVerifier(authorityPath string, files []string) (func(tls.Co
 		}
 		return nil
 	}, nil
+}
+
+// PinnedReplicaIdentityVerifier adds exact certificate-identity pinning to
+// standard chain/hostname verification. Revocation is checked first and its
+// failure is preserved without exposing certificate details.
+func PinnedReplicaIdentityVerifier(
+	commonName string,
+	uniformResourceIdentifier string,
+	revocation func(tls.ConnectionState) error,
+) func(tls.ConnectionState) error {
+	expected, err := sdkmodels.NewPeerIdentity(commonName, uniformResourceIdentifier)
+	return func(state tls.ConnectionState) error {
+		if err != nil || len(state.PeerCertificates) == 0 {
+			return ErrPluginUnavailable
+		}
+		if revocation != nil {
+			if err := revocation(state); err != nil {
+				return err
+			}
+		}
+		leaf := state.PeerCertificates[0]
+		identifiers := make([]string, 0, len(leaf.URIs))
+		for _, identifier := range leaf.URIs {
+			if identifier != nil {
+				identifiers = append(identifiers, identifier.String())
+			}
+		}
+		if !expected.Matches(leaf.Subject.CommonName, identifiers) {
+			return ErrPluginUnavailable
+		}
+		return nil
+	}
 }

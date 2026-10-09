@@ -11,9 +11,10 @@ Caddyfile API и не вторая Core route DSL. Публичные порты
 plugin. Оператор вручную запускает Caddy с необходимыми OS permissions и
 обеспечивает публикацию портов; Core не открывает public sockets и не
 управляет listener/container resources. Docker/Compose, Swarm, Kubernetes и
-local process supervision отложены до v2.
+саморегистрация replicas относятся к v2; Core process supervision не входит в
+целевую модель; установку и обновления выполняет оператор.
 
-Публичные TCP/UDP listeners, relay, Caddy-L4 и P2P не входят в v1 и перенесены
-в v2. Транспорт TCP или QUIC внутри `pluginprotocol` — отдельная внутренняя
+Публичные TCP/UDP listeners, relay, Caddy-L4 и P2P не входят в v1/v2 и
+перенесены в v3. Транспорт TCP или QUIC внутри `pluginprotocol` — отдельная внутренняя
 сеть plugin↔plugin и не означает наличие публичного L4 data plane. См.
 [Acceptance](acceptance) и [целевую архитектуру](../architecture/target).

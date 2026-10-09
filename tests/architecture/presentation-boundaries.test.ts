@@ -56,11 +56,16 @@ describe("presentation package ownership", () => {
       .filter((name): name is string => name !== undefined);
 
     expect(fields).toEqual([
+      "CoreSettings",
+      "ValidateSettings",
       "Token",
       "ServiceAccounts",
       "mu",
       "Operations",
       "PluginAdminControl",
+      "PluginLinks",
+      "TrafficRollouts",
+      "TrafficRolloutAPI",
       "Plugins",
       "PluginIDField",
       "Audit",
@@ -75,7 +80,7 @@ describe("presentation package ownership", () => {
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(16);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(21);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 
@@ -91,9 +96,11 @@ describe("presentation package ownership", () => {
     }
   });
 
-  it("keeps production Go test files out of presentation", async () => {
+  it("keeps testing dependencies out of presentation runtime sources", async () => {
     const files = await recursiveGoFiles(presentation);
-    expect(files.filter((file) => file.endsWith("_test.go"))).toEqual([]);
+    for (const file of files.filter((path) => !path.endsWith("_test.go"))) {
+      expect(await readFile(file, "utf8"), file).not.toMatch(/"testing"/);
+    }
   });
 
   it("declares acyclic API and CLI package dependency directions", async () => {

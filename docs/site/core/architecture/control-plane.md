@@ -17,7 +17,8 @@ SQLite хранит только control-plane state, нужный для вос
 | Plugin instance | Стабильный ID, plugin identity, зарегистрированные replicas и timestamps. | Product-specific поля, binaries и process lifecycle. |
 | Replica membership | Стабильный ID replica, отдельный REST control endpoint, ожидаемая mTLS identity и desired/observed status. | Private keys, bearer tokens и TLS secret bytes. |
 | Config generations | До одной строки на instance/slot: `instance_id`, монотонный `generation`, `slot`, точный `raw_json BLOB`, `sha256`, `schema_version`, `created_at`. Слоты: `active`, `previous` и непубликуемый `staging`. | Product-specific распарсенные поля и раскрытые секреты. |
-| Replica acknowledgements | Config generation, digest, replica identity и время подтверждения. | Credentials целиком. |
+| Frozen rollout cohort | `plugin_rollouts`: operation, instance, generation и open/completed state; `plugin_rollout_targets`: точные `replica_id`, `incarnation_id`, release digest и per-target ACK. Membership неизменна после promotion. | Live endpoints, leases и credentials. |
+| Replica observations | Config generation, digest, replica identity и время наблюдения/подтверждения. Rollout ACK принадлежит неизменяемому target row. | Credentials целиком. |
 | Operations/idempotency | Тип операции, safe resource IDs, состояние, input digest, результат и timestamps. | Чувствительные request/response body. |
 | Access/audit | Actor, authorization result, mutation/resource и before/after digest. | Повторно выдаваемые tokens, cookies, authorization и secret values. |
 
@@ -62,6 +63,22 @@ Durable operation хранит только instance ID, generation, digest, sch
 actor/idempotency metadata и состояние; JSON payload отдельно в операции не
 дублируется. Ошибка до promotion не меняет `active`/`previous` и не вызывает
 `Reload`.
+
+Для зарегистрированного instance promotion и фиксация rollout cohort происходят
+в одной SQLite transaction. Recovery читает сохранённые `(replica_id,
+incarnation_id, release_sha256)` и вызывает `Reload` только для точного живого
+участника; новая incarnation не подтверждает старую, а уже сохранённый ACK не
+переигрывается. Пока cohort не сошёлся, operation остаётся открытой, instance
+остаётся fenced для конфликтующих mutations, а второй rollout запрещён. Прямой
+`RestorePrevious` также отклоняется до изменения pointers при открытом rollout
+или staging-кандидате. API rollback сериализуется тем же application lock, что
+и config apply, на весь swap и `Reload`. В текущем Core WIP rollback для
+зарегистрированного instance в одной SQLite-транзакции меняет `active` и
+`previous` и фиксирует собственную exact-incarnation cohort; partial ACK и
+recovery обрабатываются как durable operation без повторного вызова уже
+подтвердивших replicas. Это покрыто `registered-rollout-cohort.test.ts` и
+`plugin-settings-rollback.test.ts`. Данный локальный результат не закрывает
+release-compatible Core/SDK build и полный hosted release gate.
 
 ## Два поколения конфигурации
 
@@ -125,7 +142,7 @@ reconciliation повторно сверяет identity и active generation и 
 `Reload` при расхождении. Core не перезапускает plugin и не повторяет
 пользовательский Call.
 
-## Частичный rollout и rollback
+## Частичный rollout и rollback в v1
 
 Принята стратегия **roll-forward**. После продвижения candidate `active` не
 возвращается автоматически к старой версии из-за частичного отказа. Подтвердившие
@@ -148,6 +165,46 @@ roll-forward на содержимое `previous`: Core атомарно мен�
 fenced/degraded до startup reconciliation после ручного перезапуска Core.
 Автоматической compensation назад нет.
 
+## Roll-forward зарегистрированных replicas в v2
+
+В v2 Core повторно сводит только актуальный desired generation с replicas,
+имеющими живую аутентифицированную lease. При регистрации Core объявляет текущий
+`active` только этой replica; периодическая reconciliation затем проверяет точные identity,
+generation и digest через Plugin SDK readiness. Уже сошедшаяся replica не
+получает лишний вызов. Отстающей или неготовой replica повторно объявляется тот
+же immutable `Reload(generation, digest, schemaVersion)`, а результат
+фиксируется отдельно по replica. Отказ одного участника не блокирует попытки к
+остальным. Просроченная lease исключает replica из reconciliation и dispatch.
+
+Повторяется только идемпотентное уведомление о desired generation. Core не
+повторяет пользовательский plugin Call, submission, artifact upload или любой
+вызов с неизвестным побочным результатом. Частичный rollout остаётся
+roll-forward: нужные replicas fenced до точного ACK, а ручной rollback — новое
+desired generation, а не автоматическая compensation. Периодичность
+reconciliation задаётся versioned Core policy. Для instance, прошедшего
+аутентифицированную регистрацию в текущем процессе Core, частично применённая
+config operation остаётся `running`, пока точная incarnation остаётся живой
+либо её сохранённая lease не истекла; recovery повторяет только идемпотентный
+`Reload` для неподтвердивших targets. Истечение frozen lease или регистрация
+другой incarnation с тем же `replicaId` атомарно завершает operation как
+`failed/target_lost` и закрывает rollout. Желаемый `active` не откатывается,
+новая incarnation не подставляется, а дальнейшее применение требует новой
+явной операции. TypeScript
+child-process fixture запускает реальный `core serve`, регистрирует replica по
+mTLS, проверяет directory poll, перезапускает Core и подтверждает, что
+зарегистрированный instance требует повторной регистрации и не использует
+static resolver fallback. Дополнительные SQLite/process fixtures проверяют
+durable cohort, exact-incarnation ACK, фильтрацию восстановления и rollback.
+Это локальные доказательства текущего WIP, не hosted release gate: обычная
+сборка с закреплённым опубликованным SDK пока несовместима.
+
+Открытыми частями v2 остаются release/config cohort rollout, совместимость
+релизов, drain, внешний traffic-controller intent/confirmation, нагрузочная
+проверка времени удержания activation lock и полный hosted/clean-environment
+recovery gate. Потеря exact incarnation имеет terminal outcome
+`failed/target_lost`; оно проверено локальным integration fixture, но ещё не
+входит в hosted release gate.
+
 Плагин удаляет отозванные revision-bound secret bytes из памяти после
 подтверждённой смены конфигурации либо shutdown. Secret grants выдаются через
 Plugin SDK REST только для раскрытия plugin-owned secret references. Их нельзя
@@ -161,6 +218,17 @@ authorization policy; protocol library получает только generic con
 authorizer и не знает продуктов или именованных capability contracts.
 Централизованные caller/target policies, generation/ACK и bounded drain
 отложены до v2 и не являются частью Core v1 SQLite или Management API.
+
+В v2 caller→target policy становится Core-owned durable desired state в
+SQLite и редактируется только защищённым Management API. `GET/PUT/DELETE`
+ресурса пары использует монотонную revision/ETag и CAS; успешная мутация
+аудируется и публикует новый immutable in-memory snapshot. Bootstrap YAML не
+содержит копию этих правил. Policy остаётся deny-by-default и содержит только
+generic instance IDs, placement, carrier, weight и opaque contract ranges.
+Plugin peer-directory long-poll пробуждается при смене policy или eligible
+replica membership/readiness; lease expiry учитывается таймером ближайшего
+deadline, без обязательного фонового reaper. SDK владеет wire-shape long-poll,
+Core — авторизацией, durable policy и сборкой caller-scoped directory.
 
 `pluginprotocol` обеспечивает только общий межплагинный обмен. Он не задаёт
 plugin Manifest, REST lifecycle, settings, health API, secret redemption или

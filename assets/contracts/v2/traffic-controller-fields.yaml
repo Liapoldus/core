@@ -1,0 +1,17 @@
+root:
+  - schemaVersion
+  - listen
+  - tls
+  - allowedIdentities
+tls:
+  - certificate
+  - key
+  - clientCA
+  - clientCRLs
+allowedIdentity:
+  - commonName
+  - uniformResourceIdentifier
+fileReferencePrefix: "file:"
+cliFlag: "--traffic-controller-config"
+forbiddenCode: forbidden
+unavailableCode: management_unavailable

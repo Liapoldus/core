@@ -48,7 +48,7 @@ secretReference:
 unknownFieldPolicy: reject
 semantics:
   minimalBootstrapOnly: |
-    Этот YAML содержит путь state, bind/TLS/trust Management API, bind/TLS/trust приватного plugin control listener для exact-generation config pull и нормативный список plugin instances/replicas: instanceId, replicaId, фиксированный endpoint и expectedPeerIdentity. Этот список — единственный источник endpoint и identity; он статичен на время работы Core, регистрации через Management API и plugin self-registration нет. Plugin settings и traffic configuration задаются через Management API.
+    Этот YAML содержит путь state, bind/TLS/trust Management API, bind/TLS/trust приватного plugin control listener для exact-generation config pull, отдельный необязательный traffic-controller listener и нормативный список plugin instances/replicas: instanceId, replicaId, фиксированный endpoint и expectedPeerIdentity. Traffic-controller listener использует собственные TLS credentials, client CA, CRLs и точный allow-list client identities; он не принимает Bearer. Plugin settings и traffic rollout задаются через Management API.
   localStorageOnly: |
     SQLite и immutable artifact store размещаются на локальной файловой системе. Сетевые database mounts не поддерживаются.
   managementRemoteSecurity: |

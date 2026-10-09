@@ -11,11 +11,14 @@ describe("SDK reload fanout", () => {
     const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/plugin-reload-fanout"], { cwd: coreRoot });
     expect(JSON.parse(stdout)).toEqual({
       error: true,
-      calls: [1, 1, 1],
+      protocolViolation: true,
+      calls: [0, 1, 1, 1],
+      maxConcurrentCalls: 3,
       replicas: [
         { id: "first", acknowledged: true, unreachable: false },
         { id: "second", acknowledged: false, unreachable: false },
         { id: "third", acknowledged: true, unreachable: false },
+        { id: "fourth", acknowledged: false, unreachable: false },
       ],
       nilFanoutUnavailable: true,
     });

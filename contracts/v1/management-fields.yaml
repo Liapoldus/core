@@ -2,6 +2,8 @@ paths:
   healthz: /healthz
   status: /api/status
   plugins: /api/plugins
+  pluginLinks: /api/plugin-links
+  pluginLinkTargetSuffix: /{callerInstanceId}/{targetInstanceId}
   pluginSettingsSuffix: /settings
   pluginRollbackSuffix: rollback
   adminSurfaces: /api/plugins/admin-surfaces
@@ -15,6 +17,9 @@ paths:
 operationKinds:
   pluginSettingsApply: plugin-settings-apply
   pluginSettingsRollback: plugin-settings-rollback
+  pluginLinkCreate: plugin-link-create
+  pluginLinkReplace: plugin-link-replace
+  pluginLinkDelete: plugin-link-delete
 serviceKeys:
   nameMinLength: 1
   nameMaxLength: 80
@@ -23,6 +28,7 @@ methods:
   get: GET
   post: POST
   put: PUT
+  delete: DELETE
 json:
   requestId: requestId
   operationId: operationId
@@ -77,6 +83,16 @@ json:
   dataPlaneReadiness: dataPlaneReadiness
   reason: reason
   instanceId: instanceId
+  callerInstanceId: callerInstanceId
+  targetInstanceId: targetInstanceId
+  rules: rules
+  placementRule: placementRule
+  carrier: carrier
+  weight: weight
+  requiredContracts: requiredContracts
+  contractId: contractId
+  minimumVersion: minimumVersion
+  maximumVersionExclusive: maximumVersionExclusive
   capability: capability
   allowedNames: allowedNames
   revision: revision
@@ -114,6 +130,7 @@ statuses:
   stopped: stopped
   pending: pending
   running: running
+  completed: completed
   succeeded: succeeded
   empty: empty
   notReady: not-ready
@@ -126,6 +143,9 @@ codes:
   pluginNotFound: plugin_not_found
   pluginConfigInvalid: plugin_config_invalid
   pluginRevisionConflict: plugin_revision_conflict
+  pluginLinkConflict: plugin_link_conflict
+  pluginLinkInvalid: plugin_link_invalid
+  targetLost: target_lost
   activationFailed: activation_failed
   invalidRequest: invalid_request
   artifactTooLarge: artifact_too_large

@@ -6,6 +6,7 @@ build:
 	go build ./...
 
 test:
+	go test ./...
 	npm --prefix tests test
 
 test-ts: test
@@ -21,7 +22,7 @@ docker-smoke:
 	./scripts/docker-smoke.sh
 
 arch-lint:
-	docker run --rm -v "$(CURDIR):/app" fe3dback/go-arch-lint:latest-stable-release check --project-path /app
+	docker run --rm -v "$(CURDIR):/app" fe3dback/go-arch-lint@sha256:9f4fb1216095becb37d889cc471ee8d93f7b5e5d531bde83571415013eca3fa1 check --project-path /app
 
 staticcheck-u1000:
 	GOTOOLCHAIN=go1.26.0 go tool staticcheck -checks=U1000 ./...

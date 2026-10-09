@@ -54,8 +54,9 @@ per-replica mTLS; trust roots и credentials плагинов выдаются �
 Server plugin. Peer network доступна только согласно explicit deny-by-default
 policy через `pluginprotocol`.
 
-Детали deployment modes, container providers и автоматического управления
-plugin processes относятся к v2 и не являются частью v1 acceptance.
+Внешнее размещение Docker/Swarm/Kubernetes, self-registration и rollout — v2;
+установка и плановые обновления принадлежат оператору. Core не выполняет process
+supervision и не масштабирует по нагрузке. Эти функции не входят в v1 acceptance.
 
 ## Команды оператора
 

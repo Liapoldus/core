@@ -13,6 +13,7 @@ components:
   contractAdapter: { in: [.] }
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
+  infrastructureSettings: { in: internal/infrastructure/storage/settings }
   infrastructurePlugins: { in: internal/infrastructure/plugins }
   presentationAPI: { in: internal/presentation/api }
   presentationAPIHandlers: { in: internal/presentation/api/handlers }
@@ -39,7 +40,7 @@ deps:
   application:
     mayDependOn: [domainModels, domainInterfaces]
   infrastructureConfig:
-    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructureStorage]
     canUse: [yaml, jsonschema]
   contractAdapter:
     mayDependOn: [domainModels]
@@ -49,6 +50,9 @@ deps:
   infrastructureStorage:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter]
     canUse: [sqliteDriver, yaml]
+  infrastructureSettings:
+    mayDependOn: [domainModels, domainInterfaces]
+    canUse: []
   infrastructurePlugins:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [yaml, jsonschema, bcrypt, pluginSDK]
@@ -59,7 +63,7 @@ deps:
     mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
     canUse: []
   presentationCLI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPI, presentationCLIBootstrap]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructureSettings, infrastructurePlugins, presentationAPI, presentationCLIBootstrap]
   presentationCLIBootstrap:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, presentationAPI]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, infrastructureSettings, presentationAPI]
     canUse: []

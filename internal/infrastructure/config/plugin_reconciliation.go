@@ -1,12 +1,7 @@
 package config
 
 import (
-	"bytes"
-	"io"
 	"time"
-
-	"github.com/Liapoldus/core"
-	"gopkg.in/yaml.v3"
 )
 
 type PluginReconciliationPolicy struct {
@@ -15,21 +10,7 @@ type PluginReconciliationPolicy struct {
 }
 
 func LoadPluginReconciliationPolicy() (PluginReconciliationPolicy, error) {
-	contents, err := core.Contract(core.PluginReconciliation)
-	if err != nil {
-		return PluginReconciliationPolicy{}, ErrInvalidDocument
-	}
-	var policy PluginReconciliationPolicy
-	decoder := yaml.NewDecoder(bytes.NewReader(contents))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&policy); err != nil {
-		return PluginReconciliationPolicy{}, ErrInvalidDocument
-	}
-	var trailing any
-	if decoder.Decode(&trailing) != io.EOF || policy.SchemaVersion != 1 || policy.ReadinessPollMillis <= 0 {
-		return PluginReconciliationPolicy{}, ErrInvalidDocument
-	}
-	return policy, nil
+	return reconciliationDefinitions(), nil
 }
 
 func (policy PluginReconciliationPolicy) ReadinessPollInterval() time.Duration {

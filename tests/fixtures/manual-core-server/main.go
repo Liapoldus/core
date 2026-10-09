@@ -1715,7 +1715,7 @@ func environmentHasVariable(environment []string, name string) bool {
 func build(directory, binary, target string) error {
 	command := exec.Command("go", "build", "-o", binary, target)
 	command.Dir = directory
-	command.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=go1.26.0")
+	command.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.0")
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("build %s: %w: %s", target, err, output)
 	}

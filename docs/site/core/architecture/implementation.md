@@ -20,7 +20,6 @@ lifecycle и новых config generations. Актуальные критери�
   pull-ить только `active`/`previous`. Promotion переносит candidate в `active`,
   прежний `active` в `previous`, удаляя старый `previous`. Partial rollout
   выполняется roll-forward с ACK для каждой replica.
-- Constructor и `react-lib` заморожены.
 
 ## Состояние реализации
 
@@ -39,4 +38,4 @@ macOS и в Linux/arm64 container, но не закрывают полный rel
 
 Следующий критический путь — полный operator walkthrough и release/platform gates из
 [матрицы приёмки](../configuration/acceptance).
-CAPTCHA, Identity, Constructor и `react-lib` остаются заморожены и вне v1.
+CAPTCHA и Identity остаются вне v1.

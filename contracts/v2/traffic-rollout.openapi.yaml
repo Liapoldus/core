@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+  title: Liapoldus Core v2 traffic rollout API
+  version: 2.0.0
+  description: >-
+    Traffic-rollout API поверх Core control plane. Platform-admin создаёт
+    rollout через Management API. Внешний traffic-controller использует
+    отдельный listener с mTLS-only identity и не получает Bearer-доступа.
+servers:
+  - url: /
+paths:
+  /api/plugins/{pluginId}/rollouts:
+    post:
+      operationId: createPluginTrafficRollout
+      security:
+        - PlatformAdminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/PluginId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RolloutRequest'
+            encoding:
+              metadata:
+                contentType: application/json
+                description: >-
+                  Versioned rollout metadata; maximum 64 KiB. `targets` is the
+                  exact candidate replicaId/incarnation cohort chosen by the
+                  platform-admin.
+              configuration:
+                contentType: application/json
+                description: >-
+                  Exact UTF-8 JSON bytes bounded by the Core plugin-configuration
+                  limit. Core validates syntax/schema but does not remarshal or
+                  interpret product fields. Multipart envelope overhead is
+                  bounded to 64 KiB.
+      responses:
+        '202':
+          description: Candidate активирован как desired generation; rollout начат.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationReceipt'
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/rollouts/{rolloutId}/stages/{stageId}/approve:
+    post:
+      operationId: approvePluginTrafficRolloutStage
+      security:
+        - PlatformAdminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/PluginId'
+        - $ref: '#/components/parameters/RolloutId'
+        - $ref: '#/components/parameters/StageId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Stage атомарно одобрен, rollout продвинут или завершён.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalReceipt'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/rollouts/{rolloutId}:
+    get:
+      operationId: getPluginTrafficRollout
+      security:
+        - PlatformAdminBearer: []
+      parameters:
+        - $ref: '#/components/parameters/PluginId'
+        - $ref: '#/components/parameters/RolloutId'
+      responses:
+        '200':
+          description: Состояние rollout; ETag содержит текущую revision для CAS approval.
+          headers:
+            ETag:
+              required: true
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrafficRolloutDetails' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /internal/v2/traffic-rollouts:
+    get:
+      operationId: listTrafficRolloutIntents
+      security:
+        - TrafficControllerMTLS: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Активные intent-ы с общим ETag.
+          headers:
+            ETag:
+              required: true
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrafficRolloutIntentList'
+        '304': { description: Состав intent-ов не изменился. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /internal/v2/traffic-rollouts/{rolloutId}/confirmation:
+    put:
+      operationId: confirmTrafficRolloutStage
+      security:
+        - TrafficControllerMTLS: []
+      parameters:
+        - $ref: '#/components/parameters/RolloutId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageConfirmation'
+      responses:
+        '200':
+          description: Ожидаемый stage и фактический вес подтверждены.
+          headers:
+            ETag:
+              required: true
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmationReceipt'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '422': { $ref: '#/components/responses/Invalid' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  securitySchemes:
+    PlatformAdminBearer:
+      type: http
+      scheme: bearer
+    TrafficControllerMTLS:
+      type: mutualTLS
+  parameters:
+    PluginId:
+      name: pluginId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    RolloutId:
+      name: rolloutId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    StageId:
+      name: stageId
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+  schemas:
+    RolloutRequest:
+      type: object
+      required: [metadata, configuration]
+      properties:
+        metadata:
+          $ref: '#/components/schemas/RolloutMetadata'
+        configuration:
+          type: string
+          format: binary
+          description: Точные UTF-8 bytes одного JSON object; Core не remarshal-ит документ.
+    RolloutMetadata:
+      type: object
+      additionalProperties: false
+      required: [releaseSha256, targets, stages]
+      properties:
+        releaseSha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        targets:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [replicaId, incarnation]
+            properties:
+              replicaId: { type: string, minLength: 1 }
+              incarnation: { type: string, minLength: 1 }
+          description: >-
+            Точный candidate cohort задаёт platform-admin. Core разрешает каждый
+            элемент только при совпадении текущей authenticated incarnation,
+            действующей lease, release digest и contract compatibility; новую
+            incarnation нельзя подставить вместо исчезнувшей.
+        stages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RolloutStage'
+          description: >-
+            Вес candidate строго возрастает от stage к stage, последний stage
+            обязан иметь вес 100. Incumbent weight равен 100 минус candidate.
+            Core не начинает следующую ступень до подтверждения текущей,
+            окончания minimumObservationSeconds и обязательного ручного approve.
+    RolloutStage:
+      type: object
+      additionalProperties: false
+      required: [id, candidateWeightPercent, minimumObservationSeconds]
+      properties:
+        id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        candidateWeightPercent: { type: integer, minimum: 1, maximum: 100 }
+        minimumObservationSeconds: { type: integer, minimum: 0 }
+        requireManualApproval:
+          type: boolean
+          default: true
+          enum: [true]
+          description: >-
+            Для v2 ручное platform-admin одобрение обязательно. Если поле
+            пропущено, применяется true; явное false отклоняется.
+    StageConfirmation:
+      type: object
+      additionalProperties: false
+      required: [stageId, appliedCandidateWeightPercent, controllerRevision]
+      properties:
+        stageId: { type: string, minLength: 1 }
+        appliedCandidateWeightPercent: { type: integer, minimum: 0, maximum: 100 }
+        controllerRevision: { type: string, minLength: 1, maxLength: 256 }
+    TrafficRolloutIntentList:
+      type: object
+      required: [rollouts]
+      properties:
+        rollouts:
+          type: array
+          items: { $ref: '#/components/schemas/TrafficRolloutIntent' }
+    TrafficRolloutIntent:
+      type: object
+      additionalProperties: false
+      required: [id, pluginId, activeGeneration, revision, releaseSha256, stages, stageId, state]
+      properties:
+        id: { type: string }
+        pluginId: { type: string }
+        activeGeneration: { type: integer, minimum: 1 }
+        revision: { type: integer, minimum: 1, description: Текущая per-rollout revision для заголовка If-Match подтверждения. }
+        releaseSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/RolloutStage' }
+        stageId: { type: string }
+        state:
+          type: string
+          enum: [awaiting_controller, observing, awaiting_manual_approval, paused, complete]
+        lastConfirmedCandidateWeightPercent: { type: integer, minimum: 0, maximum: 100 }
+    ConfirmationReceipt:
+      type: object
+      additionalProperties: false
+      required: [rolloutId, revision, stageId, appliedCandidateWeightPercent, controllerRevision, state]
+      properties:
+        rolloutId: { type: string }
+        revision: { type: integer, minimum: 1 }
+        stageId: { type: string }
+        appliedCandidateWeightPercent: { type: integer, minimum: 0, maximum: 100 }
+        controllerRevision: { type: string, maxLength: 256 }
+        state: { type: string, enum: [awaiting_manual_approval] }
+    OperationReceipt:
+      type: object
+      required: [operationId, state, requestId]
+      properties:
+        operationId: { type: string }
+        state: { type: string, enum: [pending, running, completed, failed] }
+        requestId: { type: string }
+    ApprovalReceipt:
+      type: object
+      required: [operationId, state, requestId]
+      properties:
+        operationId: { type: string }
+        state: { type: string, const: completed }
+        requestId: { type: string }
+    TrafficRolloutDetails:
+      type: object
+      required: [id, pluginId, generation, revision, releaseSha256, state, activeStageIndex, stages]
+      properties:
+        id: { type: string }
+        pluginId: { type: string }
+        generation: { type: integer, minimum: 1 }
+        revision: { type: integer, minimum: 1 }
+        releaseSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        state: { type: string, enum: [running, completed, failed] }
+        activeStageIndex: { type: integer, minimum: 0 }
+        stages:
+          type: array
+          items:
+            type: object
+            required: [id, candidateWeightPercent, minimumObservationSeconds, requireManualApproval, state]
+            properties:
+              id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+              candidateWeightPercent: { type: integer, minimum: 1, maximum: 100 }
+              minimumObservationSeconds: { type: integer, minimum: 0 }
+              requireManualApproval: { type: boolean }
+              state: { type: string, enum: [pending, active, confirmed, approved] }
+  responses:
+    InvalidRequest:
+      description: Некорректный multipart или JSON metadata.
+    NotFound:
+      description: Resource not found.
+    Conflict:
+      description: State conflict, stale intent, incompatible cohort or out-of-order confirmation.
+    PreconditionFailed:
+      description: If-Match не совпадает с текущей revision.
+    Invalid:
+      description: Некорректная схема, cohort или stage plan.
+    Unauthorized:
+      description: Для mTLS listener TLS handshake завершается ошибкой до HTTP при отсутствующем или недоверенном клиентском сертификате; HTTP 401 не отправляется.
+    Forbidden:
+      description: Identity аутентифицирована, но не авторизована для операции.
+    Unavailable:
+      description: Control plane временно недоступен.

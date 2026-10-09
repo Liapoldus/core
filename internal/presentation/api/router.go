@@ -53,6 +53,9 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 		PluginIDField:       server.PluginIDField,
 		Plugins:             pluginInventory,
 		Operations:          server.Operations,
+		PluginLinks:         server.PluginLinks,
+		TrafficRollouts:     server.TrafficRollouts,
+		TrafficRolloutAPI:   server.TrafficRolloutAPI,
 		WriteJSON:           server.writeJSON,
 		WriteProblem:        server.writeProblem,
 		WriteCatalogProblem: server.writeCatalogProblem,
@@ -140,10 +143,14 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	if !authorized {
 		return
 	}
+	if server.dispatchSettings(response, request, actor, requestID) {
+		return
+	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if server.dispatchReadiness(response, request, path, requestID) ||
 		server.dispatchAccess(response, request, path, requestID, actor) ||
 		server.dispatchPluginCollections(response, request, path, requestID, actor) ||
+		server.dispatchPluginLinks(response, request, path, requestID, actor) ||
 		server.dispatchAudit(response, request, path, requestID) ||
 		server.dispatchPluginActions(response, request, path, requestID, actor) ||
 		server.dispatchOperations(response, request, path, requestID) {
@@ -215,12 +222,24 @@ func (server *Server) dispatchPluginCollections(response http.ResponseWriter, re
 		return true
 	}
 	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsTrafficRolloutDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.TrafficRolloutGet(pluginDependencies, response, request, path, requestID)
+		return true
+	}
+	if handlers.IsTrafficRolloutApprovalPath(pluginDependencies, path) {
+		handlers.TrafficRolloutApproveStage(pluginDependencies, response, request, path, requestID, actor)
+		return true
+	}
 	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
 		handlers.PluginSettings(pluginDependencies, response, pluginConfigurationServiceFromContext(request.Context()), request.Context(), path, requestID)
 		return true
 	}
 	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Put {
 		handlers.PluginSettingsUpdate(pluginDependencies, response, request, pluginConfigurationServiceFromContext(request.Context()), path, requestID, actor)
+		return true
+	}
+	if handlers.IsTrafficRolloutCollectionPath(pluginDependencies, path) && request.Method == server.Management.Methods.Post {
+		handlers.TrafficRolloutCreate(pluginDependencies, response, request, path, requestID, actor)
 		return true
 	}
 	if handlers.IsPluginDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
@@ -236,6 +255,36 @@ func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.
 	}
 	handlers.AuditList(server.managementHandlerDependencies(), response, request, requestID)
 	return true
+}
+
+func (server *Server) dispatchPluginLinks(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	pluginDependencies := server.pluginHandlerDependencies()
+	if handlers.IsPluginLinkCollectionPath(pluginDependencies, path) {
+		switch request.Method {
+		case server.Management.Methods.Get:
+			handlers.PluginLinkList(pluginDependencies, response, request, requestID)
+			return true
+		case server.Management.Methods.Post:
+			handlers.PluginLinkCreate(pluginDependencies, response, request, requestID, actor)
+			return true
+		}
+		return false
+	}
+	if handlers.IsPluginLinkDetailPath(pluginDependencies, path) {
+		switch request.Method {
+		case server.Management.Methods.Get:
+			handlers.PluginLinkGet(pluginDependencies, response, request, path, requestID)
+			return true
+		case server.Management.Methods.Put:
+			handlers.PluginLinkReplace(pluginDependencies, response, request, path, requestID, actor)
+			return true
+		case server.Management.Methods.Delete:
+			handlers.PluginLinkDelete(pluginDependencies, response, request, path, requestID, actor)
+			return true
+		}
+		return false
+	}
+	return false
 }
 
 func (server *Server) dispatchPluginActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {

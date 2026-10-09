@@ -9,7 +9,8 @@ Plugin protocol generated types, SQLite driver, filesystem и TLS SDK не
 
 ## Целевые Core adapters
 
-- bootstrap loader и валидация минимального `core.yaml`;
+- ENV bootstrap и SQLite для собственных настроек Core; текущий файловый
+  bootstrap ещё требует миграции, статус перехода фиксируется в Core TODO;
 - SQLite migrations/repositories для generic plugin instances, JSON config
   generations (`active`/`previous` и internal `staging`), per-replica
   endpoints/identity references, operations, idempotency, access и audit;
@@ -36,12 +37,13 @@ instances через разрешённые plugin-to-plugin peer connections. C
 | `internal/domain` | Только `models/` и `interfaces/`. `models/` содержит модели и связанные typed errors; `interfaces/` — порты. Каждая модель, typed error и интерфейс объявляются в отдельном файле. Допустимы валидирующие конструкторы и валидация модели. | Use cases, реализации, I/O, зависимости от инфраструктуры, отдельные `types`, `errors`, `services` или другие каталоги. |
 | `internal/application` | Плоский набор use cases и их orchestration-кода. | Глубокие деревья каталогов, транспортные DTO, SQL/Caddy/gRPC детали, `reflect`-диспетчеризация. |
 | `internal/infrastructure` | Реализации портов, сгруппированные по техническим адаптерам в тематические подкаталоги. | Предметные правила конкретных плагинов и публичные API-типы. |
-| `internal/presentation` | Только входные адаптеры `api/` и `cli/`. Для группировки обработчиков и composition/lifecycle-кода разрешены подпакеты `api/handlers/`, `cli/bootstrap/` и `cli/caddyruntime/`; это части соответствующих адаптеров, а не новые архитектурные слои. | Хранилища, бизнес-логика и Caddy data-plane handlers. Другие корневые пакеты и произвольные вложенные package-каталоги не вводятся. |
+| `internal/presentation` | Только входные адаптеры `api/` и `cli/`, подпакеты `api/handlers/` и `cli/bootstrap/`. | Хранилища, бизнес-логика и Caddy data-plane handlers. Другие корневые пакеты и произвольные вложенные package-каталоги не вводятся. |
 
 Composition root и запуск единственного Core процесса находятся в
-`cmd/core`; тесты хранятся отдельно в `tests/`, а не рядом с
-production-пакетами. Статические контракты, схемы и прочие данные размещаются
-во внешних contract assets; в `assets/` не допускается Go-код. Plugin binaries
+`cmd/core`; Go unit/integration tests размещаются рядом с кодом, а TypeScript
+frontend/HTTP/CLI/child-process tests — в `tests/`. SQL, сообщения и неизменяемые
+определения принадлежат коду. Публичные schemas/OpenAPI переходят на generated
+artifacts; в `assets/` не допускается Go-код. Plugin binaries
 собираются и тестируются в собственных репозиториях; Core подключает к ним
 только общие protocol interfaces.
 
@@ -60,23 +62,21 @@ adapters. Caddy runtime не является подпакетом Core CLI. О�
 composition root связывает реализации и входные adapters. Domain-модели и API
 DTO не должны импортировать Caddy, SQLite, gRPC или filesystem packages.
 
-### Конфигурация вместо хардкода
+### Настройки и code-owned определения
 
-Не зашивать в production-код изменяемые продуктовые значения: контрактные
-строки и ключи, имена capabilities, сообщения ошибок, пути, defaults, имена
-переменных окружения, флаги CLI, лимиты и значения конфигурации. Для них
-используются версионированные contract assets/configuration sources; код
-содержит только необходимую логику загрузки, типизации и валидации. Исключения
-должны быть явно перечислены в локальном `core/AGENTS.md` и проверяться
-architecture/AST gate. Эта норма не запрещает структурные Go identifiers и
-алгоритмические константы, которые не являются внешним контрактом или
-настраиваемым поведением.
+Изменяемые operational settings принадлежат SQLite Core; ENV задаёт только
+bootstrap, а библиотеки получают typed параметры от composition root.
+Имена полей, error codes, сообщения, постоянные лимиты и параметризованный SQL
+имеют одного владельца в коде, а не отдельный runtime parser. Публичные
+контракты должны генерироваться детерминированно. Переход ещё не завершён:
+SQLite schema/queries и storage definitions уже перенесены в Go; остальные
+loaders и runtime bootstrap остаются открытыми в TODO.
 
 ## Persistence invariants
 
 SQLite foreign keys, migrations, write transaction boundaries и crash recovery
-покрываются standalone TypeScript tests по black-box API/CLI. Core-owned
-package/artifact write проходит проверку до durable metadata pointer commit;
+покрываются native Go tests и TypeScript black-box API/CLI tests. Изменение
+Core desired configuration валидируется до durable metadata pointer commit;
 активация plugin settings/generations ожидает точных protocol ACK. Между
 SQLite и удалённым plugin нет общей ACID transaction: durable operation journal
 и компенсация обязательны. Orphaned immutable files допустимы для безопасного
@@ -84,5 +84,6 @@ SQLite и удалённым plugin нет общей ACID transaction: durable 
 
 Подробная карта Core storage и восстановления: [Control plane и ER-модель](control-plane).
 Нормативные роли и ручной v1 startup: [целевая архитектура](target). Local
-supervision и контейнерные providers — v2. Импортные
+саморегистрация/rollout внешних контейнеров — v2; provider install — v3.
+Core supervision не планируется. Импортные
 границы и слои дополнительно закрепляются architecture lint в Core.

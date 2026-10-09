@@ -13,7 +13,7 @@ TLS возникает до HTTP и не имеет Problem response. Durable op
 только безопасный `errorCode`; внутренний cause, сырые plugin diagnostics и
 payload не возвращаются через polling.
 
-Config apply, plugin install и generation activation при отказе сохраняют
+Config apply и generation activation при отказе сохраняют
 предыдущую active revision. Безопасная диагностика не содержит секретных
 значений, plugin payload, private key, raw endpoint credential или локальных
 secret paths. Plugin Admin failures преобразуются в стабильные публичные

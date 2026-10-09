@@ -34,6 +34,15 @@ type RollbackReport = {
   activeDigest: string;
   auditedActor: string;
   auditActions: string[];
+  pendingRollback: Observation;
+  pendingActiveRaw: string;
+  pendingActivePresent: boolean;
+  pendingCandidateRaw: string;
+  pendingCandidatePresent: boolean;
+  rollbackCompletedWhileApplyBlocked: boolean;
+  raceRollback: Observation;
+  raceApplyCalls: ApplyCall[];
+  raceFinalActiveRevision: number;
 };
 
 const previousExactBytes = '{\n  "origin" : "first"\n}\n';
@@ -60,17 +69,23 @@ describe("plugin settings rollback API", () => {
       expect(report.accepted.location).toBe(`/api/operations/${report.accepted.body.operationId as string}`);
       expect(report.applyCalls?.[0]).toEqual({ revision: "1", config: previousExactBytes });
       expect(report.activeRaw).toBe(previousExactBytes);
-      expect(report.auditActions).toEqual(["plugin_settings.rollback", "plugin_settings.rollback"]);
+      expect(report.auditActions).toEqual([
+        "plugin_settings.rollback",
+        "plugin_settings.rollback",
+        "apply",
+        "apply",
+        "plugin_settings.rollback",
+      ]);
 
       expect(report.replay.status).toBe(202);
       expect(report.replay.body.operationId).toBe(report.accepted.body.operationId);
       expect(report.replay.body.state).toBe("succeeded");
-      expect(report.applyCalls).toHaveLength(2);
+      expect(report.applyCalls).toHaveLength(4);
 
       expect(report.conflicting.status).toBe(412);
       expect(report.conflicting.contentType).toBe("application/problem+json");
       expect(report.conflicting.body.code).toBe("plugin_revision_conflict");
-      expect(report.applyCalls).toHaveLength(2);
+      expect(report.applyCalls).toHaveLength(4);
 
       expect(report.missingIfMatch.status).toBe(400);
       expect(report.missingIfMatch.body.code).toBe("invalid_request");
@@ -87,6 +102,21 @@ describe("plugin settings rollback API", () => {
       expect(report.rejected.body.code).toBe("plugin_unavailable");
       expect(report.rejectedState).toBe("failed");
       expect(report.rejectedErrorCode).toBe("activation_failed");
+
+      expect(report.pendingRollback.status).toBe(412);
+      expect(report.pendingRollback.body.code).toBe("plugin_revision_conflict");
+      expect(report.pendingActivePresent).toBe(true);
+      expect(report.pendingActiveRaw).toBe('{"origin":"pending-active"}');
+      expect(report.pendingCandidatePresent).toBe(true);
+      expect(report.pendingCandidateRaw).toBe('{"origin":"pending-candidate"}');
+
+      expect(report.rollbackCompletedWhileApplyBlocked).toBe(false);
+      expect(report.raceRollback.status).toBe(202);
+      expect(report.raceApplyCalls).toEqual([
+        { revision: "3", config: '{"origin":"apply-before-rollback"}' },
+        { revision: "1", config: previousExactBytes },
+      ]);
+      expect(report.raceFinalActiveRevision).toBe(1);
 
       expect(report.unauthorized.status).toBe(401);
       expect(report.unauthorized.body.code).toBe("management_bearer_required");

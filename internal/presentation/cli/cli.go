@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 )
@@ -21,7 +20,6 @@ var words = func() config.CLIWords {
 
 type options struct {
 	output  string
-	config  string
 	command []string
 }
 
@@ -44,12 +42,6 @@ func parseOptions(arguments []string) (options, error) {
 			}
 			result.output = arguments[1]
 			arguments = arguments[2:]
-		case words.Flags.Config:
-			if len(arguments) < 2 {
-				return options{}, errors.New(words.Diagnostics.ConfigRequired)
-			}
-			result.config = arguments[1]
-			arguments = arguments[2:]
 		default:
 			result.command = arguments
 			return result, nil
@@ -64,6 +56,10 @@ func run(options options) int {
 		return words.Exits.Arguments
 	}
 	switch options.command[0] {
+	case "init":
+		return initCore(options)
+	case "recover-settings":
+		return recoverSettings(options)
 	case words.Commands.Serve:
 		return serve(options)
 	case words.Commands.Access:
@@ -74,27 +70,6 @@ func run(options options) int {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigInvalid, words.Diagnostics.CommandExpected)
 		return words.Exits.Arguments
 	}
-}
-
-func discoverConfig(options options) (string, string, error) {
-	if options.config != "" {
-		path, err := absoluteExistingFile(options.config)
-		return path, words.Sources.Flag, err
-	}
-	if path := os.Getenv(words.Environment.CoreConfig); path != "" {
-		resolved, err := absoluteExistingFile(path)
-		return resolved, words.Sources.Environment, err
-	}
-	path, err := absoluteExistingFile(words.Paths.DefaultConfig)
-	return path, words.Sources.System, err
-}
-
-func absoluteExistingFile(path string) (string, error) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", errors.New(words.Diagnostics.ConfigLookupFailed)
-	}
-	return filepath.Abs(path)
 }
 
 func configValidationFailure(output string, _ error) int {

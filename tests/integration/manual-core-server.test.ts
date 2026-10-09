@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { missingWorkspaceRepositories } from "../support/workspace.js";
+import { createGoWorkspace, missingWorkspaceRepositories } from "../support/workspace.js";
 
 const root = resolve(import.meta.dirname, "../..");
 
@@ -18,12 +18,18 @@ const missing = missingWorkspaceRepositories(
 
 describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db", () => {
   it("publishes exact settings to both plugins and changes real Server HTTP traffic", () => {
-    const output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 300_000,
-      env: { ...process.env, GOWORK: "off", GOTOOLCHAIN: "go1.26.0" },
-    });
+    const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol", "plugins/server", "plugins/forms-db");
+    let output: string;
+    try {
+      output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 300_000,
+        env: { ...process.env, GOWORK: workspace.path, GOTOOLCHAIN: "go1.26.0" },
+      });
+    } finally {
+      workspace.cleanup();
+    }
     expect(JSON.parse(output)).toEqual({
       first: "old", second: "new", afterRollback: "old",
       active: 1, previous: 2, exactDigest: true,

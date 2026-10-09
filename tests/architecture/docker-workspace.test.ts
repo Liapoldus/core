@@ -12,10 +12,14 @@ describe("Docker workspace dependency contract", () => {
     const workflow = await readFile(join(root, ".github", "workflows", "verify.yml"), "utf8");
 
     expect(dockerfile).toContain("COPY plugin-sdk /workspace/plugin-sdk");
-    expect(dockerfile).toContain("COPY core .");
+    expect(dockerfile).toContain("COPY core /workspace/core");
+    expect(dockerfile).toContain("go work init ./core ./plugin-sdk");
+    expect(dockerfile).toContain("go work edit -go=1.26.0 go.work");
     expect(smoke).toContain("plugin-sdk");
     expect(workflow).toContain("repository: Liapoldus/plugin-sdk");
     expect(workflow).toContain("path: plugin-sdk");
+    expect(workflow).toContain("go work init ./core ./plugin-sdk");
+    expect(workflow).toContain("go work edit -go=1.26.0 go.work");
   });
 
   it("keeps the removed pluginprotocol module out of every build context", async () => {

@@ -1,8 +1,10 @@
 FROM golang:1.26 AS build
-WORKDIR /workspace/core
-COPY core/go.mod core/go.sum ./
+WORKDIR /workspace
 COPY plugin-sdk /workspace/plugin-sdk
-COPY core .
+COPY core /workspace/core
+RUN go work init ./core ./plugin-sdk
+RUN go work edit -go=1.26.0 go.work
+WORKDIR /workspace/core
 RUN go build -trimpath -ldflags='-s -w' -o /out/core ./cmd/core
 
 FROM gcr.io/distroless/base-debian12:nonroot

@@ -28,9 +28,12 @@ If a missing or contradictory requirement affects implementation, record the
 specific conflict in `TODO.md` and ask the user before changing observable
 behavior. Core v1 has no deployment modes or plugin workload management:
 operators manually install and start Core and each plugin. Core registers and
-connects to fixed plugin endpoints only. Local process supervision and all
-Docker/Compose/Swarm/Kubernetes integrations are v2 scope and must not appear in
-v1 API, persistence, permissions, or acceptance.
+connects to fixed plugin endpoints only. V2 adds externally managed placement,
+self-registration and rollout, but still no Core process supervision, install or
+replica-count management. Deployment and planned upgrades belong to the operator;
+Core does not depend on the operator's deployment tooling.
+None of these future interfaces belong in v1 API, persistence, permissions or
+acceptance.
 
 ## Architecture and implementation rules
 
@@ -44,6 +47,12 @@ v1 API, persistence, permissions, or acceptance.
   `pluginprotocol`. Keep the v1 grant API generic and bound to the authenticated
   replica, exact active generation, reference and purpose. Core must not contain
   plugin-name, capability-name, provider, or product-specific branches.
+- In v2, generic caller→target peer-link policy is Core-owned desired state in
+  SQLite and is authored through the authenticated Management API with CAS and
+  audit. Do not put mutable policy values in bootstrap YAML or static contract
+  assets. Publish policy only through the SDK-defined authenticated
+  peer-directory long-poll; Core composes the directory but never proxies peer
+  calls or interprets product contracts.
 - SQLite is the only durable Core store for desired configuration and control
   metadata. Each plugin instance has exactly two durable configuration slots
   that are ever published to a plugin: `active` and `previous`. A third
@@ -58,11 +67,14 @@ v1 API, persistence, permissions, or acceptance.
   JSON generation; plugins pull it from Core only after REST
   `Reload(generation)`. Plugins must not read application settings from
   environment variables, argv, or application config files.
-- In v1 the operator owns plugin binary provenance and process lifecycle. Core
+- The operator owns Core/plugin binary provenance and process lifecycle in every
+  version. Deployment tooling must not author product JSON or Core configuration generations. Core
   only connects to explicitly registered endpoints, applies state, and checks
   health. Core must not install, start, stop, restart, scale, or delete plugin
-  processes/containers, and must not contain TUF release installation or
-  container-provider control. Core is not a certificate authority.
+  processes/containers, and must not contain release installation,
+  adoption/uninstall workflows, or container-provider control. Core is not a
+  certificate authority. A replica's advertised release digest is compatibility
+  metadata, not Core verification of the binary's provenance.
 - `Reload(generation)`, exact-generation config retrieval and scoped secret
   redemption use the Plugin SDK REST API, not `pluginprotocol`. Rollback is a
   Core Management API operation that swaps `active`/`previous` and notifies
@@ -90,16 +102,19 @@ v1 API, persistence, permissions, or acceptance.
   lifecycle transport and its fallback paths. Do not preserve two permanent
   lifecycle APIs or describe transitional compatibility as a supported mode.
 - `internal/domain` contains exactly `models/` and `interfaces/`; each model,
-  interface, and typed error has its own file. Only validating constructors and
-  model validation are permitted there. `internal/application` remains a flat
-  use-case package. `internal/infrastructure` contains technical adapters in
+  interface, and typed error belongs to a focused subject package. Only validating
+  constructors and model validation are permitted there. `internal/application`
+  groups related use cases in subject subpackages with concise filenames.
+  `internal/infrastructure` contains technical adapters in
   focused subpackages. `internal/presentation` contains only `api/` and `cli/`
   and their documented adapter subpackages. `cmd/core` is the composition
   root.
-- SQL statements live in source-owned `.sql` files embedded at build time;
-  application and persistence failures use typed Go errors. Public error codes,
-  JSON shapes, command/flag spellings, defaults and user-visible diagnostics
-  remain versioned external contracts under `assets/contracts/`. Do not expose
+- SQL statements and migration history live as named parameterized Go definitions
+  in storage adapters. Application and persistence failures use typed Go errors.
+  Public error codes, field names, commands and diagnostics are code-owned;
+  published schemas/OpenAPI/error catalogs are deterministic generated artifacts.
+  ENV supplies bootstrap only; durable operational settings belong in SQLite.
+  Do not expose
   driver errors, SQL text, paths, secrets, cookies, authorization values,
   private keys or grant handles.
 - Do not add product-specific runtime, API, or state to Core, or introduce
@@ -111,9 +126,10 @@ v1 API, persistence, permissions, or acceptance.
 
 ## Mandatory test-first workflow
 
-- All Core test code lives under `tests/` and is TypeScript run by Vitest + tsx.
-  Do not add Go `*_test.go` files or test helpers under production packages.
-- Write the failing TypeScript test before implementation. Keep the temporary
+- Native Go unit/integration tests live alongside code; TypeScript under `tests/`
+  covers frontend, HTTP/CLI and real child-process conformance. Preserve coverage
+  before removing redundant fixture wrappers.
+- Write the focused failing test before implementation. Keep the temporary
   red state local; commit the test and implementation together only after the
   increment is green. Never make a red-test-only commit or leave a red commit
   between changes.

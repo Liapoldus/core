@@ -27,6 +27,9 @@ type PluginDependencies struct {
 	Plugins             []any
 	AdminLimits         AdminLimits
 	Operations          application.OperationService
+	PluginLinks         *application.PluginLinkPolicyService
+	TrafficRollouts     *application.TrafficRolloutService
+	TrafficRolloutAPI   config.TrafficRolloutAPIContract
 	ListAdminSurfaces   func(context.Context) ([]AdminSurfaceItem, error)
 	AdminSurfaceDigest  func(context.Context, string) (string, error)
 	DispatchAdmin       func(context.Context, AdminInvocation, []byte) (PluginAdminResult, error)

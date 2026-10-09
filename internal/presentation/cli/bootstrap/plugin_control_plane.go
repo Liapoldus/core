@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -13,9 +14,9 @@ import (
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 )
 
-// pluginRegistry is the operator-declared plugin topology loaded from core.yaml.
-// Endpoint and expected identity are read from this file only: Core never
-// discovers, accepts or negotiates them from a plugin.
+// pluginRegistry contains optional legacy declarations used only by the offline
+// migration path. Runtime membership is established by authenticated SDK
+// registration and leases stored by the Core control plane.
 type pluginRegistry struct {
 	instances []config.PluginInstanceConfig
 }
@@ -32,7 +33,7 @@ var (
 func newPluginRegistry(bootstrapConfig config.BootstrapConfig) (pluginRegistry, error) {
 	if bootstrapConfig.PluginControlListen == "" || bootstrapConfig.PluginControlCertificate == "" ||
 		bootstrapConfig.PluginControlKey == "" || bootstrapConfig.PluginReplicaClientCA == "" ||
-		bootstrapConfig.PluginReplicaServerCA == "" || len(bootstrapConfig.Plugins) == 0 {
+		bootstrapConfig.PluginReplicaServerCA == "" {
 		return pluginRegistry{}, errPluginRegistryIncomplete
 	}
 	registry := pluginRegistry{instances: append([]config.PluginInstanceConfig(nil), bootstrapConfig.Plugins...)}
@@ -78,7 +79,7 @@ func pluginControlTLS(bootstrapConfig config.BootstrapConfig) (*tls.Config, erro
 // replicaDialTLS builds the configuration Core presents when it dials a declared
 // replica. Core authenticates with the same keypair it serves on the pull
 // listener and verifies the replica against replicaServerCA.
-func replicaDialTLS(bootstrapConfig config.BootstrapConfig, serverName string) (*tls.Config, error) {
+func replicaDialTLS(bootstrapConfig config.BootstrapConfig, serverName string, identity config.PeerIdentityConfig) (*tls.Config, error) {
 	certificate, err := loadKeyPair(bootstrapConfig.PluginControlCertificate, bootstrapConfig.PluginControlKey)
 	if err != nil {
 		return nil, err
@@ -91,20 +92,23 @@ func replicaDialTLS(bootstrapConfig config.BootstrapConfig, serverName string) (
 	if err != nil {
 		return nil, errPluginRegistryIncomplete
 	}
+	verifyIdentity := plugins.PinnedReplicaIdentityVerifier(
+		identity.CommonName,
+		identity.UniformResourceIdentifier,
+		verifyRevocation,
+	)
 	return &tls.Config{
 			MinVersion:       tls.VersionTLS12,
 			Certificates:     []tls.Certificate{certificate},
 			RootCAs:          roots,
 			ServerName:       serverName,
-			VerifyConnection: verifyRevocation,
+			VerifyConnection: verifyIdentity,
 		},
 		nil
 }
 
-// replicaIdentityResolver maps a verified replica client certificate to the
-// instance whose generation it may pull. Only identities the operator declared
-// in core.yaml are honoured, so an unknown replica is refused rather than
-// granted access to an instance that happens to exist.
+// replicaIdentityResolver is retained for migration diagnostics. Runtime
+// authorization uses PluginReplicaDirectory leases instead.
 func replicaIdentityResolver(registry pluginRegistry) interfaces.PluginReplicaIdentityResolver {
 	expected := make(map[string]string)
 	for _, instance := range registry.instances {
@@ -141,10 +145,8 @@ func identityCandidates(identity config.PeerIdentityConfig) []string {
 }
 
 // buildPluginRESTControl assembles the production Plugin SDK REST control plane:
-// the exact-generation pull listener, the operator-declared identity resolver and
-// one control client per declared replica. It is built from core.yaml alone, so
-// an ordinary `core serve` connects to declared endpoints instead of dropping
-// the pluginControl configuration.
+// the exact-generation pull listener and the lease-backed identity resolver.
+// Static endpoint declarations are optional and are used only during migration.
 func buildPluginRESTControl(bootstrapConfig config.BootstrapConfig) (*PluginRESTControl, error) {
 	registry, err := newPluginRegistry(bootstrapConfig)
 	if err != nil {
@@ -173,11 +175,65 @@ func buildPluginRESTControl(bootstrapConfig config.BootstrapConfig) (*PluginREST
 		release()
 		return nil, errPluginRegistryIncomplete
 	}
+	replicaLifecycle, err := plugins.LoadSDKReplicaLifecycleContract()
+	if err != nil {
+		_ = listener.Close()
+		release()
+		return nil, errPluginRegistryIncomplete
+	}
+	replicaDirectory, err := plugins.NewPluginReplicaDirectory(replicaLifecycle, nil)
+	if err != nil {
+		_ = listener.Close()
+		release()
+		return nil, errPluginRegistryIncomplete
+	}
+	registeredReloads := plugins.NewRegisteredReplicaReloadResolver(replicaDirectory, func(ctx context.Context, live plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+		registration := live.Registration
+		if registration.Identity.InstanceID == "" || registration.Identity.ReplicaID == "" {
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		endpoint, err := config.PluginEndpoint(registration.RestEndpoint)
+		if err != nil {
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		identityURI, err := replicaLifecycle.ReplicaIdentityURI(registration.Identity)
+		if err != nil {
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		dialTLS, err := replicaDialTLS(bootstrapConfig, endpoint.Hostname(), config.PeerIdentityConfig{UniformResourceIdentifier: identityURI})
+		if err != nil {
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		declared := plugins.DeclaredReplica{
+			InstanceID:                 registration.Identity.InstanceID,
+			ReplicaID:                  registration.Identity.ReplicaID,
+			Endpoint:                   endpoint,
+			ExpectedResourceIdentifier: identityURI,
+			Transport:                  &http.Transport{TLSClientConfig: dialTLS},
+		}
+		clients, release, err := plugins.DeclaredReplicaFanouts([]plugins.DeclaredReplica{declared})
+		if err != nil {
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		fanout, ok := clients[registration.Identity.InstanceID].(*plugins.SDKReloadFanout)
+		if !ok || len(fanout.Replicas) != 1 || fanout.Replicas[0].ReplicaID != registration.Identity.ReplicaID {
+			release()
+			return nil, nil, plugins.ErrPluginUnavailable
+		}
+		return fanout.Replicas[0].Client, release, nil
+	}, nil)
+	registeredReloads.ValidateSchema = config.ValidateJSONSchemaDocument
+	resolveReplica := func(certificate *x509.Certificate) (string, bool) {
+		return replicaDirectory.Resolve(certificate)
+	}
 	return &PluginRESTControl{
 		ConfigPullListener: listener,
 		ConfigPullTLS:      pullTLS,
-		ResolveReplica:     replicaIdentityResolver(registry),
+		ResolveReplica:     resolveReplica,
+		ReplicaDirectory:   replicaDirectory,
+		ReplicaLifecycle:   replicaLifecycle,
 		ReloadClients:      clients,
+		RegisteredReloads:  registeredReloads,
 		HTTPContract:       httpContract,
 		CloseReleases:      release,
 	}, nil
@@ -195,7 +251,7 @@ func replicaReloadClients(bootstrapConfig config.BootstrapConfig, registry plugi
 			if err != nil {
 				return nil, nil, err
 			}
-			dialTLS, err := replicaDialTLS(bootstrapConfig, endpoint.Hostname())
+			dialTLS, err := replicaDialTLS(bootstrapConfig, endpoint.Hostname(), replica.ExpectedPeerIdentity)
 			if err != nil {
 				return nil, nil, err
 			}

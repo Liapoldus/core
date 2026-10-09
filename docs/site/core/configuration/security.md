@@ -20,6 +20,27 @@ identities отдельно для каждой replica и регистриру�
 с endpoint. Core не является CA, не запускает plugin process и не получает
 plugin private keys.
 
+Реализация TLS/mTLS и поддерживаемых plaintext profiles принадлежит
+SDK/protocol libraries, а не продуктовым плагинам. Плагин передаёт bootstrap
+credentials и явно выбранный security profile в API библиотеки; его handlers
+не создают TLS listeners/clients и не проверяют сертификаты самостоятельно.
+Текущий production Core↔plugin REST contract требует per-replica mTLS. В SDK
+WIP реализован отдельный versioned loopback-only plaintext development profile:
+он выключен по умолчанию и открывает только generic `GET /_liapoldus/v1/health`
+на отдельном listener с literal loopback TCP address. `/ready` остаётся под
+mTLS из-за replica identity и generation metadata в ответе; redacted readiness
+view требует отдельного versioned contract. Exact-generation config pull и
+secret-grant endpoints и clients всегда остаются за mTLS и недоступны через
+plaintext. Пока Core закреплён на опубликованном SDK без этого v2 profile, его
+нельзя считать доступным в Core release или включать в supported runtime.
+Для plugin↔plugin remote и production connections используется mTLS;
+`pluginprotocol` уже допускает явный TCP-loopback plaintext
+development profile без encryption или peer identity. QUIC всегда зашифрован и
+аутентифицирует обе стороны; Unix socket и Windows named pipe в v2 требуют
+mTLS. Все plaintext profiles должны быть явно включены и ограничены своими
+contract-ом и carrier-ом; secure failure никогда не запускает plaintext
+fallback. Trust roots SDK REST и peer protocol не объединяются.
+
 Remote trust использует externally issued identities и signed CRL bundles.
 Для Core↔plugin REST задаются независимые `replicaClientCA` и
 `replicaServerCA`; для каждого trust root можно указать свой список
@@ -62,6 +83,29 @@ V1 поддерживает замену CA и leaf-сертификатов т�
 механизмы `pluginprotocol`; их профиль и правила reconnect описаны только в
 [контракте pluginprotocol](https://github.com/Liapoldus/pluginprotocol).
 
+### Внешний traffic-controller v2
+
+Внешний traffic-controller подключается к отдельному private mTLS listener Core,
+а не к пользовательскому Management API, и не получает `platform-admin` service
+key. Его API аутентифицирует отдельную mTLS identity с минимальными правами:
+прочитать выданный Core rollout intent и подтвердить фактически применённую
+ступень веса. Identity не может редактировать сам rollout, конфигурации плагинов,
+peer-link policy, service keys или другие Management resources. Подтверждение
+применяется только к ожидаемой revision через CAS и записывается в audit.
+
+Для controller listener задаются собственные bind, server credentials, client
+trust roots и allow-list точных certificate identities; они раздельны с
+Management API, Plugin SDK REST и `pluginprotocol`. Неизвестный, отозванный или
+неразрешённый сертификат отклоняется до обработки HTTP-запроса. Bearer token или
+plaintext не являются fallback. Listener включается отдельным
+`--traffic-controller-config` при `core serve`. GET списка возвращает только
+rollout-ы после candidate ACK-барьера, общий ETag и per-rollout revision.
+Confirmation использует strong per-rollout `If-Match`, `Idempotency-Key`,
+ограниченный JSON body, точный active stage и вес. Повтор дедуплицируется по
+identity + key + request digest; receipt и audit сохраняются атомарно. Ошибка не
+перемещает stage, а controller не может заменить обязательное ручное одобрение
+platform-admin.
+
 ## Межплагинные вызовы и secrets
 
 В v1 Core не хранит plugin-to-plugin interaction policies и не авторизует
@@ -85,4 +129,5 @@ credentials. Plugin process не получает Core SQLite credentials или
 базе. Server plugin
 имеет собственный persistent directory для сертификатов и site releases, но
 его settings source of truth остаётся Core SQLite. Docker/Compose, Swarm,
-Kubernetes и автоматическое управление plugin processes — v2 scope.
+Kubernetes как внешнее размещение и регистрация replicas — v2; Core
+process supervision исключён; установку и обновления выполняет оператор.

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	assets "github.com/Liapoldus/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -180,7 +179,6 @@ func LoadBootstrap(path string) (BootstrapConfig, error) {
 	if err != nil {
 		return BootstrapConfig{}, err
 	}
-
 	pluginReplicaClientCRLs := make([]string, 0, len(pluginReplicaClientCRLNodes))
 	for _, reference := range pluginReplicaClientCRLNodes {
 		pluginReplicaClientCRLs = append(pluginReplicaClientCRLs, resolveReference(path, reference, loaded.SecretReference.FilePrefix))
@@ -314,15 +312,7 @@ func pluginInstances(node *yaml.Node, fields bootstrapFieldLists) ([]PluginInsta
 }
 
 func loadBootstrapFieldLists() (bootstrapFieldLists, error) {
-	contents, err := assets.Contract(assets.ConfigFields)
-	if err != nil {
-		return bootstrapFieldLists{}, err
-	}
-	var fields bootstrapFieldLists
-	if err := yaml.Unmarshal(contents, &fields); err != nil {
-		return bootstrapFieldLists{}, err
-	}
-	return fields, nil
+	return bootstrapDefinitions(), nil
 }
 
 func managementOptions(management *yaml.Node, loaded contractFile, fields bootstrapFieldLists) (managementBootstrapOptions, error) {

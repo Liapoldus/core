@@ -8,7 +8,7 @@
 - [Plugin deployment](../architecture/plugin-deployment) — ручной запуск v1 и
   отложенные deployment modes v2.
 - [Транспорты](../configuration/transports) — HTTP/TLS/WebSocket/SSE в v1;
-  публичный L4 вынесен в v2.
+  публичный L4 вынесен в v3.
 - [Целевая архитектура](../architecture/target) — ownership, persistence и
   security invariants.
 

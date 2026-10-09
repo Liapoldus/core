@@ -4,7 +4,6 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
 	bootstrapruntime "github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
 )
 
@@ -13,14 +12,10 @@ func database(options options) int {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.DatabaseCommandUsage, words.Diagnostics.DatabaseCommandUsage)
 		return words.Exits.Arguments
 	}
-	configPath, _, err := discoverConfig(options)
+	statePath, err := statePath()
 	if err != nil {
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.ConfigNotFound, words.Diagnostics.ConfigNotFound)
 		return words.Exits.Arguments
-	}
-	bootstrap, err := config.LoadBootstrap(configPath)
-	if err != nil {
-		return configValidationFailure(options.output, err)
 	}
 	path, err := filepath.Abs(options.command[2])
 	if err != nil {
@@ -29,9 +24,9 @@ func database(options options) int {
 	}
 	switch options.command[1] {
 	case words.Database.Backup:
-		err = bootstrapruntime.BackupDatabase(context.Background(), bootstrap.StatePath, path)
+		err = bootstrapruntime.BackupDatabase(context.Background(), statePath, path)
 	case words.Database.Restore:
-		err = bootstrapruntime.RestoreDatabase(context.Background(), path, bootstrap.StatePath)
+		err = bootstrapruntime.RestoreDatabase(context.Background(), path, statePath)
 	default:
 		writeFailure(options.output, words.Exits.Arguments, words.Codes.DatabaseCommandUsage, words.Diagnostics.DatabaseCommandUsage)
 		return words.Exits.Arguments

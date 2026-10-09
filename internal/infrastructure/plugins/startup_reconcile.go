@@ -176,6 +176,7 @@ func readinessMatches(readiness sdkmodels.Readiness, instanceID, replicaID strin
 	return readiness.Ready &&
 		readiness.Generation == strconv.FormatInt(active.Revision, 10) &&
 		readiness.SHA256 == active.Digest &&
+		readiness.SchemaVersion == strconv.FormatInt(active.SchemaVersion, 10) &&
 		readiness.InstanceID == instanceID &&
 		readiness.ReplicaID == replicaID
 }

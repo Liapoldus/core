@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { missingWorkspaceRepositories } from "../support/workspace.js";
+import { createGoWorkspace, missingWorkspaceRepositories } from "../support/workspace.js";
 
 const root = resolve(import.meta.dirname, "../..");
 const missing = missingWorkspaceRepositories(
@@ -24,18 +24,24 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
     it.each(configuredDatabases)("uses $driver storage durably through Core and Server", ({ driver, variable }) => {
       const dsn = process.env[variable];
       if (!dsn) throw new Error("configured SQL integration lost its DSN");
-      const output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
-        cwd: root,
-        encoding: "utf8",
-        timeout: 300_000,
-        env: {
-          ...process.env,
-          GOWORK: "off",
-          GOTOOLCHAIN: "go1.26.0",
-          LIAPOLDUS_V1_E2E_FORMS_DRIVER: driver,
-          LIAPOLDUS_V1_E2E_FORMS_DSN: dsn,
-        },
-      });
+      const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol", "plugins/server", "plugins/forms-db");
+      let output: string;
+      try {
+        output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
+          cwd: root,
+          encoding: "utf8",
+          timeout: 300_000,
+          env: {
+            ...process.env,
+            GOWORK: workspace.path,
+            GOTOOLCHAIN: "go1.26.0",
+            LIAPOLDUS_V1_E2E_FORMS_DRIVER: driver,
+            LIAPOLDUS_V1_E2E_FORMS_DSN: dsn,
+          },
+        });
+      } finally {
+        workspace.cleanup();
+      }
       const result = JSON.parse(output);
       expect(result.formsDatabaseDriver).toBe(driver);
       expect(result.staleProductionGrantDenied).toBe(true);

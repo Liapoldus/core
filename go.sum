@@ -2,6 +2,8 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/Liapoldus/plugin-sdk v1.0.0 h1:IBjWEZPcx+uwBk6+MyZsew4S9AvhlKFJuBury/44jgg=
 github.com/Liapoldus/plugin-sdk v1.0.0/go.mod h1:a85TGnGtQesjqjHqX4Eu7T13hp5NLcYBt1dLdStGzQQ=
+github.com/Liapoldus/plugin-sdk v1.1.0 h1:3OH0JRLTExgTcrOCyho+zGy0Xwx16aUrsejg5Y6JUlA=
+github.com/Liapoldus/plugin-sdk v1.1.0/go.mod h1:a85TGnGtQesjqjHqX4Eu7T13hp5NLcYBt1dLdStGzQQ=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/dlclark/regexp2 v1.12.0 h1:0j4c5qQmnC6XOWNjP3PIXURXN2gWx76rd3KvgdPkCz8=
 github.com/dlclark/regexp2 v1.12.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=

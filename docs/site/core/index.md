@@ -10,12 +10,13 @@ v1 включает ровно три сервиса — Core, Server plugin и 
 библиотеки: Plugin SDK и `pluginprotocol`. Оператор вручную устанавливает и
 запускает все три сервиса; Core только подключается к заранее настроенным
 plugin endpoints и не управляет их процессами или контейнерами. Docker/Compose,
-Swarm, Kubernetes и process supervision перенесены в v2. Constructor остаётся
-отдельным замороженным продуктом.
+Swarm/Kubernetes как внешнее размещение и self-registration относятся к v2;
+Core supervision/install отложены до v3 и не включают автоматическое
+масштабирование по нагрузке.
 
 | Область | Канон |
 | --- | --- |
-| Bootstrap | [Минимальный `core.yaml`](configuration/yaml-reference) |
+| Bootstrap | [ENV и SQLite settings](configuration/migration) |
 | Configurations | [SQLite, REST Reload и два поколения](architecture/control-plane) |
 | Plugin startup | [Ручное размещение v1 и будущая автоматизация v2](architecture/plugin-deployment) |
 | API | [Core Management API](api/) |

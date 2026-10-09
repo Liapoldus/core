@@ -9,33 +9,40 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Liapoldus/core/internal/application"
+	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/config"
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/security"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	settingsstore "github.com/Liapoldus/core/internal/infrastructure/storage/settings"
 	"github.com/Liapoldus/core/internal/presentation/api"
 )
 
 type RunOptions struct {
-	Output       string
-	Words        config.CLIWords
-	WriteFailure func(output string, exitCode int, code, detail string)
+	Output            string
+	Words             config.CLIWords
+	WriteFailure      func(output string, exitCode int, code, detail string)
+	TrafficController *config.TrafficControllerConfig
 }
 
 type runContext struct {
-	output       string
-	words        config.CLIWords
-	writeFailure func(output string, exitCode int, code, detail string)
+	output            string
+	words             config.CLIWords
+	writeFailure      func(output string, exitCode int, code, detail string)
+	trafficController *config.TrafficControllerConfig
 }
 
 type bootstrapStores struct {
-	auditStore        *storage.SQLiteAuditStore
-	keyStore          *storage.SQLiteServiceKeyStore
-	operationStore    *storage.SQLiteOperationStore
-	pluginConfigStore *storage.SQLitePluginConfigurationStore
-	pluginConfigWords config.PluginConfigurationWords
+	auditStore          *storage.SQLiteAuditStore
+	keyStore            *storage.SQLiteServiceKeyStore
+	operationStore      *storage.SQLiteOperationStore
+	pluginConfigStore   *storage.SQLitePluginConfigurationStore
+	pluginLinkStore     *storage.SQLitePluginLinkPolicyStore
+	trafficRolloutStore *storage.SQLiteTrafficRolloutStore
+	pluginConfigWords   config.PluginConfigurationWords
 }
 
 type bootstrapInventory struct {
@@ -46,13 +53,14 @@ type bootstrapInventory struct {
 }
 
 type managementInputs struct {
-	auditWords       config.AuditWords
-	errorCatalog     config.ErrorCatalog
-	tlsConfiguration *tls.Config
+	auditWords        config.AuditWords
+	errorCatalog      config.ErrorCatalog
+	trafficRolloutAPI config.TrafficRolloutAPIContract
+	tlsConfiguration  *tls.Config
 }
 
 func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
-	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure}
+	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure, trafficController: input.TrafficController}
 	return serveBootstrap(options, bootstrapConfig)
 }
 
@@ -64,6 +72,25 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	}
 	defer unlockState()
 	defer database.Close()
+	coreSettings := settingsstore.New(database)
+	settingsSnapshot, err := coreSettings.Read(context.Background())
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Validation, options.words.Diagnostics.ConfigInvalid)
+	}
+	if _, err = coreSettings.Activate(context.Background(), settingsSnapshot.DesiredRevision, func(raw []byte) error {
+		settings, err := config.DecodeSettings(raw)
+		if err != nil {
+			return err
+		}
+		candidate := settings.Bootstrap(bootstrap.StatePath)
+		if _, err = ManagementTLS(candidate, options.words.Diagnostics.ConfigInvalid); err != nil {
+			return err
+		}
+		_, err = pluginControlTLS(candidate)
+		return err
+	}); err != nil {
+		return failBootstrap(options, options.words.Exits.Validation, options.words.Diagnostics.ConfigInvalid)
+	}
 	stores, exitCode := loadBootstrapStores(options, bootstrap, database)
 	if exitCode != options.words.Exits.OK {
 		return exitCode
@@ -89,6 +116,20 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
+	if len(inventory.contract.ValidStates) == 0 {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	registeredInstances, err := storage.ListRegisteredPluginInstances(context.Background(), database)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	controlPlane.ReplicaDirectory.MarkRegisteredInstances(registeredInstances)
+	controlPlane.RegisterReplica = func(ctx context.Context, registration plugins.SDKReplicaRegistrationRequest) error {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		return storage.RegisterPluginInstanceReplica(ctx, database,
+			registration.Identity.InstanceID, registration.Identity.ReplicaID, []byte("{}"),
+			inventory.contract.ValidStates[0], storage.ReplicaObservedPending, now)
+	}
 	if err := registerDeclaredPlugins(context.Background(), database, registry); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -105,6 +146,22 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
+	linkPolicySnapshot, err := storage.NewPluginLinkPolicySnapshot(context.Background(), stores.pluginLinkStore)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	peerDirectoryChanges := plugins.NewPeerDirectoryBroadcaster()
+	peerDirectoryPoll, pollErr := plugins.LoadSDKPeerDirectoryPollContract()
+	if pollErr != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	controlPlane.PeerDirectoryPoll = peerDirectoryPoll
+	controlPlane.PeerDirectoryTTL = time.Duration(controlPlane.ReplicaLifecycle.Lease.TTLSeconds) * time.Second
+	controlPlane.PeerDirectoryRules = func(callerInstanceID string) []models.PeerLinkRule {
+		return linkPolicySnapshot.View().Rules(callerInstanceID)
+	}
+	controlPlane.PeerDirectoryChanges = peerDirectoryChanges.Subscribe
+	controlPlane.ReplicaDirectory.SetChangeNotifier(peerDirectoryChanges.Notify)
 	observations := recordReplicaObservation{
 		store:       replicaObservations,
 		convergence: convergenceSnapshot,
@@ -114,22 +171,20 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	applier := &plugins.SDKConfigurationApplier{
 		Store:        stores.pluginConfigStore,
 		Clients:      controlPlane.ReloadClients,
+		Registered:   controlPlane.RegisteredReloads,
 		Snapshot:     configurationSnapshot,
 		Convergence:  convergenceSnapshot,
 		Observations: observations,
 	}
-	management := newManagementServer(managementServerDependencies{
-		stores: stores, inventory: inventory, managementInputs: managementInputs,
-		registry: registry, convergence: convergenceSnapshot, pluginControl: controlPlane,
-	})
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	pluginConfigurationService := &application.PluginConfigurationService{
 		Store: stores.pluginConfigStore, Applier: applier,
-		Operations:     application.OperationService{Store: stores.operationStore},
-		Unavailable:    inventory.management.Codes.ManagementUnavailable,
-		OperationKind:  inventory.management.OperationKinds.PluginSettingsApply,
-		PayloadVersion: stores.pluginConfigWords.SchemaVersion, MaximumPayloadBytes: stores.pluginConfigWords.MaximumPayloadBytes,
+		Operations:            application.OperationService{Store: stores.operationStore},
+		Unavailable:           inventory.management.Codes.ManagementUnavailable,
+		OperationKind:         inventory.management.OperationKinds.PluginSettingsApply,
+		RollbackOperationKind: inventory.management.OperationKinds.PluginSettingsRollback,
+		PayloadVersion:        stores.pluginConfigWords.SchemaVersion, MaximumPayloadBytes: stores.pluginConfigWords.MaximumPayloadBytes,
 		PayloadFailureCode: inventory.management.Codes.ActivationFailed,
 		OperationStates: application.PluginConfigurationOperationStates{
 			Pending: inventory.management.Statuses.Pending, Running: inventory.management.Statuses.Running,
@@ -140,6 +195,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 			Conflict:    inventory.management.Codes.PluginRevisionConflict,
 			Unavailable: inventory.management.Codes.PluginUnavailable,
 			ApplyFailed: inventory.management.Codes.ActivationFailed,
+			TargetLost:  inventory.management.Codes.TargetLost,
 		},
 		RevisionStates: application.PluginConfigurationRevisionStates{
 			Active: stores.pluginConfigWords.Slots.Active, Candidate: stores.pluginConfigWords.Slots.Staging,
@@ -153,6 +209,38 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 			Failed:          managementInputs.auditWords.Audit.Results.Failed,
 		},
 	}
+	trafficRollouts := &application.TrafficRolloutService{
+		Store: stores.trafficRolloutStore, ConfigurationStore: stores.pluginConfigStore,
+		ConfigurationRollouts: stores.pluginConfigStore, Applier: applier,
+		Operations: application.OperationService{Store: stores.operationStore},
+		Replicas:   controlPlane.RegisteredReloads, Validator: controlPlane.RegisteredReloads,
+		States: application.TrafficRolloutStates{
+			Running: inventory.management.Statuses.Running, Active: stores.pluginConfigWords.Slots.Active,
+			Pending: inventory.management.Statuses.Pending, Completed: inventory.management.Statuses.Completed,
+		},
+		OperationStates: application.PluginConfigurationOperationStates{
+			Pending: inventory.management.Statuses.Pending, Running: inventory.management.Statuses.Running,
+			Failed: inventory.management.Statuses.Failed,
+		},
+		TargetLostCode: inventory.management.Codes.TargetLost,
+		SchemaVersion:  stores.pluginConfigWords.SchemaVersion, MaximumConfigurationBytes: stores.pluginConfigWords.MaximumPayloadBytes,
+		WorkerContext: ctx, ScheduleWorker: func(worker func()) { go worker() },
+	}
+	applier.SkipRegisteredInstance = trafficRollouts.ConfigurationCohortHeld
+	controlPlane.OnReplicaRegistered = func(registrationContext context.Context, instanceID, replicaID string) error {
+		if err := applier.ReloadActiveReplica(registrationContext, instanceID, replicaID); err != nil {
+			return err
+		}
+		_ = trafficRollouts.ReconcileInstance(registrationContext, instanceID)
+		return nil
+	}
+	management := newManagementServer(managementServerDependencies{
+		stores: stores, inventory: inventory, managementInputs: managementInputs,
+		registry: registry, convergence: convergenceSnapshot, linkPolicy: linkPolicySnapshot, pluginControl: controlPlane,
+		trafficRollouts: trafficRollouts, linkPolicyChanged: peerDirectoryChanges.Notify,
+	})
+	management.CoreSettings = coreSettings
+	management.ValidateSettings = func(raw []byte) error { _, err := config.DecodeSettings(raw); return err }
 	if err := pluginConfigurationService.Recover(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -169,6 +257,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	defer stopRESTControl()
 	// Reconciliation at startup restores exact generations after a Core restart.
 	_ = applier.ReconcileDeclaredReplicas(context.Background())
+	_ = applier.ReconcileRegisteredReplicas(context.Background())
 	reconciliationPolicy, policyErr := config.LoadPluginReconciliationPolicy()
 	if policyErr != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
@@ -178,7 +267,23 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	// action rather than a background retry.
 	stopReplicaReadinessMonitor := startReplicaReadinessMonitor(ctx, reconciliationPolicy.ReadinessPollInterval(), applier)
 	defer stopReplicaReadinessMonitor()
-	if err := management.Listen(ctx, bootstrap.ManagementListen, pluginConfigurationService); err != nil && !errors.Is(err, net.ErrClosed) {
+	stopRegisteredReplicaReconciler := startRegisteredReplicaReconciler(ctx, reconciliationPolicy.ReadinessPollInterval(), applier, func(recoveryContext context.Context) error {
+		if err := pluginConfigurationService.RecoverRegistered(recoveryContext, controlPlane.ReplicaDirectory.HasRegisteredInstance); err != nil {
+			return err
+		}
+		for _, instanceID := range controlPlane.ReplicaDirectory.RegisteredInstanceIDs() {
+			_ = trafficRollouts.ReconcileInstance(recoveryContext, instanceID)
+		}
+		return nil
+	})
+	defer stopRegisteredReplicaReconciler()
+	stopTrafficController, trafficControllerDone, controllerErr := startTrafficController(options.trafficController, trafficRollouts, managementInputs.trafficRolloutAPI)
+	if controllerErr != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	defer stopTrafficController()
+	if err := serveManagementAndTrafficController(ctx, management, bootstrap.ManagementListen, pluginConfigurationService,
+		stopTrafficController, trafficControllerDone); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
 	}
@@ -206,6 +311,12 @@ func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, d
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.pluginConfigWords, err = config.LoadPluginConfiguration(); err != nil {
+		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	if stores.pluginLinkStore, err = storage.NewSQLitePluginLinkPolicyStore(database); err != nil {
+		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	if stores.trafficRolloutStore, err = storage.NewSQLiteTrafficRolloutStore(database); err != nil {
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	return stores, options.words.Exits.OK
@@ -244,6 +355,9 @@ func loadManagementInputs(options runContext, bootstrapConfig config.BootstrapCo
 	if inputs.errorCatalog, err = config.LoadErrorCatalog(); err != nil {
 		return inputs, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
+	if inputs.trafficRolloutAPI, err = config.LoadTrafficRolloutAPIContract(); err != nil {
+		return inputs, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
 	if inputs.tlsConfiguration, err = ManagementTLS(bootstrapConfig, options.words.Diagnostics.ConfigInvalid); err != nil {
 		return inputs, failBootstrap(options, options.words.Exits.Validation, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -251,12 +365,15 @@ func loadManagementInputs(options runContext, bootstrapConfig config.BootstrapCo
 }
 
 type managementServerDependencies struct {
-	stores           bootstrapStores
-	inventory        bootstrapInventory
-	managementInputs managementInputs
-	registry         pluginRegistry
-	convergence      *storage.PluginConvergenceSnapshot
-	pluginControl    *PluginRESTControl
+	stores            bootstrapStores
+	inventory         bootstrapInventory
+	managementInputs  managementInputs
+	registry          pluginRegistry
+	convergence       *storage.PluginConvergenceSnapshot
+	linkPolicy        *storage.PluginLinkPolicySnapshot
+	linkPolicyChanged func()
+	pluginControl     *PluginRESTControl
+	trafficRollouts   *application.TrafficRolloutService
 }
 
 func newManagementServer(dependencies managementServerDependencies) *api.Server {
@@ -264,7 +381,9 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 	management := inventory.management
 	audit := inputs.auditWords
 	return &api.Server{
-		Operations: application.OperationService{Store: stores.operationStore},
+		Operations:        application.OperationService{Store: stores.operationStore},
+		TrafficRolloutAPI: inputs.trafficRolloutAPI,
+		TrafficRollouts:   dependencies.trafficRollouts,
 		PluginAdminControl: &plugins.SDKAdminControl{
 			Clients:      dependencies.pluginControl.ReloadClients,
 			HTTPContract: dependencies.pluginControl.HTTPContract,
@@ -294,6 +413,26 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 		},
 		AccessService: &application.AccessService{Store: stores.keyStore, Compare: security.CompareServiceKey},
 		AuditWords:    audit, Management: management, Errors: inputs.errorCatalog,
+		PluginLinks: &application.PluginLinkPolicyService{
+			Store: stores.pluginLinkStore, Reader: stores.pluginLinkStore, Operations: stores.operationStore,
+			Kinds: application.PluginLinkPolicyOperationKinds{
+				Create:  management.OperationKinds.PluginLinkCreate,
+				Replace: management.OperationKinds.PluginLinkReplace,
+				Delete:  management.OperationKinds.PluginLinkDelete,
+			},
+			States: application.PluginLinkPolicyOperationStates{
+				Pending: management.Statuses.Pending, Succeeded: management.Statuses.Succeeded, Failed: management.Statuses.Failed,
+			},
+			Now: time.Now,
+			Refresh: func() {
+				if dependencies.linkPolicy != nil {
+					_ = dependencies.linkPolicy.Refresh(context.Background())
+				}
+				if dependencies.linkPolicyChanged != nil {
+					dependencies.linkPolicyChanged()
+				}
+			},
+		},
 		TLSConfig: inputs.tlsConfiguration,
 		Plugins:   inventory.view, PluginIDField: inventory.contract.JSON.ID,
 		DataPlaneReadiness: pluginReadiness(dependencies.registry, dependencies.convergence, management),

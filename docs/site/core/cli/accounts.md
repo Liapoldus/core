@@ -10,6 +10,6 @@
 задачи следующей версии. Точная текущая API-поверхность приведена в
 [OpenAPI](../api/openapi).
 
-Constructor хранит credentials только в server-side secret storage или в OS
-credential store; browser не получает Core service key. Credentials не входят
-в plugin settings и никогда не выводятся в logs, audit или errors.
+Операторский backend хранит credentials только в server-side secret storage
+или в OS credential store; browser не получает Core service key. Credentials
+не входят в plugin settings и никогда не выводятся в logs, audit или errors.

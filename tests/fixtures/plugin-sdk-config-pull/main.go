@@ -57,6 +57,15 @@ func main() {
 	}
 	store, err := storage.NewSQLitePluginConfigurationStore(database)
 	check(err)
+	management, err := config.LoadManagement()
+	check(err)
+	operationStore, err := storage.NewSQLiteOperationStore(database)
+	check(err)
+	check(operationStore.Create(ctx, models.Operation{
+		ID: "operation-config-pull", Kind: management.OperationKinds.PluginSettingsApply,
+		State: management.Statuses.Running, RequestID: "request-config-pull", Actor: "operator",
+		Resource: "fixture", CreatedAt: time.Now().UTC(),
+	}))
 	snapshot, err := storage.NewPluginConfigurationSnapshot(ctx, store, []string{"fixture"})
 	check(err)
 	httpContract, err := pluginsdk.LoadHTTPContract()
@@ -121,14 +130,32 @@ func main() {
 	check(err)
 	reloadClient, err := pluginsdk.NewPluginClient(httpContract, "https://localhost:"+itoa(pluginListener.Addr().(*net.TCPAddr).Port), coreTransport, peerIdentity)
 	check(err)
-	applier := &plugins.SDKConfigurationApplier{Store: store, Snapshot: snapshot, Clients: map[string]plugins.SDKReloadClient{"fixture": reloadClient}}
+	staticReloadCalls, dynamicReloadCalls := 0, 0
+	registered := registeredReplicaSource{replicas: []plugins.LivePluginReplica{{
+		Registration: sdkmodels.ReplicaRegistrationRequest{
+			Identity:     sdkmodels.PeerReplicaID{InstanceID: "fixture", ReplicaID: "replica-dynamic", IncarnationID: "inc-1", PlacementID: "node-a"},
+			RestEndpoint: "https://localhost:" + itoa(pluginListener.Addr().(*net.TCPAddr).Port),
+			Release:      sdkmodels.ReplicaRelease{Version: "1.0.0", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		},
+		LeaseExpires: time.Now().Add(time.Minute),
+	}}}
+	registeredReloads := plugins.NewRegisteredReplicaReloadResolver(registered, func(context.Context, plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+		return countingReloadClient{delegate: reloadClient, count: &dynamicReloadCalls}, nil, nil
+	}, nil)
+	applier := &plugins.SDKConfigurationApplier{
+		Store: store, Snapshot: snapshot,
+		Clients:    map[string]plugins.SDKReloadClient{"fixture": countingReloadClient{delegate: reloadClient, count: &staticReloadCalls}},
+		Registered: registeredReloads,
+	}
 	service := application.PluginConfigurationService{Store: store, Applier: applier,
+		OperationKind:  management.OperationKinds.PluginSettingsApply,
 		RevisionStates: application.PluginConfigurationRevisionStates{Active: "active", Candidate: "staging"}}
 	activated, reloadErr := service.Apply(ctx, application.ApplyPluginConfigurationCommand{
-		InstanceID: "fixture", ExpectedRevision: 1, CandidateRevision: 3, SchemaVersion: 1,
+		OperationID: "operation-config-pull", InstanceID: "fixture", ExpectedRevision: 1, CandidateRevision: 3, SchemaVersion: 1,
 		SettingsJSON:   []byte(`{"origin":"staging"}`),
 		CandidateAudit: audit("candidate", "succeeded"), AppliedAudit: audit("applied", "succeeded"), FailedAudit: audit("failed", "failed"),
 	})
+	registrationReloadErr := applier.ReloadActive(ctx, "fixture")
 	bytesErr := applier.ApplyConfiguration(ctx, "fixture", "3", []byte(`{"origin":"tampered"}`))
 	unknownPluginErr := applier.ApplyConfiguration(ctx, "unknown", "3", []byte(`{"origin":"staging"}`))
 	_, pointers, err := store.Current(ctx, "fixture")
@@ -138,11 +165,33 @@ func main() {
 		"exactDigest": active.Configuration.SHA256 == digest(active.Configuration.RawJSON), "unknownGenerationRejected": unknownErr != nil,
 		"otherInstanceRejected": otherErr != nil, "unauthenticatedRejected": unauthenticatedErr != nil,
 		"reloadAcknowledged": reloadErr == nil, "reloadGeneration": "3", "reloadPulledRaw": string(reloadPulled),
-		"activatedGeneration": activated.Revision, "activeAfterReload": pointers.CurrentRevision,
+		"dynamicReplicaPulledRaw": string(reloadPulled), "staticReloadCalls": staticReloadCalls, "dynamicReloadCalls": dynamicReloadCalls,
+		"registrationReloadAcknowledged": registrationReloadErr == nil,
+		"activatedGeneration":            activated.Revision, "activeAfterReload": pointers.CurrentRevision,
 		"previousAfterReload": pointers.PreviousRevision, "stagingCleared": pointers.PendingRevision == 0,
 		"mismatchedBytesRejected": bytesErr != nil, "unknownPluginRejected": unknownPluginErr != nil,
 	}
 	check(json.NewEncoder(os.Stdout).Encode(output))
+}
+
+type registeredReplicaSource struct {
+	replicas []plugins.LivePluginReplica
+}
+
+func (source registeredReplicaSource) Snapshot() []plugins.LivePluginReplica {
+	return source.replicas
+}
+
+func (registeredReplicaSource) HasRegisteredInstance(string) bool { return true }
+
+type countingReloadClient struct {
+	delegate plugins.SDKReloadClient
+	count    *int
+}
+
+func (client countingReloadClient) Reload(ctx context.Context, reload sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
+	*client.count++
+	return client.delegate.Reload(ctx, reload)
 }
 
 type certificateSet struct {

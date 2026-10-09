@@ -5,23 +5,21 @@ import (
 	"database/sql"
 	"errors"
 
-	assets "github.com/Liapoldus/core"
 	"github.com/Liapoldus/core/internal/domain/interfaces"
 	"github.com/Liapoldus/core/internal/domain/models"
-	"gopkg.in/yaml.v3"
 )
 
 type sqliteAccessContract struct {
-	BeginImmediate        string `yaml:"beginImmediate"`
-	Commit                string `yaml:"commit"`
-	Rollback              string `yaml:"rollback"`
-	SelectActiveKey       string `yaml:"selectActiveKey"`
-	InsertKey             string `yaml:"insertKey"`
-	SelectActiveVerifiers string `yaml:"selectActiveVerifiers"`
-	SelectKeyMetadata     string `yaml:"selectKeyMetadata"`
-	BootstrapName         string `yaml:"bootstrapName"`
-	InvalidContract       string `yaml:"invalidContract"`
-	ActiveKeyConflict     string `yaml:"activeKeyConflict"`
+	BeginImmediate        string
+	Commit                string
+	Rollback              string
+	SelectActiveKey       string
+	InsertKey             string
+	SelectActiveVerifiers string
+	SelectKeyMetadata     string
+	BootstrapName         string
+	InvalidContract       string
+	ActiveKeyConflict     string
 }
 
 type SQLiteServiceKeyStore struct {
@@ -33,14 +31,7 @@ type SQLiteServiceKeyStore struct {
 var _ interfaces.ServiceKeyStore = (*SQLiteServiceKeyStore)(nil)
 
 func NewSQLiteServiceKeyStore(database *sql.DB) (*SQLiteServiceKeyStore, error) {
-	contents, err := assets.Contract(assets.SQLiteAccess)
-	if err != nil {
-		return nil, err
-	}
-	var contract sqliteAccessContract
-	if err := yaml.Unmarshal(contents, &contract); err != nil {
-		return nil, err
-	}
+	contract := accessDefinitions()
 	if database == nil || contract.BeginImmediate == "" || contract.Commit == "" || contract.Rollback == "" || contract.SelectActiveKey == "" || contract.InsertKey == "" || contract.SelectActiveVerifiers == "" || contract.SelectKeyMetadata == "" || contract.BootstrapName == "" || contract.InvalidContract == "" || contract.ActiveKeyConflict == "" {
 		return nil, errors.New(contract.InvalidContract)
 	}

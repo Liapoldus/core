@@ -55,21 +55,22 @@ describe("Core peer protocol boundary", () => {
       goSources(["internal", "cmd", "tests/fixtures"]),
     ]);
 
-    // declared_replicas.go is the only place that turns an operator-declared
-    // endpoint and expected identity into a live SDK control client, and
-    // startup_reconcile.go is the only place that re-establishes the committed
-    // active generation on declared replicas after a restart, so both are
-    // listed explicitly: a new file here must be a deliberate, reviewed
-    // addition to the plugin lifecycle layer rather than a silent one. TLS
-    // revocation is kept in this adapter so presentation never imports the SDK.
+    // Lifecycle and directory adapters are listed explicitly so new files in
+    // this boundary remain deliberate and reviewed. TLS revocation stays here
+    // so presentation never imports the SDK transport implementation.
     expect(files.sort()).toEqual([
       "admin_dispatch.go",
       "admin_surface.go",
       "declared_replicas.go",
       "errors.go",
+      "peer_directory.go",
+      "peer_directory_broadcaster.go",
+      "registered_reconciliation.go",
+      "replica_directory.go",
       "sdk_admin_control.go",
       "sdk_contract.go",
       "sdk_control.go",
+      "sdk_control_validation_test.go",
       "startup_reconcile.go",
       "tls_revocation.go",
     ]);

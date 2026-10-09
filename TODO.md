@@ -1,5 +1,27 @@
 # TODO — Core v1
 
+## Подготовительная чистка перед v2 — 2026-10-09
+
+- [x] SQL storage adapters и SQLite schema/migrations перенесены в Go с
+  сохранением именованных запросов, bytes, версий и порядка; файловые SQL
+  parsers удалены. Пять наборов storage constants перенесены в typed Go.
+  Native regression tests фиксируют исходные query/schema/definition digests.
+- [x] Native Go tests подключены к `make test`; прежний запрет Go tests удалён
+  из архитектурных проверок и инструкций. TS HTTP/CLI/E2E coverage сохранён.
+- [x] Устранена зависимость plugin transport adapter от config adapter:
+  schema validation явно передаётся composition root и fail-closes без неё.
+- [x] Targeted storage/config tests, race и vet прошли; семь targeted Vitest
+  suites (17 tests) прошли. Это не общий release gate.
+- [ ] Независимая сборка: Core закрепляет SDK v1.0.0 без используемых v2 API.
+  Локальный workspace не закрывает этот gate; нужна опубликованная совместимая
+  SDK revision. Коммит/публикация не выполнялись.
+- [ ] ENV-only bootstrap, однократный `core init`, собственные SQLite settings
+  API с CAS/pending/effective, offline migration/recovery, removal static
+  registry fallback и полный blocking strict lint ещё не реализованы.
+  Существующие runtime YAML loaders пока нельзя объявлять удалёнными.
+- [ ] Публичные schema/error catalogs ещё не полностью code-generated;
+  миграция внутренних storage constants не означает завершение всех contracts.
+
 Нормативный scope: [целевая архитектура](https://liapoldus.github.io/core/architecture/target), [Control Plane](https://liapoldus.github.io/core/architecture/control-plane), [ручной запуск v1 / автоматизация v2](https://liapoldus.github.io/core/architecture/plugin-deployment), [roadmap](https://liapoldus.github.io/core/architecture/v1-migration-roadmap) и [acceptance](https://liapoldus.github.io/core/configuration/acceptance).
 
 ## Документация
@@ -131,7 +153,7 @@ Caddy автоматически продлевает сертификаты.
 ## Зафиксированная граница v1
 
 - Состав v1: три сервиса — Core, Server plugin, forms-db plugin; две библиотеки —
-  Plugin SDK и `pluginprotocol`. CAPTCHA и Identity отложены до v2 и заморожены.
+  Plugin SDK и `pluginprotocol`. CAPTCHA и Identity отложены до v3 и заморожены.
 - Оператор отдельно устанавливает и вручную запускает Core и оба plugin
   binaries. Core не устанавливает, не запускает, не останавливает, не
   перезапускает, не масштабирует и не удаляет plugin processes или containers.
@@ -139,8 +161,10 @@ Caddy автоматически продлевает сертификаты.
   per-replica mTLS identity, Manifest/schema и health/readiness. Он публикует
   exact-generation config endpoint для SDK REST pull; сам Core только вызывает
   `Reload(generation)` и не передаёт settings payload в notification.
-- Docker/Compose, Swarm, Kubernetes, provider API, local process supervision,
-  TUF package installation и plugin workload lifecycle — v2. Не включать их в
+- Docker/Compose, Swarm, Kubernetes как внешнее размещение — v2;
+  Установка и плановые обновления Core/plugins принадлежат оператору;
+  Core process supervision
+  не планируется. Не включать их в
   v1 API, SQLite schema, permissions, CLI или acceptance.
 - Plugin configuration — точные raw JSON bytes. Durable slots три:
   `active`, `previous` и внутренний `staging`. Только первые два когда-либо
@@ -157,9 +181,10 @@ Caddy автоматически продлевает сертификаты.
 - Core использует только Plugin SDK REST и не импортирует `pluginprotocol`.
   `pluginprotocol` — configurable generic plugin↔plugin library без Core
   lifecycle или product contracts. Core остаётся plugin-agnostic.
-- Constructor и `react-lib` заморожены. Не менять их, CAPTCHA и Identity.
-- Server plugin v1 — HTTP/HTTPS only. Caddy-L4 и public TCP/UDP relay не
-  входят в binary, settings schema, API, tests или acceptance.
+- CAPTCHA и Identity остаются вне v1/v2; их repositories заморожены до отдельной
+  явной разморозки для v3.
+- Server plugin v1/v3 public scope не включает Caddy-L4 и TCP/UDP relay; эти
+  возможности относятся к v3.
 
 ## 1. Core config и durable operations
 
@@ -211,8 +236,9 @@ Caddy автоматически продлевает сертификаты.
 
 - [x] Перевести Core imports и Go module dependency на утверждённый
   `github.com/Liapoldus/plugin-sdk`; SDK и Core `go build ./...` проходят.
-  Fan-out `Reload` продолжает оповещение остальных replica после одного отказа;
-  каждый результат фиксируется отдельно. Покрыто
+  Fan-out `Reload` одновременно оповещает все объявленные replica и не ждёт
+  завершения одной перед вызовом остальных; отказ одной не отменяет остальные
+  вызовы, каждый результат фиксируется отдельно. Покрыто
   `tests/integration/plugin-reload-fanout.test.ts`.
 - [x] ~~**Подтверждено на штатном бинаре: `core serve` полностью игнорирует
   `pluginControl`.**~~ **Исправлено (2026-09-30).** `core serve` теперь сам
@@ -319,7 +345,7 @@ Caddy автоматически продлевает сертификаты.
   Core→Server site-publish child-process E2E подтвердил multipart upload без
   `If-Match`, durable operation, serving результата и сохранность после restart.
 - [x] Удалить Caddy-L4 dependency/registration и public TCP/UDP listener/relay
-  implementation из v1; Caddy-L4 и relay остаются в v2.
+  implementation из v1; Caddy-L4 и relay остаются вне v1, запланированы в v3.
 - [x] Проверить forms-db plugin suite и SQL adapters: настоящий Core→Server→
 forms-db process pair проверяет authorized HTTP submit через прямой peer
 dispatch; отдельный forms-db child-process suite с Core-compatible SDK
@@ -351,7 +377,7 @@ Cross-repository CI запускает все три backend.
   secret grants, Admin Surface/artifact forwarding, Core→Server/forms-db и
   ручного Core process restart с проверкой plugin convergence; тесты должны
   оставаться в `tests/`.
-- [x] Удалить старые Core process supervision, provider/TUF installation API,
+- [x] Удалить старые Core process supervision и provider installation API,
   SQLite provider/workload state, неиспользуемые CLI commands и legacy protocol
   lifecycle. Регрессии закреплены `pluginprotocol-sdk-boundary`,
   `no-legacy-site-api`, `target-cli-surface`, `dead-artifacts`.
@@ -433,25 +459,290 @@ Cross-repository CI запускает все три backend.
   cross-repository integration прошли на commit `2c58af3`, включая SQL-backed
   сценарии. `core-v1.0.1` опубликован, release contracts archive создан.
 
-## Отложено до v2 — не включать в v1 gates
+## V2 — milestones, вне приёмки v1
 
-- [ ] Caddy-L4, public TCP/UDP listeners/relay.
-- [ ] CAPTCHA и Identity/OIDC/OAuth; repositories остаются полностью frozen.
-- [ ] TUF trust metadata/catalog и Core API/CLI для установки или обновления
-  plugin binaries.
-- [ ] Core-supervised local plugin processes, binary release install,
-  inherited listener/bootstrap и автоматический restart/backoff.
-- [ ] Docker/Compose, Swarm и Kubernetes providers, managed workloads,
-  reconciliation, rollout/scale/drain и ownership-safe cleanup.
-- [ ] Любые API, credentials, database fields, CLI commands и tests, которые
-  существуют только для этих v2 features.
-- [ ] Публичный Go host API для embedding одного Core runtime без импорта
-  `internal/` пакетов; lifecycle, readiness, shutdown, bootstrap reuse и один
-  Core instance на state database.
-- [ ] Static composition root для единого Go executable с явно выбранными
-  trusted plugin factories; без dynamic Go plugin loading и независимого
-  обновления встроенных plugins.
-- [ ] Использовать Plugin SDK in-process adapter для embedded plugins с тем же
-  lifecycle conformance, что и REST; отдельно запущенные plugins сохраняют
-  REST+mTLS. Проверить отсутствие listener, duplicate Core runtime, утечек
-  ресурсов и нарушения Core/plugin trust boundary.
+Нормативные последовательности и границы: [размещение plugins](docs/site/core/architecture/plugin-deployment.md).
+Реализация каждого пункта начинается отдельным TypeScript red-test; Core не
+импортирует `pluginprotocol` и не получает product-specific веток.
+
+### 1. Discovery и rollout — владелец Core + Plugin SDK
+
+- [x] Реализовать в локальном Core WIP authenticated per-replica
+  registration/renew/deregister: уникальный
+  incarnation, SAN/SPIFFE binding, immutable endpoints/placement, SemVer/digest,
+  compatibility ranges, lease 30 s с renew 10 s. Живые endpoints — in-memory;
+  после рестарта требуется новая регистрация. Локальный child-process gate
+  restart/expiry/identity mismatch, duplicate registration и stale incarnation
+  подтверждён командами, перечисленными в handoff этого пункта. Это не clean
+  release gate: Core по-прежнему зависит от registration/directory API локального
+  Plugin SDK WIP, отсутствующих в опубликованном pinned SDK; обычные
+  `GOWORK=off` build и hosted cross-repository gate остаются открытыми.
+  В текущем локальном WIP уже есть mTLS REST handler, SAN/lease directory и
+  SQLite admission; запись instance+replica транзакционная, а live entry
+  публикуется только после commit. Уже зарегистрированные истёкшие,
+  deregister-нутые и заменённые identities fenced от legacy resolver fallback.
+  Outbound REST TLS теперь дополнительно pins точный ожидаемый CN/URI SAN после
+  стандартной проверки CA/hostname и revocation; это покрыто
+  `tests/integration/plugin-peer-identity.test.ts`. Локальный WIP теперь строит
+  `Reload` fan-out из текущего lease snapshot, исключает просроченные leases,
+  закрывает уже созданные клиенты при неполном snapshot и не откатывается на
+  статические clients для уже зарегистрированного, но недоступного instance.
+  Новая регистрация вызывает `Reload` текущего active поколения только для
+  зарегистрированной replica, без N² fan-out при scale-out; plugin затем сам
+  получает точные bytes через private mTLS pull API. Это покрыто
+  `tests/integration/registered-replica-reload.test.ts`,
+  `tests/integration/plugin-replica-directory.test.ts` и реальным mTLS pull в
+  `tests/integration/plugin-sdk-config-pull.test.ts`; fan-out проверяет точное
+  совпадение ACK с requested generation/digest/schema и считает несовпадающий
+  ACK protocol violation (`tests/integration/plugin-reload-fanout.test.ts`).
+  Локальный WIP добавил periodic exact-generation reconciliation живых
+  зарегистрированных replicas: converged readiness пропускается, stale/not-ready
+  replica получает повторный идемпотентный Reload, точный ACK записывается
+  отдельно, expired lease не вызывается; повторяется только notification, не
+  product operation. Покрыто
+  `tests/integration/registered-replica-reconciliation.test.ts`.
+  Открыты: решение о судьбе статического registry в `core.yaml` и drain.
+  Истечение frozen lease или новая incarnation того же replica ID атомарно
+  закрывает operation как `failed/target_lost`, без подмены target и изменения
+  desired `active`; продолжение требует новой явной операции. Проверено
+  `tests/integration/registered-rollout-target-lost.test.ts`; полный hosted gate
+  остаётся открыт. До синхронизации и публикации owner-контракта
+  `liapoldus.github.io/public/spec/errors.json` canonical error-catalog test
+  намеренно остаётся красным. Проверка совместимости
+  release-контрактов подключена до формирования когорты; directory long-poll
+  реализован и покрыт SDK/Core conformance. Для
+  зарегистрированного instance частичная конфигурационная operation теперь
+  остаётся `running`; после позднего exact-generation convergence та же durable
+  operation переводится в `succeeded`. Повторный recovery ограничен
+  текущим authenticated replica directory. `registered-rollout-operation`
+  запускает два отдельных процесса поверх одной SQLite и проверяет recovery
+  service после повторной регистрации, но не полный `core serve` startup.
+  **Закрытый подблок:** Core v10 транзакционно сохраняет marker для instance,
+  прошедшего self-registration, загружает его перед запуском lifecycle listener
+  и не разрешает legacy static fallback после рестарта. TypeScript fixture
+  заново открывает SQLite и directory, проверяя, что dynamic instance fenced,
+  а обычный unregistered static instance остаётся доступен.
+  **Полный child-process тест реального `core serve` от старта до новой
+  регистрации добавлен** (`tests/fixtures/serve-self-registration/main.go` +
+  `tests/integration/serve-self-registration.test.ts`): фикстура собирает Core,
+  стартует `core serve` как отдельный процесс, регистрирует нейтральную replica
+  по mTLS, аутентифицирует peer-directory poll, останавливает Core, читает
+  durable marker из SQLite, рестартует, подтверждает обязательную повторную
+  регистрацию и отсутствие marker у static instance. Полный
+  `make check` на этом WIP не прошёл: `core/go.mod` требует опубликованный SDK
+  `v1.0.0`, а в `v1.0.1` изменён только TODO; код тега совпадает с `v1.0.0`.
+  Read-only сверка также подтвердила, что remote `plugin-sdk/main` совпадает с
+  локальным HEAD `a73df7e`, но не содержит dirty/untracked registration и
+  peer-directory API, которые импортирует Core. Чистый
+  `GOWORK=off go build ./...` падает на отсутствующих
+  `ReplicaRegistrationRequest`, `ReplicaLifecycleContract` и
+  `PeerDirectoryPollContract`. Targeted integration/build/vet/staticcheck
+  проходили только с временным local Go workspace Core+SDK и не доказывают
+  release build. Нужны завершённый SDK owner slice, его совместимый
+  опубликованный immutable revision и точный Core pin; `GOWORK=off` process
+  fixtures остаются заблокированы до этого шага.
+  **Закрытый подблок в локальном WIP:** Core v11 атомарно продвигает generation
+  вместе с immutable target cohort `(replicaId, incarnation, release digest)`;
+  точные ACK сохраняются на target row, recovery не добавляет поздние
+  incarnation и не переигрывает уже подтверждённые targets. В одной SQLite
+  transaction `CreateCandidate` запрещает второй rollout; `RestorePrevious`
+  блокируется до изменения pointers при открытом rollout или staging candidate.
+  Rollback handler сериализует pointer swap + legacy Reload с `Apply` тем же
+  application lock. Проверяется
+  `registered-rollout-cohort.test.ts`, `plugin-settings-rollback.test.ts` и
+  exact-dispatch child fixture.
+  Membership зафиксирован: `immediate` включает каждую совместимую
+  authenticated registration с действующей mTLS identity и неистёкшей lease,
+  даже если replica ещё `ready=false`; readiness управляет traffic admission,
+  а не первой доставкой конфигурации. Новые incarnation после snapshot не
+  меняют frozen cohort. SDK generic contract compatibility подключена перед
+  формированием config target cohort: одинаковый release digest совместим,
+  разные digest требуют взаимного принятия всех advertised contract versions;
+  нет evidence — promotion блокируется. `tests/integration/registered-release-cohort.test.ts`
+  проходит 1/1. `tests/integration/registered-release-cohort-activation.test.ts`
+  запускает настоящий Core configuration service с SQLite и доказывает, что
+  отказ compatibility gate оставляет active/previous raw JSON и поколения без
+  изменений, очищает staging, фиксирует operation как failed/conflict и не
+  вызывает plugin apply. Lifecycle admission, renewal и deregistration
+  сериализованы с cohort snapshot/promotion общим activation lock;
+  `tests/integration/plugin-replica-directory.test.ts` проверяет, что lifecycle
+  handler не публикует replica внутри activation critical section. Lock сейчас
+  удерживается до окончания Reload fan-out; стоимость для частоты lease
+  renewal нужно измерить на нагрузочном profile. Product-owned claims
+  settings/durable-state остаются открытыми.
+  Registered `PluginSettingsRollback` теперь в одной SQLite-транзакции меняет
+  active/previous и записывает frozen exact-incarnation/release cohort; partial
+  ACK оставляет operation `running`, recovery повторяет только unacknowledged
+  targets и завершает operation после ACK всей когорты. Crash после pointer
+  swap до перехода operation в `running` также восстанавливается; replacement
+  incarnation не принимается. Red→green: `tests/integration/registered-rollout-cohort.test.ts`
+  плюс `plugin-settings-rollback.test.ts`. Проверки ниже подтверждают этот
+  rollback barrier, но совместимость поколений конфигурации для staged/canary
+  rollout, drain и traffic rollout остаются открытыми.
+- [x] Хранить в SQLite rollout intent/operations/audit, но не live endpoints;
+  live endpoints публиковать через SDK REST long-poll. Core membership/policy
+  changes и релевантное истечение lease будят watcher; scale event не создаёт
+  config generation, reconnect возвращает актуальный snapshot и не теряет fence.
+  Покрыто `tests/integration/peer-directory-poll.test.ts` и SDK/Core
+  `peer-directory-conformance`; release/config rollout остаётся отдельной задачей.
+- [ ] Реализовать отдельную platform-admin операцию
+  `POST /api/plugins/{id}/rollouts`: точные candidate JSON bytes, desired
+  release digest, expected active revision, stages и frozen candidate targets
+  `replicaId + incarnation`. До изменения состояния проверить readiness/lease,
+  candidate release digest, generic config schema и contract compatibility;
+  все остальные participating replicas должны образовывать одну совместимую
+  incumbent cohort. Зафиксировать обе когорты, intent, stage plan, operation и
+  audit в SQLite; при начале roll-forward атомарно promoted candidate становится
+  `active`, старый `active` — `previous`, `staging` очищается. Обычный
+  `PUT /api/plugins/{id}/settings` остаётся immediate и не создаёт traffic
+  rollout. Одновременный открытый rollout на instance запрещён.
+  Уже реализованы multipart `POST /api/plugins/{id}/rollouts`, чтение состояния
+  через `GET /api/plugins/{id}/rollouts/{rolloutId}` с strong ETag и отдельный
+  platform-admin approval endpoint. Approval требует `If-Match` и
+  `Idempotency-Key`; фиксация операции, stage transition, audit и idempotency
+  выполняются одной SQLite-транзакцией. Stage IDs ограничены безопасным URL
+  сегментом. Первая controller confirmation переводит исходную operation из
+  `pending` в `running`; одобрение последнего stage завершает её. Это покрыто
+  integration fixture с настоящим Management API и SQLite.
+  Локальный подготовительный срез добавил строгий parser stage plan с проверкой
+  точной уникальной incarnation на `replicaId`, монотонного роста весов до 100%,
+  уникальных stage IDs, unknown fields, trailing JSON и duplicate JSON keys.
+  Чистый selector затем сопоставляет candidate только с точной зарегистрированной
+  incarnation, проверяет lease/readiness/release digest, выделяет одну
+  incumbent release cohort и отклоняет частичную ступень без incumbent.
+  Добавлены SQLite schema v14 и отдельный durable store для immutable plan,
+  stages и точных candidate/incumbent `replicaId + incarnation`; сырой JSON plan
+  сохраняется и восстанавливается без remarshal. Store отклоняет второй открытый
+  rollout на instance. Транзакции `ConfirmStage` и `ApproveStage` проверяют
+  точный вес, expected revision и observation window, двигают active stage,
+  завершают operation и пишут audit атомарно; child-process test доказывает
+  отклонение неправильного веса, premature/stale approval, продвижение и финальное
+  завершение. Проверки: `traffic-rollout-plan.test.ts`,
+  `traffic-rollout-storage.test.ts`, `traffic-rollout-store.test.ts`.
+  Добавлен storage transaction primitive `CreateAndPromote`: в одной SQLite
+  транзакции резервируются operation/idempotency, сохраняется точный JSON
+  generation, двигаются active/previous, создаются config rollout ACK targets
+  только для candidate cohort, traffic intent/stages/cohorts (включая
+  incumbent) и creation audit. Incumbent сохраняет уже применённую runtime-
+  конфигурацию и не получает candidate `Reload`. Child-process тест проверяет
+  сохранение raw bytes, атомарный состав записей, exact candidate/incumbent и
+  поведение повторного ключа/другого запроса; проверка дополнительно фиксирует,
+  что config rollout target — только точный candidate replica. После изменения
+  прошли шесть целевых rollout suites (13 тестов), целевой `go vet` трёх
+  затронутых пакетов и `git diff --check`. Application worker читает
+  незакрытые traffic/config rollout-ы из SQLite, передаёт candidate только
+  замороженным `replicaId + incarnation`, сохраняет ACK каждой цели и при
+  повторе вызывает только неподтвердившиеся targets. После рестарта worker
+  повторно поднимает незакрытый barrier; потерянная точная incarnation закрывает
+  barrier как `target_lost` без замены. Bootstrap запускает worker после создания
+  intent, при регистрации replica и в периодическом recovery цикле. Child-process
+  проверяет частичный ACK, повтор только для оставшейся candidate и отсутствие
+  вызова incumbent. Targeted проверка с локальным workspace Plugin SDK: восемь
+  rollout suites (11 тестов), четыре смежные config/reload suites, `go build
+  ./...`, `go vet` четырёх затронутых пакетов и `git diff --check` прошли;
+  published Core/SDK release gate остаётся открытым. Пока последний traffic
+  rollout не завершён, обычные settings mutation/rollback и generic Reload
+  fanout не меняют замороженные когорты. `target_lost` атомарно завершает
+  traffic rollout как failed и сохраняет cohort fence; восстановление требует
+  новой явной rollout-операции. Это покрывает
+  `tests/integration/traffic-rollout-reload.test.ts`.
+  Следующий application-срез добавил `TrafficRolloutService`: он проверяет
+  plugin-owned schema через порт, разбирает строгий plan, разрешает только
+  текущие точные candidate incarnation, фиксирует ready incumbent cohort и
+  передаёт одну атомарную submission store под общим lifecycle/activation lock.
+  Child-process test проверяет replay по idempotency key, отказ для неверной
+  incarnation и незарегистрированной candidate replica. Добавлен generic JSON
+  Schema validator для opaque plugin documents и адаптер release-cohort
+  проверки к Plugin SDK; API создания уже подключён к bootstrap и
+  протестирован. Для каждого этапа ручное одобрение обязательно: пропущенный
+  `requireManualApproval` имеет default `true`, явный `false` отклоняется;
+  parser и storage validator применяют одинаковую семантику, сохраняя исходный
+  Plan JSON. Реализованы отдельный private mTLS listener из
+  `core serve --traffic-controller-config`, собственные trust roots/CRL,
+  exact identity allow-list, intent GET с ETag и conditional GET, скрытие intent
+  до закрытия `plugin_rollouts.open`, confirmation с per-rollout CAS и
+  identity-bound idempotency. Receipt, переход stage и audit фиксируются одной
+  SQLite-транзакцией. Child-process tests проверяют реальный listener, отказ
+  без client certificate, отказ неразрешённой identity, повтор confirmation и
+  конфликт повторного ключа. Controller не может изменить plan или заменить
+  обязательное ручное platform-admin approval.
+- [x] Закрепить отдельную строгую v2-схему `traffic-controller.schema.json` и
+  field-map; `LoadTrafficController` проверяет schemaVersion, неизвестные и
+  повторные YAML-ключи, exact identity allow-list, bind и внешние file refs.
+  TS child-process проверка покрывает валидный документ, duplicate identity,
+  inline key и ошибки схемы. Минимальная v1 bootstrap-схема не расширялась.
+- [ ] Завершить traffic-controller conformance: отозванный сертификат и CRL
+  rotation, полный privilege-escalation negative matrix, pause при health/error/
+  неподтверждённом весе, crash/restart между intent и confirmation, восстановление
+  сохранённого idempotency receipt, а также drain долгих вызовов и открытых
+  streams. Операционный acceptance должен подтвердить отсутствие автоматического
+  rollback/replay и продолжение только с последнего подтверждённого stage.
+
+### 2. Peer links и смешанное размещение — владелец Core + Plugin SDK
+
+> **Resolved (canonical error contract):** `plugin_link_conflict` (409) и
+> `plugin_link_invalid` (422) добавлены в `assets/contracts/errors.json`
+> (+ mirror/manifest) и в канонический `liapoldus.github.io public/spec/errors.json`
+> (+ hash в `public/spec/manifest.json`); docs `main` закоммичен (`fd9a61b`).
+> `management-error-catalog.test.ts` зелёный.
+
+- [x] Владелец durable source — SQLite Core; static YAML/assets не являются
+  источником значений policy. Добавить Management API для списка и полного
+  чтения/замены/удаления политики logical-пары caller/target. Ресурс имеет
+  revision/ETag; create выполняется `POST` и конфликтует при существующей
+  паре, replace/delete требуют `If-Match`; мутации требуют `Idempotency-Key`, валидируются,
+  сравниваются по CAS и аудируются в транзакции. Отсутствие записи — deny;
+  неизвестные пока instance IDs допустимы для предварительного authoring.
+- [x] SQLite policy хранит набор правил пары: placement (`same-placement` или
+  `remote`), совместимый carrier, weight `1..100` и opaque required contract
+  ranges. Core проверяет только generic синтаксис/placement-carrier pairing,
+  не разбирает продуктовые методы и schemas. После commit заменить immutable
+  in-memory snapshot и уведомить SDK-defined directory watchers; при старте
+  восстановить snapshot из SQLite.
+- [x] Завершить `GET /internal/v2/plugin-peer-directory` строго по SDK owner
+  контракту: mTLS-authenticated caller получает только разрешённые links; watch
+  просыпается при policy/membership/readiness change и ближайшем релевантном
+  lease expiry. Не добавлять периодический reaper только ради long-poll expiry:
+  handler может ждать сигнал либо ближайший deadline. Не дублировать DTO/таймауты
+  SDK в Core.
+- [x] SDK resolver выбирает replica по routing key и weight, не импортируя
+  `pluginprotocol`. Cross-component gate (`peer-directory-conformance`)
+  прогоняет реальный Core handler через реальный mTLS TCP и SDK
+  `PeerDirectoryClient`/`ResolvePeer`; покрытие: create/replace/delete CAS и
+  audit (`plugin-links-api`), crash recovery (`link-policy-snapshot`), watcher
+  notification, caller isolation, expiry, socket-only без TCP/QUIC fallback и
+  отсутствие peer payload в Core (architecture tests). Gate исполняется
+  in-process (реальная серверная реализация + реальный SDK клиент), без
+  выделенного OS child-process Core v2 binary.
+
+### 3. Остальные платформенные возможности v2
+
+- [ ] Закрыть generic lifecycle/rollout gates с нейтральными child-process
+  fixtures и product compatibility для Domain/Runtime. Server/forms-db не
+  изменяются в v2; существующие v1 сценарии допускаются только как regression
+  targets.
+
+## V3 — отдельный этап, не включать в v2 gates
+
+- [ ] Возобновить Server/forms-db repositories: Server multi-replica
+  registration, release compatibility, shared storage/ACME и Caddy-L4; forms-db
+  SQL cohort compatibility на PostgreSQL/MySQL/MariaDB.
+  Product contracts остаются у соответствующих plugins; Core остаётся generic.
+
+- [ ] Публичный Go host API Core, static composition root и Plugin SDK
+  in-process adapter для доверенных Go plugins; REST+mTLS остаётся для
+  отдельных процессов, без автоматического fallback.
+- [ ] Перенести в Server Caddy-L4 и public TCP/UDP relay; P2P/NAT traversal
+  не включать без отдельного решения.
+- [ ] Identity/CAPTCHA — только после явной разморозки их repositories;
+  продуктовые контракты остаются plugin-owned.
+- [ ] Website/content развитие forms-db совместно с Server; Core хранит только
+  opaque configuration, без content model. Подробный проектный backlog остаётся
+  в forms-db TODO и v3 owner prompt.
+- [ ] `pluginprotocol` C ABI и Python `cffi` bindings поверх существующей Go
+  реализации; не создавать второй wire/session engine.
+Установка, deployment и плановые обновления Core/plugins не входят ни в один
+этап Core roadmap. Инструменты размещения не публикуют product JSON и не меняют
+поколения конфигурации. Core хранит desired config после исчезновения workload; lease
+ограждает старую incarnation. Release digest, сообщённый replica, служит для
+проверки совместимости когорты, а не доказывает происхождение бинарника.
