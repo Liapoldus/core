@@ -9,15 +9,11 @@ Core запускается как отдельный процесс и хран
 
 ```sh
 export CORE_SQLITE_PATH=/var/lib/liapoldus/core.sqlite
-export CORE_INIT_MANAGEMENT_LISTEN=127.0.0.1:8080
-export CORE_INIT_MANAGEMENT_CERTIFICATE=/run/secrets/management.crt
-export CORE_INIT_MANAGEMENT_KEY=/run/secrets/management.key
 liapoldus core start --target local
 ```
 
-При первом старте Core сам однократно использует `CORE_INIT_*`, создаёт SQLite и
-начальную revision до открытия Management API. Core не имеет собственного CLI;
-`liapoldus` передаёт environment и управляет процессом через target adapter.
+Core однократно создаёт SQLite settings state из bootstrap references. Core не
+имеет собственного CLI; `liapoldus` управляет процессом через target adapter.
 Bootstrap полный список переменных и поведение revision описывает в
 [руководстве bootstrap](../configuration/bootstrap).
 

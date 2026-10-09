@@ -2,9 +2,9 @@
 
 ## Подготовка перед v2
 
-- [ ] V2 bootstrap cutover: Core сам однократно создаёт SQLite settings из
-  `CORE_INIT_*` при первом запуске до открытия Management API; `core init` и
-  `core serve` удаляются, а запуском Core управляет standalone `liapoldus` CLI.
+- [x] V2 bootstrap cutover: Core читает уже инициализированный SQLite state и
+  открывает Management API; инициализация, запуск и lifecycle принадлежат
+  standalone `liapoldus` CLI.
 - [x] Settings Core хранятся в SQLite с CAS revisions, audit, desired/effective
   состоянием, pending restart и offline recovery к прежней revision.
 - [x] SQL, storage schema/migrations и постоянные диагностические определения
@@ -13,17 +13,9 @@
   агрегатор документов использует pinned YAML source manifest.
 - [x] Удалён static certificate resolver fallback. Membership для динамических
   replicas определяется authenticated registration и активными leases.
-- [x] Offline migration в SQLite: `core-migrate --dry-run` валидирует typed
-  план, `--apply` берёт exclusive lock, сохраняет integrity-checked backup,
-  импортирует Core settings и автоматически восстанавливает DB при ошибке.
-  Plugin settings bytes/generations, audit и остальные таблицы не декодируются
-  и проверены тестом на сохранение; static plugin IDs явно перечисляются как
-  требующие повторной authenticated registration.
-- [x] Удалить runtime bootstrap-loader fixture и перевести legacy YAML smoke на
-  `core-migrate --dry-run`. Runtime child-process сценарии используют
-  `CORE_SQLITE_PATH`, bootstrap settings API и standalone CLI; оставшийся YAML golden-vector
-  проверяет только validator миграционного формата. Lifecycle, backup/restore
-  и Core→plugin E2E покрыты отдельно.
+- [x] Legacy YAML migration и SQLite backup/restore удалены из Core; их
+  реализация принадлежит standalone `liapoldus` CLI. Core не содержит
+  migration entrypoint или offline database command.
 - [ ] Завершить code-owned generation публичных schema/OpenAPI/error contracts
   и воспроизводимые проверки их публикации.
 - [ ] Включить полный blocking quality gate на чистой ветке: Go, race, vet,
@@ -37,9 +29,8 @@
 
 ## V2 — приоритетный этап
 
-- [ ] Удалить Core CLI радикально одним breaking slice: `cmd/core` command
-  dispatcher, `internal/presentation/cli`, `cmd/core-migrate`, CLI
-  contracts/tests и CLI docs.
+- [x] Удалить Core CLI радикально одним breaking slice: command dispatcher,
+  `internal/presentation/cli`, `cmd/core-migrate` и Core-owned CLI tests.
 - [ ] Согласовать и опубликовать Core Management API contract для canonical
   config bundle: commit SHA, bundle digest, schema version, target metadata,
   idempotency, CAS, plan/apply и operation observation.
@@ -75,8 +66,8 @@
 - `PATH=<bundled-node>/bin:$PATH GOWORK=off GOFLAGS=-p=1 make test` — прошёл
   целиком: Go tests, полный
   Vitest, TypeScript typecheck и blocking ESLint.
-- `go test ./cmd/core-migrate -v` — прошли dry-run mapping, preserve-bytes,
-  backup и transactional rollback tests нового offline import.
+- `GOWORK=off GOFLAGS=-p=1 go test ./...` — Core runtime/API и fixtures
+  проходят после удаления встроенного CLI.
 - Полный Core Vitest — 98 файлов прошли, 1 штатно skipped; 168/168 тестов
   прошли, включая ручной Core→Server→forms-db lifecycle и Admin Actions.
 - `go vet ./...`, `make staticcheck-u1000`, `make arch-lint`, `git diff --check`

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
+	"github.com/Liapoldus/core/internal/runtime"
 )
 
 func main() {
@@ -19,7 +19,7 @@ func main() {
 	directory, err := os.MkdirTemp("", "liapoldus-convergence-")
 	check(err)
 	defer os.RemoveAll(directory)
-	database, err := bootstrap.OpenDatabase(ctx, filepath.Join(directory, "core.db"))
+	database, err := runtime.OpenDatabase(ctx, filepath.Join(directory, "core.db"))
 	check(err)
 	_, err = database.ExecContext(ctx, "INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)", "fixture", []byte(`{}`), "configured")
 	check(err)

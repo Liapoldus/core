@@ -19,7 +19,7 @@ describe("plugin-agnostic Core core", () => {
     const [contractSources, apiSources, cliSources] = await Promise.all([
       Promise.all(files.map((file) => readFile(join(coreRoot, file), "utf8"))),
       readGoPackageSources(coreRoot, "internal/presentation/api"),
-      readGoPackageSources(coreRoot, "internal/presentation/cli"),
+      readGoPackageSources(coreRoot, "internal/runtime"),
     ]);
     const source = [...contractSources, apiSources, cliSources].join("\n");
     expect(source).not.toMatch(/captcha|forms\.(submit|list|delete)|tls\.(issue|renew|revoke)|identity-subject|WAFChallenge|DispatchIdentity|IdentityRequest|IdentityAction/);
@@ -31,7 +31,7 @@ describe("plugin-agnostic Core core", () => {
     const [production, plugins, bootstrap, command, fixtures, module, moduleRoot] = await Promise.all([
       readGoPackageSources(coreRoot, "internal"),
       readGoPackageSources(coreRoot, "internal/infrastructure/plugins"),
-      readGoPackageSources(coreRoot, "internal/presentation/cli"),
+      readGoPackageSources(coreRoot, "internal/runtime"),
       readGoPackageSources(coreRoot, "cmd"),
       readGoPackageSources(coreRoot, "tests/fixtures"),
       readFile(join(coreRoot, "go.mod"), "utf8"),

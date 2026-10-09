@@ -85,7 +85,7 @@ describe("presentation package ownership", () => {
   });
 
   it("requires each nested Go package directory to contain at least two files", async () => {
-    const roots = [join(presentation, "api"), join(presentation, "cli")];
+    const roots = [join(presentation, "api")];
     const directories = (await Promise.all(roots.map(nestedDirectories))).flat();
 
     for (const directory of directories) {
@@ -103,7 +103,7 @@ describe("presentation package ownership", () => {
     }
   });
 
-  it("declares acyclic API and CLI package dependency directions", async () => {
+  it("declares acyclic API dependency directions", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const mayDependOn = (component: string): string[] => {
@@ -113,7 +113,6 @@ describe("presentation package ownership", () => {
 
     expect(mayDependOn("presentationAPI")).toContain("presentationAPIHandlers");
     expect(mayDependOn("presentationAPIHandlers")).not.toContain("presentationAPI");
-    expect(mayDependOn("presentationCLI")).toContain("presentationCLIBootstrap");
-    expect(mayDependOn("presentationCLIBootstrap")).not.toContain("presentationCLI");
+    expect(mayDependOn("runtime")).toEqual([]);
   });
 });

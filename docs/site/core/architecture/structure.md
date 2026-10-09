@@ -10,8 +10,8 @@ Plugin protocol generated types, SQLite driver, filesystem и TLS SDK не
 
 ## Целевые Core adapters
 
-- ENV bootstrap и SQLite для собственных настроек Core; первый запуск один раз
-  consumes `CORE_INIT_*` до открытия Management API;
+- `CORE_SQLITE_PATH` и SQLite для собственных настроек Core; одноразовый
+  bootstrap выполняется до открытия Management API;
 - SQLite migrations/repositories для generic plugin instances, JSON config
   generations (`active`/`previous` и internal `staging`), per-replica
   endpoints/identity references, operations, idempotency, access и audit;

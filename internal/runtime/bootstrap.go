@@ -1,4 +1,4 @@
-package bootstrap
+package runtime
 
 import (
 	"context"
@@ -23,14 +23,14 @@ import (
 
 type RunOptions struct {
 	Output            string
-	Words             config.CLIWords
+	Words             config.RuntimeWords
 	WriteFailure      func(output string, exitCode int, code, detail string)
 	TrafficController *config.TrafficControllerConfig
 }
 
 type runContext struct {
 	output            string
-	words             config.CLIWords
+	words             config.RuntimeWords
 	writeFailure      func(output string, exitCode int, code, detail string)
 	trafficController *config.TrafficControllerConfig
 }

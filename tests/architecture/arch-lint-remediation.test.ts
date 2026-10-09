@@ -12,7 +12,7 @@ describe("architecture lint boundaries", () => {
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const packages = [
       ["presentationAPIHandlers", "internal/presentation/api/handlers"],
-      ["presentationCLIBootstrap", "internal/presentation/cli/bootstrap"],
+      ["runtime", "internal/runtime"],
     ];
 
     for (const [component, directory] of packages) {
@@ -47,16 +47,16 @@ describe("architecture lint boundaries", () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
     const storage = await readFile(join(root, "internal/infrastructure/storage/sqlite_plugin_instances.go"), "utf8");
-    const cli = await readGoPackageSources(root, "internal/presentation/cli");
+    const runtime = await readGoPackageSources(root, "internal/runtime");
 
     expect(dependencies).toMatch(/infrastructureStorage:[\s\S]*?mayDependOn: \[[^\]]*\]/);
     const storageDependencies = dependencies.match(/infrastructureStorage:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
     expect(storageDependencies).not.toContain("infrastructureConfig");
 
-    expect(dependencies).toMatch(/presentationCLI:[\s\S]*?mayDependOn: \[[^\]]*\]/);
-    const cliDependencies = dependencies.match(/presentationCLI:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
-    expect(cliDependencies).not.toContain("pluginprotocol");
+    expect(dependencies).toMatch(/runtime:[\s\S]*?mayDependOn: \[[^\]]*\]/);
+    const runtimeDependencies = dependencies.match(/runtime:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
+    expect(runtimeDependencies).not.toContain("pluginprotocol");
     expect(storage).not.toContain("internal/infrastructure/config");
-    expect(cli).not.toContain("github.com/Liapoldus/pluginprotocol");
+    expect(runtime).not.toContain("github.com/Liapoldus/pluginprotocol");
   });
 });

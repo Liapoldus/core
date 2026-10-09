@@ -7,16 +7,10 @@ export CORE_SQLITE_PATH=/var/lib/liapoldus/core.sqlite
 liapoldus core start --target local
 ```
 
-Core сам однократно создаёт SQLite и начальную revision собственных настроек до
-открытия Management API. `liapoldus core start` только передаёт environment и
-управляет процессом; он не открывает SQLite.
-Первоначальные значения можно передать через `CORE_INIT_MANAGEMENT_LISTEN`,
-`CORE_INIT_MANAGEMENT_CERTIFICATE`, `CORE_INIT_MANAGEMENT_KEY`,
-`CORE_INIT_MANAGEMENT_CLIENT_CA`, `CORE_INIT_CONTROL_LISTEN`,
-`CORE_INIT_CONTROL_PUBLIC_URL`, `CORE_INIT_CONTROL_CERTIFICATE`,
-`CORE_INIT_CONTROL_KEY`, `CORE_INIT_REPLICA_CLIENT_CA`,
-`CORE_INIT_REPLICA_SERVER_CA` и `CORE_INIT_SECRET_ROOT`. Параметры `CORE_INIT_*`
-читаются только при первичной инициализации. Секреты передаются как ссылки на
+Standalone `liapoldus core start` передаёт Core `CORE_SQLITE_PATH` и secure
+bootstrap references. Core однократно создаёт SQLite settings revision до
+открытия API; Core binary не принимает subcommands и не содержит migration,
+backup или database commands. Секреты передаются CLI как ссылки на
 файлы/монтирования, а не как значения.
 
 Повторный bootstrap для существующей базы завершается конфликтом. Для

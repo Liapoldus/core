@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { readGoPackageSources } from "../support/presentation-source.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const cliRoot = join(root, "internal", "presentation", "cli");
-const bootstrapPath = "internal/presentation/cli/bootstrap";
+const runtimeRoot = join(root, "internal", "runtime");
+const runtimePath = "internal/runtime";
 
 async function directGoSources(directory: string): Promise<string> {
   let entries;
@@ -21,42 +21,34 @@ async function directGoSources(directory: string): Promise<string> {
   return (await Promise.all(files.map((file) => readFile(file, "utf8")))).join("\n");
 }
 
-describe("CLI bootstrap ownership", () => {
+describe("Core runtime ownership", () => {
   it("places management TLS setup in the bootstrap leaf package", async () => {
-    const cliSources = await directGoSources(cliRoot);
-    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+    const runtimeSources = await directGoSources(runtimeRoot);
 
-    expect(cliSources).not.toMatch(/^func\s+managementTLS\s*\(/m);
-    expect(bootstrapSources).toMatch(/^func\s+ManagementTLS\s*\(/m);
-    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+    expect(runtimeSources).toMatch(/^func\s+ManagementTLS\s*\(/m);
+    expect(runtimeSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
 
   it("places SQLite bootstrap opening in the stores leaf", async () => {
-    const cliSources = await directGoSources(cliRoot);
-    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+    const runtimeSources = await directGoSources(runtimeRoot);
 
-    expect(cliSources).not.toMatch(/^func\s+openBootstrapDatabase\s*\(/m);
-    expect(bootstrapSources).toMatch(/^func\s+OpenDatabase\s*\(/m);
-    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+    expect(runtimeSources).toMatch(/^func\s+OpenDatabase\s*\(/m);
+    expect(runtimeSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
 
   it("places plugin inventory presentation in the inventory leaf", async () => {
-    const cliSources = await directGoSources(cliRoot);
-    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
+    const runtimeSources = await directGoSources(runtimeRoot);
 
-    expect(cliSources).not.toMatch(/^func\s+presentPluginInventory\s*\(/m);
-    expect(bootstrapSources).toMatch(/^func\s+PresentPluginInventory\s*\(/m);
-    expect(bootstrapSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
+    expect(runtimeSources).toMatch(/^func\s+PresentPluginInventory\s*\(/m);
+    expect(runtimeSources).not.toContain("github.com/Liapoldus/core/internal/presentation/cli\"");
   });
 
   it("moves bootstrap phase orchestration out of the CLI package", async () => {
-    const cliSources = await directGoSources(cliRoot);
-    const bootstrapSources = await readGoPackageSources(root, bootstrapPath).catch(() => "");
-    const cliEntries = await readdir(cliRoot, { withFileTypes: true });
+    const runtimeSources = await directGoSources(runtimeRoot);
+    const runtimeEntries = await readdir(runtimeRoot, { withFileTypes: true });
 
-    expect(cliSources).not.toMatch(/^func\s+serveBootstrap\s*\(/m);
-    expect(bootstrapSources).toMatch(/^func\s+Serve\s*\(/m);
-    expect(bootstrapSources).toMatch(/^type\s+RunOptions\s+struct\s*\{/m);
-    expect(cliEntries.some((entry) => entry.name === "serve_bootstrap.go")).toBe(false);
+    expect(runtimeSources).toMatch(/^func\s+Serve\s*\(/m);
+    expect(runtimeSources).toMatch(/^type\s+RunOptions\s+struct\s*\{/m);
+    expect(runtimeEntries.some((entry) => entry.name === "serve_bootstrap.go")).toBe(false);
   });
 });

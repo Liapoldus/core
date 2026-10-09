@@ -3,7 +3,6 @@ package config
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/Liapoldus/core/internal/domain/models"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
@@ -15,8 +14,9 @@ type ServiceKeyWords struct {
 	HashCost          int    `yaml:"hashCost"`
 }
 
-type CLIWords struct {
-	Commands struct {
+type RuntimeWords struct {
+	ServiceKey ServiceKeyWords `yaml:"serviceKey"`
+	Commands   struct {
 		Serve    string `yaml:"serve"`
 		Access   string `yaml:"access"`
 		Database string `yaml:"database"`
@@ -31,8 +31,7 @@ type CLIWords struct {
 	Flags struct {
 		Output string `yaml:"output"`
 	} `yaml:"flags"`
-	ServiceKey ServiceKeyWords `yaml:"serviceKey"`
-	Outputs    struct {
+	Outputs struct {
 		Text string `yaml:"text"`
 		JSON string `yaml:"json"`
 	} `yaml:"outputs"`
@@ -76,30 +75,7 @@ type CLIWords struct {
 	} `yaml:"diagnostics"`
 }
 
-type Words struct {
-	CLI CLIWords
-}
-
-var wordsOnce = sync.OnceValues(loadWords)
-
-func loadWords() (Words, error) {
-	cli, err := loadCLI()
-	if err != nil {
-		return Words{}, err
-	}
-	return Words{CLI: cli}, nil
-}
-
-func LoadWords() (Words, error) { return wordsOnce() }
-
-func LoadCLI() (CLIWords, error) {
-	words, err := LoadWords()
-	return words.CLI, err
-}
-
-func loadCLI() (CLIWords, error) {
-	return cliDefinitions(), nil
-}
+func LoadRuntime() (RuntimeWords, error) { return runtimeContractDefinitions(), nil }
 
 type ManagementWords struct {
 	ServiceKeys struct {

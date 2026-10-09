@@ -277,18 +277,12 @@ func run() error {
 		"CORE_INIT_REPLICA_SERVER_CRLS="+filepath.Join(directory, "revocation.pem"),
 		"CORE_INIT_SECRET_ROOT="+directory,
 	)
-	initialize := exec.Command(coreBinary, "init")
-	initialize.Dir = coreRoot
-	initialize.Env = childEnvironment
-	if output, err := initialize.CombinedOutput(); err != nil {
-		return fmt.Errorf("Core init failed: %w: %s", err, output)
-	}
-	bootstrap := exec.Command(coreBinary, "access", "bootstrap")
+	bootstrap := exec.Command("go", "run", "./tests/fixtures/runtime-bootstrap")
 	bootstrap.Dir = coreRoot
 	bootstrap.Env = childEnvironment
 	output, err := bootstrap.Output()
 	if err != nil {
-		return fmt.Errorf("Core bootstrap failed: %w", err)
+		return fmt.Errorf("runtime bootstrap failed: %w", err)
 	}
 	token := strings.TrimSpace(string(output))
 	if token == "" {

@@ -6,15 +6,15 @@ const root = join(import.meta.dirname, "../..");
 
 describe("approved orphan symbol cleanup", () => {
   it("removes only the five confirmed unreferenced symbols", async () => {
-    const [api, plugins, cli] = await Promise.all([
+    const [api, plugins, runtime] = await Promise.all([
       readGoPackageSources(root, "internal/presentation/api"),
       readGoPackageSources(root, "internal/infrastructure/plugins"),
-      readGoPackageSources(root, "internal/presentation/cli"),
+      readGoPackageSources(root, "internal/runtime"),
     ]);
 
     expect(api).not.toMatch(/func redact\(/);
     expect(plugins).not.toMatch(/func \(c \*Client\) CallJSON\(/);
-    expect(cli).toMatch(/func Execute\(/);
+    expect(runtime).toMatch(/func Serve\(/);
     expect(plugins).not.toMatch(/func \(r \*Runtime\) HTTPDispatchers\(/);
     expect(plugins).not.toMatch(/func \(r \*Runtime\) L4Dispatchers\(/);
   });

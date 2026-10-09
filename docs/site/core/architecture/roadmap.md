@@ -34,7 +34,7 @@ backlog.
 ## Критерии реализации
 
 v2 включает завершение API-driven deployment/rollout через standalone CLI,
-одноразовый Core auto-bootstrap и cross-repository bundle contract; профили standalone,
+одноразовый runtime bootstrap и cross-repository bundle contract; профили standalone,
 Docker, Swarm и Kubernetes только после smoke для каждого, traffic-weighted
 seamless rollout только при наличии traffic controller, а также согласованные
 Core/SDK/protocol/Domain/Runtime проверки. Полный v2 gate начинается ниже;
@@ -47,8 +47,8 @@ v2 считается готовой только как согласованн�
 отдельным зелёным сборкам. Контракты и доказательства принадлежат владельцам;
 эта секция задаёт общие сквозные критерии и не дублирует product schemas.
 
-- **CLI boundary:** Core starts without a user-facing command dispatcher, performs
-  one-time `CORE_INIT_*` bootstrap before opening API, accepts only canonical
+- **CLI boundary:** Core starts without a user-facing command dispatcher,
+  performs one-time bootstrap from CLI-provided references, accepts only canonical
   bundle requests with immutable commit SHA/digest, and never reads Git or CLI
   state. `liapoldus` local, remote and GitHub CI workflows use the same API
   contract.

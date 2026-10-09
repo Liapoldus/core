@@ -83,7 +83,7 @@ describe("Core peer protocol boundary", () => {
   });
 
   it("carries no binary release or catalog install path in the plugin lifecycle layer", async () => {
-    const sources = await goSources(["internal/infrastructure/plugins", "internal/presentation/cli", "cmd", "tests/fixtures"]);
+    const sources = await goSources(["internal/infrastructure/plugins", "internal/runtime", "cmd", "tests/fixtures"]);
     const releaseInstall = /plugin_catalog|pluginCatalog|plugin_release|pluginRelease|PluginCatalog|PluginRelease|tuf|TUF/;
     expect(relative(sources.filter(({ source }) => releaseInstall.test(source)).map(({ file }) => file))).toEqual([]);
   });

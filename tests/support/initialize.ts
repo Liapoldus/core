@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
+const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 
-export async function initializeCore(binary: string, directory: string, managementAddress: string, controlAddress: string) {
+export async function initializeCore(_binary: string, directory: string, managementAddress: string, controlAddress: string) {
   const database = join(directory, "core.sqlite");
   const certificate = join(directory, "management.crt");
   const privateKey = join(directory, "management.key");
@@ -32,7 +34,6 @@ export async function initializeCore(binary: string, directory: string, manageme
     CORE_INIT_REPLICA_SERVER_CA: replicaServerCA,
     CORE_INIT_SECRET_ROOT: directory,
   };
-  await execFileAsync(binary, ["init"], { env: environment });
-  const bootstrap = await execFileAsync(binary, ["access", "bootstrap"], { env: environment });
+  const bootstrap = await execFileAsync("go", ["run", "./tests/fixtures/runtime-bootstrap"], { cwd: coreRoot, env: environment });
   return { database, environment, bootstrapToken: bootstrap.stdout.trim() };
 }

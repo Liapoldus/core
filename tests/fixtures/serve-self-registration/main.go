@@ -113,21 +113,15 @@ func run() error {
 	if err := build(coreRoot, coreBinary, "./cmd/core"); err != nil {
 		return err
 	}
-	initialize := exec.Command(coreBinary, "init")
-	initialize.Dir = coreRoot
-	initialize.Env = environment
-	if output, err := initialize.CombinedOutput(); err != nil {
-		return fmt.Errorf("core init: %w: %s", err, output)
-	}
-	bootstrap := exec.Command(coreBinary, "access", "bootstrap")
+	bootstrap := exec.Command("go", "run", "./tests/fixtures/runtime-bootstrap")
 	bootstrap.Dir = coreRoot
 	bootstrap.Env = environment
 	tokenOutput, err := bootstrap.Output()
 	if err != nil {
-		return fmt.Errorf("core access bootstrap: %w", err)
+		return fmt.Errorf("runtime bootstrap: %w", err)
 	}
 	if strings.TrimSpace(string(tokenOutput)) == "" {
-		return errors.New("core access bootstrap returned no service credential")
+		return errors.New("runtime bootstrap returned no service credential")
 	}
 
 	roots := x509.NewCertPool()

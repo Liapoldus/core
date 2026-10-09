@@ -54,10 +54,9 @@ API.
 ## V2 deployment boundary
 
 При первом старте Core сам один раз создаёт SQLite и initial settings revision
-из `CORE_INIT_*`, затем открывает Management API. Команды `core init`, `core
-serve`, `core database` и `core inspect` не являются частью Core v2. `liapoldus
-core start` может передать bootstrap environment и управлять локальным процессом;
-CLI не открывает Core SQLite.
+из CLI-provided bootstrap references, затем открывает Management API. Команды
+`core init`, `core serve`, `core database` и `core inspect` отсутствуют в Core и
+принадлежат standalone CLI target adapters.
 
 `liapoldus apply --project ./project --revision <commit> --target <target>`
 читает exact Git revision, строит bundle и отправляет его через API. Core

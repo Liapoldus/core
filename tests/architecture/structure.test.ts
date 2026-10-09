@@ -52,11 +52,11 @@ describe("Core architecture", () => {
     ]);
   });
 
-  it("limits presentation to approved API and CLI package paths", async () => {
-    expect(await directories(join(root, "internal", "presentation"))).toEqual(["api", "cli"]);
+  it("limits presentation to the Management API package", async () => {
+    expect(await directories(join(root, "internal", "presentation"))).toEqual(["api"]);
     expect(await directories(join(root, "internal", "presentation", "api"))).toEqual(["handlers"]);
-    expect(await directories(join(root, "internal", "presentation", "cli"))).toEqual(["bootstrap"]);
-    expect(await directories(join(root, "cmd"))).toEqual(["core", "core-migrate"]);
+    expect(await directories(join(root, "cmd"))).toEqual(["core"]);
+    expect(await directories(join(root, "internal", "runtime"))).toEqual([]);
   });
 
   it("keeps assets static and places its embed adapter outside assets", async () => {

@@ -64,7 +64,7 @@ func ServiceKeyCreate(deps Dependencies, response http.ResponseWriter, request *
 		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
 		return
 	}
-	words, err := config.LoadCLI()
+	words, err := config.LoadRuntime()
 	if err != nil || words.ServiceKey.KeyBytes < 1 || words.ServiceKey.HashCost < 1 || words.ServiceKey.RolePlatformAdmin == "" || deps.Management.ServiceKeys.CreatedStatus < 1 {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
 		return

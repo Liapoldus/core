@@ -99,8 +99,8 @@ func bootstrapDefinitions() bootstrapFieldLists {
 			"uniformResourceIdentifier"}}
 }
 
-func cliDefinitions() CLIWords {
-	return CLIWords{Commands: struct {
+func runtimeContractDefinitions() RuntimeWords {
+	return RuntimeWords{Commands: struct {
 		Serve    string "yaml:\"serve\""
 		Access   string "yaml:\"access\""
 		Database string "yaml:\"database\""

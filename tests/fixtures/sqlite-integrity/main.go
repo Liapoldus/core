@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
+	"github.com/Liapoldus/core/internal/runtime"
 	_ "modernc.org/sqlite"
 )
 
@@ -19,14 +19,14 @@ func main() {
 	defer os.RemoveAll(root)
 	path := filepath.Join(root, "core.sqlite")
 	ctx := context.Background()
-	db, err := bootstrap.OpenDatabase(ctx, path)
+	db, err := runtime.OpenDatabase(ctx, path)
 	if err != nil {
 		panic(err)
 	}
 	if err := db.Close(); err != nil {
 		panic(err)
 	}
-	db, err = bootstrap.OpenDatabase(ctx, path)
+	db, err = runtime.OpenDatabase(ctx, path)
 	validReopen := err == nil
 	if err == nil {
 		_ = db.Close()
@@ -41,7 +41,7 @@ func main() {
 	if err := raw.Close(); err != nil {
 		panic(err)
 	}
-	db, err = bootstrap.OpenDatabase(ctx, path)
+	db, err = runtime.OpenDatabase(ctx, path)
 	if err == nil {
 		_ = db.Close()
 	}

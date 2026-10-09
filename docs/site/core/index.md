@@ -8,7 +8,7 @@ Public traffic обслуживает отдельный Server plugin; Manageme
 
 Core принимает регистрации plugin replicas по mTLS, выдаёт leases и исключает
 replica после истечения lease или отзыва identity. Первичный bootstrap задаётся
-через `CORE_INIT_*` ENV; операционные настройки Core хранятся в SQLite и
+через одноразовый bootstrap, запускаемый standalone `liapoldus` CLI; операционные настройки Core хранятся в SQLite и
 меняются через versioned API. Проектными файлами, Git и публикацией bundle
 управляет внешний `liapoldus` CLI.
 Core не управляет процессами или контейнерами plugins и не зависит от

@@ -10,7 +10,7 @@ import (
 
 	"github.com/Liapoldus/core/internal/infrastructure/plugins"
 	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/presentation/cli/bootstrap"
+	"github.com/Liapoldus/core/internal/runtime"
 	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
 	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
 )
@@ -38,7 +38,7 @@ func main() {
 	}
 	firstDirectory, err := plugins.NewPluginReplicaDirectory(lifecycle, nil)
 	check(err)
-	database, err := bootstrap.OpenDatabase(ctx, statePath)
+	database, err := runtime.OpenDatabase(ctx, statePath)
 	check(err)
 	_, err = firstDirectory.RegisterAndPersist(ctx, registration, certificate, func(ctx context.Context, registration sdkmodels.ReplicaRegistrationRequest) error {
 		return storage.RegisterPluginInstanceReplica(ctx, database, registration.Identity.InstanceID,
@@ -47,7 +47,7 @@ func main() {
 	check(err)
 	check(database.Close())
 
-	database, err = bootstrap.OpenDatabase(ctx, statePath)
+	database, err = runtime.OpenDatabase(ctx, statePath)
 	check(err)
 	registeredInstances, err := storage.ListRegisteredPluginInstances(ctx, database)
 	check(err)
