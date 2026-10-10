@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/runtime"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/runtime"
 )
 
 func main() {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	runtime "github.com/Liapoldus/core/internal/runtime"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	runtime "github.com/Liapoldus/core/v3/internal/runtime"
 )
 
 func main() {

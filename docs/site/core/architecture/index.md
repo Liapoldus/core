@@ -13,6 +13,7 @@ plugin-to-plugin policies и отдельный Server plugin. Проектом 
 | [Runtime components](core) | Компактная карта владельцев. |
 | [Размещение plugins](plugin-deployment) | Регистрация, leases, rollout и ownership workloads. |
 | [Plugin SDK и protocol](protocol) | Разделение общего REST lifecycle SDK и generic plugin-to-plugin network. |
+| [Целевая архитектура v3](v3) | Единый breaking-контракт, ownership, runtime-профили и production gates. |
 | [Cookies](cookies) | Plugin-owned values и общий typed boundary. |
 
 Страница [статуса реализации](implementation) отделяет подтверждённое текущее

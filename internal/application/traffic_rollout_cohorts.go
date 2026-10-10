@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // SelectTrafficRolloutCohorts resolves operator-selected candidate identities

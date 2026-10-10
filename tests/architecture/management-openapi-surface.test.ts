@@ -33,6 +33,8 @@ const implementedOperations = [
   "GET /api/audit",
   "GET /api/access/service-keys",
   "POST /api/access/service-keys",
+  "POST /api/config-bundles/apply",
+  "POST /api/config-bundles/plan",
 ];
 
 /** Extracts `METHOD /path` pairs from the two-space-indented OpenAPI path map. */

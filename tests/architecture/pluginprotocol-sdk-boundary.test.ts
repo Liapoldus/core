@@ -71,6 +71,7 @@ describe("Core peer protocol boundary", () => {
       "sdk_admin_control.go",
       "sdk_contract.go",
       "sdk_control.go",
+      "sdk_control_inprocess_test.go",
       "sdk_control_validation_test.go",
       "tls_revocation.go",
     ]);

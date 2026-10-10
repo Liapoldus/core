@@ -3,8 +3,8 @@ package runtime
 import (
 	"errors"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
 // PresentPluginInventory exposes only generic Core-owned instance metadata. The

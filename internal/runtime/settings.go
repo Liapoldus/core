@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	settingsstore "github.com/Liapoldus/core/internal/infrastructure/storage/settings"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	settingsstore "github.com/Liapoldus/core/v3/internal/infrastructure/storage/settings"
 )
 
 // EnsureInitialized creates the first settings revision for a new local state.

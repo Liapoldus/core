@@ -8,7 +8,7 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 type ConfigBundleDependencies struct {

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
 )
 
 var (
@@ -77,27 +77,36 @@ func replicaDialTLS(bootstrapConfig config.BootstrapConfig, serverName string, i
 
 // buildPluginRESTControl assembles the production Plugin SDK REST control plane:
 // the exact-generation pull listener and the lease-backed identity resolver.
-func buildPluginRESTControl(bootstrapConfig config.BootstrapConfig) (*PluginRESTControl, error) {
-	pullTLS, err := pluginControlTLS(bootstrapConfig)
-	if err != nil {
-		return nil, err
-	}
-	listenAddress, err := net.ResolveTCPAddr("tcp", bootstrapConfig.PluginControlListen)
-	if err != nil {
-		return nil, errPluginControlListen
-	}
-	listener, err := net.Listen("tcp", listenAddress.String())
-	if err != nil {
-		return nil, err
+func buildPluginRESTControl(bootstrapConfig config.BootstrapConfig, enabled bool) (*PluginRESTControl, error) {
+	var pullTLS *tls.Config
+	var listener net.Listener
+	var err error
+	if enabled {
+		pullTLS, err = pluginControlTLS(bootstrapConfig)
+		if err != nil {
+			return nil, err
+		}
+		listenAddress, resolveErr := net.ResolveTCPAddr("tcp", bootstrapConfig.PluginControlListen)
+		if resolveErr != nil {
+			return nil, errPluginControlListen
+		}
+		listener, err = net.Listen("tcp", listenAddress.String())
+		if err != nil {
+			return nil, err
+		}
 	}
 	httpContract, err := plugins.LoadSDKHTTPContract()
 	if err != nil {
-		_ = listener.Close()
+		if listener != nil {
+			_ = listener.Close()
+		}
 		return nil, errPluginControlTrustInvalid
 	}
 	replicaLifecycle, err := plugins.LoadSDKReplicaLifecycleContract()
 	if err != nil {
-		_ = listener.Close()
+		if listener != nil {
+			_ = listener.Close()
+		}
 		return nil, errPluginControlTrustInvalid
 	}
 	replicaDirectory, err := plugins.NewPluginReplicaDirectory(replicaLifecycle, nil)

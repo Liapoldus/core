@@ -12,7 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // pluginLinkRequestMaximumBytes bounds an authored link policy request. Rules

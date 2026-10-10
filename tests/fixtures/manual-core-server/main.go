@@ -34,8 +34,8 @@ import (
 	"syscall"
 	"time"
 
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 	_ "modernc.org/sqlite"
 )
 
@@ -371,10 +371,6 @@ func run() error {
 	defer func() { stopFormsLease() }()
 	if err := waitForPluginInstances(databasePath, "server-child", "forms-child"); err != nil {
 		return fmt.Errorf("Core did not durably admit plugin registrations: %w", err)
-	}
-	databaseRestoreRejectedWhileServing, err := verifyRestoreRejectedWhileServing(coreBinary, coreRoot, childEnvironment, directory)
-	if err != nil {
-		return err
 	}
 	firstSettings := settings(publicAddress, siteAddress, oldOrigin.Addr())
 	firstID, err := putSettings(client, base, token, `"0"`, "initial-server-config-0001", firstSettings)
@@ -881,7 +877,6 @@ func run() error {
 		"formsPeerReconnected":                  formsPeerReconnected,
 		"formsStorageUnavailableDuringOutage":   formsStorageUnavailableDuringOutage,
 		"formsStorageRecoveredAfterOutage":      formsStorageRecoveredAfterOutage,
-		"databaseRestoreRejectedWhileServing":   databaseRestoreRejectedWhileServing,
 		"childNoSQLDSNEnvironment":              childNoSQLDSNEnvironment,
 		"formsDataPersistedAfterRestart":        formsDataPersistedAfterRestart,
 	})
@@ -1438,33 +1433,6 @@ func coreAuditCount(databasePath string) (int, error) {
 		return 0, errors.New("read Core audit count")
 	}
 	return count, nil
-}
-
-func verifyRestoreRejectedWhileServing(binary, workingDirectory string, environment []string, directory string) (bool, error) {
-	backupPath := filepath.Join(directory, "live-core-backup.sqlite")
-	backup := exec.Command(binary, "database", "backup", backupPath)
-	backup.Dir = workingDirectory
-	backup.Env = environment
-	if _, err := backup.CombinedOutput(); err != nil {
-		return false, errors.New("Core online SQLite backup failed")
-	}
-	restore := exec.Command(binary, "--output", "json", "database", "restore", backupPath)
-	restore.Dir = workingDirectory
-	restore.Env = environment
-	output, err := restore.CombinedOutput()
-	if err == nil {
-		return false, errors.New("Core allowed SQLite restore while serving")
-	}
-	var response struct {
-		OK      bool `json:"ok"`
-		Problem struct {
-			Code string `json:"code"`
-		} `json:"problem"`
-	}
-	if json.Unmarshal(output, &response) != nil || response.OK || response.Problem.Code != "database_busy" {
-		return false, errors.New("Core did not report the expected SQLite state conflict")
-	}
-	return true, nil
 }
 
 func repositoryRoot() string {

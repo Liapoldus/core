@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 func randomID() string {

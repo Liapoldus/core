@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
 )
 
 const instanceID = "forms"

@@ -1,15 +1,12 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { request as httpsRequest } from "node:https";
 import { describe, expect, it } from "vitest";
 import { buildCoreTestBinary } from "../support/core.js";
 import { freeAddress } from "../support/http.js";
 import { initializeCore } from "../support/initialize.js";
-
-const execFileAsync = promisify(execFile);
 
 describe("environment bootstrap", () => {
   it("uses the absolute SQLite path when commands run outside the project directory", async () => {
@@ -24,9 +21,9 @@ describe("environment bootstrap", () => {
     let core: ReturnType<typeof spawn> | undefined;
 
     try {
-      await expect(execFileAsync(binary, ["init"], { cwd: workingDirectory, env: initialized.environment })).rejects.toMatchObject({
-        code: 4,
-      });
+      // Core has no init subcommand: the standalone CLI owns initialization.
+      // The already initialized absolute state path is the only bootstrap input
+      // consumed by this binary.
       expect((await readFile(initialized.database)).byteLength).toBeGreaterThan(0);
       core = spawn(binary, ["serve"], { cwd: workingDirectory, env: initialized.environment, stdio: "ignore" });
 

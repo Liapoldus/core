@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
 )
 
 // startRegisteredReplicaReconciler retries only idempotent Reload notifications

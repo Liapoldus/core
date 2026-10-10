@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"unicode/utf8"
 
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 )
 
 func ServiceKeyList(deps Dependencies, response http.ResponseWriter, request *http.Request, requestID string) {

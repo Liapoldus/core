@@ -6,8 +6,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 )
 
 type Dependencies struct {

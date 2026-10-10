@@ -48,6 +48,25 @@ export function createGoWorkspace(...relativeModules: string[]): { path: string;
       stdio: "pipe",
       timeout: 30_000,
     });
+
+    // The v3 train is intentionally unpublished until its owning repositories
+    // are released together. Keep cross-repository tests hermetic by resolving
+    // the local major modules in this generated workspace only; no checkout
+    // receives a compatibility replace.
+    for (const [modulePath, sibling] of [
+      ["github.com/Liapoldus/plugin-sdk/v2", "plugin-sdk"],
+      ["github.com/Liapoldus/pluginprotocol/v3", "pluginprotocol"],
+    ] as const) {
+      const localPath = join(workspaceRoot(), sibling);
+      if (!existsSync(join(localPath, "go.mod"))) continue;
+      const version = modulePath.endsWith("/v2") ? "v2.0.0" : "v3.0.0";
+      execFileSync("go", ["work", "edit", `-replace=${modulePath}@${version}=${localPath}`, join(directory, "go.work")], {
+        cwd: directory,
+        env: { ...process.env, GOWORK: "off" },
+        stdio: "pipe",
+        timeout: 30_000,
+      });
+    }
   } catch (error) {
     rmSync(directory, { recursive: true, force: true });
     throw error;

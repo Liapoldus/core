@@ -12,11 +12,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 // NewPluginSecretGrantHandler builds the generic, private Plugin SDK grant API.

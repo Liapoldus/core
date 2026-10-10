@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 type PluginConfigurationSQL struct{ queries map[string]string }

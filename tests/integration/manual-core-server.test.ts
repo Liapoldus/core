@@ -64,7 +64,6 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
       formsPeerReconnected: true,
       formsStorageUnavailableDuringOutage: false,
       formsStorageRecoveredAfterOutage: false,
-      databaseRestoreRejectedWhileServing: true,
       childNoSQLDSNEnvironment: true,
       formsDataPersistedAfterRestart: false,
     });

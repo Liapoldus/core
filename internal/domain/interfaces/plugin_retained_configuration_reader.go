@@ -3,7 +3,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // PluginRetainedConfigurationReader returns one published generation and its

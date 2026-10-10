@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 var errInvalidPluginConfigurationPullServer = errors.New("invalid plugin configuration pull server")

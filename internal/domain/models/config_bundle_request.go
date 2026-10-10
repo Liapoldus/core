@@ -16,47 +16,6 @@ type ConfigBundleRequest struct {
 	Target  ConfigBundleTarget   `json:"target"`
 }
 
-type ConfigBundleProject struct {
-	ID         string `json:"id"`
-	Repository string `json:"repository,omitempty"`
-	Revision   string `json:"revision"`
-}
-
-type ConfigBundleManifest struct {
-	SchemaVersion string                `json:"schemaVersion"`
-	Digest        string                `json:"digest"`
-	Services      []ConfigBundleService `json:"services"`
-	Links         []json.RawMessage     `json:"links,omitempty"`
-}
-
-type ConfigBundleTarget struct {
-	Environment        string `json:"environment"`
-	ExpectedGeneration int64  `json:"expectedGeneration,omitempty"`
-}
-
-type ConfigBundleService struct {
-	ID       string          `json:"id"`
-	Settings json.RawMessage `json:"settings"`
-}
-
-type ConfigBundlePlan struct {
-	Valid    bool                   `json:"valid"`
-	Digest   string                 `json:"digest"`
-	Services []ConfigBundlePlanItem `json:"services"`
-	Warnings []string               `json:"warnings,omitempty"`
-}
-
-type ConfigBundlePlanItem struct {
-	ID              string `json:"id"`
-	CurrentRevision int64  `json:"currentRevision"`
-	CurrentDigest   string `json:"currentDigest"`
-	SchemaVersion   int64  `json:"schemaVersion"`
-}
-
-type ConfigBundleApply struct {
-	OperationIDs []string `json:"operationIds"`
-}
-
 func (request ConfigBundleRequest) Validate() error {
 	if strings.TrimSpace(request.Project.ID) == "" || strings.TrimSpace(request.Project.Revision) == "" {
 		return errors.New("project id and revision are required")

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // PluginConfigurationSnapshot publishes retained generations in memory. Every

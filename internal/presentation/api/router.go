@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/security"
-	"github.com/Liapoldus/core/internal/presentation/api/handlers"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
+	"github.com/Liapoldus/core/v3/internal/presentation/api/handlers"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
 	"golang.org/x/crypto/bcrypt"
 )
 

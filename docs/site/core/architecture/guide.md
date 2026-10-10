@@ -7,7 +7,7 @@ plugin-to-plugin вызовов. Их API не смешиваются: Plugin SD
 schemas, ошибки и Admin Surface.
 
 Plugin SDK существует как отдельный Go module. Утверждённый canonical import
-path — `github.com/Liapoldus/plugin-sdk`; coordinated migration текущих local
+path — `github.com/Liapoldus/plugin-sdk/v2`; coordinated migration текущих local
 imports входит в Core v2. Normative HTTP contract и API лежат в самом SDK; этот гайд
 описывает только продуктовую последовательность.
 См. [границы библиотек](protocol), [целевую архитектуру](target) и
@@ -54,11 +54,10 @@ names и handlers. `pluginprotocol` даёт общий peer call/listen/stream 
 product names. Изменение carrier не должно менять прикладные endpoint names и
 payload contracts.
 
-Peer calls проходят напрямую к адресату. Решение о разрешении вызова принимает
-вызывающий plugin через собственную authorization policy и generic authorizer
-`pluginprotocol`; Core не хранит и не администрирует plugin-to-plugin policy,
+Peer calls проходят напрямую к адресату. Core публикует caller-scoped
+Core-owned peer-link policy через Plugin SDK, а вызывающий plugin передаёт
+разрешённый контекст generic authorizer `pluginprotocol`; default — deny. Core
 не proxy-ит payload и не переисполняет вызов с неизвестным результатом.
-Централизованные peer policies и grants отложены до v2.
 
 ## Проверки
 

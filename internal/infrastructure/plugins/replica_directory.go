@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 // LivePluginReplica is the authenticated, in-memory description of one active

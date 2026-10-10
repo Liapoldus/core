@@ -3,7 +3,7 @@
 Management API управляет Core desired-state: plugin instance metadata и
 settings, access, operations и audit. Membership plugin replicas определяется
 аутентифицированной регистрацией и активными leases.
-Standalone CLI доставляет project revisions через [config bundle API](config-bundles/);
+Standalone CLI доставляет project revisions через [config bundle API](config-bundles);
 Core не содержит пользовательского CLI и не читает проектные файлы.
 API не управляет plugin-to-plugin interaction policies. Оно не
 устанавливает, не запускает, не останавливает, не перезапускает, не

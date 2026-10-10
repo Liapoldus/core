@@ -4,15 +4,16 @@ package api
 import (
 	"context"
 	"crypto/tls"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
 )
 
 type Server struct {
@@ -53,20 +54,30 @@ func (server *Server) Handler() http.Handler {
 }
 
 func (server *Server) Listen(ctx context.Context, address string, configurations ...*application.PluginConfigurationService) error {
+	return server.ListenWithReady(ctx, address, nil, configurations...)
+}
+
+// ListenWithReady binds the management listener before reporting readiness.
+// The optional ready channel is used by the public Core host composition so a
+// caller never observes a ready host before its management socket exists.
+func (server *Server) ListenWithReady(ctx context.Context, address string, ready chan<- struct{}, configurations ...*application.PluginConfigurationService) error {
 	handler := server.Handler()
 	if len(configurations) > 0 {
 		handler = WithPluginConfigurations(handler, configurations[0])
 	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return err
+	}
 	httpServer := &http.Server{Addr: address, Handler: handler}
+	if server.TLSConfig != nil {
+		listener = tls.NewListener(listener, server.TLSConfig)
+	}
+	if ready != nil {
+		close(ready)
+	}
 	result := make(chan error, 1)
-	go func() {
-		if server.TLSConfig != nil {
-			httpServer.TLSConfig = server.TLSConfig
-			result <- httpServer.ListenAndServeTLS("", "")
-			return
-		}
-		result <- httpServer.ListenAndServe()
-	}()
+	go func() { result <- httpServer.Serve(listener) }()
 	select {
 	case err := <-result:
 		return err

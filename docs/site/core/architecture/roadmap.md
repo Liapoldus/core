@@ -1,5 +1,9 @@
 # План v2/v3
 
+> Канонический целевой контракт production-ready v3 находится в
+> [целевой архитектуре v3](v3). Эта страница сохраняет только историческую
+> последовательность работ и не может переопределять ownership или API v3.
+
 Страница фиксирует согласованный следующий этап и не является альтернативным
 репозиторным TODO. Текущие owner tasks и проверяемые статусы находятся в
 [Core TODO](https://github.com/Liapoldus/core/blob/main/TODO.md) и TODO владельцев
@@ -115,22 +119,20 @@ prompts — в `bigpikle/`; эти каталоги не публикуются 
 смешанные peer transports, Domain и Runtime. Server/forms-db repositories не
 меняются в v2; их текущие paths — только regression targets. Studio и standalone
 CLI входят в текущий v2 межрепозиторный workflow. Caddy-L4/public TCP/UDP, CAPTCHA/Identity,
-Python FFI binding поверх C ABI, Core embedding API, Plugin SDK in-process/static
-composition, все дальнейшие Server/forms-db product changes (включая Server
+Core embedding API, Plugin SDK in-process/static composition, все дальнейшие
+Server/forms-db product changes (включая Server
 scaling/shared storage и forms-db multi-replica SQL compatibility/website content),
 отложены до v3. Установку и плановые обновления Core/plugins выполняет оператор
 выбранными средствами; Core не получает provider
 API ни в одном этапе. Identity и CAPTCHA заморожены до
 отдельной явной разморозки. `pluginprotocol` остаётся
 единственной Go wire/session реализацией; второй Python engine не создаётся.
-Native artifacts и Python `cffi` wheels проверяются на Linux amd64/arm64, macOS
-arm64 и Windows amd64. Подробности и ABI/interop gates приведены в
-[C ABI дизайне](protocol#межъязыковой-доступ-через-c-abi-в-v3); Core и SDK
-composition — в [целевой архитектуре](target).
+Foreign bindings в v3 не заявляются. Core и SDK composition описаны в
+[целевой архитектуре](target) и [целевой архитектуре v3](v3).
 
 ### V3: Plugin SDK in-process adapter и единый бинарник
 
-В v3 добавить in-process adapter для статически включённых доверенных Go
+В v3 реализован in-process adapter для статически включённых доверенных Go
 plugins. Он заменяет только Core↔plugin REST внутри одного процесса: Core
 вызывает generic `Reload` interface, plugin сам pull-ит точное поколение через
 scoped `ConfigSource`, реализованный над immutable Core snapshot. Семантика

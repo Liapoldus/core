@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Liapoldus/core/internal/runtime"
+	"github.com/Liapoldus/core/v3/internal/runtime"
 	_ "modernc.org/sqlite"
 )
 

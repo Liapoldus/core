@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
 // recordReplicaObservation adapts the durable observation store to the applier.

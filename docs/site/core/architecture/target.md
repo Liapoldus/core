@@ -1,8 +1,9 @@
-# Целевая архитектура Core v2
+# Базовые решения Core и переход к v3
 
-Эта страница — каноническая нормативная цель Core v2. Она описывает
-архитектуру, к которой должна прийти реализация, и сама по себе не подтверждает
-готовность кода. Фактическое состояние и незакрытые проверки ведутся отдельно в
+Эта страница сохраняет базовые решения Core v2 и переход к v3. Каноническая
+нормативная цель production-ready v3 находится в [целевой архитектуре v3](v3);
+эта страница не переопределяет её и сама по себе не подтверждает готовность кода.
+Фактическое состояние и незакрытые проверки ведутся отдельно в
 [матрице реализации](implementation) и репозиторных TODO: [Core](https://github.com/Liapoldus/core/blob/main/TODO.md),
 [pluginprotocol](https://github.com/Liapoldus/pluginprotocol/blob/main/TODO.md).
 
@@ -40,7 +41,7 @@ forms-db plugin — и **две общие Go-библиотеки** — Plugin 
 | Владелец | Ответственность |
 | --- | --- |
 | Core | SQLite applied desired state, Management API, generic plugin instances/replicas, raw settings generations, endpoints, scoped secret grants, audit и operations. Config bundle provenance, commit SHA, digest, CAS и idempotency принимаются через API. Git, project parsing и CLI принадлежат standalone CLI. Core не содержит product-specific branches и не управляет процессами/workloads. |
-| Plugin SDK | Отдельный независимый Go-модуль. Предоставляет REST lifecycle contract для `Reload` и exact config pull, health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки; REST+mTLS используется для отдельных процессов. In-process adapter относится к следующему этапу. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
+| Plugin SDK | Отдельный независимый Go-модуль. Предоставляет единый lifecycle contract для REST+mTLS отдельных процессов и явно выбираемого in-process adapter доверенных статически скомпонованных Go plugins, а также health/readiness, schema discovery, метрики, структурированные логи и безопасные ошибки. SDK не управляет process lifecycle, не зависит от `pluginprotocol` и product capabilities. Rollback остаётся Core Management API operation. |
 | `pluginprotocol` | Только библиотека plugin↔plugin взаимодействия: generic registration/send/listen/stream, transport abstraction и сетевая защита. Не содержит Core lifecycle/control API, готовых product methods, Manifest, settings, product errors или admin surfaces. |
 | Server plugin | HTTP/HTTPS, TLS/ACME, HTTP/2/3, static/proxy, plugin dispatch и опубликованные site artifacts с `current`/`previous`. Caddy — внутренняя технология; Caddy-L4 и публичные TCP/UDP listeners/relay отложены до v3. |
 | forms-db plugin | Простые формы, собственные schemas, capabilities и данные; отдельный управляемый оператором сервис. |
@@ -65,22 +66,16 @@ generation/operation/replica rollout. Один и тот же flow исполь�
 для удалённого Core и в GitHub CI; target isolation и remote approval проверяет
 CLI/CI до API request.
 
-## Будущие этапы после Core v2
+## Историческая граница v2
 
-Саморегистрация replicas и leases входят в текущий Core runtime. Следующий этап
-может добавить candidate rollout с весами и traffic-controller confirmation,
-а также smoke-gated deployment profiles Docker/Swarm/Kubernetes без управления
-workload из Core, Domain и Runtime и смешанные peer transports. Caller→target
-link policies — редактируемое Core-owned desired state в SQLite и Management API,
-не статический bootstrap YAML. Server и forms-db остаются на текущем baseline;
-их repositories не изменяются в Core v2, а generic rollout проверяется на fixtures.
-Studio и standalone CLI входят в v2 межрепозиторный deployment workflow. Публичный L4/Caddy-L4,
-Identity/CAPTCHA, pluginprotocol C ABI/Python FFI, Core embedding и SDK
-in-process/static composition, все новые Server/forms-db product changes
-(масштабирование Server/shared storage/ACME, forms-db SQL cohort compatibility
-и website/content) относятся к v3. Установка и плановые обновления Core/plugins
-принадлежат оператору. Core не зависит от инструментов размещения и не управляет
-workloads ни в одной версии.
+Саморегистрация replicas и leases входят в текущий Core runtime. В историческом
+v2 deployment workflow rollout и внешние Docker/Swarm/Kubernetes adapters были
+отдельными gates, без управления workload из Core. Caller→target link policies
+уже являются Core-owned desired state в SQLite и Management API. Studio и
+standalone CLI остаются внешними продуктами. Все текущие v3 surfaces — Core
+embedding, SDK in-process/static composition и расширенные
+product changes — описаны только в [архитектуре v3](v3). Установка и плановые
+обновления Core/plugins принадлежат оператору; Core не управляет workloads.
 Core никогда не выполняет autoscaling по нагрузке. До открытия этих этапов нет
 дополнительного API, таблиц SQLite, разрешений, бинарных зависимостей или
 acceptance gates. Внутренние carriers `pluginprotocol` обслуживают только
@@ -114,15 +109,10 @@ filesystem permissions и pipe ACL являются дополнительным
 platform conformance gates приведены в разделе
 [v2: локальные IPC carriers и mTLS](protocol#целевое-расширение-v2-локальные-ipc-carriers).
 
-## V3: C ABI и монолитная композиция
+## V3: монолитная композиция
 
-В v3 Go остаётся единственной реализацией `pluginprotocol`; для Python и
-последующих языков она открывается через версионированную native C ABI и FFI.
-Первый binding — Python `cffi`, поставляемый с platform-specific native library;
-независимый Python wire/session engine не создаётся. Полная поверхность,
-границы безопасности и conformance описаны в разделе
-[межъязыкового доступа через C ABI](protocol#межъязыковой-доступ-через-c-abi-в-v3).
-
+В v3 Go остаётся единственной реализацией `pluginprotocol`; C ABI и foreign
+bindings в этот release train не входят.
 V3 также добавляет единый бинарник/процессный профиль: статически выбранные
 доверенные Go plugins могут работать в том же процессе, что и Core, через
 in-process adapter Plugin SDK без REST и Core↔plugin mTLS. Отдельно запущенные
@@ -216,7 +206,7 @@ CAS и полномочия, но не трактует product fields. Секр
 3. Core вызывает `POST /_liapoldus/v1/reload` у каждой обязательной replica с
    generation, SHA-256 и schema version; JSON body не содержит settings.
    Plugin-side endpoint paths и поля зафиксированы в
-   `plugin-sdk/infrastructure/assets/plugin-sdk/v1/http-contract.json`.
+   `plugin-sdk/infrastructure/assets/plugin-sdk/v2/http-contract.json`.
 4. Plugin SDK делает `GET /internal/v1/plugin-config/{generation}` к Core по
    private mTLS; Core связывает запрос с identity replica и возвращает исходные
    JSON bytes вместе с generation, digest и schema version в headers. Plugin
@@ -248,16 +238,12 @@ redemption проверяет instance, replica, revision, purpose и срок g
 
 ## Plugin-to-plugin взаимодействие
 
-`pluginprotocol` даёт plugins общий транспорт, но Core не хранит peer policy,
-не формирует peer directory и не авторизует вызовы. Вызывающий plugin владеет
-собственной allow/deny policy и передаёт её generic authorizer библиотеки;
-default — deny. Вызов идёт напрямую между plugins, Core не стоит на data path и
-не пересылает payload. Техническое имя метода и payload schema принадлежат
-plugins.
-
-Централизованные `caller → target/method/transport` rules, их generation,
-распространение через Core и rollout/drain относятся к следующему этапу. Не
-добавлять для них дополнительные endpoints, SQLite tables или Plugin SDK methods.
+`pluginprotocol` даёт plugins общий транспорт, а Core владеет generic
+`caller → target/method/transport` policy и публикует caller-scoped peer
+directory через Plugin SDK. Вызывающий plugin передаёт разрешённый контекст
+generic authorizer библиотеки; default — deny. Вызов идёт напрямую между
+plugins, Core не стоит на data path и не пересылает payload. Техническое имя
+метода и payload schema принадлежат plugins.
 
 ## `pluginprotocol`: универсальная межплагинная сеть
 
@@ -322,7 +308,7 @@ snapshot через instance-scoped interface. Детали и ограниче�
 В Core v2 Core импортирует Plugin SDK REST client, но не `pluginprotocol`. Plugin может
 независимо импортировать Plugin SDK, `pluginprotocol`, обе библиотеки или ни одну
 из них в зависимости от своих функций. Утверждённый canonical module path SDK —
-`github.com/Liapoldus/plugin-sdk`; текущий временный local path и imports должны
+`github.com/Liapoldus/plugin-sdk/v2`; текущий временный local path и imports должны
 быть мигрированы согласованно до production release.
 
 ## Server plugin и durable state

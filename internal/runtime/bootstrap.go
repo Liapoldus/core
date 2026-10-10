@@ -8,17 +8,21 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/infrastructure/security"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	settingsstore "github.com/Liapoldus/core/internal/infrastructure/storage/settings"
-	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	settingsstore "github.com/Liapoldus/core/v3/internal/infrastructure/storage/settings"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
+	sdkapplication "github.com/Liapoldus/plugin-sdk/v2/application"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
 )
 
 type RunOptions struct {
@@ -26,6 +30,12 @@ type RunOptions struct {
 	Words             config.RuntimeWords
 	WriteFailure      func(output string, exitCode int, code, detail string)
 	TrafficController *config.TrafficControllerConfig
+	// InProcessReplicas are explicitly composed trusted Go plugins. Separate
+	// processes continue through the REST+mTLS registration resolver.
+	InProcessReplicas []*sdkapplication.InProcessReplica
+	// DisableREST is for a pure in-process composition. It prevents Core from
+	// opening the plugin control listener; Management remains available.
+	DisableREST bool
 }
 
 type runContext struct {
@@ -33,6 +43,8 @@ type runContext struct {
 	words             config.RuntimeWords
 	writeFailure      func(output string, exitCode int, code, detail string)
 	trafficController *config.TrafficControllerConfig
+	inProcessReplicas []*sdkapplication.InProcessReplica
+	disableREST       bool
 }
 
 type bootstrapStores struct {
@@ -59,12 +71,101 @@ type managementInputs struct {
 	tlsConfiguration  *tls.Config
 }
 
-func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
-	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure, trafficController: input.TrafficController}
-	return serveBootstrap(options, bootstrapConfig)
+// Host is the managed lifetime of one Core runtime. It is intentionally
+// transport-agnostic at the public boundary: the composition root selects the
+// bootstrap settings and the host owns cancellation, readiness and shutdown.
+type Host struct {
+	cancel context.CancelFunc
+	ready  <-chan struct{}
+	ended  <-chan struct{}
+	exitMu sync.RWMutex
+	exit   int
 }
 
-func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
+func Serve(bootstrapConfig config.BootstrapConfig, input RunOptions) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	host, err := Start(ctx, bootstrapConfig, input)
+	if err != nil {
+		input.WriteFailure(input.Output, input.Words.Exits.Unavailable, input.Words.Codes.ConfigInvalid, input.Words.Diagnostics.ConfigInvalid)
+		return input.Words.Exits.Unavailable
+	}
+	return host.Wait()
+}
+
+// Start launches one Core runtime under the caller's context. It does not
+// return ready until WaitReady observes the bound management listener; callers
+// must still invoke Close or cancel the context when the host is no longer
+// needed. Core remains singleton relative to its SQLite state lock.
+func Start(ctx context.Context, bootstrapConfig config.BootstrapConfig, input RunOptions) (*Host, error) {
+	if ctx == nil {
+		return nil, errors.New("core host context is required")
+	}
+	derived, cancel := context.WithCancel(ctx)
+	ready := make(chan struct{})
+	ended := make(chan struct{})
+	host := &Host{cancel: cancel, ready: ready, ended: ended}
+	options := runContext{output: input.Output, words: input.Words, writeFailure: input.WriteFailure, trafficController: input.TrafficController, inProcessReplicas: input.InProcessReplicas, disableREST: input.DisableREST}
+	go func() {
+		exitCode := serveBootstrap(derived, options, bootstrapConfig, ready)
+		host.exitMu.Lock()
+		host.exit = exitCode
+		host.exitMu.Unlock()
+		close(ended)
+	}()
+	return host, nil
+}
+
+// WaitReady blocks until the management listener is bound or startup exits.
+func (host *Host) WaitReady(ctx context.Context) error {
+	if host == nil || ctx == nil {
+		return errors.New("core host is unavailable")
+	}
+	select {
+	case <-host.ready:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-host.ended:
+		return errors.New("core host failed before readiness")
+	}
+}
+
+// Ready reports whether the management listener has been bound.
+func (host *Host) Ready() bool {
+	if host == nil {
+		return false
+	}
+	select {
+	case <-host.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+// Wait waits for the runtime and returns its process-compatible exit code.
+func (host *Host) Wait() int {
+	if host == nil {
+		return 1
+	}
+	<-host.ended
+	host.exitMu.RLock()
+	defer host.exitMu.RUnlock()
+	return host.exit
+}
+
+// Close requests graceful shutdown and waits for all Core listeners and
+// background workers to finish.
+func (host *Host) Close() int {
+	if host == nil {
+		return 1
+	}
+	host.cancel()
+	return host.Wait()
+}
+
+func serveBootstrap(ctx context.Context, options runContext, bootstrap config.BootstrapConfig, ready chan<- struct{}) int {
 	database, unlockState, err := OpenServingDatabase(context.Background(), bootstrap.StatePath)
 	if err != nil {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
@@ -106,7 +207,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	// The control plane is built from the effective settings stored in SQLite.
 	// An invalid control listener or trust configuration fails startup before
 	// Core advertises readiness.
-	controlPlane, err := buildPluginRESTControl(bootstrap)
+	controlPlane, err := buildPluginRESTControl(bootstrap, !options.disableREST)
 	if err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -166,8 +267,6 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 		Convergence:  convergenceSnapshot,
 		Observations: observations,
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	pluginConfigurationService := &application.PluginConfigurationService{
 		Store: stores.pluginConfigStore, Applier: applier,
 		Operations:            application.OperationService{Store: stores.operationStore},
@@ -203,7 +302,7 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 		Store: stores.trafficRolloutStore, ConfigurationStore: stores.pluginConfigStore,
 		ConfigurationRollouts: stores.pluginConfigStore, Applier: applier,
 		Operations: application.OperationService{Store: stores.operationStore},
-		Replicas:   controlPlane.RegisteredReloads, Validator: controlPlane.RegisteredReloads,
+		Replicas:   applier, Validator: applier,
 		States: application.TrafficRolloutStates{
 			Running: inventory.management.Statuses.Running, Active: stores.pluginConfigWords.Slots.Active,
 			Pending: inventory.management.Statuses.Pending, Completed: inventory.management.Statuses.Completed,
@@ -243,6 +342,27 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 	if err := configurationSnapshot.RefreshAll(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
+	inProcess, inProcessRegistrations, err := prepareInProcessReplicas(configurationSnapshot, options.inProcessReplicas, controlPlane.ReplicaLifecycle.ContractVersion)
+	if err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
+	applier.InProcess = inProcess
+	applier.InProcessRegistrations = inProcessRegistrations
+	applier.RefreshInProcess = func(refreshContext context.Context, instanceID string) error {
+		for _, replica := range options.inProcessReplicas {
+			if replica != nil && replica.InstanceID() == instanceID {
+				if err := publishInProcessSnapshotWithContext(refreshContext, configurationSnapshot, replica); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	for instanceID := range inProcess {
+		if err := applier.ReloadActive(context.Background(), instanceID); err != nil {
+			return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+		}
+	}
 	if err := convergenceSnapshot.Refresh(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -272,12 +392,79 @@ func serveBootstrap(options runContext, bootstrap config.BootstrapConfig) int {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
 	defer stopTrafficController()
-	if err := serveManagementAndTrafficController(ctx, management, bootstrap.ManagementListen, pluginConfigurationService,
+	if err := serveManagementAndTrafficController(ctx, management, bootstrap.ManagementListen, pluginConfigurationService, ready,
 		stopTrafficController, trafficControllerDone); err != nil && !errors.Is(err, net.ErrClosed) {
 		options.writeFailure(options.output, options.words.Exits.Unavailable, options.words.Codes.ConfigInvalid, options.words.Diagnostics.ConfigInvalid)
 		return options.words.Exits.Unavailable
 	}
 	return options.words.Exits.OK
+}
+
+func prepareInProcessReplicas(snapshot *storage.PluginConfigurationSnapshot, replicas []*sdkapplication.InProcessReplica, contractVersion string) (map[string][]plugins.SDKReloadReplicaClient, map[string][]plugins.InProcessReplicaRegistration, error) {
+	clients := make(map[string][]plugins.SDKReloadReplicaClient, len(replicas))
+	registrations := make(map[string][]plugins.InProcessReplicaRegistration, len(replicas))
+	seen := make(map[string]struct{}, len(replicas))
+	for _, replica := range replicas {
+		if replica == nil || replica.InstanceID() == "" || replica.ReplicaID() == "" {
+			return nil, nil, errors.New("invalid in-process replica")
+		}
+		peerIdentity := replica.PeerIdentity()
+		release := replica.Release()
+		if !peerIdentity.Valid() || peerIdentity.InstanceID != replica.InstanceID() || peerIdentity.ReplicaID != replica.ReplicaID() || !release.Valid() {
+			return nil, nil, errors.New("in-process replica rollout metadata is invalid")
+		}
+		key := replica.InstanceID() + "\x00" + replica.ReplicaID()
+		if _, exists := seen[key]; exists {
+			return nil, nil, errors.New("duplicate in-process replica")
+		}
+		seen[key] = struct{}{}
+		if err := publishInProcessSnapshotWithContext(context.Background(), snapshot, replica); err != nil {
+			return nil, nil, err
+		}
+		client := plugins.SDKReloadReplicaClient{
+			ReplicaID: replica.ReplicaID(), Client: replica,
+		}
+		clients[replica.InstanceID()] = append(clients[replica.InstanceID()], client)
+		registrations[replica.InstanceID()] = append(registrations[replica.InstanceID()], plugins.InProcessReplicaRegistration{
+			Registration: sdkmodels.ReplicaRegistrationRequest{
+				ContractVersion: contractVersion, Identity: peerIdentity,
+				RestEndpoint: "https://in-process.invalid", PeerEndpoints: []sdkmodels.ReplicaPeerEndpoint{},
+				Release: release, AdvertisedContracts: []sdkmodels.ContractVersion{}, AcceptedContracts: []sdkmodels.ContractRange{},
+			},
+			Client: client,
+		})
+	}
+	return clients, registrations, nil
+}
+
+func publishInProcessSnapshotWithContext(ctx context.Context, snapshot *storage.PluginConfigurationSnapshot, replica *sdkapplication.InProcessReplica) error {
+	active, pointers, err := snapshot.Current(ctx, replica.InstanceID())
+	if err != nil {
+		return err
+	}
+	activeConfiguration, err := sdkmodels.NewConfiguration(
+		strconv.FormatInt(active.Revision, 10), strconv.FormatInt(active.SchemaVersion, 10), active.Digest, active.SettingsJSON,
+	)
+	if err != nil {
+		return err
+	}
+	var previous *sdkmodels.Configuration
+	if pointers.PreviousRevision > 0 {
+		previousRevision, err := snapshot.GetRevision(ctx, replica.InstanceID(), pointers.PreviousRevision)
+		if err != nil {
+			return err
+		}
+		value, err := sdkmodels.NewConfiguration(
+			strconv.FormatInt(previousRevision.Revision, 10), strconv.FormatInt(previousRevision.SchemaVersion, 10), previousRevision.Digest, previousRevision.SettingsJSON,
+		)
+		if err != nil {
+			return err
+		}
+		previous = &value
+	}
+	return replica.Publish(sdkmodels.InProcessConfigurationSnapshot{
+		InstanceID: replica.InstanceID(), Active: activeConfiguration, Previous: previous,
+	})
 }
 
 func failBootstrap(options runContext, exitCode int, detail string) int {

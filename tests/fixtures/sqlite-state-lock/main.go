@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
 func main() {

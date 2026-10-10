@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
 )
 
 type SDKReloadClient interface {
@@ -30,6 +30,18 @@ type SDKReloadFanout struct {
 type SDKReloadReplicaClient struct {
 	ReplicaID string
 	Client    SDKReloadClient
+}
+
+// InProcessReplicaRegistration is the immutable rollout metadata for one
+// explicitly composed trusted Go replica. Its lease never expires while the
+// Core host owns the composition; replacing the host creates a new incarnation.
+type InProcessReplicaRegistration struct {
+	Registration sdkmodels.ReplicaRegistrationRequest
+	Client       SDKReloadReplicaClient
+}
+
+type inProcessConfigurationValidator interface {
+	ValidateConfiguration(context.Context, []byte) error
 }
 
 // RegisteredReplicaSource exposes the current authenticated lease snapshot and
@@ -89,6 +101,45 @@ func (resolver *RegisteredReplicaReloadResolver) TrafficRolloutReplicas(ctx cont
 	return replicas, nil
 }
 
+// TrafficRolloutReplicas exposes the same generic cohort view for explicitly
+// composed replicas. In-process membership is static for the lifetime of the
+// host, therefore its lease is represented by the registration metadata and a
+// far-future expiry owned by the composition root.
+func (applier *SDKConfigurationApplier) TrafficRolloutReplicas(ctx context.Context, instanceID string) ([]models.TrafficRolloutReplica, error) {
+	if applier == nil || instanceID == "" {
+		return nil, ErrPluginUnavailable
+	}
+	if registrations, selected := applier.InProcessRegistrations[instanceID]; selected {
+		if len(registrations) == 0 || !sdkmodels.ReleaseCohortCompatible(registrationDocuments(registrations)) {
+			return nil, models.PluginConfigurationConflict{}
+		}
+		now := time.Now().UTC()
+		replicas := make([]models.TrafficRolloutReplica, 0, len(registrations))
+		for _, entry := range registrations {
+			readiness, ready := entry.Client.Client.(SDKReplicaReadinessClient)
+			isReady := false
+			if ready {
+				value, err := readiness.Readiness(ctx)
+				if err != nil {
+					return nil, ErrPluginUnavailable
+				}
+				isReady = value.Ready
+			}
+			replicas = append(replicas, models.TrafficRolloutReplica{
+				ReplicaID:      entry.Registration.Identity.ReplicaID,
+				Incarnation:    entry.Registration.Identity.IncarnationID,
+				ReleaseSHA256:  entry.Registration.Release.SHA256,
+				LeaseExpiresAt: inProcessLeaseExpiry(now), Ready: isReady,
+			})
+		}
+		return replicas, nil
+	}
+	if applier.Registered == nil {
+		return nil, ErrPluginUnavailable
+	}
+	return applier.Registered.TrafficRolloutReplicas(ctx, instanceID)
+}
+
 // ValidateTrafficRolloutConfiguration validates an opaque candidate against
 // every live ready replica's plugin-owned schema before Core promotes it.
 func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID string, document []byte) error {
@@ -127,6 +178,44 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 	return nil
 }
 
+func (applier *SDKConfigurationApplier) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID string, document []byte) error {
+	if applier == nil || instanceID == "" {
+		return ErrPluginUnavailable
+	}
+	if registrations, selected := applier.InProcessRegistrations[instanceID]; selected {
+		if len(registrations) == 0 {
+			return ErrPluginUnavailable
+		}
+		for _, entry := range registrations {
+			validator, ok := entry.Client.Client.(inProcessConfigurationValidator)
+			if !ok {
+				return ErrPluginUnavailable
+			}
+			if err := validator.ValidateConfiguration(ctx, document); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return models.PluginConfigurationConflict{}
+			}
+		}
+		return nil
+	}
+	if applier.Registered == nil {
+		return ErrPluginUnavailable
+	}
+	return applier.Registered.ValidateTrafficRolloutConfiguration(ctx, instanceID, document)
+}
+
+func registrationDocuments(entries []InProcessReplicaRegistration) []sdkmodels.ReplicaRegistrationRequest {
+	result := make([]sdkmodels.ReplicaRegistrationRequest, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, entry.Registration)
+	}
+	return result
+}
+
+func inProcessLeaseExpiry(now time.Time) time.Time { return now.Add(100 * 365 * 24 * time.Hour) }
+
 func NewRegisteredReplicaReloadResolver(source RegisteredReplicaSource, build RegisteredReplicaClientFactory, now func() time.Time) *RegisteredReplicaReloadResolver {
 	if now == nil {
 		now = time.Now
@@ -149,11 +238,40 @@ type applicationTrafficRolloutConfigurationValidator interface {
 // incarnation and release digest. Readiness is not used as a filter because a
 // newly registered process must be able to receive its first config generation.
 func (applier *SDKConfigurationApplier) CaptureConfigurationTargets(ctx context.Context, instanceID string) ([]models.PluginRolloutTarget, bool, error) {
-	if applier == nil || applier.Registered == nil || applier.Registered.Source == nil || instanceID == "" {
+	if applier == nil || instanceID == "" {
 		return nil, false, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
+	}
+	if registrations, selected := applier.InProcessRegistrations[instanceID]; selected {
+		if len(registrations) == 0 || !sdkmodels.ReleaseCohortCompatible(registrationDocuments(registrations)) {
+			return nil, true, models.PluginConfigurationConflict{}
+		}
+		now := time.Now().UTC()
+		targets := make([]models.PluginRolloutTarget, 0, len(registrations))
+		for _, entry := range registrations {
+			target := models.PluginRolloutTarget{
+				ReplicaID:      entry.Registration.Identity.ReplicaID,
+				IncarnationID:  entry.Registration.Identity.IncarnationID,
+				ReleaseSHA256:  entry.Registration.Release.SHA256,
+				LeaseExpiresAt: inProcessLeaseExpiry(now),
+			}
+			if !target.Valid() {
+				return nil, true, ErrProtocolViolation
+			}
+			targets = append(targets, target)
+		}
+		sort.Slice(targets, func(i, j int) bool {
+			if targets[i].ReplicaID != targets[j].ReplicaID {
+				return targets[i].ReplicaID < targets[j].ReplicaID
+			}
+			return targets[i].IncarnationID < targets[j].IncarnationID
+		})
+		return targets, true, nil
+	}
+	if applier.Registered == nil || applier.Registered.Source == nil {
+		return nil, false, nil
 	}
 	if !applier.Registered.Source.HasRegisteredInstance(instanceID) {
 		return nil, false, nil
@@ -197,11 +315,35 @@ func (applier *SDKConfigurationApplier) LostConfigurationTargets(
 	instanceID string,
 	targets []models.PluginRolloutTarget,
 ) ([]models.PluginRolloutTarget, error) {
-	if applier == nil || applier.Registered == nil || applier.Registered.Source == nil || instanceID == "" {
+	if applier == nil || instanceID == "" {
 		return nil, ErrPluginUnavailable
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if registrations, selected := applier.InProcessRegistrations[instanceID]; selected {
+		live := make(map[string]InProcessReplicaRegistration, len(registrations))
+		for _, entry := range registrations {
+			identity := entry.Registration.Identity
+			live[identity.ReplicaID+"\x00"+identity.IncarnationID] = entry
+		}
+		lost := make([]models.PluginRolloutTarget, 0)
+		for _, target := range targets {
+			if target.Acknowledged {
+				continue
+			}
+			if !target.Valid() {
+				return nil, ErrProtocolViolation
+			}
+			entry, found := live[target.ReplicaID+"\x00"+target.IncarnationID]
+			if !found || entry.Registration.Release.SHA256 != target.ReleaseSHA256 {
+				lost = append(lost, target)
+			}
+		}
+		return lost, nil
+	}
+	if applier.Registered == nil || applier.Registered.Source == nil {
+		return nil, ErrPluginUnavailable
 	}
 	now := applier.Registered.Now().UTC()
 	current := make(map[string]LivePluginReplica)
@@ -439,8 +581,14 @@ type ConvergenceSnapshot interface {
 }
 
 type SDKConfigurationApplier struct {
-	Store                  interfaces.PluginConfigurationStore
-	Registered             *RegisteredReplicaReloadResolver
+	Store      interfaces.PluginConfigurationStore
+	Registered *RegisteredReplicaReloadResolver
+	// InProcess contains only explicitly composed trusted Go replicas. An
+	// instance must be present in either this map or Registered, never both;
+	// selecting the map is composition, not a transport fallback.
+	InProcess              map[string][]SDKReloadReplicaClient
+	InProcessRegistrations map[string][]InProcessReplicaRegistration
+	RefreshInProcess       func(context.Context, string) error
 	Observations           ReplicaObservationRecorder
 	Snapshot               ConfigurationSnapshot
 	Convergence            ConvergenceSnapshot
@@ -470,10 +618,7 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	if !bytes.Equal(revision.SettingsJSON, rawJSON) {
 		return ErrProtocolViolation
 	}
-	if applier.Registered == nil {
-		return ErrPluginUnavailable
-	}
-	client, release, found, resolveErr := applier.Registered.Resolve(ctx, instanceID)
+	client, release, found, resolveErr := applier.resolve(ctx, instanceID)
 	if resolveErr != nil {
 		if found {
 			return models.PluginConfigurationConvergencePending{}
@@ -491,6 +636,11 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	}
 	if applier.Snapshot != nil {
 		if err := applier.Snapshot.Refresh(context.WithoutCancel(ctx), instanceID); err != nil {
+			return err
+		}
+	}
+	if applier.RefreshInProcess != nil {
+		if err := applier.RefreshInProcess(context.WithoutCancel(ctx), instanceID); err != nil {
 			return err
 		}
 	}
@@ -527,6 +677,23 @@ func (applier *SDKConfigurationApplier) ApplyConfiguration(ctx context.Context, 
 	return err
 }
 
+func (applier *SDKConfigurationApplier) resolve(ctx context.Context, instanceID string) (SDKReloadClient, func(), bool, error) {
+	if applier == nil || instanceID == "" {
+		return nil, nil, false, ErrPluginUnavailable
+	}
+	if replicas, selected := applier.InProcess[instanceID]; selected {
+		if len(replicas) == 0 {
+			return nil, nil, true, ErrPluginUnavailable
+		}
+		copyOfReplicas := append([]SDKReloadReplicaClient(nil), replicas...)
+		return &SDKReloadFanout{InstanceID: instanceID, Replicas: copyOfReplicas}, nil, true, nil
+	}
+	if applier.Registered == nil {
+		return nil, nil, false, ErrPluginUnavailable
+	}
+	return applier.Registered.Resolve(ctx, instanceID)
+}
+
 // ApplyConfigurationToTargets reconciles only the persisted rollout cohort.
 // Current directory membership is used to find the transport for an exact
 // identity, never to add a replacement incarnation to the cohort.
@@ -536,7 +703,8 @@ func (applier *SDKConfigurationApplier) ApplyConfigurationToTargets(
 	rawJSON []byte,
 	targets []models.PluginRolloutTarget,
 ) ([]models.PluginRolloutTarget, error) {
-	if applier == nil || applier.Store == nil || applier.Registered == nil || applier.Registered.Source == nil ||
+	if applier == nil || applier.Store == nil ||
+		(applier.Registered == nil && applier.InProcessRegistrations == nil) ||
 		operationID == "" || instanceID == "" || len(targets) == 0 {
 		return nil, models.PluginConfigurationConvergencePending{}
 	}
@@ -567,45 +735,70 @@ func (applier *SDKConfigurationApplier) ApplyConfigurationToTargets(
 		}
 	}
 
-	live := make(map[string]LivePluginReplica)
-	now := applier.Registered.Now().UTC()
-	for _, replica := range applier.Registered.Source.Snapshot() {
-		identity := replica.Registration.Identity
-		if identity.InstanceID != instanceID || !replica.LeaseExpires.After(now) {
-			continue
-		}
-		live[identity.ReplicaID+"\x00"+identity.IncarnationID] = replica
-	}
-
 	clients := make([]SDKReloadReplicaClient, 0, len(targets))
 	clientTargets := make(map[string]models.PluginRolloutTarget, len(targets))
 	var failures []error
-	for _, target := range targets {
-		if target.Acknowledged {
-			continue
+	if registrations, selected := applier.InProcessRegistrations[instanceID]; selected {
+		live := make(map[string]InProcessReplicaRegistration, len(registrations))
+		for _, entry := range registrations {
+			identity := entry.Registration.Identity
+			live[identity.ReplicaID+"\x00"+identity.IncarnationID] = entry
 		}
-		if !target.Valid() {
-			return nil, ErrProtocolViolation
-		}
-		key := target.ReplicaID + "\x00" + target.IncarnationID
-		replica, exists := live[key]
-		if !exists || replica.Registration.Release.SHA256 != target.ReleaseSHA256 {
-			failures = append(failures, fmt.Errorf("replica %s/%s: %w", target.ReplicaID, target.IncarnationID, ErrPluginUnavailable))
-			continue
-		}
-		client, release, buildErr := applier.Registered.Build(ctx, replica)
-		if release != nil {
-			defer release()
-		}
-		if buildErr != nil || client == nil {
-			if buildErr == nil {
-				buildErr = ErrPluginUnavailable
+		for _, target := range targets {
+			if target.Acknowledged {
+				continue
 			}
-			failures = append(failures, fmt.Errorf("replica %s/%s: %w", target.ReplicaID, target.IncarnationID, buildErr))
-			continue
+			if !target.Valid() {
+				return nil, ErrProtocolViolation
+			}
+			entry, exists := live[target.ReplicaID+"\x00"+target.IncarnationID]
+			if !exists || entry.Registration.Release.SHA256 != target.ReleaseSHA256 {
+				failures = append(failures, fmt.Errorf("replica %s/%s: %w", target.ReplicaID, target.IncarnationID, ErrPluginUnavailable))
+				continue
+			}
+			clients = append(clients, entry.Client)
+			clientTargets[target.ReplicaID] = target
 		}
-		clients = append(clients, SDKReloadReplicaClient{ReplicaID: target.ReplicaID, Client: client})
-		clientTargets[target.ReplicaID] = target
+	} else {
+		if applier.Registered == nil || applier.Registered.Source == nil {
+			return nil, models.PluginConfigurationConvergencePending{}
+		}
+		live := make(map[string]LivePluginReplica)
+		now := applier.Registered.Now().UTC()
+		for _, replica := range applier.Registered.Source.Snapshot() {
+			identity := replica.Registration.Identity
+			if identity.InstanceID != instanceID || !replica.LeaseExpires.After(now) {
+				continue
+			}
+			live[identity.ReplicaID+"\x00"+identity.IncarnationID] = replica
+		}
+		for _, target := range targets {
+			if target.Acknowledged {
+				continue
+			}
+			if !target.Valid() {
+				return nil, ErrProtocolViolation
+			}
+			key := target.ReplicaID + "\x00" + target.IncarnationID
+			replica, exists := live[key]
+			if !exists || replica.Registration.Release.SHA256 != target.ReleaseSHA256 {
+				failures = append(failures, fmt.Errorf("replica %s/%s: %w", target.ReplicaID, target.IncarnationID, ErrPluginUnavailable))
+				continue
+			}
+			client, release, buildErr := applier.Registered.Build(ctx, replica)
+			if release != nil {
+				defer release()
+			}
+			if buildErr != nil || client == nil {
+				if buildErr == nil {
+					buildErr = ErrPluginUnavailable
+				}
+				failures = append(failures, fmt.Errorf("replica %s/%s: %w", target.ReplicaID, target.IncarnationID, buildErr))
+				continue
+			}
+			clients = append(clients, SDKReloadReplicaClient{ReplicaID: target.ReplicaID, Client: client})
+			clientTargets[target.ReplicaID] = target
+		}
 	}
 	var acknowledged []models.PluginRolloutTarget
 	if len(clients) > 0 {

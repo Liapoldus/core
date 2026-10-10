@@ -6,7 +6,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 )
 
 func ManagementTLS(bootstrap config.BootstrapConfig, invalidConfiguration string) (*tls.Config, error) {

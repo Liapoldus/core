@@ -262,7 +262,7 @@ plugin Manifest, REST lifecycle, settings, health API, secret redemption или
 generation блокирует только соответствующие instance/bindings и требует
 операторского решения; Core не угадывает конфигурацию из runtime плагина.
 Backup Core включает согласованный SQLite snapshot, создаваемый standalone
-командой `liapoldus core database backup`, и отдельно сохранённые Core bootstrap/configuration
+универсальным `liapoldus` CLI через target adapter; отдельно сохранённые Core bootstrap/configuration
 artifacts. Restore выполняется только при остановленном Core; CLI проверяет
 schema version, integrity и foreign keys и заменяет файл атомарно. Backup
 plugin volumes выполняется отдельно и включает plugin-owned данные, например

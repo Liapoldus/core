@@ -9,7 +9,9 @@ describe("Core composition root", () => {
   it("only composes the generic control-plane entry point", async () => {
     const source = await readFile(join(root, "cmd", "core", "main.go"), "utf8");
 
-    expect(source).toContain("cli.Execute(os.Args[1:])");
+    expect(source).toContain("runtime.Serve");
+    expect(source).toContain("runtime.StatePath");
+    expect(source).not.toContain("cli.Execute");
     expect(source).not.toContain("RuntimeBindings");
   });
 });

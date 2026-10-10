@@ -1,4 +1,4 @@
-# Компоненты Core v2
+# Компоненты Core v3
 
 Core состоит из одного Core control-plane процесса и подключённых plugin
 processes. Core сохраняет desired-конфигурацию каждого plugin в SQLite,
@@ -8,9 +8,9 @@ instance версионированный JSON через REST `Reload` + config
 
 | Компонент | Владелец | Состояние |
 | --- | --- | --- |
-| Management API | Core | Settings, observations об аутентифицированных replica leases, scoped secret grants, operations и audit в SQLite. Membership создаётся регистрацией; plugin-to-plugin policies принадлежат pluginprotocol. Standalone `liapoldus` CLI является внешним API client. |
+| Management API | Core | Settings, observations об аутентифицированных replica leases, scoped secret grants, operations, audit и Core-owned peer-link policy в SQLite. Membership создаётся регистрацией; standalone `liapoldus` CLI является внешним API client. |
 | Plugin runtime | Operator + Plugin SDK REST | CLI/оператор запускает plugin; replica публикует endpoint через authenticated registration, Core не управляет процессом или контейнером. |
-| HTTP data plane | Отдельный `plugins/server` process | В v2 Server plugin остаётся отдельным process; Caddy-L4/public L4 отложены до v3. |
+| HTTP data plane | Отдельный `plugins/server` process | Server plugin остаётся отдельным process; Caddy-L4/public L4 имеют отдельный product gate и не меняют Core boundary. |
 | Другие data-plane capabilities | Соответствующие plugins | Core видит только Manifest, schema, generic endpoint и Plugin SDK REST lifecycle. |
 | Config generations | Core + Plugin SDK REST | Exact revision/digest pull и per-replica ACK; request path не читает SQLite. Provenance commit/bundle/target приходит от standalone CLI через API. |
 

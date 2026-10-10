@@ -1,6 +1,6 @@
-# Текущая работа Core
+# Core v3 — production readiness
 
-## Подготовка перед v2
+## Завершённый breaking cutover
 
 - [x] V2 bootstrap cutover: Core читает уже инициализированный SQLite state и
   открывает Management API; инициализация, запуск и lifecycle принадлежат
@@ -27,7 +27,7 @@
   parser и закрыты 36 без подавлений. Остальные, golangci-lint и clean-branch
   CI прогон ещё не завершены.
 
-## V2 — приоритетный этап
+## V3 — текущий этап
 
 - [x] Удалить Core CLI радикально одним breaking slice: command dispatcher,
   `internal/presentation/cli`, `cmd/core-migrate` и Core-owned CLI tests.
@@ -39,8 +39,8 @@
 - [ ] Перевести local/remote/multi-target deployment на standalone CLI и
   GitHub CI. Core принимает только API requests; local process bootstrap и
   lifecycle выполняет CLI/adapter.
-- [ ] Обновить backup/restore/observability runbooks на `liapoldus core`
-  commands и Management API; удалить `/core/cli/` как поддерживаемую surface.
+- [x] Удалить Core-owned backup/restore commands и file-maintenance API; runbook
+  делегирует файловые операции универсальному CLI.
 - Поддержать standalone Linux, Docker, Swarm и Kubernetes только после native
   smoke каждого профиля. Наличие deployment manifests само по себе не означает
   поддержку.
@@ -51,15 +51,14 @@
 - Core остаётся независимым от Ansible и не содержит управления его playbooks,
   установкой или процессами.
 
-## V3 — следующий этап
-
 - Продолжить инфраструктуру Ansible в отдельном репозитории; продуктовые
   репозитории и Studio не зависят от него.
 - Развивать Studio как отдельную среду проектов, файлов, Git и Studio plugins.
   Studio не имеет Core API adapter; target connections, deploy и Core
   lifecycle принадлежат standalone CLI/CI. Plugin configuration UI поставляет
   plugin; Studio встраивает только declarative surfaces.
-- Отдельно описать и согласовать конкретные v3 API/contracts до реализации.
+- Укрепить cross-repository conformance для REST+mTLS и in-process adapters,
+  включая host smoke с реальным plugin-owned applier.
 
 ## Проверки последнего прохода
 

@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/security"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	runtime "github.com/Liapoldus/core/internal/runtime"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	runtime "github.com/Liapoldus/core/v3/internal/runtime"
 )
 
 func main() {

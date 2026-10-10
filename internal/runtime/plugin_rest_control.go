@@ -8,12 +8,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
 )
 
 type PluginRESTControl struct {
@@ -46,6 +46,13 @@ var errInvalidPluginRESTControl = errors.New("invalid plugin REST control config
 func startPluginRESTControl(configuration *PluginRESTControl, store interfaces.PluginRetainedConfigurationReader, bootstrapPath string) (func(), error) {
 	if configuration == nil {
 		return nil, errInvalidPluginRESTControl
+	}
+	if configuration.ConfigPullListener == nil && configuration.ConfigPullTLS == nil {
+		return func() {
+			if configuration.CloseReleases != nil {
+				configuration.CloseReleases()
+			}
+		}, nil
 	}
 	if configuration.ConfigPullListener == nil || configuration.ConfigPullTLS == nil || configuration.ReplicaDirectory == nil || configuration.RegisterReplica == nil ||
 		configuration.ConfigPullTLS.ClientAuth != tls.RequireAndVerifyClientCert || configuration.ConfigPullTLS.ClientCAs == nil ||

@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
 func OpenDatabase(ctx context.Context, path string) (*sql.DB, error) {
@@ -65,7 +65,6 @@ func databaseOptions(contract config.SQLiteContract) storage.SQLiteOptions {
 		ForeignKeyCheckQuery:   contract.ForeignKeyCheckQuery,
 		IntegritySuccess:       contract.IntegritySuccess,
 		IntegrityError:         contract.IntegrityError,
-		BackupIntoQuery:        contract.BackupIntoQuery,
 		Pragmas:                contract.Pragmas,
 	}
 }

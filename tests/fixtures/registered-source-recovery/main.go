@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/runtime"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/runtime"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 func main() {

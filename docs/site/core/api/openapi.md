@@ -13,7 +13,7 @@ Traffic settings сохраняются как raw plugin-owned JSON document; S
 Site releases и сертификаты управляются объявленной plugin Admin Surface.
 Caddy Admin API не проксируется Management API.
 
-Versioned config delivery contract: [Config bundles](config-bundles/).
+Versioned config delivery contract: [Config bundles](config-bundles).
 
 API требует TLS и Bearer authorization; web Controller дополнительно
 подключается по mTLS. Public error semantics находятся в

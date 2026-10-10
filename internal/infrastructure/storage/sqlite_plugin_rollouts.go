@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // Targets returns the immutable membership committed with one promotion. The

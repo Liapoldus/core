@@ -4,11 +4,12 @@
 
 Core is the single-instance Core control plane and the durable source of
 desired configuration. It stores versioned JSON in SQLite, builds immutable
-in-memory snapshots, and exposes exact generations to plugins over the Plugin
-SDK REST API. Core notifies each plugin replica with REST `Reload(generation)`;
-the plugin pulls that generation from Core. Core does not serve public traffic
-or implement product-specific data planes; those belong to independently
-connected plugins.
+in-memory snapshots, and exposes exact generations to plugins through the
+Plugin SDK REST+mTLS adapter or the explicit in-process adapter for trusted
+statically composed Go plugins. Core notifies each plugin replica with
+`Reload(generation)`; the plugin pulls that exact generation through the
+selected adapter. Core does not serve public traffic or implement
+product-specific data planes; those belong to independently connected plugins.
 
 The normative architecture, public Management API, environment bootstrap, public
 error contract and Core implementation guides are owned by this repository in
@@ -16,11 +17,12 @@ error contract and Core implementation guides are owned by this repository in
 preserving their public routes. The standalone
 Plugin SDK in workspace directory `plugin-sdk/` is the owner of plugin-facing
 REST lifecycle/configuration APIs and common plugin facilities; its Go module
-path is `github.com/Liapoldus/plugin-sdk`. The sole owner of
+path is `github.com/Liapoldus/plugin-sdk/v2`. The sole owner of
 plugin-to-plugin transport and generic peer
 communication is
-`/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Core uses the Plugin
-SDK REST client only and must not import or call `pluginprotocol`. Do not copy
+`/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Core may use the
+Plugin SDK REST client and trusted in-process lifecycle adapter, but must not
+import or call `pluginprotocol` for lifecycle/configuration. Do not copy
 SDK or peer protocol contracts into Core except generated/mirrored build assets
 explicitly required by the contract-publication check.
 
@@ -37,16 +39,16 @@ leases. Core does not supervise or install workloads.
 ## Architecture and implementation rules
 
 - Core owns generic plugin instance metadata, desired settings, authenticated
-  replica observations and leases, durable operations, Core Management access and audit. Core
-  does not own plugin-to-plugin interaction policies or interaction grants; that
-  authorization surface is deferred to v2. This is distinct from scoped,
+  replica observations and leases, durable operations, Core Management access
+  and audit, and generic plugin-to-plugin peer-link policy. This is distinct
+  from scoped,
   one-use secret grants: Core must expose those through the Plugin SDK REST
   control API for opaque secret references used by a plugin's own configuration.
   Secret grants are not plugin-to-plugin permissions and must never be added to
   `pluginprotocol`. Keep the grant API generic and bound to the authenticated
   replica, exact active generation, reference and purpose. Core must not contain
   plugin-name, capability-name, provider, or product-specific branches.
-- In v2, generic caller→target peer-link policy is Core-owned desired state in
+- In v3, generic caller→target peer-link policy is Core-owned desired state in
   SQLite and is authored through the authenticated Management API with CAS and
   audit. Do not put mutable policy values in bootstrap YAML or static contract
   assets. Publish policy only through the SDK-defined authenticated
@@ -63,8 +65,9 @@ leases. Core does not supervise or install workloads.
   keys, and a generic plugin-owned JSON Schema, but must not interpret
   product-specific fields. Runtime paths use immutable in-memory snapshots and
   never read configuration files. Core exposes an exact immutable
-  JSON generation; plugins pull it from Core only after REST
-  `Reload(generation)`. Plugins must not read application settings from
+  JSON generation; REST plugins pull it from Core after REST `Reload(generation)`;
+  in-process plugins receive the same exact active/previous snapshot through the
+  SDK adapter. Plugins must not read application settings from
   environment variables, argv, or application config files.
 - The operator owns Core/plugin binary provenance and process lifecycle in every
   version. Deployment tooling must not author product JSON or Core configuration generations. Core
@@ -75,7 +78,8 @@ leases. Core does not supervise or install workloads.
   certificate authority. A replica's advertised release digest is compatibility
   metadata, not Core verification of the binary's provenance.
 - `Reload(generation)`, exact-generation config retrieval and scoped secret
-  redemption use the Plugin SDK REST API, not `pluginprotocol`. Rollback is a
+  redemption use the Plugin SDK REST or in-process lifecycle adapter, not
+  `pluginprotocol`. Rollback is a
   Core Management API operation that swaps `active`/`previous` and notifies
   replicas through ordinary `Reload`. After validating a candidate, promote it
   to desired `active` in the same SQLite transaction that moves former `active`
@@ -96,10 +100,10 @@ leases. Core does not supervise or install workloads.
   standalone Go module independent of `pluginprotocol`; all plugins use it for
   their common REST endpoints, configuration, health, metrics, logging, and
   error handling.
-- Keep one lifecycle architecture: after a complete REST migration slice has
-  passed its child-process conformance gate, remove the superseded Core↔plugin
-  lifecycle transport and its fallback paths. Do not preserve two permanent
-  lifecycle APIs or describe transitional compatibility as a supported mode.
+- Keep one lifecycle contract with two explicit adapters: REST+mTLS for separate
+  processes and in-process for trusted Go composition. Both use the same
+  generation, digest, ACK, readiness and failure semantics. There is no
+  automatic fallback between adapters and no third lifecycle API.
 - `internal/domain` contains exactly `models/` and `interfaces/`; each model,
   interface, and typed error belongs to a focused subject package. Only validating
   constructors and model validation are permitted there. `internal/application`
@@ -165,8 +169,9 @@ leases. Core does not supervise or install workloads.
 - `make arch-lint` uses the repository's Docker image as CI does; do not replace
   it with a host-installed linter.
 - At milestone completion, also run applicable race checks, executable golden
-  vectors, macOS/Linux builds and manually deployed service smoke. Do not declare Core v2 ready while
-  any required cross-component conformance gate remains open.
+  vectors, Linux/macOS/Windows builds and manually deployed service smoke. Do
+  not declare Core v3 ready while any required cross-component conformance gate
+  remains open.
 
 ## Contract ownership
 

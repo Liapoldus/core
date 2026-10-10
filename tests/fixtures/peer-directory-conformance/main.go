@@ -21,12 +21,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/presentation/api"
-	sdkapplication "github.com/Liapoldus/plugin-sdk/application"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
+	sdkapplication "github.com/Liapoldus/plugin-sdk/v2/application"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 // peer-directory-conformance is the cross-component gate for the v2 peer-link

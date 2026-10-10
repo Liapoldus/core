@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/plugin-sdk/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/plugin-sdk/v2/domain/models"
 )
 
 func main() {

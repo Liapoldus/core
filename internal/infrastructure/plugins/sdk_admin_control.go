@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 // SDKAdminReplicaClient is the product-neutral subset of the Plugin SDK client

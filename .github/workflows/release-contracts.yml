@@ -3,10 +3,12 @@ name: Release Core contracts
 on:
   push:
     tags:
-      - "core-v*"
+      - "core-v3.*"
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   contracts:
@@ -16,9 +18,31 @@ jobs:
       - name: Verify versioned contracts
         run: node scripts/verify-contract-bundle.mjs contracts/v1
       - name: Package contracts
-        run: tar -czf "liapoldus-core-contracts-${GITHUB_REF_NAME#core-}.tar.gz" -C contracts v1
+        run: |
+          artifact="liapoldus-core-contracts-${GITHUB_REF_NAME}.tar.gz"
+          tar -czf "${artifact}" -C contracts v1
+          sha256sum "${artifact}" > "${artifact}.sha256"
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: contracts
+          format: spdx-json
+          output-file: liapoldus-core-contracts-${{ github.ref_name }}.sbom.spdx.json
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+      - name: Sign release artifact and SBOM
+        env:
+          ARTIFACT: liapoldus-core-contracts-${{ github.ref_name }}.tar.gz
+          SBOM: liapoldus-core-contracts-${{ github.ref_name }}.sbom.spdx.json
+        run: |
+          cosign sign-blob --yes --bundle "${ARTIFACT}.sigstore.json" "${ARTIFACT}"
+          cosign sign-blob --yes --bundle "${SBOM}.sigstore.json" "${SBOM}"
+      - name: Attest release provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: liapoldus-core-contracts-*.tar.gz
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: liapoldus-core-contracts-*.tar.gz
+          files: liapoldus-core-contracts-*

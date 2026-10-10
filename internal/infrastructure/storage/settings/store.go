@@ -11,7 +11,7 @@ import (
 	"math"
 	"unicode/utf8"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 // Error is a safe, typed failure without SQL, document or validator diagnostics.

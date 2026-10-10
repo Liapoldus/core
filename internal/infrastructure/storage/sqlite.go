@@ -24,7 +24,6 @@ type SQLiteOptions struct {
 	ForeignKeyCheckQuery   string
 	IntegritySuccess       string
 	IntegrityError         string
-	BackupIntoQuery        string
 	Pragmas                string
 }
 

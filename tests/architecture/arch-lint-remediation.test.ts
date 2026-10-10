@@ -40,7 +40,7 @@ describe("architecture lint boundaries", () => {
     expect(architecture).toMatch(/yaml:\s*\{ in: \[gopkg\.in\/yaml\.v3\] \}/);
     expect(architecture).toMatch(/textNormalization:\s*\{ in: \[golang\.org\/x\/text\/cases, golang\.org\/x\/text\/unicode\/norm\] \}/);
     expect(architecture).not.toMatch(/protobuf:\s*\{/);
-    expect(architecture).toMatch(/pluginSDK:\s*\{ in: \[github\.com\/Liapoldus\/plugin-sdk,/);
+    expect(architecture).toMatch(/pluginSDK:\s*\{ in: \[github\.com\/Liapoldus\/plugin-sdk\/v2,/);
   });
 
   it("does not let storage depend on config or CLI depend on protocol adapters", async () => {
@@ -57,6 +57,6 @@ describe("architecture lint boundaries", () => {
     const runtimeDependencies = dependencies.match(/runtime:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
     expect(runtimeDependencies).not.toContain("pluginprotocol");
     expect(storage).not.toContain("internal/infrastructure/config");
-    expect(runtime).not.toContain("github.com/Liapoldus/pluginprotocol");
+    expect(runtime).not.toContain("github.com/Liapoldus/pluginprotocol/v3");
   });
 });

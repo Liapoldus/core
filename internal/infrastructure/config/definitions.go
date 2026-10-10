@@ -71,47 +71,19 @@ func auditDefinitions() AuditWords {
 }
 
 func runtimeContractDefinitions() RuntimeWords {
-	return RuntimeWords{Commands: struct {
-		Serve    string "yaml:\"serve\""
-		Access   string "yaml:\"access\""
-		Database string "yaml:\"database\""
-	}{Serve: "serve",
-		Access:   "access",
-		Database: "database"},
-		Access: struct {
-			Bootstrap string "yaml:\"bootstrap\""
-		}{Bootstrap: "bootstrap"},
-		Database: struct {
-			Backup  string "yaml:\"backup\""
-			Restore string "yaml:\"restore\""
-		}{Backup: "backup",
-			Restore: "restore"},
-		Flags: struct {
-			Output string "yaml:\"output\""
-		}{Output: "--output"},
-		ServiceKey: ServiceKeyWords{RolePlatformAdmin: "platform-admin",
-			KeyBytes: 32,
-			HashCost: 12},
+	return RuntimeWords{ServiceKey: ServiceKeyWords{RolePlatformAdmin: "platform-admin",
+		KeyBytes: 32,
+		HashCost: 12},
 		Outputs: struct {
 			Text string "yaml:\"text\""
 			JSON string "yaml:\"json\""
 		}{Text: "text",
 			JSON: "json"},
 		Codes: struct {
-			AccessBootstrapConflict string "yaml:\"accessBootstrapConflict\""
-			DatabaseBackupFailed    string "yaml:\"databaseBackupFailed\""
-			DatabaseRestoreFailed   string "yaml:\"databaseRestoreFailed\""
-			DatabaseCommandUsage    string "yaml:\"databaseCommandUsage\""
-			DatabaseBusy            string "yaml:\"databaseBusy\""
-			ConfigNotFound          string "yaml:\"configNotFound\""
-			ConfigInvalid           string "yaml:\"configInvalid\""
-		}{AccessBootstrapConflict: "access_bootstrap_conflict",
-			DatabaseBackupFailed:  "database_backup_failed",
-			DatabaseRestoreFailed: "database_restore_failed",
-			DatabaseCommandUsage:  "database_command_usage",
-			DatabaseBusy:          "database_busy",
-			ConfigNotFound:        "config_not_found",
-			ConfigInvalid:         "config_invalid"},
+			ConfigNotFound string "yaml:\"configNotFound\""
+			ConfigInvalid  string "yaml:\"configInvalid\""
+		}{ConfigNotFound: "config_not_found",
+			ConfigInvalid: "config_invalid"},
 		Exits: struct {
 			OK          int "yaml:\"ok\""
 			Internal    int "yaml:\"internal\""
@@ -140,24 +112,12 @@ func runtimeContractDefinitions() RuntimeWords {
 			OK string "yaml:\"ok\""
 		}{OK: "ok"},
 		Diagnostics: struct {
-			CommandExpected         string "yaml:\"commandExpected\""
-			ConfigNotFound          string "yaml:\"configNotFound\""
-			ConfigInvalid           string "yaml:\"configInvalid\""
-			OutputInvalid           string "yaml:\"outputInvalid\""
-			AccessBootstrapConflict string "yaml:\"accessBootstrapConflict\""
-			DatabaseBackupFailed    string "yaml:\"databaseBackupFailed\""
-			DatabaseRestoreFailed   string "yaml:\"databaseRestoreFailed\""
-			DatabaseCommandUsage    string "yaml:\"databaseCommandUsage\""
-			DatabaseBusy            string "yaml:\"databaseBusy\""
-		}{CommandExpected: "ожидается команда serve, access bootstrap или database backup/restore",
-			ConfigNotFound:          "Файл конфигурации не найден.",
-			ConfigInvalid:           "Конфигурация не прошла проверку.",
-			OutputInvalid:           "--output должен иметь значение text или json",
-			AccessBootstrapConflict: "активный ключ доступа уже существует",
-			DatabaseBackupFailed:    "Не удалось создать проверенную резервную копию SQLite.",
-			DatabaseRestoreFailed:   "Не удалось безопасно восстановить состояние SQLite.",
-			DatabaseCommandUsage:    "команда database требует действие backup или restore и один путь",
-			DatabaseBusy:            "Core использует это состояние; остановите Core перед восстановлением."}}
+			ConfigNotFound string "yaml:\"configNotFound\""
+			ConfigInvalid  string "yaml:\"configInvalid\""
+			OutputInvalid  string "yaml:\"outputInvalid\""
+		}{ConfigNotFound: "Файл конфигурации не найден.",
+			ConfigInvalid: "Конфигурация не прошла проверку.",
+			OutputInvalid: "--output должен иметь значение text или json"}}
 }
 
 func grantDefinitions() PluginSecretGrantPolicy {
@@ -608,7 +568,6 @@ func sqliteDefinitions() SQLiteContract {
 		ForeignKeyCheckQuery:   "PRAGMA foreign_key_check",
 		IntegritySuccess:       "ok",
 		IntegrityError:         "SQLite state integrity check failed.",
-		BackupIntoQuery:        "VACUUM INTO ?",
 		Pragmas:                "PRAGMA foreign_keys = ON;\nPRAGMA journal_mode = WAL;\nPRAGMA synchronous = FULL;\nPRAGMA busy_timeout = 5000;\n",
 		Schema:                 []uint8(nil)}
 }

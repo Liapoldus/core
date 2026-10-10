@@ -1,4 +1,8 @@
-# Границы безопасности Core
+# Границы безопасности Core v3
+
+> Текущим нормативным источником является [архитектура v3](../architecture/v3).
+> Ниже зафиксированы применимые trust boundaries; старые v2 deployment claims
+> не являются fallback или поддерживаемым runtime.
 
 ## Management API
 
@@ -24,19 +28,19 @@ plugin private keys.
 SDK/protocol libraries, а не продуктовым плагинам. Плагин передаёт bootstrap
 credentials и явно выбранный security profile в API библиотеки; его handlers
 не создают TLS listeners/clients и не проверяют сертификаты самостоятельно.
-Текущий production Core↔plugin REST contract требует per-replica mTLS. В SDK
-WIP реализован отдельный versioned loopback-only plaintext development profile:
+Текущий production Core↔plugin REST contract требует per-replica mTLS. SDK
+реализует отдельный versioned loopback-only plaintext development profile:
 он выключен по умолчанию и открывает только generic `GET /_liapoldus/v1/health`
 на отдельном listener с literal loopback TCP address. `/ready` остаётся под
 mTLS из-за replica identity и generation metadata в ответе; redacted readiness
 view требует отдельного versioned contract. Exact-generation config pull и
 secret-grant endpoints и clients всегда остаются за mTLS и недоступны через
-plaintext. Пока Core закреплён на опубликованном SDK без этого v2 profile, его
-нельзя считать доступным в Core release или включать в supported runtime.
+plaintext. Этот профиль не является production transport и не используется как
+secure fallback.
 Для plugin↔plugin remote и production connections используется mTLS;
 `pluginprotocol` уже допускает явный TCP-loopback plaintext
 development profile без encryption или peer identity. QUIC всегда зашифрован и
-аутентифицирует обе стороны; Unix socket и Windows named pipe в v2 требуют
+аутентифицирует обе стороны; Unix socket и Windows named pipe в v3 требуют
 mTLS. Все plaintext profiles должны быть явно включены и ограничены своими
 contract-ом и carrier-ом; secure failure никогда не запускает plaintext
 fallback. Trust roots SDK REST и peer protocol не объединяются.
@@ -49,7 +53,7 @@ Remote trust использует externally issued identities и signed CRL bun
 новом TLS handshake. Ошибка чтения или проверки CRL закрывает соединение.
 Core загружает эти файлы при старте; замена сертификатов, CA или CRL требует
 согласованного orderly restart Core и затронутых plugin replicas. Горячая
-Ротация trust roots требует планового перерыва и в Core v2 не выполняется горячо.
+Ротация trust roots требует планового перерыва и в Core v3 не выполняется горячо.
 
 ### Плановая замена CA и workload identities
 
@@ -109,11 +113,11 @@ platform-admin.
 
 ## Межплагинные вызовы и secrets
 
-В Core v2 Core не хранит plugin-to-plugin interaction policies и не авторизует
-межплагинные вызовы. `pluginprotocol` предоставляет generic transport, а
-вызывающий plugin владеет своей policy и передаёт её своему consumer-у;
-отсутствие разрешения должно означать deny. Core не проксирует peer payload.
-Централизованная policy/interaction API относится к следующему этапу.
+В Core v3 Core хранит generic plugin-to-plugin peer-link policies и публикует
+caller-scoped peer-directory через Plugin SDK, но не проксирует межплагинные
+вызовы. `pluginprotocol` предоставляет generic transport; вызывающий plugin
+получает разрешённую запись directory и применяет её к generic authorizer.
+Отсутствие разрешения означает deny. Core не проксирует peer payload.
 
 Plugin REST config pull содержит versioned JSON и opaque secret references, но
 не secret bytes. Core выдаёт только ограниченные grants через Plugin SDK REST;

@@ -22,4 +22,4 @@ deployment-провайдера. Deployment profiles принимаются то
 | Plugin lifecycle | [Регистрация, leases и конфигурация](architecture/plugin-deployment) |
 | API | [Core Management API](api/) |
 | Security/deployment | [Security](configuration/security), [Deployment](deploy/) |
-| Архитектура и этапы | [Целевой контракт](architecture/target), [Roadmap v2/v3](architecture/roadmap) |
+| Архитектура и этапы | [Целевая архитектура v3](architecture/v3), [Целевой контракт](architecture/target), [Roadmap v2/v3](architecture/roadmap) |

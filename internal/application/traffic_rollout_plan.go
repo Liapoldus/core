@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 var ErrInvalidTrafficRolloutPlan = trafficRolloutPlanInvalid{}

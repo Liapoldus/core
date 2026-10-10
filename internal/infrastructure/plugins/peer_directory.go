@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/models"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
 )
 
 // PeerDirectory assembles the caller-scoped, Core-authorized view of peer links

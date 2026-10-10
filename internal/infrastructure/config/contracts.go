@@ -4,8 +4,8 @@ package config
 import (
 	"errors"
 
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
 type ServiceKeyWords struct {
@@ -16,33 +16,13 @@ type ServiceKeyWords struct {
 
 type RuntimeWords struct {
 	ServiceKey ServiceKeyWords `yaml:"serviceKey"`
-	Commands   struct {
-		Serve    string `yaml:"serve"`
-		Access   string `yaml:"access"`
-		Database string `yaml:"database"`
-	} `yaml:"commands"`
-	Access struct {
-		Bootstrap string `yaml:"bootstrap"`
-	} `yaml:"access"`
-	Database struct {
-		Backup  string `yaml:"backup"`
-		Restore string `yaml:"restore"`
-	} `yaml:"database"`
-	Flags struct {
-		Output string `yaml:"output"`
-	} `yaml:"flags"`
-	Outputs struct {
+	Outputs    struct {
 		Text string `yaml:"text"`
 		JSON string `yaml:"json"`
 	} `yaml:"outputs"`
 	Codes struct {
-		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
-		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
-		DatabaseRestoreFailed   string `yaml:"databaseRestoreFailed"`
-		DatabaseCommandUsage    string `yaml:"databaseCommandUsage"`
-		DatabaseBusy            string `yaml:"databaseBusy"`
-		ConfigNotFound          string `yaml:"configNotFound"`
-		ConfigInvalid           string `yaml:"configInvalid"`
+		ConfigNotFound string `yaml:"configNotFound"`
+		ConfigInvalid  string `yaml:"configInvalid"`
 	} `yaml:"codes"`
 	Exits struct {
 		OK          int `yaml:"ok"`
@@ -63,15 +43,9 @@ type RuntimeWords struct {
 		OK string `yaml:"ok"`
 	} `yaml:"text"`
 	Diagnostics struct {
-		CommandExpected         string `yaml:"commandExpected"`
-		ConfigNotFound          string `yaml:"configNotFound"`
-		ConfigInvalid           string `yaml:"configInvalid"`
-		OutputInvalid           string `yaml:"outputInvalid"`
-		AccessBootstrapConflict string `yaml:"accessBootstrapConflict"`
-		DatabaseBackupFailed    string `yaml:"databaseBackupFailed"`
-		DatabaseRestoreFailed   string `yaml:"databaseRestoreFailed"`
-		DatabaseCommandUsage    string `yaml:"databaseCommandUsage"`
-		DatabaseBusy            string `yaml:"databaseBusy"`
+		ConfigNotFound string `yaml:"configNotFound"`
+		ConfigInvalid  string `yaml:"configInvalid"`
+		OutputInvalid  string `yaml:"outputInvalid"`
 	} `yaml:"diagnostics"`
 }
 

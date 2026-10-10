@@ -7,8 +7,8 @@ import (
 	"errors"
 	"os"
 
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfra "github.com/Liapoldus/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfra "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 var errPluginPeerRevoked = errors.New("plugin peer identity was refused")

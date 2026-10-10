@@ -32,10 +32,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 const (

@@ -11,10 +11,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Liapoldus/core/internal/domain/models"
-	"github.com/Liapoldus/core/internal/infrastructure/storage"
-	"github.com/Liapoldus/core/internal/presentation/api"
-	sdk "github.com/Liapoldus/plugin-sdk/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
+	sdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 type durable struct {

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Liapoldus/core/internal/application"
-	"github.com/Liapoldus/core/internal/infrastructure/config"
-	"github.com/Liapoldus/core/internal/infrastructure/plugins"
-	"github.com/Liapoldus/core/internal/presentation/api"
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/presentation/api"
 )
 
 func trafficControllerTLS(configuration config.TrafficControllerConfig) (*tls.Config, error) {
@@ -80,11 +80,12 @@ func serveManagementAndTrafficController(
 	management *api.Server,
 	managementAddress string,
 	configuration *application.PluginConfigurationService,
+	ready chan<- struct{},
 	stopTrafficController func(),
 	trafficControllerDone <-chan error,
 ) error {
 	managementDone := make(chan error, 1)
-	go func() { managementDone <- management.Listen(ctx, managementAddress, configuration) }()
+	go func() { managementDone <- management.ListenWithReady(ctx, managementAddress, ready, configuration) }()
 	if trafficControllerDone == nil {
 		return <-managementDone
 	}

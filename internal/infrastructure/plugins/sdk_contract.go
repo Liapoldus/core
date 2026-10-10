@@ -1,8 +1,8 @@
 package plugins
 
 import (
-	sdkmodels "github.com/Liapoldus/plugin-sdk/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/infrastructure"
+	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
 )
 
 // SDKHTTPContract is the Plugin SDK contract consumed by Core's control-plane

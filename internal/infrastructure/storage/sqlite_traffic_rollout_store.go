@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Liapoldus/core/internal/domain/interfaces"
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 type SQLiteTrafficRolloutStore struct {

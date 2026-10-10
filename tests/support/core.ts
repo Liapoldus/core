@@ -1,5 +1,4 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { afterAll } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,8 +48,6 @@ export async function cleanupCoreTestBinary(): Promise<void> {
   binary = undefined;
   await rm(directory, { recursive: true, force: true });
 }
-
-afterAll(cleanupCoreTestBinary);
 
 export async function runCore(
   args: readonly string[],

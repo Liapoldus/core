@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Liapoldus/core/internal/domain/models"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
 func TestConfigBundlePlanIsReadOnlyAndDecodesOpaqueSettings(t *testing.T) {

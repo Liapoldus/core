@@ -1,9 +1,13 @@
 # Плагинные библиотеки и граница взаимодействия
 
+> Нормативным источником production-ready v3 является
+> [целевая архитектура v3](v3). Старые фрагменты о том, что peer policy или
+> in-process composition отложены, заменяются этим контрактом.
+
 В системе есть две независимые Go-библиотеки с разными назначениями. Общий
 Core↔plugin lifecycle принадлежит Plugin SDK: отдельные процессы используют
-REST; in-process adapter для монолитной композиции относится к следующему
-продуктовому этапу.
+REST+mTLS, а доверенные статически скомпонованные Go plugins — явно выбранный
+in-process adapter с теми же моделями и ACK semantics.
 Универсальная
 межплагинная сеть принадлежит `pluginprotocol`. Ни одна из библиотек не владеет
 контрактами конкретных продуктов: схемы и методы CAPTCHA, Caddy, forms-db и
@@ -19,13 +23,14 @@ OpenAPI конкретных владельцев.
 
 | Библиотека | Ответственность | Что не входит |
 | --- | --- | --- |
-| Plugin SDK, отдельный Go-модуль | Общий REST server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи и безопасные ошибки. В следующем этапе тот же lifecycle contract может получить явно выбранный in-process adapter для монолитной сборки. | Межплагинный transport, Core Management API operations и продуктовые capabilities. |
+| Plugin SDK, отдельный Go-модуль | Общий REST+mTLS server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи, безопасные ошибки и явно выбранный in-process adapter для монолитной сборки. | Межплагинный transport, Core Management API operations и продуктовые capabilities. |
 | `pluginprotocol` | Generic plugin-to-plugin communication: регистрация пользовательских методов/handlers, connect/listen, unary calls и streams, физические transport/security providers. | Core lifecycle REST, config distribution, Manifest/settings/admin surfaces, готовые product RPC или имена plugin methods. |
 
 Plugin SDK и `pluginprotocol` не импортируют друг друга. Плагин использует одну
 библиотеку, обе или ни одну — в зависимости от того, нужен ли ему общий REST
 lifecycle и/или прямое взаимодействие с другими плагинами. Core использует
-Plugin SDK через REST client. Core не импортирует `pluginprotocol`.
+Plugin SDK через REST client или in-process adapter. Core не импортирует
+`pluginprotocol` для lifecycle/configuration.
 
 TLS/mTLS реализуют библиотеки, а не конкретные плагины: Plugin SDK владеет
 Core↔plugin REST security, `pluginprotocol` — security peer carriers. Plugin
@@ -35,28 +40,28 @@ handshake и не повторяют проверку сертификатов. 
 раздельны. Security profile выбирается в конфигурации соответствующей
 библиотеки, отдельно от product settings; plugin только передаёт профиль и
 credential source её API. Production и удалённые Core↔plugin REST connections
-используют per-replica mTLS по действующему v1 contract. SDK WIP реализует
+используют per-replica mTLS по versioned SDK v2 HTTP contract. SDK реализует
 отдельный versioned loopback-only plaintext development profile: он opt-in,
 выключен по умолчанию и на отдельном literal-loopback TCP listener обслуживает
 только generic `GET /_liapoldus/v1/health`. `/ready` остаётся mTLS-only из-за
 identity/generation полей ответа; redacted readiness view потребует отдельного
 versioned contract. Exact config pull и secret-grant обмен всегда используют
-mTLS. Профиль пока отсутствует в опубликованной SDK revision, закреплённой
-Core, поэтому не доступен в текущем Core release. Peer protocol
+mTLS. Профиль не является production transport и не используется как secure
+fallback. Peer protocol
 уже допускает явный TCP-loopback plaintext в development без encryption и peer
-identity. QUIC всегда зашифрован и аутентифицирован; v2 Unix socket/named pipe
+identity. QUIC всегда зашифрован и аутентифицирован; v3 Unix socket/named pipe
 пока требуют mTLS. Ни один профиль не переключается автоматически после ошибки
 TLS.
 
 Локальное расположение модуля — соседний каталог `plugin-sdk/` workspace.
-Утверждённый canonical Go module path — `github.com/Liapoldus/plugin-sdk`;
-согласованная миграция текущих local imports остаётся частью Core v2.
+Утверждённый canonical Go module path — `github.com/Liapoldus/plugin-sdk/v2`;
+все active consumers используют этот major path.
 
 ## Plugin SDK: REST lifecycle
 
 Каждый plugin предоставляет защищённый control endpoint по общему REST
 контракту SDK. Core адресует каждую зарегистрированную replica отдельно;
-Core↔plugin REST использует mTLS и уникальную identity каждой replica. В Core v2
+Core↔plugin REST использует mTLS и уникальную identity каждой replica. В Core v3
 оператор выдаёт credentials через внешний CA/PEM source; Core не выпускает
 identity и не внедряет её через process/container bootstrap. Trust roots control
 plane отделены от plugin-to-plugin trust roots. Plaintext или bearer-only
@@ -64,7 +69,7 @@ downgrade не допускается.
 Endpoint доступен только Core management identity и не является пользовательским
 traffic API.
 
-SDK contract source — `plugin-sdk/infrastructure/assets/plugin-sdk/v1/http-contract.json`.
+SDK contract source — `plugin-sdk/infrastructure/assets/plugin-sdk/v2/http-contract.json`.
 В нём заданы plugin-side endpoints:
 
 - bootstrap identity/version, Manifest и settings schema;
@@ -103,8 +108,8 @@ contract с двумя явно выбираемыми адаптерами:
 
 Это две реализации одного lifecycle API, а не два разных набора правил. Adapter
 выбирается явно для каждого plugin instance при сборке/композиции запуска; ошибки
-выбранного adapter-а не вызывают автоматическое переключение. V1 продолжает
-использовать REST. Единый executable, который запускает plugin как дочерний
+выбранного adapter-а не вызывают автоматическое переключение. REST adapter
+используется для отдельных процессов. Единый executable, который запускает plugin как дочерний
 процесс, не является in-process режимом: между процессами остаётся REST, пока
 отдельным решением не введён иной IPC adapter.
 
@@ -177,14 +182,14 @@ names, какие у них settings, кто является «Caddy» или �
 identity и разрешённый carrier. Для удалённых workloads и production применяется
 аутентифицированное шифрованное соединение; отсутствие encryption или
 неизвестный транспортный профиль не может стать silent downgrade. Явный
-loopback TCP plaintext development profile допускается также в v2: он не
+loopback TCP plaintext development profile допускается также в v3: он не
 аутентифицирует peer и не может обслуживать удалённый адрес. QUIC остаётся
 зашифрованным и аутентифицированным, а локальные IPC используют mTLS. SDK
 loopback plaintext development profile для Core REST — отдельное целевое
 расширение, не входящее в текущий production contract. Межплагинный trust не разделяет
 trust roots с Core REST.
 
-В Core v2 caller→target/method/transport policies хранятся в Core SQLite,
+В Core v3 caller→target/method/transport policies хранятся в Core SQLite,
 авторизуются через Management API и распространяются через SDK-defined
 directory. Plugin не владеет центральной policy и получает только разрешённую
 выборку для своей replica. `pluginprotocol` исполняет выбранный carrier.
@@ -219,13 +224,12 @@ plugin-to-plugin connections используют разные identities и tru
 реализуются infrastructure adapters; presentation экспонирует публичный
 library facade. Product contracts в этот модуль не переносятся.
 
-### Следующий этап: локальные IPC carriers
+### Локальные IPC carriers
 
-Поддержка локального IPC относится к следующему этапу. Она не является частью
-Core v2 и не должна добавляться как скрытый fallback или предварительный кодовый
-путь. До отдельного утверждения реализация и контракты Core v2 не меняются.
+Локальный IPC является частью v3 carrier matrix. Он выбирается явно и не
+является скрытым fallback или downgrade после ошибки другого транспорта.
 
-В v2 `pluginprotocol` предоставляет четыре явно выбираемых carrier-а:
+В v3 `pluginprotocol` предоставляет четыре явно выбираемых carrier-а:
 
 | Carrier | Область применения | Защита канала |
 | --- | --- | --- |
@@ -251,7 +255,7 @@ client или handshake самостоятельно. Для remote peer-сое�
 production-профиля обязателен mTLS. Явный plaintext допускается только для TCP
 loopback в development; он не шифрует соединение и не удостоверяет peer. QUIC
 всегда использует TLS 1.3 с взаимной аутентификацией; Unix socket и Windows
-named pipe в v2 требуют mTLS независимо от локального размещения. Ошибка
+named pipe в v3 требуют mTLS независимо от локального размещения. Ошибка
 защищённого соединения никогда не включает fallback на plaintext.
 
 Для TCP, Unix socket и named pipe TLS оборачивает установленное
@@ -315,45 +319,8 @@ Unix-socket tests на macOS/Linux runners. v2 gate считается прой�
 исполняемые vectors принадлежат только `pluginprotocol` и описываются в его
 TODO до начала v2.
 
-### Межъязыковой доступ через C ABI в v3
+### Foreign bindings
 
-В v3 Go остаётся единственной реализацией wire/session engine
-`pluginprotocol`. Другие языки используют native shared library с
-версионированной C ABI и FFI; независимый Python codec/session/TLS stack и
-параллельные реализации wire semantics не создаются. Первый официальный
-binding — Python package на `cffi`.
-
-C ABI покрывает полный generic peer facade: создание listener/client, unary
-calls и двунаправленные streams. Она принимает только C-совместимые значения,
-opaque handles и length-delimited byte spans; Go pointers не пересекают
-границу. Входящие requests/events выдаются через bounded poll/event queue, а
-host отправляет результаты и stream frames отдельными вызовами API. Заполнение
-очереди сохраняет backpressure semantics протокола; callbacks из Go goroutines
-в чужие runtimes не используются. Входные bytes копируются; владение
-возвращаемыми буферами и API их освобождения закрепляются в публичном C header.
-
-TLS identity, private key и trust roots передаются как length-delimited PEM
-bytes и копируются в Go-owned memory. FFI сохраняет mTLS, peer identity,
-revocation, deadlines, cancellation и error classification. PEM, key bytes,
-payload и внутренние Go errors не попадают в публичные ошибки или logs.
-`pluginprotocol` остаётся только plugin↔plugin API: Core↔plugin `Reload`, config
-pull, health и metrics в C ABI не входят и принадлежат Plugin SDK.
-
-C ABI version независима от wire contract `liapoldus.peer.v1`: additive symbols
-допустимы внутри ABI-major, breaking ABI требует нового ABI-major. Публичные C
-header, exported symbols, ownership rules и ABI version принадлежат
-`pluginprotocol`. Python binding не является второй protocol implementation;
-прочие языки считаются поддержанными только после собственного binding и
-conformance.
-
-CI выпускает native library artifacts и Python wheels с библиотекой внутри для
-Linux amd64/arm64, macOS arm64 и Windows amd64. Python package не собирает Go
-library при установке. Для каждой пары OS/architecture CI выполняет native ABI
-smoke и protocol conformance; одних cross-build результатов недостаточно.
-Shared suite проверяет полную facade поверхность, event queue bounds и
-backpressure, memory ownership, cancellation, deadlines, error mapping, mTLS и
-Go↔Python FFI peers в обоих направлениях для unary и streams. Поддерживаемые
-версии CPython фиксируются при реализации binding, не меняя wire contract.
-Native shared builds используют поддерживаемые Go build modes и cgo; конкретная
-матрица подтверждается для закреплённого Go toolchain и запускается в native CI
-([Go build modes](https://go.dev/src/cmd/dist/test.go), [cgo](https://pkg.go.dev/cmd/cgo)).
+Foreign bindings, C ABI и отдельные language engines в v3 не входят. Поддержанная
+surface ограничена официальным Go facade; расширение межъязыкового API требует
+отдельного решения, нового контракта и собственного conformance gate.

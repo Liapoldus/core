@@ -62,6 +62,7 @@ describe("presentation package ownership", () => {
       "ServiceAccounts",
       "mu",
       "Operations",
+      "ConfigBundles",
       "PluginAdminControl",
       "PluginLinks",
       "TrafficRollouts",
@@ -80,7 +81,7 @@ describe("presentation package ownership", () => {
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(21);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(22);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 
@@ -113,6 +114,7 @@ describe("presentation package ownership", () => {
 
     expect(mayDependOn("presentationAPI")).toContain("presentationAPIHandlers");
     expect(mayDependOn("presentationAPIHandlers")).not.toContain("presentationAPI");
-    expect(mayDependOn("runtime")).toEqual([]);
+    expect(mayDependOn("runtime")).toContain("presentationAPI");
+    expect(mayDependOn("runtime")).not.toContain("presentationAPIHandlers");
   });
 });
