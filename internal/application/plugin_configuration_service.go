@@ -542,7 +542,11 @@ func (service *PluginConfigurationService) applyCandidate(ctx context.Context, o
 					return models.PluginConfigurationConvergencePending{}
 				}
 				if applyErr != nil {
-					return models.PluginConfigurationConvergencePending{}
+					var convergencePending models.PluginConfigurationConvergencePending
+					if errors.As(applyErr, &convergencePending) {
+						return convergencePending
+					}
+					return applyErr
 				}
 				latest, _, err := rollouts.Targets(ctx, operationID)
 				if err != nil || len(latest) == 0 {

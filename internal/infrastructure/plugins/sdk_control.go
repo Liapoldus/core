@@ -818,6 +818,16 @@ func (applier *SDKConfigurationApplier) ApplyConfigurationToTargets(
 			}
 		}
 		if fanoutErr != nil {
+			allUnreachable := true
+			for _, result := range results {
+				if !result.Acknowledged && !result.Unreachable {
+					allUnreachable = false
+					break
+				}
+			}
+			if !allUnreachable {
+				return acknowledged, fanoutErr
+			}
 			failures = append(failures, fanoutErr)
 		}
 	}
