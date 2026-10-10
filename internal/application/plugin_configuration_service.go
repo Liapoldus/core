@@ -251,6 +251,13 @@ func (service *PluginConfigurationService) Apply(ctx context.Context, command Ap
 		return models.PluginConfigurationRevision{}, err
 	}
 	if err := service.applyCandidate(ctx, command.OperationID, candidate); err != nil {
+		var convergencePending models.PluginConfigurationConvergencePending
+		if !errors.As(err, &convergencePending) {
+			if _, failErr := service.Store.FailCandidate(transitionContext, command.InstanceID, candidate.Revision,
+				command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
+				return models.PluginConfigurationRevision{}, errors.Join(err, failErr)
+			}
+		}
 		service.fenceInstance(command.InstanceID)
 		return models.PluginConfigurationRevision{}, err
 	}
