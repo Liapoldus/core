@@ -241,21 +241,17 @@ func (service *PluginConfigurationService) Apply(ctx context.Context, command Ap
 	command.AppliedAudit.DigestBefore = current.Digest
 	command.AppliedAudit.DigestAfter = candidate.Digest
 	if _, err := service.activateCandidate(transitionContext, command, candidate); err != nil {
-		var conflict models.PluginConfigurationConflict
-		if errors.As(err, &conflict) {
-			if _, failErr := service.Store.FailCandidate(transitionContext, command.InstanceID, candidate.Revision,
-				command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
-				return models.PluginConfigurationRevision{}, errors.Join(err, failErr)
-			}
+		if _, failErr := service.Store.FailCandidate(transitionContext, command.InstanceID, candidate.Revision,
+			command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
+			return models.PluginConfigurationRevision{}, errors.Join(err, failErr)
 		}
 		return models.PluginConfigurationRevision{}, err
 	}
 	if err := service.applyCandidate(ctx, command.OperationID, candidate); err != nil {
 		var convergencePending models.PluginConfigurationConvergencePending
 		if !errors.As(err, &convergencePending) {
-			if _, failErr := service.Store.FailCandidate(transitionContext, command.InstanceID, candidate.Revision,
-				command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
-				return models.PluginConfigurationRevision{}, errors.Join(err, failErr)
+			if closeErr := service.closeConfigurationRollout(transitionContext, command.OperationID); closeErr != nil {
+				return models.PluginConfigurationRevision{}, errors.Join(err, closeErr)
 			}
 		}
 		service.fenceInstance(command.InstanceID)
@@ -576,6 +572,21 @@ func (service *PluginConfigurationService) applyCandidate(ctx context.Context, o
 
 func (service *PluginConfigurationService) failCorruptReservation(ctx context.Context, operation models.Operation) error {
 	return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.PayloadFailureCode)
+}
+
+func (service *PluginConfigurationService) closeConfigurationRollout(ctx context.Context, operationID string) error {
+	if service == nil || service.Store == nil || operationID == "" {
+		return nil
+	}
+	rollouts, ok := service.Store.(interfaces.PluginConfigurationRolloutStore)
+	if !ok {
+		return nil
+	}
+	_, found, err := rollouts.Targets(ctx, operationID)
+	if err != nil || !found {
+		return err
+	}
+	return rollouts.CloseRollout(ctx, operationID)
 }
 
 func (service *PluginConfigurationService) fenceInstance(instanceID string) {

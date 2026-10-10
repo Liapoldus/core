@@ -115,6 +115,29 @@ func (store *SQLitePluginConfigurationStore) CompleteRollout(ctx context.Context
 	return nil
 }
 
+// CloseRollout releases the per-instance rollout barrier after a terminal
+// apply refusal. The promoted active generation remains in place for explicit
+// rollback; only the durable barrier is closed.
+func (store *SQLitePluginConfigurationStore) CloseRollout(ctx context.Context, operationID string) error {
+	if store == nil || store.database == nil || operationID == "" {
+		return sql.ErrConnDone
+	}
+	result, err := store.database.ExecContext(ctx, store.queries.queries["close-rollout"],
+		time.Now().UTC().Format(store.contract.TimestampLayout), operationID)
+	if err != nil {
+		return err
+	}
+	if err := requireOneRow(result); err != nil {
+		var open bool
+		if readErr := store.database.QueryRowContext(ctx, store.queries.queries["get-rollout"], operationID).
+			Scan(new(string), new(int64), &open); readErr == nil && !open {
+			return nil
+		}
+		return models.PluginConfigurationConflict{}
+	}
+	return nil
+}
+
 // FailRolloutTargetLost atomically closes a rollout and stores its terminal
 // operation failure only when an exact unacknowledged frozen target is supplied.
 func (store *SQLitePluginConfigurationStore) FailRolloutTargetLost(

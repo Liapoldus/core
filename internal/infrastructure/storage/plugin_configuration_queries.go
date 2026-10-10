@@ -52,6 +52,8 @@ WHERE operation_id = ? AND open = 1;`,
 WHERE id = ? AND state IN (?, ?);`,
 		"fail-associated-traffic-rollout": `UPDATE traffic_rollouts SET state = ?, revision = revision + 1, updated_at = ?, completed_at = ?
 WHERE operation_id = ? AND state = ?;`,
+		"close-rollout": `UPDATE plugin_rollouts SET open = 0, completed_at = ?
+WHERE operation_id = ? AND open = 1;`,
 		"acknowledge-rollout-target": `UPDATE plugin_rollout_targets SET acknowledged = 1
 WHERE operation_id = ? AND replica_id = ? AND incarnation_id = ? AND release_sha256 = ?;`,
 		"complete-rollout": `UPDATE plugin_rollouts SET open = 0, completed_at = ?

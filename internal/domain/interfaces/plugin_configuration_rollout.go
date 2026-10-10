@@ -14,5 +14,6 @@ type PluginConfigurationRolloutStore interface {
 	Targets(context.Context, string) ([]models.PluginRolloutTarget, bool, error)
 	AcknowledgeTargets(context.Context, string, []models.PluginRolloutTarget) error
 	CompleteRollout(context.Context, string) error
+	CloseRollout(context.Context, string) error
 	FailRolloutTargetLost(context.Context, string, []models.PluginRolloutTarget, string, string, string, string) error
 }
