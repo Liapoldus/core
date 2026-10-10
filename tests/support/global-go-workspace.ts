@@ -6,7 +6,7 @@ import { createGoWorkspace } from "./workspace.js";
 // Go commands still need the coordinated local modules until the release tags
 // exist. Keep one generated workspace for that default path; tests that need a
 // different module set continue to pass their own GOWORK explicitly.
-const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol");
+const workspace = createGoWorkspace("core", "plugin-sdk");
 process.env.GOWORK = workspace.path;
 
 afterAll(() => workspace.cleanup());
