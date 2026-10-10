@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "core-v3.*"
+      - "v3.*"
 
 permissions:
   contents: write
