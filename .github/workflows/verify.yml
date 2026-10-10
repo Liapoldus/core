@@ -20,18 +20,20 @@ jobs:
         with:
           repository: Liapoldus/plugin-sdk
           path: plugin-sdk
+      - name: Checkout pluginprotocol
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/pluginprotocol
+          path: pluginprotocol
       - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
-      - name: Configure Core and Plugin SDK workspace
+      - name: Configure Core, Plugin SDK, and Plugin Protocol workspace
         run: |
-          go work init ./core ./plugin-sdk
+          go work init ./core ./plugin-sdk ./pluginprotocol
           go work edit -go=1.26.0 go.work
-          # The release major is intentionally required in Core's go.mod. Until
-          # the coordinated v2 tag is published, local CI must resolve that
-          # exact version to the checked-out SDK without adding a module-level
-          # replace to either repository.
           go work edit -replace=github.com/Liapoldus/plugin-sdk/v2@v2.0.0=./plugin-sdk go.work
+          go work edit -replace=github.com/Liapoldus/pluginprotocol/v3@v3.0.0=./pluginprotocol go.work
       - uses: actions/setup-node@v4
         with:
           node-version: 24
