@@ -88,18 +88,23 @@ v2 считается готовой только как согласованн�
   SQL/cohort compatibility перенесены в v3. В v2 Core/SDK rollout и product
   compatibility проверяются на нейтральных fixtures; эти product repositories
   не изменяются.
-- **Domain и Runtime:** минимум три Domain voting nodes проходят leader failover,
-  quorum loss, fresh-read barriers, bounded snapshots и согласованную model
-  migration/rollback. Runtime проходит WASM sandbox/limits, artifact integrity,
-  compatibility rollout и Domain authorization/fencing без cross-plugin ACID
-  обещаний. Runtime-side HTTP terminal adapter использует только неизменённый
-  опубликованный Server contract; изменение Server repository или переход на новую Server
-  API входит в v3.
+- **Domain и Runtime:** Domain v2 — одна replica с global bounded in-memory ER
+  model/object store. Core — единственный источник его versioned model, grants
+  и GC policy; restart теряет объекты, изменение ER digest очищает их, а
+  grants-only update сохраняет. SQL только read-only, writes — через
+  grant-checked CRUD/transactions. Runtime v2 применяет из Core atomic
+  multi-module WASM generations, маршрутизирует команды по module/export и
+  выполняет ограниченные host calls по per-command allowlist; sandbox не имеет
+  прямого I/O. Ни Domain HA/durability, ни cross-plugin ACID не обещаются.
+  Runtime-side HTTP terminal adapter использует только неизменённый
+  опубликованный Server contract; изменение Server repository или переход на
+  новую Server API входит в v3.
 - **Сквозной и эксплуатационный gate:** clean-environment сценарий запускает один
   Core и отдельно размещённые плагины; проверяет restart/reconnect, конфигурацию,
   прямые разрешённые peer-вызовы, mTLS/CRL rotation, redaction, recovery,
-  generic rollout, Domain failover, Runtime peer/WASM и отсутствие payload в
-  Core. Каждый заявленный OS/carrier и Domain storage profile исполняет native gate;
+  generic rollout, Core-owned Domain model/grants and volatile restart semantics,
+  Runtime multi-module peer/WASM routing and absence of product payload in Core.
+  Каждый заявленный OS/carrier исполняет native gate;
   cross-build или schema-only test не заменяет runtime evidence.
 - **Согласованный релиз:** все owner suites, Core/SDK/protocol gates, VitePress,
   cross-repository E2E и deployment walkthrough имеют воспроизводимый PASS;

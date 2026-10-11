@@ -148,6 +148,8 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if server.dispatchReadiness(response, request, path, requestID) ||
+		server.dispatchPluginRegistration(response, request, path, requestID) ||
+		server.dispatchPluginMetadata(response, request, path, requestID) ||
 		server.dispatchConfigBundles(response, request, path, requestID, actor) ||
 		server.dispatchAccess(response, request, path, requestID, actor) ||
 		server.dispatchPluginCollections(response, request, path, requestID, actor) ||
@@ -158,6 +160,32 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 		return
 	}
 	server.writeProblem(response, 404, "not_found", "resource not found", requestID)
+}
+
+func (server *Server) dispatchPluginRegistration(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if server.RegisterPlugin == nil || request.Method != http.MethodPost || !strings.HasPrefix(path, server.Management.Paths.Plugins+"/") {
+		return false
+	}
+	resource := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
+	parts := strings.Split(resource, "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] != "replicas" || parts[2] != "register" {
+		return false
+	}
+	handlers.PluginRegistration(response, request, server.RegisterPlugin, parts[0], server.writeJSON, server.writeProblem, requestID)
+	return true
+}
+
+func (server *Server) dispatchPluginMetadata(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if server.PluginMetadata == nil || request.Method != http.MethodGet || !strings.HasPrefix(path, server.Management.Paths.Plugins+"/") {
+		return false
+	}
+	resource := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
+	parts := strings.Split(resource, "/")
+	if len(parts) != 2 || parts[0] == "" || (parts[1] != "manifest" && parts[1] != "schema" && parts[1] != "status") {
+		return false
+	}
+	handlers.PluginMetadata(response, request, server.PluginMetadata, parts[0], parts[1], server.writeJSON, server.writeProblem, requestID)
+	return true
 }
 
 func (server *Server) dispatchConfigBundles(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {

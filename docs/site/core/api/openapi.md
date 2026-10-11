@@ -18,3 +18,8 @@ Versioned config delivery contract: [Config bundles](config-bundles).
 API требует TLS и Bearer authorization; web Controller дополнительно
 подключается по mTLS. Public error semantics находятся в
 [errors.json](/spec/errors.json).
+
+Runtime metadata endpoints являются Core-owned Management API resources. CLI
+передаёт `artifactId`, version/digest, instance/replica IDs, control/peer
+endpoints и runtime status через registration. Core сам выполняет SDK REST
+calls к live plugin; прямой CLI→plugin REST path отсутствует.

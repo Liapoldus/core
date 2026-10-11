@@ -65,6 +65,8 @@ describe("presentation package ownership", () => {
       "ConfigBundles",
       "PluginAdminControl",
       "PluginLinks",
+      "PluginMetadata",
+      "RegisterPlugin",
       "TrafficRollouts",
       "TrafficRolloutAPI",
       "Plugins",
@@ -81,7 +83,7 @@ describe("presentation package ownership", () => {
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(22);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(24);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 

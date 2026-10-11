@@ -88,6 +88,16 @@ jobs:
         with:
           repository: Liapoldus/forms-db
           path: plugins/forms-db
+      - name: Checkout Domain
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/domain
+          path: plugins/domain
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: Liapoldus/runtime
+          path: plugins/runtime
       - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
@@ -98,5 +108,5 @@ jobs:
           cache: npm
           cache-dependency-path: core/tests/package-lock.json
       - name: Cross-repository scenarios
-        run: npm --prefix tests ci && npm --prefix tests test -- manual-core-server plugin-admin-surface
+        run: npm --prefix tests ci && npm --prefix tests test -- manual-core-server plugin-admin-surface serve-domain
         working-directory: core

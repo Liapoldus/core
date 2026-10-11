@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -196,6 +198,9 @@ func serveBootstrap(ctx context.Context, options runContext, bootstrap config.Bo
 	if exitCode != options.words.Exits.OK {
 		return exitCode
 	}
+	if err := bootstrapManagementKey(context.Background(), stores.keyStore, options.words); err != nil {
+		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
+	}
 	inventory, exitCode := loadBootstrapInventory(options, database)
 	if exitCode != options.words.Exits.OK {
 		return exitCode
@@ -331,10 +336,15 @@ func serveBootstrap(ctx context.Context, options runContext, bootstrap config.Bo
 	management.CoreSettings = coreSettings
 	management.ValidateSettings = func(raw []byte) error { _, err := config.DecodeSettings(raw); return err }
 	management.ConfigBundles = &application.ConfigBundleService{
-		Configurations: pluginConfigurationService,
-		Operations:     application.OperationService{Store: stores.operationStore},
-		OperationKind:  inventory.management.OperationKinds.PluginSettingsApply,
-		Pending:        inventory.management.Statuses.Pending,
+		Configurations:  pluginConfigurationService,
+		Operations:      application.OperationService{Store: stores.operationStore},
+		OperationKind:   inventory.management.OperationKinds.PluginSettingsApply,
+		Pending:         inventory.management.Statuses.Pending,
+		CandidateAction: managementInputs.auditWords.Audit.Actions.PluginSettingsCandidate,
+		ApplyAction:     managementInputs.auditWords.Audit.Actions.PluginSettingsApply,
+		FailedAction:    managementInputs.auditWords.Audit.Actions.PluginSettingsApplyFailed,
+		SucceededResult: managementInputs.auditWords.Audit.Results.Succeeded,
+		FailedResult:    managementInputs.auditWords.Audit.Results.Failed,
 	}
 	if err := pluginConfigurationService.Recover(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
@@ -398,6 +408,95 @@ func serveBootstrap(ctx context.Context, options runContext, bootstrap config.Bo
 		return options.words.Exits.Unavailable
 	}
 	return options.words.Exits.OK
+}
+
+// bootstrapManagementKey establishes the first local Management API
+// credential without putting its value in SQLite, the target profile, or the
+// project. The CLI supplies it through a one-time file for containerized Core
+// or through CORE_INIT_MANAGEMENT_TOKEN for a host process. Existing service
+// keys always win, so restarting Core never rotates operator credentials.
+func bootstrapManagementKey(ctx context.Context, store *storage.SQLiteServiceKeyStore, words config.RuntimeWords) error {
+	if store == nil {
+		return errors.New("service key store is required")
+	}
+	verifiers, err := store.ActiveVerifiers(ctx)
+	if err != nil {
+		return err
+	}
+	if len(verifiers) > 0 {
+		discardBootstrapManagementToken()
+		return nil
+	}
+	token, err := takeBootstrapManagementToken()
+	if err != nil {
+		return err
+	}
+	if token == "" {
+		return nil
+	}
+	if words.ServiceKey.HashCost < 1 || words.ServiceKey.RolePlatformAdmin == "" {
+		return errors.New("service key bootstrap contract is invalid")
+	}
+	verifier, err := security.HashServiceKey(token, words.ServiceKey.HashCost)
+	if err != nil {
+		return err
+	}
+	defer clear(verifier)
+	return store.Bootstrap(ctx, "local-bootstrap", verifier, words.ServiceKey.RolePlatformAdmin)
+}
+
+// discardBootstrapManagementToken removes one-time bootstrap material when
+// an initialized Core already has an active management verifier. Container
+// restarts retain the original environment, but the one-time file itself has
+// intentionally already been unlinked.
+func discardBootstrapManagementToken() {
+	path := os.Getenv("CORE_INIT_MANAGEMENT_TOKEN_FILE")
+	_ = os.Unsetenv("CORE_INIT_MANAGEMENT_TOKEN_FILE")
+	_ = os.Unsetenv("CORE_INIT_MANAGEMENT_TOKEN")
+	if path != "" && filepath.IsAbs(path) {
+		_ = os.Remove(path)
+	}
+}
+
+// takeBootstrapManagementToken removes the bootstrap value from the process
+// environment before it is used. The Core process never retains the token as
+// an environment variable after initial state creation.
+func takeBootstrapManagementToken() (string, error) {
+	file := os.Getenv("CORE_INIT_MANAGEMENT_TOKEN_FILE")
+	_ = os.Unsetenv("CORE_INIT_MANAGEMENT_TOKEN_FILE")
+	if file != "" {
+		return consumeBootstrapTokenFile(file)
+	}
+	token := os.Getenv("CORE_INIT_MANAGEMENT_TOKEN")
+	_ = os.Unsetenv("CORE_INIT_MANAGEMENT_TOKEN")
+	return token, nil
+}
+
+// consumeBootstrapTokenFile accepts only a regular file and unlinks it before
+// returning the token to the caller. The containing directory is a private,
+// short-lived mount created by the CLI; the file path itself is never logged.
+func consumeBootstrapTokenFile(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", errors.New("bootstrap token file path must be absolute")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return "", errors.New("bootstrap token file is unavailable")
+	}
+	value, err := os.ReadFile(path)
+	if err != nil {
+		return "", errors.New("bootstrap token file is unavailable")
+	}
+	if err := os.Remove(path); err != nil {
+		clear(value)
+		return "", errors.New("bootstrap token file could not be consumed")
+	}
+	token := strings.TrimSpace(string(value))
+	clear(value)
+	if token == "" {
+		return "", errors.New("bootstrap token file is empty")
+	}
+	return token, nil
 }
 
 func prepareInProcessReplicas(snapshot *storage.PluginConfigurationSnapshot, replicas []*sdkapplication.InProcessReplica, contractVersion string) (map[string][]plugins.SDKReloadReplicaClient, map[string][]plugins.InProcessReplicaRegistration, error) {
@@ -639,6 +738,21 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 					dependencies.linkPolicyChanged()
 				}
 			},
+		},
+		PluginMetadata: func(ctx context.Context, instanceID string) (models.PluginMetadata, error) {
+			metadata, err := dependencies.pluginControl.RegisteredReloads.Metadata(ctx, instanceID)
+			if err != nil {
+				return models.PluginMetadata{}, err
+			}
+			return models.PluginMetadata{Manifest: metadata.Manifest, ConfigurationSchema: metadata.ConfigurationSchema, Identity: metadata.Identity, Readiness: metadata.Readiness}, nil
+		},
+		RegisterPlugin: func(ctx context.Context, registration models.PluginRegistration) (models.PluginRegistrationResult, error) {
+			result := models.PluginRegistrationResult{Accepted: true, InstanceID: registration.InstanceID, ReplicaID: registration.ReplicaID, Status: "pending"}
+			metadata, err := dependencies.pluginControl.RegisteredReloads.Metadata(ctx, registration.InstanceID)
+			if err == nil && metadata.Identity.InstanceID == registration.InstanceID && metadata.Identity.ReplicaID == registration.ReplicaID {
+				result.Status = "registered"
+			}
+			return result, nil
 		},
 		TLSConfig: inputs.tlsConfiguration,
 		Plugins:   inventory.view, PluginIDField: inventory.contract.JSON.ID,

@@ -26,6 +26,8 @@ type Server struct {
 	ConfigBundles      *application.ConfigBundleService
 	PluginAdminControl *plugins.SDKAdminControl
 	PluginLinks        *application.PluginLinkPolicyService
+	PluginMetadata     func(context.Context, string) (models.PluginMetadata, error)
+	RegisterPlugin     func(context.Context, models.PluginRegistration) (models.PluginRegistrationResult, error)
 	TrafficRollouts    *application.TrafficRolloutService
 	TrafficRolloutAPI  config.TrafficRolloutAPIContract
 	Plugins            []any

@@ -20,7 +20,7 @@
   и воспроизводимые проверки их публикации.
 - [ ] Включить полный blocking quality gate на чистой ветке: Go, race, vet,
   staticcheck, architecture lint, TS tests/typecheck/lint и docs build. Go
-  tests, Core Vitest (98 файлов, 168 тестов), TS strict typecheck, staticcheck
+  tests, Core Vitest (95 файлов, 156 тестов), TS strict typecheck, staticcheck
   U1000, typed ESLint (recommended + unsafe call/argument + async-safety rules)
   и architecture lint локально прошли. Отдельный audit unsafe
   assignment/member выявил 103 fixture JSON-boundary случая; добавлен object
@@ -80,5 +80,30 @@
 - Ручной Core→Server/forms-db прогон подтвердил restart, registration leases,
   settings rollback, plugin Admin query/delete, trust-root rotation и отказ
   от отозванной identity.
+- Реальный Core→SDK→Domain→Runtime child-process gate теперь проверяет отказ
+  Core активировать семантически неверные Domain grant и Runtime module-route
+  generations (`activation_failed`), сохранение старой plugin readiness-state
+  как pending/not-ready и восстановление после последующих валидных settings.
+  Сценарий прошёл через TypeScript integration wrapper на bundled Node.
+- Тот же real-process gate теперь синхронизирует Runtime SIGTERM с уже
+  выполняющимся WASM host call: запись сначала подтверждается чтением из Domain,
+  новые invocations отвергаются, принятый вызов завершается и Core видит
+  deregistration. Runtime получает новый mTLS incarnation grant отдельной
+  Core-owned Domain settings generation. Core `PluginMetadata` callback также
+  приведён к owner-типу `models.PluginMetadata`, необходимому для сборки этого
+  рабочего дерева.
+- Последний полный локальный `make check` прошёл: Go build/tests, Vitest (95
+  файлов passed, один skipped; 156 тестов passed), TypeScript typecheck/lint и
+  architecture lint. До выполнения оставлены независимые gates из начала этого
+  раздела: race/staticcheck/golangci-lint, чистая ветка, hosted CI и docs build.
+  Сквозной Core→SDK→Domain→Runtime drain-тест также прошёл отдельно.
+- После него acceptance fixture ускорен сборкой одного peer-client binary и
+  ожиданием Core directory eligibility после plugin-local readiness. Это
+  устранило корректный fail-closed `no_ready_peer` при eventual-consistent
+  обновлении lease; guest drain loop остаётся bounded ниже пятисекундного ABI
+  deadline. Два последовательных полных Core→SDK→Domain→Runtime process run
+  прошли с `GOFLAGS=-race`. По ним добавлены закрытые Runtime host-call stage
+  logs без payload/identity/endpoint или сырых transport errors. Текущие
+  targeted architecture + integration tests прошли: 3 файла / 10 тестов.
 - Server Go tests и полный Vitest suite — прошли; forms-db Vitest — 22 файла,
   35 tests passed, 6 skipped; отдельная Node contract проверка — 2/2.

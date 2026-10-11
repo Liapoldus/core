@@ -43,7 +43,7 @@ credential source её API. Production и удалённые Core↔plugin REST 
 используют per-replica mTLS по versioned SDK v2 HTTP contract. SDK реализует
 отдельный versioned loopback-only plaintext development profile: он opt-in,
 выключен по умолчанию и на отдельном literal-loopback TCP listener обслуживает
-только generic `GET /_liapoldus/v1/health`. `/ready` остаётся mTLS-only из-за
+только generic `GET /healthz`. `/ready` остаётся mTLS-only из-за
 identity/generation полей ответа; redacted readiness view потребует отдельного
 versioned contract. Exact config pull и secret-grant обмен всегда используют
 mTLS. Профиль не является production transport и не используется как secure

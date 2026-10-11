@@ -26,3 +26,19 @@ group или TLS endpoints.
 
 Подробно: [аутентификация](authentication),
 [plugin configuration](config) и [operations](operations).
+
+## Core-backed runtime metadata
+
+Для local runtime CLI объявляет Core только безопасные metadata живой replica:
+
+```text
+POST /api/plugins/{instanceId}/replicas/register
+GET  /api/plugins/{instanceId}/manifest
+GET  /api/plugins/{instanceId}/schema
+GET  /api/plugins/{instanceId}/status
+```
+
+После registration Core через Plugin SDK REST client сам получает manifest,
+configuration schema, identity и readiness. CLI не вызывает plugin REST и не
+получает SDK client. Core применяет configuration generations и публикует peer
+directory, а data plane остаётся прямым: `Server → pluginprotocol → Echo`.

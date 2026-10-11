@@ -98,7 +98,7 @@ carriers выбираются явно; для production и remote connections 
 `pluginprotocol` допускает отдельный, явно выбранный plaintext-профиль для TCP
 loopback в development. SDK WIP также содержит отдельный v2 loopback plaintext
 profile для Core↔plugin REST: только отдельный listener с literal loopback TCP
-address и generic `GET /_liapoldus/v1/health`; по умолчанию он выключен.
+address и generic `GET /healthz`; по умолчанию он выключен.
 Config pull, secret grants и все остальные SDK endpoints остаются mTLS-only.
 Профиль ещё не входит в опубликованную SDK/Core dependency revision и не
 считается доступным в поддерживаемом Core runtime до совместимого pin и

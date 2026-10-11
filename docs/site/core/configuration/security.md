@@ -30,7 +30,7 @@ credentials и явно выбранный security profile в API библио�
 не создают TLS listeners/clients и не проверяют сертификаты самостоятельно.
 Текущий production Core↔plugin REST contract требует per-replica mTLS. SDK
 реализует отдельный versioned loopback-only plaintext development profile:
-он выключен по умолчанию и открывает только generic `GET /_liapoldus/v1/health`
+он выключен по умолчанию и открывает только generic `GET /healthz`
 на отдельном listener с literal loopback TCP address. `/ready` остаётся под
 mTLS из-за replica identity и generation metadata в ответе; redacted readiness
 view требует отдельного versioned contract. Exact-generation config pull и

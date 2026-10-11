@@ -2149,7 +2149,7 @@ func waitServerHealth(address string, roots *x509.CertPool, credential certifica
 	deadline := time.Now().Add(15 * time.Second)
 	var lastError string
 	for time.Now().Before(deadline) {
-		response, err := client.Get("https://" + address + "/_liapoldus/v1/health")
+		response, err := client.Get("https://" + address + "/healthz")
 		if err != nil {
 			lastError = err.Error()
 		} else {

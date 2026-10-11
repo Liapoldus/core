@@ -215,6 +215,67 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/replicas/register:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+    post:
+      operationId: registerPluginReplicaMetadata
+      summary: Принять безопасную runtime metadata от CLI
+      description: >-
+        Core принимает только artifact/instance/replica metadata. Manifest,
+        schema, identity и readiness Core получает сам через Plugin SDK REST.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [artifactId, artifactVersion, digest, instanceId, replicaId, controlEndpoint, runtimeStatus]
+              properties:
+                artifactId: { type: string }
+                artifactVersion: { type: string }
+                digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                instanceId: { type: string }
+                replicaId: { type: string }
+                controlEndpoint: { type: string, format: uri }
+                peerEndpoint: { type: string, format: uri }
+                runtimeStatus: { type: string }
+      responses:
+        '202': { description: Registration accepted or pending Core-side SDK admission }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/manifest:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+    get:
+      operationId: getPluginManifest
+      summary: Получить live manifest через Core-side SDK client
+      responses:
+        '200': { description: Plugin-owned live manifest, content: { application/json: { schema: { type: object } } } }
+        '502': { description: Invalid live plugin metadata }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/schema:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+    get:
+      operationId: getPluginConfigurationSchema
+      summary: Получить live configuration schema через Core-side SDK client
+      responses:
+        '200': { description: Plugin-owned configuration schema, content: { application/json: { schema: { type: object } } } }
+        '502': { description: Invalid live plugin metadata }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/plugins/{pluginId}/status:
+    parameters:
+      - $ref: '#/components/parameters/PluginId'
+    get:
+      operationId: getPluginRuntimeStatus
+      summary: Получить live identity/readiness через Core-side SDK client
+      responses:
+        '200': { description: Redacted live plugin status }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/plugins/{pluginId}/settings:
     parameters:
       - $ref: '#/components/parameters/PluginId'

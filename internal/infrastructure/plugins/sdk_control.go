@@ -70,6 +70,58 @@ type pluginConfigurationSchemaClient interface {
 	ConfigurationSchema(context.Context) ([]byte, error)
 }
 
+type sdkMetadataClient interface {
+	Manifest(context.Context) ([]byte, error)
+	ConfigurationSchema(context.Context) ([]byte, error)
+	Identity(context.Context) (sdkmodels.Registration, error)
+	Readiness(context.Context) (sdkmodels.Readiness, error)
+}
+
+// ReplicaMetadata is the Core-owned, read-only view used by Management API
+// adapters. The calls below are the only place Core reaches live Plugin SDK
+// REST metadata; callers such as CLI never receive a plugin client.
+type ReplicaMetadata struct {
+	Manifest            []byte
+	ConfigurationSchema []byte
+	Identity            sdkmodels.Registration
+	Readiness           sdkmodels.Readiness
+}
+
+func (resolver *RegisteredReplicaReloadResolver) Metadata(ctx context.Context, instanceID string) (ReplicaMetadata, error) {
+	client, release, found, err := resolver.Resolve(ctx, instanceID)
+	if release != nil {
+		defer release()
+	}
+	if err != nil || !found {
+		return ReplicaMetadata{}, ErrPluginUnavailable
+	}
+	fanout, ok := client.(*SDKReloadFanout)
+	if !ok || len(fanout.Replicas) == 0 {
+		return ReplicaMetadata{}, ErrPluginUnavailable
+	}
+	metadataClient, ok := fanout.Replicas[0].Client.(sdkMetadataClient)
+	if !ok {
+		return ReplicaMetadata{}, ErrPluginUnavailable
+	}
+	manifest, err := metadataClient.Manifest(ctx)
+	if err != nil {
+		return ReplicaMetadata{}, err
+	}
+	schema, err := metadataClient.ConfigurationSchema(ctx)
+	if err != nil {
+		return ReplicaMetadata{}, err
+	}
+	identity, err := metadataClient.Identity(ctx)
+	if err != nil {
+		return ReplicaMetadata{}, err
+	}
+	readiness, err := metadataClient.Readiness(ctx)
+	if err != nil {
+		return ReplicaMetadata{}, err
+	}
+	return ReplicaMetadata{Manifest: append([]byte(nil), manifest...), ConfigurationSchema: append([]byte(nil), schema...), Identity: identity, Readiness: readiness}, nil
+}
+
 // TrafficRolloutReplicas adapts authenticated Plugin SDK registrations into the
 // neutral cohort model. Compatibility remains defined by the SDK's generic
 // release contract, not by any product plugin.

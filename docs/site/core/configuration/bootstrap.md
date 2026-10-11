@@ -7,11 +7,21 @@ export CORE_SQLITE_PATH=/var/lib/liapoldus/core.sqlite
 liapoldus core start --target local
 ```
 
-Standalone `liapoldus core start` передаёт Core `CORE_SQLITE_PATH` и secure
-bootstrap references. Core однократно создаёт SQLite settings revision до
-открытия API; Core binary не принимает subcommands и не содержит migration,
-backup или database commands. Секреты передаются CLI как ссылки на
-файлы/монтирования, а не как значения.
+`liapoldus core start` запускает Core как Docker container и передаёт ему
+`CORE_SQLITE_PATH` и secure bootstrap references. Core однократно создаёт SQLite
+settings revision до открытия API; Core binary не принимает subcommands и не
+содержит migration, backup или database commands. TLS material передаётся как
+file mounts, а не как значения. Management listener доступен CLI через
+loopback-only published port; plugin-control listener доступен только внутри
+target Docker network.
+
+Для первичного local bootstrap CLI генерирует management token и сохраняет его
+в системном credential vault. Token передаётся в Core только через одноразовый
+файл с правами `0600` в приватном Docker bind mount. Он никогда не задаётся
+значением Docker environment или аргументом процесса. Core проверяет regular
+file и permissions, читает и удаляет его до открытия Management API; в SQLite
+остаётся только verifier. Docker restart после bootstrap не требует повторного
+файла и не ротирует credential.
 
 Повторный bootstrap для существующей базы завершается конфликтом. Для
 изменения настроек после инициализации используется versioned Settings API;

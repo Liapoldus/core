@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
@@ -14,10 +15,15 @@ import (
 // contract. It deliberately delegates persistence and rollout to the existing
 // plugin configuration service.
 type ConfigBundleService struct {
-	Configurations *PluginConfigurationService
-	Operations     OperationService
-	OperationKind  string
-	Pending        string
+	Configurations  *PluginConfigurationService
+	Operations      OperationService
+	OperationKind   string
+	Pending         string
+	CandidateAction string
+	ApplyAction     string
+	FailedAction    string
+	SucceededResult string
+	FailedResult    string
 }
 
 func (service *ConfigBundleService) Plan(ctx context.Context, request models.ConfigBundleRequest) (models.ConfigBundlePlan, error) {
@@ -57,7 +63,7 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 		}
 		expected := plan.Services[index].CurrentRevision
 		operation := models.Operation{ID: operationID, Kind: service.OperationKind, State: service.Pending,
-			RequestID: requestID, Actor: actor, Resource: item.ID}
+			CreatedAt: time.Now().UTC(), RequestID: requestID, Actor: actor, Resource: item.ID}
 		payload := &models.OperationPayload{Version: 1, Resource: item.ID, ExpectedRevision: expected,
 			SchemaVersion: plan.Services[index].SchemaVersion, Digest: request.Bundle.Digest}
 		// The plugin configuration service owns the durable operation and rollout.
@@ -66,9 +72,9 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 		command := ApplyPluginConfigurationCommand{
 			InstanceID: item.ID, ExpectedRevision: expected, SchemaVersion: plan.Services[index].SchemaVersion,
 			SettingsJSON:   item.Settings,
-			CandidateAudit: models.AuditRecord{Actor: actor, RequestID: requestID},
-			AppliedAudit:   models.AuditRecord{Actor: actor, RequestID: requestID},
-			FailedAudit:    models.AuditRecord{Actor: actor, RequestID: requestID},
+			CandidateAudit: models.AuditRecord{Actor: actor, Action: service.CandidateAction, Result: service.SucceededResult, RequestID: requestID},
+			AppliedAudit:   models.AuditRecord{Actor: actor, Action: service.ApplyAction, Result: service.SucceededResult, RequestID: requestID},
+			FailedAudit:    models.AuditRecord{Actor: actor, Action: service.FailedAction, Result: service.FailedResult, RequestID: requestID},
 		}
 		payload.Digest = payload.ComputeDigest(item.Settings)
 		reserved, err := service.Configurations.Submit(ctx, command, models.OperationReservation{
