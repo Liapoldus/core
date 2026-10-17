@@ -307,3 +307,9 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   `GOWORK=off GOFLAGS=-p=1 make staticcheck-u1000` also passed.
 - This hardening changes no public Service SDK contract and exposes no secret
   values or replica metadata through the Management API.
+- Rebuilt the local Core candidate from source commit `d7f82cd` for Linux/arm64:
+  `/tmp/liapoldus-core-linux-arm64-2026-10-18-d7f82cd`, SHA-256
+  `157fe9a08bd6c54888cef70abf173b13f34e56aa8666b1013bba0006b70fd1a7`.
+  The previous `b87dd1c` candidate predates replica-scoped grant checks and is
+  superseded. The new candidate has not been installed or run in the local
+  target; the running Core container remains unchanged.
