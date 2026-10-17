@@ -30,6 +30,23 @@
   multi-replica rotation acknowledgement, timeout/restart recovery, and the
   packaged Server Editor in macOS WebView; source checks do not close it.
 
+## Live secret-catalog deployment mismatch — 2026-10-18
+
+- Typed local runtime start created Core without updating its binary, then
+  registered Echo and Server. The running Core container label is
+  9189b7731207bd4434fcfbffa7d6a2083df1c1ceb79c1e9ae724c6199631b9b5;
+  typed CLI service secret list receives HTTP 404 from the catalog route.
+  Core source tests and OpenAPI include the route, so this is a deployed binary
+  mismatch, not a source-contract pass for the running target.
+- A Linux/arm64 binary built from current source (5f57110) is at
+  /tmp/liapoldus-core-linux-arm64-approved-candidate, SHA-256
+  0ad10d7141adaad6a91775cd6dd915e69a2b5f2971d7346e64cc0f60bfc464d0.
+  It differs from the previously approved Core digest and has not been
+  installed. Do not claim local secret catalog or rotation runtime acceptance
+  until this current candidate is separately authorized, installed through the
+  typed Core binary update, and the list/create/rotate/apply/retire path is
+  exercised.
+
 ## Operator service-secret reference catalog — 2026-10-17
 
 - Core now stores only opaque reference ID, service ID, SDK purpose, label,
