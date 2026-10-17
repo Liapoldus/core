@@ -1,5 +1,23 @@
 # Core v3 — production readiness
 
+## Configuration submission/recovery barrier — 2026-10-18
+
+- `Submit` now serializes idempotency reservation and candidate-generation
+  creation with snapshot recovery. Recovery can no longer observe the
+  intermediate reservation-without-candidate state and fail a valid in-flight
+  configuration apply. The lock is released before scheduling asynchronous
+  apply; active snapshot validation/activation keeps the same barrier.
+- Manual Core→Server child fixture now emits settings schema v2 and includes
+  bounded operation diagnostics for candidate, active, open service-rollout,
+  and traffic-rollout generations.
+- Owner gates on this source: `make check` passed (Go build/tests, 96 Vitest
+  files / 159 tests, typecheck, ESLint, amd64 Docker architecture lint);
+  `make staticcheck-u1000`, `make test-race`, and `go vet ./...` also passed.
+- Core's secret catalog/grant implementation was already present at this
+  starting revision; this increment changes only the configuration recovery
+  barrier and the manual fixture. Live macOS Studio/Server rotation
+  acknowledgement and restart-recovery acceptance remain open.
+
 ## Operator service-secret reference catalog — 2026-10-17
 
 - Core now stores only opaque reference ID, service ID, SDK purpose, label,

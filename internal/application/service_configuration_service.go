@@ -165,37 +165,51 @@ func (service *ServiceConfigurationService) Submit(ctx context.Context, command 
 		}
 		return models.Operation{}, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
 	}
-	operation, found, err := service.Operations.FindByIdempotency(ctx, reservation.Operation.Actor, reservation.Scope, reservation.Key, reservation.RequestDigest)
-	if err != nil {
-		return models.Operation{}, err
+	// Recovery must not observe the brief gap between reserving the operation
+	// and linking its candidate generation. It would otherwise classify a valid
+	// in-flight submission as a corrupt reservation and fail it before the
+	// candidate is committed.
+	SnapshotActivationLock.Lock()
+	operation, candidate, created, submitErr := func() (models.Operation, models.ServiceConfigurationRevision, bool, error) {
+		operation, found, err := service.Operations.FindByIdempotency(ctx, reservation.Operation.Actor, reservation.Scope, reservation.Key, reservation.RequestDigest)
+		if err != nil {
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, err
+		}
+		if found {
+			return operation, models.ServiceConfigurationRevision{}, false, nil
+		}
+		current, _, err := service.Store.Current(ctx, command.InstanceID)
+		if err != nil {
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, err
+		}
+		if current.Revision != command.ExpectedRevision {
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationConflict{}
+		}
+		reservation.Operation.State = service.OperationStates.Pending
+		operation, created, err := service.Operations.Reserve(ctx, reservation)
+		if err != nil {
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, err
+		}
+		if !created {
+			return operation, models.ServiceConfigurationRevision{}, false, nil
+		}
+		candidate, err := service.Store.CreateCandidate(ctx, operation.ID, service.OperationKind, service.OperationStates.Pending,
+			command.InstanceID, command.ExpectedRevision, command.SchemaVersion, command.SettingsJSON,
+			withConfigurationAudit(command.CandidateAudit, command.InstanceID))
+		if err != nil {
+			_ = service.Operations.Transition(ctx, operation.ID, service.OperationStates.Pending, service.OperationStates.Failed, service.OperationFailureCodes.Conflict)
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, err
+		}
+		return operation, candidate, true, nil
+	}()
+	SnapshotActivationLock.Unlock()
+	if submitErr != nil {
+		return models.Operation{}, submitErr
 	}
-	if found {
-		return operation, nil
+	if created {
+		command.CandidateRevision = candidate.Revision
+		service.scheduleApply(command, operation)
 	}
-	current, _, err := service.Store.Current(ctx, command.InstanceID)
-	if err != nil {
-		return models.Operation{}, err
-	}
-	if current.Revision != command.ExpectedRevision {
-		return models.Operation{}, models.ServiceConfigurationConflict{}
-	}
-	reservation.Operation.State = service.OperationStates.Pending
-	operation, created, err := service.Operations.Reserve(ctx, reservation)
-	if err != nil {
-		return models.Operation{}, err
-	}
-	if !created {
-		return operation, nil
-	}
-	candidate, err := service.Store.CreateCandidate(ctx, operation.ID, service.OperationKind, service.OperationStates.Pending,
-		command.InstanceID, command.ExpectedRevision, command.SchemaVersion, command.SettingsJSON,
-		withConfigurationAudit(command.CandidateAudit, command.InstanceID))
-	if err != nil {
-		_ = service.Operations.Transition(ctx, operation.ID, service.OperationStates.Pending, service.OperationStates.Failed, service.OperationFailureCodes.Conflict)
-		return models.Operation{}, err
-	}
-	command.CandidateRevision = candidate.Revision
-	service.scheduleApply(command, operation)
 	return operation, nil
 }
 

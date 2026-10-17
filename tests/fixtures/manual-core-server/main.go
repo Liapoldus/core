@@ -1909,7 +1909,7 @@ func settings(publicAddress, siteAddress, origin, siteReleaseID string) []byte {
 			"type": "static", "siteId": "manual-site", "releaseId": siteReleaseID, "mountPrefix": "/",
 		}})
 	}
-	value, _ := json.Marshal(map[string]any{"schemaVersion": 1, "config": map[string]any{
+	value, _ := json.Marshal(map[string]any{"schemaVersion": 2, "config": map[string]any{
 		"listeners": []any{
 			map[string]any{"id": "web", "kind": "http", "address": publicAddress,
 				"hostnames": []string{}, "protocols": []string{"http1"}, "tls": map[string]any{"mode": "disabled"}},
@@ -2453,7 +2453,21 @@ func waitOperation(client *http.Client, base, token, id, databasePath string) er
 		case "succeeded":
 			return nil
 		case "failed":
-			return fmt.Errorf("Core settings operation failed: %s", body.ErrorCode)
+			var activeGeneration, highestGeneration int64
+			var candidateGeneration, openServiceRollouts, activeTrafficRollouts int64
+			database, databaseErr := sql.Open("sqlite", databasePath)
+			if databaseErr == nil {
+				_ = database.QueryRow(`SELECT COALESCE(MAX(CASE WHEN slot = 'active' THEN generation END), 0), COALESCE(MAX(generation), 0) FROM service_config_generations WHERE instance_id = ?`, "server-child").Scan(&activeGeneration, &highestGeneration)
+				var candidate json.RawMessage
+				if database.QueryRow(`SELECT result_json FROM operations WHERE id = ?`, id).Scan(&candidate) == nil {
+					_ = json.Unmarshal(candidate, &candidateGeneration)
+				}
+				_ = database.QueryRow(`SELECT COUNT(*) FROM service_rollouts WHERE instance_id = ? AND open = 1`, "server-child").Scan(&openServiceRollouts)
+				_ = database.QueryRow(`SELECT COUNT(*) FROM traffic_rollouts WHERE instance_id = ? AND state <> 'completed'`, "server-child").Scan(&activeTrafficRollouts)
+				_ = database.Close()
+			}
+			return fmt.Errorf("Core settings operation failed: %s (active revision %d, highest revision %d, candidate revision %d, open service rollouts %d, active traffic rollouts %d)",
+				body.ErrorCode, activeGeneration, highestGeneration, candidateGeneration, openServiceRollouts, activeTrafficRollouts)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
