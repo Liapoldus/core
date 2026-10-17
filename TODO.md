@@ -18,6 +18,18 @@
   barrier and the manual fixture. Live macOS Studio/Server rotation
   acknowledgement and restart-recovery acceptance remain open.
 
+## Local service-secret integration — 2026-10-18
+
+- Core catalog and scoped grants, CLI OS-vault staging/rotation, and Studio's
+  secure input, reference picker, Project-reference check, and exact
+  replica digest/generation retirement guard are now implemented and pushed by
+  their owners. Current source checkpoints: Core `3d584c1`, CLI `a2ff95e`,
+  Studio `22d03b5`, Service SDK `110ac5e`, Server `2bc9f56`.
+- This supersedes the earlier TODO above that said CLI vault staging and Studio
+  host integration remained open. The remaining gap is live acceptance of
+  multi-replica rotation acknowledgement, timeout/restart recovery, and the
+  packaged Server Editor in macOS WebView; source checks do not close it.
+
 ## Operator service-secret reference catalog — 2026-10-17
 
 - Core now stores only opaque reference ID, service ID, SDK purpose, label,
