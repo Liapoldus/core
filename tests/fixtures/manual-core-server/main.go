@@ -372,8 +372,17 @@ func run() error {
 	if err := waitForServiceInstances(databasePath, "server-child", "forms-child"); err != nil {
 		return fmt.Errorf("Core did not durably admit service registrations: %w", err)
 	}
-	firstSettings := settings(publicAddress, siteAddress, oldOrigin.Addr())
-	firstID, err := putSettings(client, base, token, `"0"`, "initial-server-config-0001", firstSettings)
+	siteArchiveBytes, err := siteArchive()
+	if err != nil {
+		return err
+	}
+	siteArchiveDigest := sha256.Sum256(siteArchiveBytes)
+	siteReleaseID := "sha256:" + hex.EncodeToString(siteArchiveDigest[:])
+	// Start Server without a static route so Core can reach its publish action.
+	// After the immutable artifact is published, install the first pinned
+	// generation; rollback later returns to this complete configuration.
+	initialSettings := settings(publicAddress, siteAddress, oldOrigin.Addr(), "")
+	firstID, err := putSettings(client, base, token, `"0"`, "initial-server-config-0001", initialSettings)
 	if err != nil {
 		return err
 	}
@@ -384,21 +393,29 @@ func run() error {
 	if _, err := waitForConvergence(client, base, token); err != nil {
 		return fmt.Errorf("Core did not converge registered replicas before site publish: %w", err)
 	}
+	first, err := readPublic(publicAddress)
+	if err != nil {
+		return err
+	}
 	sitePublishAccepted, siteOperationCompleted, err := publishSite(client, base, token, siteAddress)
 	if err != nil {
 		return fmt.Errorf("%w (replicas: %s; Server logs: %s; Core logs: %s)", err,
 			serviceReplicaObservations(databasePath), serverLogs.lifecycleSummary(), coreLogs.String())
 	}
+	firstSettings := settings(publicAddress, siteAddress, oldOrigin.Addr(), siteReleaseID)
+	firstID, err = putSettings(client, base, token, `"1"`, "published-server-config-0002", firstSettings)
+	if err != nil {
+		return err
+	}
+	if err := waitOperation(client, base, token, firstID, databasePath); err != nil {
+		return err
+	}
 	publishedSite, err := readPublic(siteAddress)
 	if err != nil || publishedSite != "published-site" {
 		return fmt.Errorf("published site did not serve expected content: %q (%v)", publishedSite, err)
 	}
-	first, err := readPublic(publicAddress)
-	if err != nil {
-		return err
-	}
-	secondSettings := settings(publicAddress, siteAddress, newOrigin.Addr())
-	secondID, err := putSettings(client, base, token, `"1"`, "updated-server-config-0002", secondSettings)
+	secondSettings := settings(publicAddress, siteAddress, newOrigin.Addr(), siteReleaseID)
+	secondID, err := putSettings(client, base, token, `"2"`, "updated-server-config-0003", secondSettings)
 	if err != nil {
 		return err
 	}
@@ -599,7 +616,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	rollbackID, err := rollbackSettings(client, base, token, "server-child", `"2"`, "rollback-server-config-0003")
+	rollbackID, err := rollbackSettings(client, base, token, "server-child", `"3"`, "rollback-server-config-0004")
 	if err != nil {
 		return err
 	}
@@ -710,11 +727,11 @@ func run() error {
 	}
 	restartedServer, err := waitPublic(publicAddress)
 	if err != nil {
-		return err
+		return fmt.Errorf("Server failed to restore HTTP after Core restart: %w (logs: %s)", err, serverLogs.lifecycleSummary())
 	}
 	restartedPublishedSite, err := waitPublic(siteAddress)
 	if err != nil {
-		return err
+		return fmt.Errorf("Server failed to restore the published site after Core restart: %w (logs: %s)", err, serverLogs.lifecycleSummary())
 	}
 	rogueStatus, err := pullGeneration(controlAddress, roots, revokedCert, 2)
 	if err != nil || rogueStatus != http.StatusOK {
@@ -1823,7 +1840,26 @@ type originServer struct {
 func (origin *originServer) Addr() string { return origin.listener.Addr().String() }
 func (origin *originServer) Close()       { _ = origin.server.Close() }
 
-func settings(publicAddress, siteAddress, origin string) []byte {
+func settings(publicAddress, siteAddress, origin, siteReleaseID string) []byte {
+	routes := []any{
+		map[string]any{"id": "forms-submit", "listenerId": "web",
+			"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/submit",
+				"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
+				"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
+			"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.submit", "mode": "call", "requestCookieNames": []string{"session"}}},
+		map[string]any{"id": "forms-list", "listenerId": "web",
+			"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/list",
+				"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
+				"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
+			"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.list", "mode": "call"}},
+		map[string]any{"id": "proxy", "listenerId": "web", "handler": map[string]any{
+			"type": "reverseProxy", "upstreams": []any{map[string]any{"origin": "http://" + origin, "weight": 100}}}},
+	}
+	if siteReleaseID != "" {
+		routes = append(routes, map[string]any{"id": "site", "listenerId": "sites", "handler": map[string]any{
+			"type": "static", "siteId": "manual-site", "releaseId": siteReleaseID, "mountPrefix": "/",
+		}})
+	}
 	value, _ := json.Marshal(map[string]any{"schemaVersion": 1, "config": map[string]any{
 		"listeners": []any{
 			map[string]any{"id": "web", "kind": "http", "address": publicAddress,
@@ -1831,21 +1867,7 @@ func settings(publicAddress, siteAddress, origin string) []byte {
 			map[string]any{"id": "sites", "kind": "http", "address": siteAddress,
 				"hostnames": []string{}, "protocols": []string{"http1"}, "tls": map[string]any{"mode": "disabled"}},
 		},
-		"routes": []any{
-			map[string]any{"id": "forms-submit", "listenerId": "web",
-				"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/submit",
-					"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
-					"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
-				"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.submit", "mode": "call", "requestCookieNames": []string{"session"}}},
-			map[string]any{"id": "forms-list", "listenerId": "web",
-				"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/list",
-					"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
-					"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
-				"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.list", "mode": "call"}},
-			map[string]any{"id": "proxy", "listenerId": "web", "handler": map[string]any{
-				"type": "reverseProxy", "upstreams": []any{map[string]any{"origin": "http://" + origin, "weight": 100}}}},
-			map[string]any{"id": "site", "listenerId": "sites", "handler": map[string]any{"type": "static", "siteId": "manual-site"}},
-		},
+		"routes": routes,
 	}})
 	return value
 }
@@ -2623,7 +2645,8 @@ func readPublic(address string) (string, error) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Server public HTTP status %d", response.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 128))
+		return "", fmt.Errorf("Server public HTTP status %d body %q", response.StatusCode, string(body))
 	}
 	contents, err := io.ReadAll(io.LimitReader(response.Body, 128))
 	return string(contents), err
@@ -2631,14 +2654,16 @@ func readPublic(address string) (string, error) {
 
 func waitPublic(address string) (string, error) {
 	deadline := time.Now().Add(10 * time.Second)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		body, err := readPublic(address)
 		if err == nil {
 			return body, nil
 		}
+		lastErr = err
 		time.Sleep(50 * time.Millisecond)
 	}
-	return "", errors.New("restarted Server did not apply active generation")
+	return "", fmt.Errorf("restarted Server did not apply active generation: %w", lastErr)
 }
 
 func issueCertificates() (certificateSet, error) {

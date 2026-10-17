@@ -32,7 +32,7 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
     }
     expect(JSON.parse(output)).toEqual({
       first: "old", second: "new", afterRollback: "old",
-      active: 1, previous: 2, exactDigest: true,
+      active: 2, previous: 3, exactDigest: true,
       formsActive: 2,
       restartedServer: "old",
       sitePublishAccepted: true,
