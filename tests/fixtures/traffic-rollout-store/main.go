@@ -50,7 +50,7 @@ func main() {
 }
 
 func confirmOnce(ctx context.Context, database *sql.DB, store *storage.SQLiteTrafficRolloutStore) {
-	_, err := database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err := database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	_, err = database.ExecContext(ctx, `INSERT INTO operations(id, kind, state, request_id, actor, resource) VALUES (?, ?, ?, ?, ?, ?)`, "operation-1", "traffic-rollout", "running", "request-1", "operator", "forms")
 	check(err)
@@ -85,7 +85,7 @@ func digest(value string) string {
 }
 
 func lifecycle(ctx context.Context, database *sql.DB, store *storage.SQLiteTrafficRolloutStore) {
-	_, err := database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err := database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	_, err = database.ExecContext(ctx, `INSERT INTO operations(id, kind, state, request_id, actor, resource) VALUES (?, ?, ?, ?, ?, ?)`, "operation-1", "traffic-rollout", "running", "request-1", "operator", "forms")
 	check(err)
@@ -136,7 +136,7 @@ func planDocument(requireApproval bool) []byte {
 func create(ctx context.Context, database *sql.DB, store *storage.SQLiteTrafficRolloutStore) {
 	// The fixture inserts only the control-plane parent rows required by the
 	// durable traffic rollout aggregate.
-	_, err := database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err := database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	for _, id := range []string{"operation-1", "operation-2"} {
 		_, err = database.ExecContext(ctx, `INSERT INTO operations(id, kind, state, request_id, actor, resource) VALUES (?, ?, ?, ?, ?, ?)`, id, "traffic-rollout", "running", id, "operator", "forms")
@@ -145,7 +145,7 @@ func create(ctx context.Context, database *sql.DB, store *storage.SQLiteTrafficR
 	if err := store.Create(ctx, record("operation-1", "rollout-1")); err != nil {
 		panic(err)
 	}
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_rollouts(operation_id, instance_id, generation, open, created_at) VALUES (?, ?, ?, 0, ?)`,
+	_, err = database.ExecContext(ctx, `INSERT INTO service_rollouts(operation_id, instance_id, generation, open, created_at) VALUES (?, ?, ?, 0, ?)`,
 		"operation-1", "forms", 8, time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano))
 	check(err)
 	duplicateRejected := store.Create(ctx, record("operation-2", "rollout-2")) == (models.TrafficRolloutConflict{})

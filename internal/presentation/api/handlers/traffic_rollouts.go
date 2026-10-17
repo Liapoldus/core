@@ -17,18 +17,18 @@ import (
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 )
 
-func IsTrafficRolloutCollectionPath(deps PluginDependencies, path string) bool {
+func IsTrafficRolloutCollectionPath(deps ServiceDependencies, path string) bool {
 	_, ok := trafficRolloutInstanceID(deps, path)
 	return ok
 }
 
-func IsTrafficRolloutApprovalPath(deps PluginDependencies, path string) bool {
+func IsTrafficRolloutApprovalPath(deps ServiceDependencies, path string) bool {
 	_, _, _, ok := trafficRolloutApprovalPath(deps, path)
 	return ok
 }
 
-func IsTrafficRolloutDetailPath(deps PluginDependencies, path string) bool {
-	prefix := deps.Management.Paths.Plugins + deps.Management.Paths.PluginIDSeparator
+func IsTrafficRolloutDetailPath(deps ServiceDependencies, path string) bool {
+	prefix := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
 	resource := strings.TrimPrefix(path, prefix)
 	if resource == path {
 		return false
@@ -37,12 +37,12 @@ func IsTrafficRolloutDetailPath(deps PluginDependencies, path string) bool {
 	return found && instanceID != "" && rolloutID != "" && !strings.ContainsAny(instanceID+rolloutID, "/\\")
 }
 
-func TrafficRolloutGet(deps PluginDependencies, response http.ResponseWriter, request *http.Request, path, requestID string) {
+func TrafficRolloutGet(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, path, requestID string) {
 	if request.Method != deps.Management.Methods.Get || deps.TrafficRollouts == nil {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
 		return
 	}
-	prefix := deps.Management.Paths.Plugins + deps.Management.Paths.PluginIDSeparator
+	prefix := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
 	resource := strings.TrimPrefix(path, prefix)
 	instanceID, rolloutID, _ := strings.Cut(resource, deps.TrafficRolloutAPI.CollectionSuffix+deps.TrafficRolloutAPI.RolloutIDSeparator)
 	record, err := deps.TrafficRollouts.Get(request.Context(), rolloutID)
@@ -57,14 +57,14 @@ func TrafficRolloutGet(deps PluginDependencies, response http.ResponseWriter, re
 			"state": stage.State}
 	}
 	response.Header().Set(deps.Management.Headers.ETag, revisionETag(record.Revision))
-	deps.WriteJSON(response, http.StatusOK, map[string]any{"id": record.ID, "pluginId": record.InstanceID,
+	deps.WriteJSON(response, http.StatusOK, map[string]any{"id": record.ID, "serviceId": record.InstanceID,
 		"generation": record.Generation, "revision": record.Revision, "releaseSha256": record.ReleaseSHA256,
 		"state": record.State, "activeStageIndex": record.ActiveStageIndex, "stages": stages})
 }
 
-func trafficRolloutApprovalPath(deps PluginDependencies, path string) (string, string, string, bool) {
-	prefix := deps.Management.Paths.Plugins + deps.Management.Paths.PluginIDSeparator
-	if prefix == deps.Management.Paths.PluginIDSeparator || deps.TrafficRolloutAPI.CollectionSuffix == "" ||
+func trafficRolloutApprovalPath(deps ServiceDependencies, path string) (string, string, string, bool) {
+	prefix := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
+	if prefix == deps.Management.Paths.ServiceIDSeparator || deps.TrafficRolloutAPI.CollectionSuffix == "" ||
 		deps.TrafficRolloutAPI.ApprovalStageSegment == "" || deps.TrafficRolloutAPI.ApprovalSuffix == "" {
 		return "", "", "", false
 	}
@@ -73,7 +73,7 @@ func trafficRolloutApprovalPath(deps PluginDependencies, path string) (string, s
 		return "", "", "", false
 	}
 	instanceID, remainder, found := strings.Cut(resource, deps.TrafficRolloutAPI.CollectionSuffix+"/")
-	if !found || instanceID == "" || strings.Contains(instanceID, deps.Management.Paths.PluginIDSeparator) {
+	if !found || instanceID == "" || strings.Contains(instanceID, deps.Management.Paths.ServiceIDSeparator) {
 		return "", "", "", false
 	}
 	rolloutID, stagePart, found := strings.Cut(remainder, deps.TrafficRolloutAPI.ApprovalStageSegment)
@@ -87,10 +87,10 @@ func trafficRolloutApprovalPath(deps PluginDependencies, path string) (string, s
 	return instanceID, rolloutID, stageID, true
 }
 
-func trafficRolloutInstanceID(deps PluginDependencies, path string) (string, bool) {
-	prefix := deps.Management.Paths.Plugins + deps.Management.Paths.PluginIDSeparator
+func trafficRolloutInstanceID(deps ServiceDependencies, path string) (string, bool) {
+	prefix := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
 	suffix := deps.TrafficRolloutAPI.CollectionSuffix
-	if prefix == deps.Management.Paths.PluginIDSeparator || suffix == "" {
+	if prefix == deps.Management.Paths.ServiceIDSeparator || suffix == "" {
 		return "", false
 	}
 	resource := strings.TrimPrefix(path, prefix)
@@ -98,11 +98,11 @@ func trafficRolloutInstanceID(deps PluginDependencies, path string) (string, boo
 		return "", false
 	}
 	instanceID := strings.TrimSuffix(resource, suffix)
-	return instanceID, instanceID != "" && !strings.Contains(instanceID, deps.Management.Paths.PluginIDSeparator)
+	return instanceID, instanceID != "" && !strings.Contains(instanceID, deps.Management.Paths.ServiceIDSeparator)
 }
 
 func TrafficRolloutCreate(
-	deps PluginDependencies,
+	deps ServiceDependencies,
 	response http.ResponseWriter,
 	request *http.Request,
 	path, requestID, actor string,
@@ -113,7 +113,7 @@ func TrafficRolloutCreate(
 	}
 	instanceID, matched := trafficRolloutInstanceID(deps, path)
 	if !matched {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginNotFound, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
 		return
 	}
 	if deps.TrafficRollouts == nil || deps.Operations.Store == nil || deps.TrafficRollouts.MaximumConfigurationBytes < 1 ||
@@ -128,7 +128,7 @@ func TrafficRolloutCreate(
 	defer clear(metadata)
 	defer clear(configuration)
 	if _, err := application.ParseTrafficRolloutPlan(metadata); err != nil {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginConfigInvalid, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceConfigInvalid, requestID)
 		return
 	}
 	expectedRevision, valid := parseStrongRevisionETag(request.Header.Get(deps.Management.Headers.IfMatch))
@@ -169,7 +169,7 @@ func TrafficRolloutCreate(
 		return
 	}
 	if created {
-		response.Header().Set(deps.Management.Headers.Location, deps.Management.Paths.Operations+deps.Management.Paths.PluginIDSeparator+result.ID)
+		response.Header().Set(deps.Management.Headers.Location, deps.Management.Paths.Operations+deps.Management.Paths.ServiceIDSeparator+result.ID)
 	}
 	deps.WriteJSON(response, http.StatusAccepted, map[string]any{
 		deps.Management.JSON.OperationID: result.ID,
@@ -178,14 +178,14 @@ func TrafficRolloutCreate(
 	})
 }
 
-func TrafficRolloutApproveStage(deps PluginDependencies, response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+func TrafficRolloutApproveStage(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
 	if request.Method != deps.Management.Methods.Post {
 		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
 		return
 	}
 	instanceID, rolloutID, stageID, matched := trafficRolloutApprovalPath(deps, path)
 	if !matched || deps.TrafficRollouts == nil {
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginNotFound, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
 		return
 	}
 	revision, valid := parseStrongRevisionETag(request.Header.Get(deps.Management.Headers.IfMatch))
@@ -228,7 +228,7 @@ func TrafficRolloutApproveStage(deps PluginDependencies, response http.ResponseW
 }
 
 func readTrafficRolloutMultipart(
-	deps PluginDependencies,
+	deps ServiceDependencies,
 	response http.ResponseWriter,
 	request *http.Request,
 	requestID string,
@@ -282,7 +282,7 @@ func readTrafficRolloutMultipart(
 		if readErr != nil || int64(len(data)) > limit || !utf8.Valid(data) {
 			clear(data)
 			clearMultipartParts(parts)
-			deps.WriteCatalogProblem(response, deps.Management.Codes.PluginConfigInvalid, requestID)
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceConfigInvalid, requestID)
 			return nil, nil, false
 		}
 		parts[name] = data
@@ -319,21 +319,21 @@ func clearMultipartParts(parts map[string][]byte) {
 	}
 }
 
-func writeTrafficRolloutFailure(deps PluginDependencies, response http.ResponseWriter, requestID string, err error) {
-	var conflict models.PluginConfigurationConflict
-	var notFound models.PluginConfigurationNotFound
+func writeTrafficRolloutFailure(deps ServiceDependencies, response http.ResponseWriter, requestID string, err error) {
+	var conflict models.ServiceConfigurationConflict
+	var notFound models.ServiceConfigurationNotFound
 	var rolloutNotFound models.TrafficRolloutNotFound
 	var invalid models.TrafficRolloutInvalid
 	var rolloutConflict models.TrafficRolloutConflict
 	var idempotency models.IdempotencyConflict
-	var unavailable models.PluginConfigurationUnavailable
+	var unavailable models.ServiceConfigurationUnavailable
 	switch {
 	case errors.Is(err, application.ErrInvalidTrafficRolloutPlan), errors.As(err, &invalid):
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginConfigInvalid, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceConfigInvalid, requestID)
 	case errors.As(err, &notFound), errors.As(err, &rolloutNotFound):
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginNotFound, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
 	case errors.As(err, &conflict), errors.As(err, &rolloutConflict):
-		deps.WriteCatalogProblem(response, deps.Management.Codes.PluginRevisionConflict, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceRevisionConflict, requestID)
 	case errors.As(err, &idempotency):
 		deps.WriteCatalogProblem(response, deps.Management.Codes.IdempotencyConflict, requestID)
 	case errors.As(err, &unavailable):

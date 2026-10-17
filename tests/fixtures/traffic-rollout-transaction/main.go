@@ -28,7 +28,7 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err = database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	store, err := storage.NewSQLiteTrafficRolloutStore(database)
 	check(err)
@@ -39,7 +39,7 @@ func main() {
 		ExpectedRevision: 0, SchemaVersion: 1, SettingsJSON: settings,
 		Reservation: models.OperationReservation{
 			Operation: models.Operation{ID: "operation-1", Kind: "traffic-rollout", State: "pending", CreatedAt: now, RequestID: "request-1", Actor: "operator", Resource: "forms"},
-			Scope:     "/api/plugins/forms/rollouts", Key: "rollout-key", RequestDigest: requestDigest,
+			Scope:     "/api/services/forms/rollouts", Key: "rollout-key", RequestDigest: requestDigest,
 		},
 		Record: models.TrafficRolloutRecord{
 			ID: "rollout-1", OperationID: "operation-1", InstanceID: "forms", ReleaseSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -60,33 +60,33 @@ func main() {
 	_, _, differentErr := store.CreateAndPromote(ctx, different)
 	var generation int64
 	var raw []byte
-	check(database.QueryRowContext(ctx, `SELECT generation, raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms").Scan(&generation, &raw))
+	check(database.QueryRowContext(ctx, `SELECT generation, raw_json FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms").Scan(&generation, &raw))
 	counts := map[string]int{}
 	for name, query := range map[string]string{
-		"trafficRollouts": `SELECT COUNT(*) FROM traffic_rollouts`, "pluginRollouts": `SELECT COUNT(*) FROM plugin_rollouts`,
-		"pluginTargets": `SELECT COUNT(*) FROM plugin_rollout_targets`, "operations": `SELECT COUNT(*) FROM operations`,
+		"trafficRollouts": `SELECT COUNT(*) FROM traffic_rollouts`, "serviceRollouts": `SELECT COUNT(*) FROM service_rollouts`,
+		"serviceTargets": `SELECT COUNT(*) FROM service_rollout_targets`, "operations": `SELECT COUNT(*) FROM operations`,
 		"auditEvents": `SELECT COUNT(*) FROM audit_events`,
 	} {
 		var count int
 		check(database.QueryRowContext(ctx, query).Scan(&count))
 		counts[name] = count
 	}
-	rows, err := database.QueryContext(ctx, `SELECT replica_id FROM plugin_rollout_targets WHERE operation_id = ? ORDER BY replica_id`, operation.ID)
+	rows, err := database.QueryContext(ctx, `SELECT replica_id FROM service_rollout_targets WHERE operation_id = ? ORDER BY replica_id`, operation.ID)
 	check(err)
-	pluginTargetIDs := make([]string, 0)
+	serviceTargetIDs := make([]string, 0)
 	for rows.Next() {
 		var replicaID string
 		check(rows.Scan(&replicaID))
-		pluginTargetIDs = append(pluginTargetIDs, replicaID)
+		serviceTargetIDs = append(serviceTargetIDs, replicaID)
 	}
 	check(rows.Err())
 	check(rows.Close())
 	check(json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"created": created && operation.ID == "operation-1", "idempotentReplay": !replayCreated && replayed.ID == operation.ID,
 		"differentRequestRejected": differentErr != nil, "activeGeneration": generation, "activeRawJSON": string(raw),
-		"trafficRollouts": counts["trafficRollouts"], "pluginRollouts": counts["pluginRollouts"],
-		"pluginTargets": counts["pluginTargets"], "operations": counts["operations"], "auditEvents": counts["auditEvents"],
-		"pluginTargetIDs": pluginTargetIDs,
+		"trafficRollouts": counts["trafficRollouts"], "serviceRollouts": counts["serviceRollouts"],
+		"serviceTargets": counts["serviceTargets"], "operations": counts["operations"], "auditEvents": counts["auditEvents"],
+		"serviceTargetIDs": serviceTargetIDs,
 	}))
 }
 

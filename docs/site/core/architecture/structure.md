@@ -4,28 +4,28 @@
 плоские application use cases, domain-only models/interfaces, технические
 infrastructure adapters и входной Management API. Универсальный `liapoldus` CLI
 является отдельным репозиторием и клиентом API. Caddy runtime и public
-traffic handlers принадлежат отдельному `plugins/server` и не входят в Core.
-Plugin protocol generated types, SQLite driver, filesystem и TLS SDK не
+traffic handlers принадлежат отдельному `services/server` и не входят в Core.
+Service protocol generated types, SQLite driver, filesystem и TLS SDK не
 проникают в domain models или public API DTO.
 
 ## Целевые Core adapters
 
 - `CORE_SQLITE_PATH` и SQLite для собственных настроек Core; одноразовый
   bootstrap выполняется до открытия Management API;
-- SQLite migrations/repositories для generic plugin instances, JSON config
+- SQLite migrations/repositories для generic service instances, JSON config
   generations (`active`/`previous` и internal `staging`), per-replica
   endpoints/identity references, operations, idempotency, access и audit;
-- Plugin SDK REST client для заранее вручную запущенных plugin replicas,
+- Service SDK REST client для заранее вручную запущенных service replicas,
   scoped secret grants и immutable in-memory
   desired/applied generations;
-- Management REST API для plugin-neutral lifecycle, settings, health, operations,
+- Management REST API для service-neutral lifecycle, settings, health, operations,
   access и audit. CLI, Git и deployment adapters сюда не входят.
 
 Core не содержит Caddy build/runtime adapter, Caddy Admin pass-through,
 route/group compiler, Caddy-specific API, public HTTP listener или traffic
-proxy. `plugins/server` сам владеет Caddy и вызывает другие plugin
-instances через разрешённые plugin-to-plugin peer connections. Core не импортирует
-`pluginprotocol`; он использует только Plugin SDK REST. См.
+proxy. `services/server` сам владеет Caddy и вызывает другие service
+instances через разрешённые service-to-service peer connections. Core не импортирует
+`wool`; он использует только Service SDK REST. См.
 [границы библиотек](protocol).
 
 ## Обязательная структура четырёх слоёв
@@ -37,14 +37,14 @@ instances через разрешённые plugin-to-plugin peer connections. C
 | --- | --- | --- |
 | `internal/domain` | Только `models/` и `interfaces/`. `models/` содержит модели и связанные typed errors; `interfaces/` — порты. Каждая модель, typed error и интерфейс объявляются в отдельном файле. Допустимы валидирующие конструкторы и валидация модели. | Use cases, реализации, I/O, зависимости от инфраструктуры, отдельные `types`, `errors`, `services` или другие каталоги. |
 | `internal/application` | Плоский набор use cases и их orchestration-кода. | Глубокие деревья каталогов, транспортные DTO, SQL/Caddy/gRPC детали, `reflect`-диспетчеризация. |
-| `internal/infrastructure` | Реализации портов, сгруппированные по техническим адаптерам в тематические подкаталоги. | Предметные правила конкретных плагинов и публичные API-типы. |
+| `internal/infrastructure` | Реализации портов, сгруппированные по техническим адаптерам в тематические подкаталоги. | Предметные правила конкретных сервисов и публичные API-типы. |
 | `internal/presentation` | Только входной адаптер `api/` и `api/handlers/`. | CLI, Git, deployment adapters, хранилища, бизнес-логика и Caddy data-plane handlers. Другие корневые пакеты и произвольные вложенные package-каталоги не вводятся. |
 
 Composition root и запуск единственного Core процесса находятся в
 `cmd/core` является runtime composition root; Go unit/integration tests размещаются
 рядом с кодом, а TypeScript frontend/HTTP/child-process tests — в `tests/`. SQL, сообщения и неизменяемые
 определения принадлежат коду. Публичные schemas/OpenAPI переходят на generated
-artifacts; в `assets/` не допускается Go-код. Plugin binaries
+artifacts; в `assets/` не допускается Go-код. Service binaries
 собираются и тестируются в собственных репозиториях; Core подключает к ним
 только общие protocol interfaces.
 
@@ -78,8 +78,8 @@ loaders и runtime bootstrap остаются открытыми в TODO.
 SQLite foreign keys, migrations, write transaction boundaries и crash recovery
 покрываются native Go tests и TypeScript black-box API/child-process tests. Изменение
 Core desired configuration валидируется до durable metadata pointer commit;
-активация plugin settings/generations ожидает точных protocol ACK. Между
-SQLite и удалённым plugin нет общей ACID transaction: durable operation journal
+активация service settings/generations ожидает точных protocol ACK. Между
+SQLite и удалённым service нет общей ACID transaction: durable operation journal
 и компенсация обязательны. Orphaned immutable files допустимы для безопасного
 последующего GC; dangling metadata references недопустимы.
 

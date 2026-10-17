@@ -22,7 +22,7 @@ func (applier *partialApplier) ApplyConfiguration(_ context.Context, _ string, g
 	applier.calls++
 	applier.genIDsApplied = append(applier.genIDsApplied, generation)
 	if applier.failFirst && applier.calls == 1 {
-		return models.PluginConfigurationConvergencePending{}
+		return models.ServiceConfigurationConvergencePending{}
 	}
 	return nil
 }
@@ -31,7 +31,7 @@ func main() {
 	ctx := context.Background()
 	management, err := config.LoadManagement()
 	check(err)
-	pluginConfig, err := config.LoadPluginConfiguration()
+	serviceConfig, err := config.LoadServiceConfiguration()
 	check(err)
 	sqlite, err := config.LoadSQLiteContract()
 	check(err)
@@ -47,11 +47,11 @@ func main() {
 	if len(os.Args) != 3 {
 		panic("expected database path and phase")
 	}
-	configStore, err := storage.NewSQLitePluginConfigurationStore(database)
+	configStore, err := storage.NewSQLiteServiceConfigurationStore(database)
 	check(err)
 	operationStore, err := storage.NewSQLiteOperationStore(database)
 	check(err)
-	service := newService(configStore, operationStore, management, pluginConfig)
+	service := newService(configStore, operationStore, management, serviceConfig)
 	if os.Args[2] == "recover" {
 		recoverAfterRestart(ctx, service, operationStore)
 		return
@@ -59,10 +59,10 @@ func main() {
 	if os.Args[2] != "begin" {
 		panic("unknown phase")
 	}
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
+	_, err = database.ExecContext(ctx, `INSERT INTO service_instances (id, manifest_json, state) VALUES (?, ?, ?)`,
 		"registered", []byte(`{}`), "configured")
 	check(err)
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations
+	_, err = database.ExecContext(ctx, `INSERT INTO service_config_generations
 		(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
 		VALUES (?, 1, 'active', ?, ?, 1, ?)`, "registered", []byte(`{"version":1}`),
 		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", time.Now().UTC().Format(time.RFC3339Nano))
@@ -73,18 +73,18 @@ func main() {
 	service.ScheduleWorker = func(worker func()) { workers = append(workers, worker) }
 	raw := []byte(`{ "version" : 2 }`)
 	payload := models.OperationPayload{
-		Version: pluginConfig.SchemaVersion, Resource: "registered", ExpectedRevision: 1, SchemaVersion: 1,
+		Version: serviceConfig.SchemaVersion, Resource: "registered", ExpectedRevision: 1, SchemaVersion: 1,
 	}
 	payload.Digest = payload.ComputeDigest(raw)
 	reservation := models.OperationReservation{
 		Operation: models.Operation{
-			ID: "operation-registered-rollout", Kind: management.OperationKinds.PluginSettingsApply,
+			ID: "operation-registered-rollout", Kind: management.OperationKinds.ServiceSettingsApply,
 			State: management.Statuses.Pending, RequestID: "request-registered-rollout",
 			Actor: "operator", Resource: "registered", CreatedAt: time.Now().UTC(),
 		},
-		Scope: "plugin-settings:registered", Key: "registered-rollout-key", RequestDigest: payload.Digest, Payload: &payload,
+		Scope: "service-settings:registered", Key: "registered-rollout-key", RequestDigest: payload.Digest, Payload: &payload,
 	}
-	operation, err := service.Submit(ctx, application.ApplyPluginConfigurationCommand{
+	operation, err := service.Submit(ctx, application.ApplyServiceConfigurationCommand{
 		InstanceID: "registered", ExpectedRevision: 1, SchemaVersion: 1, SettingsJSON: raw,
 		CandidateAudit: models.AuditRecord{Actor: "operator", Action: "candidate", Result: "pending", RequestID: "request-registered-rollout"},
 		AppliedAudit:   models.AuditRecord{Actor: "operator", Action: "apply", Result: "succeeded", RequestID: "request-registered-rollout"},
@@ -104,22 +104,22 @@ func main() {
 	}))
 }
 
-func newService(configStore *storage.SQLitePluginConfigurationStore, operationStore *storage.SQLiteOperationStore, management config.ManagementWords, pluginConfig config.PluginConfigurationWords) *application.PluginConfigurationService {
-	return &application.PluginConfigurationService{
+func newService(configStore *storage.SQLiteServiceConfigurationStore, operationStore *storage.SQLiteOperationStore, management config.ManagementWords, serviceConfig config.ServiceConfigurationWords) *application.ServiceConfigurationService {
+	return &application.ServiceConfigurationService{
 		Store: configStore, Operations: application.OperationService{Store: operationStore},
-		OperationKind: management.OperationKinds.PluginSettingsApply,
-		OperationStates: application.PluginConfigurationOperationStates{
+		OperationKind: management.OperationKinds.ServiceSettingsApply,
+		OperationStates: application.ServiceConfigurationOperationStates{
 			Pending: management.Statuses.Pending, Running: management.Statuses.Running,
 			Succeeded: management.Statuses.Succeeded, Failed: management.Statuses.Failed,
 		},
-		OperationFailureCodes: application.PluginConfigurationFailureCodes{ApplyFailed: management.Codes.ActivationFailed},
-		RevisionStates:        application.PluginConfigurationRevisionStates{Active: pluginConfig.Slots.Active, Candidate: pluginConfig.Slots.Staging},
-		PayloadVersion:        pluginConfig.SchemaVersion, MaximumPayloadBytes: pluginConfig.MaximumPayloadBytes,
+		OperationFailureCodes: application.ServiceConfigurationFailureCodes{ApplyFailed: management.Codes.ActivationFailed},
+		RevisionStates:        application.ServiceConfigurationRevisionStates{Active: serviceConfig.Slots.Active, Candidate: serviceConfig.Slots.Staging},
+		PayloadVersion:        serviceConfig.SchemaVersion, MaximumPayloadBytes: serviceConfig.MaximumPayloadBytes,
 		PayloadFailureCode: management.Codes.ActivationFailed,
 	}
 }
 
-func recoverAfterRestart(ctx context.Context, service *application.PluginConfigurationService, operationStore *storage.SQLiteOperationStore) {
+func recoverAfterRestart(ctx context.Context, service *application.ServiceConfigurationService, operationStore *storage.SQLiteOperationStore) {
 	operationID := "operation-registered-rollout"
 	before, err := operationStore.Get(ctx, operationID)
 	check(err)

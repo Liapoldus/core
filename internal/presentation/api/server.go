@@ -13,41 +13,41 @@ import (
 	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 )
 
 type Server struct {
-	CoreSettings       interfaces.CoreSettings
-	ValidateSettings   func([]byte) error
-	Token              string
-	ServiceAccounts    []models.ServiceAccount
-	mu                 sync.RWMutex
-	Operations         application.OperationService
-	ConfigBundles      *application.ConfigBundleService
-	PluginAdminControl *plugins.SDKAdminControl
-	PluginLinks        *application.PluginLinkPolicyService
-	PluginMetadata     func(context.Context, string) (models.PluginMetadata, error)
-	RegisterPlugin     func(context.Context, models.PluginRegistration) (models.PluginRegistrationResult, error)
-	TrafficRollouts    *application.TrafficRolloutService
-	TrafficRolloutAPI  config.TrafficRolloutAPIContract
-	Plugins            []any
-	PluginIDField      string
-	Audit              *application.AuditService
-	AccessService      *application.AccessService
-	DataPlaneState     string
-	DataPlaneReason    string
-	DataPlaneReadiness func(context.Context) (string, string)
-	DataPlaneDrift     func(context.Context) bool
-	AuditWords         config.AuditWords
-	Management         config.ManagementWords
-	Errors             config.ErrorCatalog
-	TLSConfig          *tls.Config
-	contractOnce       sync.Once
+	CoreSettings        interfaces.CoreSettings
+	ValidateSettings    func([]byte) error
+	Token               string
+	ServiceAccounts     []models.ServiceAccount
+	mu                  sync.RWMutex
+	Operations          application.OperationService
+	ConfigBundles       *application.ConfigBundleService
+	ServiceAdminControl *services.SDKAdminControl
+	ServiceLinks        *application.ServiceLinkPolicyService
+	ServiceMetadata     func(context.Context, string) (models.ServiceMetadata, error)
+	RegisterService     func(context.Context, models.ServiceRegistration) (models.ServiceRegistrationResult, error)
+	TrafficRollouts     *application.TrafficRolloutService
+	TrafficRolloutAPI   config.TrafficRolloutAPIContract
+	Services            []any
+	ServiceIDField      string
+	Audit               *application.AuditService
+	AccessService       *application.AccessService
+	DataPlaneState      string
+	DataPlaneReason     string
+	DataPlaneReadiness  func(context.Context) (string, string)
+	DataPlaneDrift      func(context.Context) bool
+	AuditWords          config.AuditWords
+	Management          config.ManagementWords
+	Errors              config.ErrorCatalog
+	TLSConfig           *tls.Config
+	contractOnce        sync.Once
 }
 
 func (server *Server) Handler() http.Handler {
 	server.contractOnce.Do(func() {
-		if server.Management.Paths.Plugins == "" {
+		if server.Management.Paths.Services == "" {
 			server.Management, _ = config.LoadManagement()
 		}
 		server.Errors, _ = config.LoadErrorCatalog()
@@ -55,17 +55,17 @@ func (server *Server) Handler() http.Handler {
 	return http.HandlerFunc(server.handle)
 }
 
-func (server *Server) Listen(ctx context.Context, address string, configurations ...*application.PluginConfigurationService) error {
+func (server *Server) Listen(ctx context.Context, address string, configurations ...*application.ServiceConfigurationService) error {
 	return server.ListenWithReady(ctx, address, nil, configurations...)
 }
 
 // ListenWithReady binds the management listener before reporting readiness.
 // The optional ready channel is used by the public Core host composition so a
 // caller never observes a ready host before its management socket exists.
-func (server *Server) ListenWithReady(ctx context.Context, address string, ready chan<- struct{}, configurations ...*application.PluginConfigurationService) error {
+func (server *Server) ListenWithReady(ctx context.Context, address string, ready chan<- struct{}, configurations ...*application.ServiceConfigurationService) error {
 	handler := server.Handler()
 	if len(configurations) > 0 {
-		handler = WithPluginConfigurations(handler, configurations[0])
+		handler = WithServiceConfigurations(handler, configurations[0])
 	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {

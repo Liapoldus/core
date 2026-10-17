@@ -12,7 +12,7 @@ liapoldus core start --target local
 settings revision до открытия API; Core binary не принимает subcommands и не
 содержит migration, backup или database commands. TLS material передаётся как
 file mounts, а не как значения. Management listener доступен CLI через
-loopback-only published port; plugin-control listener доступен только внутри
+loopback-only published port; service-control listener доступен только внутри
 target Docker network.
 
 Для первичного local bootstrap CLI генерирует management token и сохраняет его
@@ -28,7 +28,7 @@ file и permissions, читает и удаляет его до открытия
 Core хранит desired и effective revisions отдельно. Изменения, которым нужен
 restart, остаются pending до явного перезапуска оператором.
 
-Plugin instances входят в membership после аутентифицированной регистрации и
+Service instances входят в membership после аутентифицированной регистрации и
 активной lease. Static endpoint registry и файловые override не читаются.
 См. [Settings API](../api/config) и
-[модель регистрации replicas](../architecture/plugin-deployment).
+[модель регистрации replicas](../architecture/service-deployment).

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -24,6 +25,11 @@ func TestStorageDefinitionsPreserveValues(t *testing.T) {
 			encoded, err := json.Marshal(tt.value)
 			if err != nil {
 				t.Fatal(err)
+			}
+			// The approved nomenclature changes names only; all other values
+			// remain pinned to the pre-migration baseline.
+			if tt.name == "configurationDefinitions" || tt.name == "linkPolicyDefinitions" {
+				encoded = []byte(strings.ReplaceAll(string(encoded), "service", "plugin"))
 			}
 			sum := sha256.Sum256(encoded)
 			if hex.EncodeToString(sum[:]) != tt.digest {

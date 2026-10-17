@@ -24,7 +24,7 @@ interface Observations {
 describe("Core peer link policy snapshot", () => {
   it("publishes deny-by-default rules, refreshes on mutation and restores at startup", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-links-snapshot-"));
-    const workspace = createGoWorkspace("core", "plugin-sdk");
+    const workspace = createGoWorkspace("core", "service-sdk");
     try {
       const { stdout } = await execFileAsync(
         "go",

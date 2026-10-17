@@ -12,6 +12,8 @@ FROM operations WHERE id = ?;`,
 WHERE id = ? AND state = ?;`,
 		"select-idempotency": `SELECT request_digest, operation_id FROM idempotency
 WHERE actor = ? AND scope = ? AND key_digest = ? AND expires_at > ?;`,
+		"select-operation-idempotency-key": `SELECT operation_id FROM idempotency
+WHERE actor = ? AND scope = ? AND key_digest = ? AND expires_at > ?;`,
 		"insert-idempotency": `INSERT INTO idempotency(actor, scope, key_digest, request_digest, operation_id, created_at, expires_at)
 VALUES(?, ?, ?, ?, ?, ?, ?);`,
 		"delete-expired-idempotency": `DELETE FROM idempotency WHERE actor = ? AND scope = ? AND key_digest = ? AND expires_at <= ?;`,

@@ -63,8 +63,8 @@ func OpenSQLite(ctx context.Context, path string, options SQLiteOptions, schema 
 		_ = database.Close()
 		return nil, errors.New(options.SchemaVersionError)
 	}
+	var schemaVersion int
 	if hasMigrationTable {
-		var schemaVersion int
 		if err := database.QueryRowContext(ctx, options.MigrationVersionQuery).Scan(&schemaVersion); err != nil || schemaVersion < 0 || schemaVersion > options.SchemaVersion {
 			_ = database.Close()
 			return nil, errors.New(options.SchemaVersionError)
@@ -78,9 +78,32 @@ func OpenSQLite(ctx context.Context, path string, options SQLiteOptions, schema 
 		_ = database.Close()
 		return nil, err
 	}
-	if _, err := database.ExecContext(ctx, string(schema)); err != nil {
+	if schemaVersion < 15 {
+		if _, err := database.ExecContext(ctx, string(schema)); err != nil {
+			_ = database.Close()
+			return nil, err
+		}
+		if options.SchemaVersion >= 15 {
+			if err := prepareHistoricalConfiguration(database); err != nil {
+				_ = database.Close()
+				return nil, err
+			}
+			if err := migrateServiceNomenclature(ctx, database); err != nil {
+				_ = database.Close()
+				return nil, err
+			}
+		}
+	}
+	var currentSchemaVersion int
+	if err := database.QueryRowContext(ctx, options.MigrationVersionQuery).Scan(&currentSchemaVersion); err != nil {
 		_ = database.Close()
-		return nil, err
+		return nil, errors.New(options.SchemaVersionError)
+	}
+	if currentSchemaVersion == 15 && options.SchemaVersion >= 16 {
+		if err := migrateServiceReplicaIncarnation(ctx, database); err != nil {
+			_ = database.Close()
+			return nil, err
+		}
 	}
 	var resultingSchemaVersion int
 	if err := database.QueryRowContext(ctx, options.MigrationVersionQuery).Scan(&resultingSchemaVersion); err != nil || resultingSchemaVersion != options.SchemaVersion {

@@ -10,13 +10,13 @@ Audit и durable operations хранятся в SQLite, а не в JSONL-фай�
 Core audit фиксирует actor service-key/Controller-binding ID, action,
 resource type/ID, result, timestamp, request ID и применимые digests. Он не
 сохраняет конфигурационные документы целиком, package/artifact contents,
-Authorization, secrets, private keys, cookies, plugin payloads или grant
+Authorization, secrets, private keys, cookies, service payloads или grant
 handles. Для конфигурационных mutations фиксируются operation ID, revision,
 digest и результат без тела.
 
 Durable REST operations сохраняют state, idempotency fingerprint, timestamps и
 safe result/problem; после restart операция восстанавливается или явно
-помечается failed/recovery-required. Синхронный plugin Admin Action не является
+помечается failed/recovery-required. Синхронный service Admin Action не является
 durable operation и не сохраняет idempotency fingerprint: повтор с тем же
 `Idempotency-Key` исполняется заново и создаёт отдельную audit-запись. Никакие
 Admin Action payloads в audit не попадают.

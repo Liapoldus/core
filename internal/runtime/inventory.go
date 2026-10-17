@@ -7,10 +7,10 @@ import (
 	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 )
 
-// PresentPluginInventory exposes only generic Core-owned instance metadata. The
-// stored manifest document is plugin-owned and is never decoded or interpreted
+// PresentServiceInventory exposes only generic Core-owned instance metadata. The
+// stored manifest document is service-owned and is never decoded or interpreted
 // by Core.
-func PresentPluginInventory(records []storage.PluginInstanceRecord, contract config.PluginInventoryContract) ([]any, error) {
+func PresentServiceInventory(records []storage.ServiceInstanceRecord, contract config.ServiceInventoryContract) ([]any, error) {
 	items := make([]any, 0, len(records))
 	for _, record := range records {
 		if record.ID == "" || record.Revision < 1 {

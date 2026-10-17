@@ -2,9 +2,9 @@ package models
 
 import "strings"
 
-// Placement and carrier spellings owned by the generic Plugin SDK peer
+// Placement and carrier spellings owned by the generic Service SDK peer
 // directory contract. Core carries these opaque values into the published
-// directory and never derives plugin-specific placement or transport behavior.
+// directory and never derives service-specific placement or transport behavior.
 const (
 	PeerLinkPlacementSame   = "same-placement"
 	PeerLinkPlacementRemote = "remote"
@@ -20,7 +20,7 @@ const (
 // PeerLinkRule is one Core-owned, deny-by-default authorization for a caller
 // instance to reach a target instance over a named carrier. A replica receives
 // a peer-directory link only when a matching rule exists; the absence of any
-// rule denies the link entirely. Rules are generic: Core never encodes plugin,
+// rule denies the link entirely. Rules are generic: Core never encodes service,
 // capability or product names.
 type PeerLinkRule struct {
 	CallerInstanceID  string

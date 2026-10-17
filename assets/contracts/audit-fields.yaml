@@ -4,14 +4,14 @@ audit:
     staticToken: static-token
   actions:
     serviceKeyCreate: service_key.create
-    pluginSettingsCandidate: plugin_settings.candidate
-    pluginSettingsApply: plugin_settings.apply
-    pluginSettingsApplyFailed: plugin_settings.apply_failed
-    pluginSettingsRollback: plugin_settings.rollback
-    pluginAdminAction: plugin_admin.action
-    pluginLinkCreate: plugin_link.create
-    pluginLinkReplace: plugin_link.replace
-    pluginLinkDelete: plugin_link.delete
+    serviceSettingsCandidate: service_settings.candidate
+    serviceSettingsApply: service_settings.apply
+    serviceSettingsApplyFailed: service_settings.apply_failed
+    serviceSettingsRollback: service_settings.rollback
+    serviceAdminAction: service_admin.action
+    serviceLinkCreate: service_link.create
+    serviceLinkReplace: service_link.replace
+    serviceLinkDelete: service_link.delete
   resources:
     serviceKeys: service-keys
   results:

@@ -78,7 +78,7 @@ describe("Management API response characterization matrix", () => {
       },
       serviceKeyListUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       serviceKeyCreateUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
-      pluginList: {
+      serviceList: {
         status: 200,
         contentType: "application/json",
         requestID: true,
@@ -90,18 +90,18 @@ describe("Management API response characterization matrix", () => {
           requestId: requestID,
         },
       },
-      invalidPluginPagination: problem(400, "invalid_pagination", "limit must be between 1 and 100"),
-      adminSurfaces: problem(503, "plugin_unavailable", "Подключённый plugin instance не отвечает."),
-      pluginDetail: {
+      invalidServicePagination: problem(400, "invalid_pagination", "limit must be between 1 and 100"),
+      adminSurfaces: problem(503, "service_unavailable", "Подключённый service instance не отвечает."),
+      serviceDetail: {
         status: 200,
         contentType: "application/json",
         requestID: true,
         body: { id: "fixture-a", name: "Alpha", state: "ready" },
       },
-      pluginNotFound: problem(404, "plugin_not_found", "Указанный plugin instance не существует."),
-      pluginAdminUnavailable: problem(404, "not_found", "The requested operation does not exist."),
-      pluginAdminPostUnavailable: problem(404, "not_found", "The requested operation does not exist."),
-      pluginRollbackUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
+      serviceNotFound: problem(404, "service_not_found", "Указанный service instance не существует."),
+      serviceAdminUnavailable: problem(404, "not_found", "The requested operation does not exist."),
+      serviceAdminPostUnavailable: problem(404, "not_found", "The requested operation does not exist."),
+      serviceRollbackUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       operationUnavailable: problem(503, "management_unavailable", "Не удалось выполнить операцию с постоянным состоянием Management API."),
       auditEmpty: {
         status: 200,
@@ -111,7 +111,7 @@ describe("Management API response characterization matrix", () => {
       },
       unknownRoute: problem(404, "not_found", "resource not found"),
       retiredConfigRoute: problem(404, "not_found", "resource not found"),
-      unsupportedPluginMethod: problem(404, "not_found", "resource not found"),
+      unsupportedServiceMethod: problem(404, "not_found", "resource not found"),
     });
   }, 30_000);
 });

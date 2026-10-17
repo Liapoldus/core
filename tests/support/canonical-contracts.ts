@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +34,22 @@ function canonicalLocalFile(candidate: string, relativePath: string): Buffer | n
   }
 }
 
+/** Explicit local opt-in for testing coordinated owner-doc changes before publication. */
+function workingTreeFile(candidate: string, relativePath: string): Buffer | null {
+  if (process.env.LIAPOLDUS_DOCS_USE_WORKTREE !== "1" || relativePath.startsWith("/") || relativePath.split(/[\\/]/).includes("..")) {
+    return null;
+  }
+  const remote = git(candidate, "remote", "get-url", "origin");
+  if (remote !== `https://github.com/${docsRepo}.git` && remote !== `git@github.com:${docsRepo}.git`) {
+    return null;
+  }
+  try {
+    return readFileSync(join(candidate, relativePath));
+  } catch {
+    return null;
+  }
+}
+
 function checkoutCandidates(): string[] {
   const override = process.env.LIAPOLDUS_DOCS_CHECKOUT;
   return override === undefined || override === ""
@@ -42,11 +59,16 @@ function checkoutCandidates(): string[] {
 
 /**
  * Loads one canonical documentation file. Resolution order is a local
- * origin/main tracking revision first and the GitHub REST API second. The
- * working tree is never read, so unrelated dirty docs cannot alter the gate.
+ * origin/main tracking revision first and the GitHub REST API second. During
+ * coordinated, unpublished owner changes, LIAPOLDUS_DOCS_USE_WORKTREE=1 opts
+ * into the verified local docs checkout without changing CI's default gate.
  */
 export async function loadCanonicalDocsFile(relativePath: string): Promise<Buffer> {
   for (const candidate of checkoutCandidates()) {
+    const working = workingTreeFile(candidate, relativePath);
+    if (working !== null) {
+      return working;
+    }
     const local = canonicalLocalFile(candidate, relativePath);
     if (local !== null) {
       return local;

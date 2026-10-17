@@ -9,9 +9,9 @@ const routerMethods = [
   "handle",
   "dispatchReadiness",
   "dispatchAccess",
-  "dispatchPluginCollections",
+  "dispatchServiceCollections",
   "dispatchAudit",
-  "dispatchPluginActions",
+  "dispatchServiceActions",
   "dispatchOperations",
 ];
 const managementHandlers = ["Healthz", "Readiness", "AuditList", "OperationGet"];

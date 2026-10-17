@@ -1,5 +1,4 @@
-// Package host exposes the supported Core-in-process lifecycle for trusted Go
-// compositions. It reads the same persisted settings as the standalone Core
+// Package host exposes the Core runtime host for Go compositions. It reads the same persisted settings as the standalone Core
 // binary and delegates all construction to the canonical runtime composition
 // root; it does not expose internal stores or create a second SQLite model.
 package host
@@ -11,7 +10,6 @@ import (
 
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 	coreruntime "github.com/Liapoldus/core/v3/internal/runtime"
-	sdkapplication "github.com/Liapoldus/plugin-sdk/v2/application"
 )
 
 var ErrInvalidOptions = errors.New("invalid Core host options")
@@ -21,13 +19,6 @@ var ErrInvalidOptions = errors.New("invalid Core host options")
 type Options struct {
 	StatePath string
 	Output    string
-	// InProcessReplicas are statically selected trusted Go plugins. A plugin
-	// instance is served either through this list or through REST+mTLS
-	// registration; Core never switches transport after a failure.
-	InProcessReplicas []*sdkapplication.InProcessReplica
-	// DisableREST must be true for a listener-free pure in-process composition.
-	// Management remains served; separate-process plugins require REST enabled.
-	DisableREST bool
 }
 
 // Host is one Core runtime. It is a singleton relative to StatePath because
@@ -37,7 +28,7 @@ type Host struct {
 }
 
 // Start loads persisted settings and starts one Core runtime. The caller must
-// call WaitReady before exposing dependent in-process plugins and must call
+// call WaitReady before exposing dependent services and must call
 // Close when the composed process is shutting down.
 func Start(ctx context.Context, options Options) (*Host, error) {
 	if ctx == nil || options.StatePath == "" || !filepath.IsAbs(options.StatePath) {
@@ -56,8 +47,6 @@ func Start(ctx context.Context, options Options) (*Host, error) {
 		Words:             words,
 		WriteFailure:      func(string, int, string, string) {},
 		TrafficController: settings.TrafficController,
-		InProcessReplicas: options.InProcessReplicas,
-		DisableREST:       options.DisableREST,
 	})
 	if err != nil {
 		return nil, ErrInvalidOptions

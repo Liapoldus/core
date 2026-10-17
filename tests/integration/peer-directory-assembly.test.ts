@@ -12,7 +12,7 @@ describe("Core peer directory assembly", () => {
 	let workspace: { path: string; cleanup: () => void };
 
 	beforeAll(() => {
-		workspace = createGoWorkspace("core", "plugin-sdk");
+		workspace = createGoWorkspace("core", "service-sdk");
 	});
 
 	afterAll(() => {

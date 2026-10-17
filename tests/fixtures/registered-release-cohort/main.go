@@ -8,15 +8,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
 )
 
 type source struct {
-	replicas []plugins.LivePluginReplica
+	replicas []services.LiveServiceReplica
 }
 
-func (directory source) Snapshot() []plugins.LivePluginReplica { return directory.replicas }
+func (directory source) Snapshot() []services.LiveServiceReplica { return directory.replicas }
 func (directory source) HasRegisteredInstance(instanceID string) bool {
 	for _, replica := range directory.replicas {
 		if replica.Registration.Identity.InstanceID == instanceID {
@@ -45,22 +45,22 @@ func main() {
 }
 
 func capture(registrations []sdkmodels.ReplicaRegistrationRequest, now time.Time) bool {
-	replicas := make([]plugins.LivePluginReplica, 0, len(registrations))
+	replicas := make([]services.LiveServiceReplica, 0, len(registrations))
 	for _, registration := range registrations {
-		replicas = append(replicas, plugins.LivePluginReplica{
+		replicas = append(replicas, services.LiveServiceReplica{
 			Registration: registration,
 			LeaseExpires: now.Add(time.Minute),
 		})
 	}
-	registered := plugins.NewRegisteredReplicaReloadResolver(source{replicas: replicas}, nil, func() time.Time { return now })
-	applier := &plugins.SDKConfigurationApplier{Registered: registered}
+	registered := services.NewRegisteredReplicaReloadResolver(source{replicas: replicas}, nil, func() time.Time { return now })
+	applier := &services.SDKConfigurationApplier{Registered: registered}
 	targets, found, err := applier.CaptureConfigurationTargets(context.Background(), "forms")
 	return found && err == nil && len(targets) == len(registrations)
 }
 
 func registration(replicaID, release string) sdkmodels.ReplicaRegistrationRequest {
 	return sdkmodels.ReplicaRegistrationRequest{
-		ContractVersion: "liapoldus.plugin-sdk.replica-lifecycle.v2",
+		ContractVersion: "liapoldus.service-sdk.replica-lifecycle.v2",
 		Identity: sdkmodels.PeerReplicaID{
 			InstanceID: "forms", ReplicaID: replicaID, IncarnationID: "inc-" + replicaID, PlacementID: "zone-a",
 		},

@@ -34,10 +34,10 @@ describe("Core runtime ownership", () => {
     expect(runtimeSources).not.toContain("github.com/Liapoldus/core/v3/internal/presentation/cli\"");
   });
 
-  it("places plugin inventory presentation in the inventory leaf", async () => {
+  it("places service inventory presentation in the inventory leaf", async () => {
     const runtimeSources = await directGoSources(runtimeRoot);
 
-    expect(runtimeSources).toMatch(/^func\s+PresentPluginInventory\s*\(/m);
+    expect(runtimeSources).toMatch(/^func\s+PresentServiceInventory\s*\(/m);
     expect(runtimeSources).not.toContain("github.com/Liapoldus/core/v3/internal/presentation/cli\"");
   });
 

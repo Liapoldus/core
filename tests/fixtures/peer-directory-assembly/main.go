@@ -8,16 +8,16 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/v3/internal/domain/models"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/service-sdk/v2/infrastructure"
 )
 
 func main() {
 	contract, err := sdkinfrastructure.LoadReplicaLifecycleContract()
 	check(err)
 	now := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
-	directory, err := plugins.NewPluginReplicaDirectory(contract, func() time.Time { return now })
+	directory, err := services.NewServiceReplicaDirectory(contract, func() time.Time { return now })
 	check(err)
 
 	caller := replicaIdentity("caller", "replica-1", "inc-1", "node-b")
@@ -94,7 +94,7 @@ func main() {
 		"generationStable":       assembly.Generation == second.Generation,
 		"generationIgnoresTime":  assembly.Generation == laterAssembly.Generation,
 		"callerScoped":           len(scoped.Links) == 0,
-		"overMaximumTTLRejected": overTTLErr == plugins.ErrPeerDirectoryUnavailable,
+		"overMaximumTTLRejected": overTTLErr == services.ErrPeerDirectoryUnavailable,
 	}
 	check(json.NewEncoder(os.Stdout).Encode(result))
 }
@@ -116,7 +116,7 @@ func unixEndpoint(value string) sdkmodels.ReplicaPeerEndpoint {
 	return sdkmodels.ReplicaPeerEndpoint{Carrier: sdkmodels.PeerCarrierUnix, Endpoint: value, SecurityProfile: sdkmodels.PeerSecurityMTLS}
 }
 
-func registerReplica(directory *plugins.PluginReplicaDirectory, contract sdkinfrastructure.ReplicaLifecycleContract, identity sdkmodels.PeerReplicaID, ready bool, endpoint sdkmodels.ReplicaPeerEndpoint, advertised []sdkmodels.ContractVersion) {
+func registerReplica(directory *services.ServiceReplicaDirectory, contract sdkinfrastructure.ReplicaLifecycleContract, identity sdkmodels.PeerReplicaID, ready bool, endpoint sdkmodels.ReplicaPeerEndpoint, advertised []sdkmodels.ContractVersion) {
 	registration := sdkmodels.ReplicaRegistrationRequest{
 		ContractVersion: contract.ContractVersion,
 		Identity:        identity,

@@ -1,17 +1,14 @@
-# Плагинные библиотеки и граница взаимодействия
+# Сервисные библиотеки и граница взаимодействия
 
 > Нормативным источником production-ready v3 является
-> [целевая архитектура v3](v3). Старые фрагменты о том, что peer policy или
-> in-process composition отложены, заменяются этим контрактом.
+> [целевая архитектура v3](v3). Core lifecycle использует только Service SDK REST.
 
 В системе есть две независимые Go-библиотеки с разными назначениями. Общий
-Core↔plugin lifecycle принадлежит Plugin SDK: отдельные процессы используют
-REST+mTLS, а доверенные статически скомпонованные Go plugins — явно выбранный
-in-process adapter с теми же моделями и ACK semantics.
+Core↔service lifecycle принадлежит Service SDK и использует REST+mTLS.
 Универсальная
-межплагинная сеть принадлежит `pluginprotocol`. Ни одна из библиотек не владеет
+межсервисная сеть принадлежит `wool`. Ни одна из библиотек не владеет
 контрактами конкретных продуктов: схемы и методы CAPTCHA, Caddy, forms-db и
-identity определяются только соответствующими плагинами.
+identity определяются только соответствующими сервисами.
 
 Каноническая ownership-модель приведена в [целевой архитектуре](target),
 состояние Core и поколения — в [control-plane](control-plane), а фактические
@@ -23,23 +20,23 @@ OpenAPI конкретных владельцев.
 
 | Библиотека | Ответственность | Что не входит |
 | --- | --- | --- |
-| Plugin SDK, отдельный Go-модуль | Общий REST+mTLS server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи, безопасные ошибки и явно выбранный in-process adapter для монолитной сборки. | Межплагинный transport, Core Management API operations и продуктовые capabilities. |
-| `pluginprotocol` | Generic plugin-to-plugin communication: регистрация пользовательских методов/handlers, connect/listen, unary calls и streams, физические transport/security providers. | Core lifecycle REST, config distribution, Manifest/settings/admin surfaces, готовые product RPC или имена plugin methods. |
+| Service SDK, отдельный Go-модуль | Общий REST+mTLS server/client, bootstrap, health/readiness, settings schema discovery, exact config pull, `Reload`, метрики, структурированные логи, безопасные ошибки. | Межсервисный transport, Core Management API operations и продуктовые capabilities. |
+| `wool` | Generic service-to-service communication: регистрация пользовательских методов/handlers, connect/listen, unary calls и streams, физические transport/security providers. | Core lifecycle REST, config distribution, Manifest/settings/admin surfaces, готовые product RPC или имена service methods. |
 
-Plugin SDK и `pluginprotocol` не импортируют друг друга. Плагин использует одну
+Service SDK и `wool` не импортируют друг друга. Сервис использует одну
 библиотеку, обе или ни одну — в зависимости от того, нужен ли ему общий REST
-lifecycle и/или прямое взаимодействие с другими плагинами. Core использует
-Plugin SDK через REST client или in-process adapter. Core не импортирует
-`pluginprotocol` для lifecycle/configuration.
+lifecycle и/или прямое взаимодействие с другими сервисами. Core использует
+Service SDK через REST client. Core не импортирует
+`wool` для lifecycle/configuration.
 
-TLS/mTLS реализуют библиотеки, а не конкретные плагины: Plugin SDK владеет
-Core↔plugin REST security, `pluginprotocol` — security peer carriers. Plugin
+TLS/mTLS реализуют библиотеки, а не конкретные сервисы: Service SDK владеет
+Core↔service REST security, `wool` — security peer carriers. Service
 передаёт нужной библиотеке bootstrap security configuration и credential source
 через её API; product handlers не создают собственный TLS stack, не выполняют
 handshake и не повторяют проверку сертификатов. Trust roots этих двух каналов
 раздельны. Security profile выбирается в конфигурации соответствующей
-библиотеки, отдельно от product settings; plugin только передаёт профиль и
-credential source её API. Production и удалённые Core↔plugin REST connections
+библиотеки, отдельно от product settings; service только передаёт профиль и
+credential source её API. Production и удалённые Core↔service REST connections
 используют per-replica mTLS по versioned SDK v2 HTTP contract. SDK реализует
 отдельный versioned loopback-only plaintext development profile: он opt-in,
 выключен по умолчанию и на отдельном literal-loopback TCP listener обслуживает
@@ -53,129 +50,71 @@ identity. QUIC всегда зашифрован и аутентифициров
 пока требуют mTLS. Ни один профиль не переключается автоматически после ошибки
 TLS.
 
-Локальное расположение модуля — соседний каталог `plugin-sdk/` workspace.
-Утверждённый canonical Go module path — `github.com/Liapoldus/plugin-sdk/v2`;
+Локальное расположение модуля — соседний каталог `service-sdk/` workspace.
+Утверждённый canonical Go module path — `github.com/Liapoldus/service-sdk/v2`;
 все active consumers используют этот major path.
 
-## Plugin SDK: REST lifecycle
+## Service SDK: REST lifecycle
 
-Каждый plugin предоставляет защищённый control endpoint по общему REST
+Каждый service предоставляет защищённый control endpoint по общему REST
 контракту SDK. Core адресует каждую зарегистрированную replica отдельно;
-Core↔plugin REST использует mTLS и уникальную identity каждой replica. В Core v3
+Core↔service REST использует mTLS и уникальную identity каждой replica. В Core v3
 оператор выдаёт credentials через внешний CA/PEM source; Core не выпускает
 identity и не внедряет её через process/container bootstrap. Trust roots control
-plane отделены от plugin-to-plugin trust roots. Plaintext или bearer-only
+plane отделены от service-to-service trust roots. Plaintext или bearer-only
 downgrade не допускается.
 Endpoint доступен только Core management identity и не является пользовательским
 traffic API.
 
-SDK contract source — `plugin-sdk/infrastructure/assets/plugin-sdk/v2/http-contract.json`.
-В нём заданы plugin-side endpoints:
+SDK contract source — `service-sdk/infrastructure/assets/service-sdk/v2/http-contract.json`.
+В нём заданы service-side endpoints:
 
 - bootstrap identity/version, Manifest и settings schema;
 - health и readiness;
 - `POST /_liapoldus/v1/reload` с generation, digest и schema version;
-- exact-generation pull: plugin делает `GET /internal/v1/plugin-config/{generation}` к Core;
+- exact-generation pull: service делает `GET /internal/v1/service-config/{generation}` к Core;
 - readiness/ACK и bounded REST errors; запуск, остановка и drain процесса
   выполняются оператором вне Core;
 - общих метрик, структурированных логов и безопасных error/problem responses.
 
 Core сначала сохраняет исходный JSON в SQLite и продвигает active generation,
 затем вызывает `Reload` без передачи документа. Config pull доступен только
-по per-replica mTLS и возвращает точные исходные bytes; plugin валидирует и
+по per-replica mTLS и возвращает точные исходные bytes; service валидирует и
 применяет их в памяти, после чего ACK-ает generation/digest. Слоты
 `active`/`previous`, roll-forward при частичном результате, rollback,
 idempotency, retries и fencing нормативно определены в
 [control-plane](control-plane). REST endpoint shapes и wire JSON принадлежат
-Plugin SDK contract.
+Service SDK contract.
 
 SDK даёт общие primitives, но не выбирает product settings и не создаёт
-необязательные настройки за plugin. Plugin сам владеет versioned JSON Schema,
+необязательные настройки за service. Service сам владеет versioned JSON Schema,
 значениями полей, validation и runtime application. Общие логи не должны
 содержать settings, cookies, credentials, tokens, private keys, grant handles
 или secret bytes. Непредвиденная ошибка возвращается как безопасный типовой
 problem, а диагностические детали остаются в redacted server-side logs.
 
-## Целевое расширение v3: in-process adapter и монолитная композиция
+## Core → Service SDK REST
 
-В v3 Plugin SDK должен поддерживать один transport-independent lifecycle
-contract с двумя явно выбираемыми адаптерами:
+Control plane: Studio → CLI → Core → Service SDK REST+mTLS.
+Сервис получает `Reload(generation)` и pull-ит точные immutable bytes через SDK.
+Независимые Services используют Wool для data plane. StudioPlugins — только
+расширения редактора.
 
-| Adapter | Применение | Транспортная граница |
-| --- | --- | --- |
-| REST | Plugin работает отдельным процессом, удалённым workload или управляется внешним deployment mode. | Core и plugin — отдельные security principals; используется REST по mTLS, уникальные replica identities и существующая TLS-проверка. |
-| In-process | Plugin статически включён в единый бинарник и работает в том же Go-процессе, что и Core. | Прямые вызовы SDK interfaces; HTTP listener, socket, TLS и mTLS между Core и plugin не создаются. |
+## `wool`: generic service-to-service network
 
-Это две реализации одного lifecycle API, а не два разных набора правил. Adapter
-выбирается явно для каждого plugin instance при сборке/композиции запуска; ошибки
-выбранного adapter-а не вызывают автоматическое переключение. REST adapter
-используется для отдельных процессов. Единый executable, который запускает plugin как дочерний
-процесс, не является in-process режимом: между процессами остаётся REST, пока
-отдельным решением не введён иной IPC adapter.
-
-In-process adapter сохраняет pull-семантику поколений:
-
-1. Core завершает durable commit и публикует immutable in-memory generation.
-2. Core вызывает lifecycle interface plugin-а с `Reload` и только метаданными
-   поколения (generation, digest, schema version); raw config не передаётся
-   аргументом `Reload`.
-3. В обработчике `Reload` plugin вызывает scoped `ConfigSource` SDK для точного
-   поколения. In-process реализация `ConfigSource` читает Core snapshot, а не
-   SQLite напрямую. Она закреплена за одним plugin instance и не позволяет
-   запрашивать конфигурацию другой instance.
-4. Plugin проверяет исходные bytes, применяет конфигурацию в своей памяти и
-   возвращает ACK с теми же generation и digest. Ошибки, CAS, idempotency,
-   roll-forward, rollback и operation status имеют ту же семантику, что и REST.
-
-REST и in-process adapters должны использовать общие модели/интерфейсы SDK для
-generation metadata, raw config, ACK, health/readiness и классификации ошибок.
-Транспортные DTO REST не становятся SDK domain types; signatures фиксируются в
-Plugin SDK contract. Core вызывает только generic SDK interface и не содержит
-ветвлений по именам/типам конкретных plugins. Composition root связывает
-статически включённые plugin factories с Core; список включённых модулей
-определяется сборкой, а не динамическим загрузчиком Go `plugin`.
-
-In-process не является криптографической или process-isolation boundary.
-Instance identity задаётся immutable host binding при композиции; Core всё равно
-проверяет instance scope, generation, grants и permissions до выдачи данных.
-Trust roots и mTLS не применяются только к прямым Core↔plugin вызовам внутри
-того же процесса. Plugin получает доверие как скомпилированный код: panic можно
-перехватить на adapter boundary и преобразовать в безопасную ошибку, но это не
-защищает Core от исчерпания памяти, бесконечной работы, нарушения памяти или
-аварийного завершения процесса. Такой режим допустим только для доверенных
-first-party/оператором включённых модулей.
-
-Изменение не затрагивает `pluginprotocol`. Межплагинные calls и streams остаются
-на generic peer API и явно выбранном защищённом carrier-е с mTLS, даже если
-участники собраны в один executable. Прямые Go-вызовы или Go channels между
-разными plugins запрещены как скрытый обход peer identity, authorization,
-method registry и transport conformance. Возможный in-process carrier для
-plugin↔plugin потребует отдельного изменения `pluginprotocol`, security model и
-pairwise conformance; он не входит в это решение.
-
-V3 implementation gate: один и тот же SDK conformance corpus проходит через
-REST-child-process и in-process adapters; проверяются exact-generation pull,
-raw bytes/digest, ACK, cancellation, failure mapping, panic containment,
-authorization scope и запрет доступа к чужому instance. Дополнительно Docker/
-deployment профили подтверждают, что удалённые плагины продолжают использовать
-REST+mTLS, а локально скомпонованные — in-process без listener-ов и без
-ослабления plugin-to-plugin mTLS.
-
-## `pluginprotocol`: generic plugin-to-plugin network
-
-`pluginprotocol` — самостоятельная Go-библиотека для прямого обмена между
-плагинами. В ней нет predeclared бизнес-методов: plugin регистрирует собственные
+`wool` — самостоятельная Go-библиотека для прямого обмена между
+сервисами. В ней нет predeclared бизнес-методов: service регистрирует собственные
 имена методов и обработчики, а peer вызывает их по общему transport API.
 Библиотека не должна знать, какие продукты существуют, каковы их capability
 names, какие у них settings, кто является «Caddy» или «identity», и как
 выглядят их payloads.
 
-Прикладной метод и его request/response schema принадлежат плагину, который его
-объявил. `pluginprotocol` предоставляет только общую оболочку вызова и
+Прикладной метод и его request/response schema принадлежат сервису, который его
+объявил. `wool` предоставляет только общую оболочку вызова и
 транспортные примитивы. Одни и те же application-level method names, payloads,
 ошибки и stream semantics должны сохраняться при смене физического carrier-а.
 Конкретные версии транспорта и security profiles закрепляются в owner-контракте
-самого `pluginprotocol` после conformance-проверок; эта страница не фиксирует
+самого `wool` после conformance-проверок; эта страница не фиксирует
 непринятый wire format или API signatures.
 
 До открытия соединения библиотека проверяет общий peer policy/configuration,
@@ -186,27 +125,27 @@ loopback TCP plaintext development profile допускается также в 
 аутентифицирует peer и не может обслуживать удалённый адрес. QUIC остаётся
 зашифрованным и аутентифицированным, а локальные IPC используют mTLS. SDK
 loopback plaintext development profile для Core REST — отдельное целевое
-расширение, не входящее в текущий production contract. Межплагинный trust не разделяет
+расширение, не входящее в текущий production contract. Межсервисный trust не разделяет
 trust roots с Core REST.
 
 В Core v3 caller→target/method/transport policies хранятся в Core SQLite,
 авторизуются через Management API и распространяются через SDK-defined
-directory. Plugin не владеет центральной policy и получает только разрешённую
-выборку для своей replica. `pluginprotocol` исполняет выбранный carrier.
-`pluginprotocol` только исполняет выбранный разрешённый carrier и не получает
+directory. Service не владеет центральной policy и получает только разрешённую
+выборку для своей replica. `wool` исполняет выбранный carrier.
+`wool` только исполняет выбранный разрешённый carrier и не получает
 Core policy storage/API. Core не является CA и не стоит между peers как data
-proxy. `pluginprotocol` не выдаёт Core settings, не делает config pull и не
+proxy. `wool` не выдаёт Core settings, не делает config pull и не
 предоставляет `Reload`.
 
 Secret grants относятся только к раскрытию opaque secret references из
-plugin settings и выдаются через Plugin SDK REST по его owner contract. Они не
-авторизуют межплагинные вызовы. Call-scoped plugin-to-plugin grants и их
-централизованная выдача относятся к следующему этапу; `pluginprotocol` не выпускает,
+service settings и выдаются через Service SDK REST по его owner contract. Они не
+авторизуют межсервисные вызовы. Call-scoped service-to-service grants и их
+централизованная выдача относятся к следующему этапу; `wool` не выпускает,
 валидирует или погашает grants.
 
 ## Физический transport и безопасность
 
-Физический канал настраивается отдельно от прикладных методов. Plugin выбирает
+Физический канал настраивается отдельно от прикладных методов. Service выбирает
 поддержанный library carrier и security provider в runtime bootstrap, сохраняя
 зарегистрированные handlers и payload contracts. Добавление carrier-а или
 изменение listen/dial-параметров не должно требовать переписывать product
@@ -214,12 +153,12 @@ handlers.
 
 Окончательный carrier matrix, поля профиля, timeout/backpressure defaults,
 credential providers, rotation и revocation должны быть нормативно описаны в
-`pluginprotocol` и покрыты conformance до production реализации. Уже принятое
+`wool` и покрыты conformance до production реализации. Уже принятое
 требование: удалённая связь защищена и аутентифицирует peer; Core REST и
-plugin-to-plugin connections используют разные identities и trust roots.
+service-to-service connections используют разные identities и trust roots.
 
 Конкретный transport SDK организуется четырьмя слоями `domain`, `application`,
-`infrastructure`, `presentation` согласно `pluginprotocol/AGENTS.md`. Domain
+`infrastructure`, `presentation` согласно `wool/AGENTS.md`. Domain
 содержит только модели и interfaces; carrier, криптография, sockets и TLS
 реализуются infrastructure adapters; presentation экспонирует публичный
 library facade. Product contracts в этот модуль не переносятся.
@@ -229,7 +168,7 @@ library facade. Product contracts в этот модуль не перенося
 Локальный IPC является частью v3 carrier matrix. Он выбирается явно и не
 является скрытым fallback или downgrade после ошибки другого транспорта.
 
-В v3 `pluginprotocol` предоставляет четыре явно выбираемых carrier-а:
+В v3 `wool` предоставляет четыре явно выбираемых carrier-а:
 
 | Carrier | Область применения | Защита канала |
 | --- | --- | --- |
@@ -248,8 +187,8 @@ semantics не зависят от carrier-а.
 
 #### TLS/mTLS и security profiles
 
-`pluginprotocol` реализует TLS/mTLS, проверку цепочки/срока/назначения
-сертификата, peer identity и revocation. Plugin выбирает security profile и
+`wool` реализует TLS/mTLS, проверку цепочки/срока/назначения
+сертификата, peer identity и revocation. Service выбирает security profile и
 передаёт credential source библиотеке; product-код не создаёт TLS listener,
 client или handshake самостоятельно. Для remote peer-соединений и любого
 production-профиля обязателен mTLS. Явный plaintext допускается только для TCP
@@ -263,11 +202,11 @@ stream-соединение; QUIC использует собственный TL
 проверяет ожидаемую peer identity. Успешного локального socket/pipe connect
 недостаточно для авторизации peer.
 
-`pluginprotocol` реализует TLS/mTLS handshake и проверки, но не выпускает и не
+`wool` реализует TLS/mTLS handshake и проверки, но не выпускает и не
 подписывает сертификаты, не является CA и не управляет rotation. Сертификаты,
 private keys и trust roots предоставляются внешним credential provider-ом и
-передаются библиотеке через её security configuration. Межплагинные trust roots
-остаются отдельными от Core↔plugin REST trust roots. Неуспешная TLS-проверка,
+передаются библиотеке через её security configuration. Межсервисные trust roots
+остаются отдельными от Core↔service REST trust roots. Неуспешная TLS-проверка,
 отозванный сертификат, отсутствующие credentials либо невозможность проверить
 peer identity завершают handshake fail-closed; отключение проверки и переход на
 plaintext запрещены для production и remote-соединений. Явный TCP-loopback
@@ -281,7 +220,7 @@ plaintext fallback.
 Каждый endpoint обязан однозначно задавать carrier и адрес; endpoint одного
 carrier-а нельзя трактовать как endpoint другого. Точный URI/JSON формат,
 экранирование Windows pipe names, ограничения длины и правила нормализации
-определяются owner-контрактом `pluginprotocol` до реализации, а не
+определяются owner-контрактом `wool` до реализации, а не
 заимствуются из Core или продуктовых schemas.
 
 Unix socket adapter обязан безопасно обрабатывать путь и права доступа: не
@@ -316,7 +255,7 @@ Unix-socket tests на macOS/Linux runners. v2 gate считается прой�
 при одинаковых прикладных semantics, успешных platform-specific security tests
 и отсутствии transport fallback; наличие интерфейса или unit-тестов на
 поддельном listener-е недостаточно. Детальные wire/API изменения и
-исполняемые vectors принадлежат только `pluginprotocol` и описываются в его
+исполняемые vectors принадлежат только `wool` и описываются в его
 TODO до начала v2.
 
 ### Foreign bindings

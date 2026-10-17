@@ -54,7 +54,7 @@
   "x-liapoldus-invariants": [
     "Настройки сохраняются в SQLite Core; runtime не читает отдельный конфигурационный файл.",
     "Listener требует TLS и mTLS; plaintext и Bearer authentication не поддерживаются.",
-    "Trust roots listener-а отделены от Management API, Plugin SDK REST и plugin peer transport.",
+    "Trust roots listener-а отделены от Management API, Service SDK REST и service peer transport.",
     "Каждая разрешённая identity проверяется exact-match по Common Name и/или URI SAN; wildcard запрещён."
   ]
 }

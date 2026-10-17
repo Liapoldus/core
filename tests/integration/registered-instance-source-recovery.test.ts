@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 const coreRoot = join(import.meta.dirname, "../..");
 
-describe("registered plugin instance source recovery", () => {
+describe("registered service instance source recovery", () => {
 	it("requires fresh registration after restart and rejects unregistered static identities", async () => {
 		const directory = mkdtempSync(join(tmpdir(), "core-registered-source-"));
 		try {

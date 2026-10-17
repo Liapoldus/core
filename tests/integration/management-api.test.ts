@@ -10,7 +10,7 @@ const contractPath = (name: string) => join(root, "assets", "contracts", name);
 describe("Management API v1", () => {
   it("exposes the documented control-plane resources", () => {
     const contract = readFileSync(contractPath("management-fields.yaml"), "utf8");
-    for (const route of ["/healthz", "/api/status", "/api/plugins", "/api/operations", "/api/audit"]) {
+    for (const route of ["/healthz", "/api/status", "/api/services", "/api/operations", "/api/audit"]) {
       expect(contract).toContain(route);
     }
     for (const retired of ["/api/config", "/api/sites", "/api/listeners", "/api/upstreams", "/metrics"]) {

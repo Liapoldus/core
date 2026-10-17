@@ -1,8 +1,8 @@
 FROM golang:1.26 AS build
 WORKDIR /workspace
-COPY plugin-sdk /workspace/plugin-sdk
+COPY service-sdk /workspace/service-sdk
 COPY core /workspace/core
-RUN go work init ./core ./plugin-sdk
+RUN go work init ./core ./service-sdk
 RUN go work edit -go=1.26.0 go.work
 WORKDIR /workspace/core
 RUN go build -trimpath -ldflags='-s -w' -o /out/core ./cmd/core

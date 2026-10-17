@@ -15,7 +15,7 @@ components:
   infrastructureSecurity: { in: internal/infrastructure/security }
   infrastructureStorage: { in: internal/infrastructure/storage }
   infrastructureSettings: { in: internal/infrastructure/storage/settings }
-  infrastructurePlugins: { in: internal/infrastructure/plugins }
+  infrastructureServices: { in: internal/infrastructure/services }
   presentationAPI: { in: internal/presentation/api }
   presentationAPIHandlers: { in: internal/presentation/api/handlers }
   runtime: { in: internal/runtime }
@@ -23,7 +23,7 @@ vendors:
   yaml: { in: [gopkg.in/yaml.v3] }
   jsonschema: { in: [github.com/santhosh-tekuri/jsonschema/v6] }
   bcrypt: { in: [golang.org/x/crypto/bcrypt] }
-  pluginSDK: { in: [github.com/Liapoldus/plugin-sdk/v2, github.com/Liapoldus/plugin-sdk/v2/application, github.com/Liapoldus/plugin-sdk/v2/domain/interfaces, github.com/Liapoldus/plugin-sdk/v2/domain/models, github.com/Liapoldus/plugin-sdk/v2/infrastructure, github.com/Liapoldus/plugin-sdk/v2/presentation] }
+  serviceSDK: { in: [github.com/Liapoldus/service-sdk/v2, github.com/Liapoldus/service-sdk/v2/application, github.com/Liapoldus/service-sdk/v2/domain/interfaces, github.com/Liapoldus/service-sdk/v2/domain/models, github.com/Liapoldus/service-sdk/v2/infrastructure, github.com/Liapoldus/service-sdk/v2/presentation] }
   sqliteDriver: { in: [modernc.org/sqlite] }
   textNormalization: { in: [golang.org/x/text/cases, golang.org/x/text/unicode/norm] }
   googleUUID: { in: [github.com/google/uuid] }
@@ -48,23 +48,23 @@ deps:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [bcrypt]
   infrastructureStorage:
-    mayDependOn: [domainModels, domainInterfaces, contractAdapter]
+    mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructureSettings]
     canUse: [sqliteDriver, yaml]
   infrastructureSettings:
     mayDependOn: [domainModels, domainInterfaces]
     canUse: [sqliteDriver]
-  infrastructurePlugins:
+  infrastructureServices:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [yaml, jsonschema, bcrypt, pluginSDK]
+    canUse: [yaml, jsonschema, bcrypt, serviceSDK]
   presentationAPI:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructurePlugins, presentationAPIHandlers]
-    canUse: [bcrypt, pluginSDK]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureSecurity, infrastructureStorage, infrastructureServices, presentationAPIHandlers]
+    canUse: [bcrypt, serviceSDK]
   presentationAPIHandlers:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureServices]
     canUse: []
   runtime:
-    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructurePlugins, infrastructureSecurity, infrastructureStorage, infrastructureSettings, presentationAPI]
-    canUse: [pluginSDK]
+    mayDependOn: [application, domainModels, domainInterfaces, infrastructureConfig, infrastructureServices, infrastructureSecurity, infrastructureStorage, infrastructureSettings, presentationAPI]
+    canUse: [serviceSDK]
   host:
     mayDependOn: [runtime, infrastructureConfig]
-    canUse: [pluginSDK]
+    canUse: [serviceSDK]

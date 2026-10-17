@@ -2,10 +2,10 @@
   "version": "liapoldus.core.v1",
   "source": "https://liapoldus.github.io/spec/",
   "files": {
-    "errors.json": "sha256:5db3d7480e0b0f5d2c211d705262c779c8d534daf3b8229057e7af9dfa2c5546",
-    "management-fields.yaml": "sha256:7facc5ab64ec74a31e999706c4679af56e82d608009322c8396e82332be198db",
+    "errors.json": "sha256:5948e4b0f0165cfb4a757d64cef149b6ddeaeffcd19f8761e61393bfe6815cbb",
+    "management-fields.yaml": "sha256:d915448b1f38f0417b7c0ab0634d9112d9711377c16e6049abd0e73c4466cc61",
     "golden-vectors.json": "sha256:fa46dde1bb29d50fe0fd20d02dceec8114b692493484097e307750decb0adbcc",
-    "management.openapi.yaml": "sha256:650a4b03e70fce97540fe1808b256ad440d6bc18bd55c75b815a7954ca7393ba",
-    "security-runtime.json": "sha256:a2e332e5da6fa9127243c3843e34c7b0f5266ee1f127fa4b0d89ad0a0c301d7c"
+    "management.openapi.yaml": "sha256:9501b6a3299d15540ca19b439430129ab46664deb86f2226d74bab53b7b66e2d",
+    "security-runtime.json": "sha256:fd099346ca9b04df61d6ec07aae914ff3a330c2a8b23dc043ffd164d18fadaf8"
   }
 }

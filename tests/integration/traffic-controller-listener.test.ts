@@ -18,7 +18,7 @@ describe("private traffic-controller listener", () => {
 		const directory = await mkdtemp(join(tmpdir(), "liapoldus-traffic-controller-listener-"));
 		const binary = await buildCoreTestBinary();
 		const managementAddress = await freeAddress();
-		const pluginControlAddress = await freeAddress();
+		const serviceControlAddress = await freeAddress();
 		const controllerAddress = await freeAddress();
 		const controllerCertificate = join(directory, "controller.crt");
 		const controllerKey = join(directory, "controller.key");
@@ -32,7 +32,7 @@ describe("private traffic-controller listener", () => {
 		let core: Awaited<ReturnType<typeof startCoreWithOutput>> | undefined;
 
 		try {
-			const initialized = await initializeCore(binary, directory, managementAddress, pluginControlAddress);
+			const initialized = await initializeCore(binary, directory, managementAddress, serviceControlAddress);
 			database = initialized.database;
 			environment = initialized.environment;
 			await createCA(directory, "traffic-controller", controllerCA);
@@ -62,7 +62,7 @@ describe("private traffic-controller listener", () => {
 			const cached = await request(controllerAddress, "/internal/v2/traffic-rollouts", {
 				cert: controllerCertificate, key: controllerKey, ca: controllerCA, ifNoneMatch: allowed.headers.etag,
 			});
-			const listed = JSON.parse(allowed.body) as { rollouts: Array<{ id: string; pluginId: string; activeGeneration: number; revision: number; stageId: string; state: string }> };
+			const listed = JSON.parse(allowed.body) as { rollouts: Array<{ id: string; serviceId: string; activeGeneration: number; revision: number; stageId: string; state: string }> };
 			const confirmationBody = JSON.stringify({ stageId: "canary", appliedCandidateWeightPercent: 10, controllerRevision: "traffic-rev-1" });
 			const confirmation = await request(controllerAddress, "/internal/v2/traffic-rollouts/rollout-1/confirmation", {
 				cert: controllerCertificate, key: controllerKey, ca: controllerCA, method: "PUT", body: confirmationBody,
@@ -85,7 +85,7 @@ describe("private traffic-controller listener", () => {
 			expect(allowed.status).toBe(200);
 			expect(allowed.headers.etag).toMatch(/^"[a-f0-9]{64}"$/);
 			expect(listed.rollouts).toEqual([expect.objectContaining({
-				id: "rollout-1", pluginId: "forms", activeGeneration: 8, revision: 1,
+				id: "rollout-1", serviceId: "forms", activeGeneration: 8, revision: 1,
 				stageId: "canary", state: "awaiting_controller",
 			})]);
 			expect(cached.status).toBe(304);

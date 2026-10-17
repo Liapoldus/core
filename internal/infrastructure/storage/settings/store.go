@@ -1,4 +1,4 @@
-// Package settings persists Core's own settings independently of plugin storage
+// Package settings persists Core's own settings independently of service storage
 // and bootstrap configuration. The caller owns the database and its lifetime.
 package settings
 

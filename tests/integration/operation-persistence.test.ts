@@ -24,6 +24,9 @@ describe("durable Management API operations", () => {
         operation: { id?: string; kind?: string; state?: string; createdAt?: string; requestId?: string };
         unknownStatus: number;
         unknownCode: string;
+        resolveStatus: number;
+        resolvedOperations: Array<{ id: string; state: string; resourceId: string }>;
+        resolvedKeyAbsent: boolean;
         resultSecretAbsent: boolean;
         storedPayloadsNull: boolean;
         appliedRevision: string;
@@ -35,7 +38,7 @@ describe("durable Management API operations", () => {
       expect(report.readStatus).toBe(200);
       expect(report.operation).toMatchObject({
         id: report.operationId,
-        kind: "plugin-settings-rollback",
+        kind: "service-settings-rollback",
         state: "succeeded",
         createdAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
         requestId: expect.any(String),
@@ -48,6 +51,11 @@ describe("durable Management API operations", () => {
       expect(report.operation).not.toHaveProperty("problem");
       expect(report.unknownStatus).toBe(404);
       expect(report.unknownCode).toBeTruthy();
+      expect(report.resolveStatus).toBe(200);
+      expect(report.resolvedOperations).toEqual([
+        { id: report.operationId, state: "succeeded", resourceId: "forms" },
+      ]);
+      expect(report.resolvedKeyAbsent).toBe(true);
       expect(report.resultSecretAbsent).toBe(true);
       expect(report.storedPayloadsNull).toBe(true);
     } finally {

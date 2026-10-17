@@ -11,9 +11,9 @@ const (
 	AuditFields             = "audit-fields.yaml"
 	ErrorsJSON              = "errors.json"
 	SQLiteRuntime           = "sqlite-runtime.yaml"
-	SQLitePluginInstances   = "sqlite-plugin-instances.yaml"
-	PluginSecretGrants      = "plugin-secret-grants.yaml"
-	PluginReconciliation    = "plugin-reconciliation.yaml"
+	SQLiteServiceInstances   = "sqlite-service-instances.yaml"
+	ServiceSecretGrants      = "service-secret-grants.yaml"
+	ServiceReconciliation    = "service-reconciliation.yaml"
 	TrafficRolloutFields    = "v2/traffic-rollout-fields.yaml"
 )
 

@@ -11,21 +11,21 @@ import (
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
 	"github.com/Liapoldus/core/v3/internal/presentation/api/handlers"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type pluginConfigurationContextKey struct{}
+type serviceConfigurationContextKey struct{}
 
-func WithPluginConfigurations(handler http.Handler, service *application.PluginConfigurationService) http.Handler {
+func WithServiceConfigurations(handler http.Handler, service *application.ServiceConfigurationService) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		ctx := context.WithValue(request.Context(), pluginConfigurationContextKey{}, service)
+		ctx := context.WithValue(request.Context(), serviceConfigurationContextKey{}, service)
 		handler.ServeHTTP(response, request.WithContext(ctx))
 	})
 }
 
-func pluginConfigurationServiceFromContext(ctx context.Context) *application.PluginConfigurationService {
-	service, _ := ctx.Value(pluginConfigurationContextKey{}).(*application.PluginConfigurationService)
+func serviceConfigurationServiceFromContext(ctx context.Context) *application.ServiceConfigurationService {
+	service, _ := ctx.Value(serviceConfigurationContextKey{}).(*application.ServiceConfigurationService)
 	return service
 }
 
@@ -41,19 +41,19 @@ func (server *Server) handlerDependencies() handlers.Dependencies {
 	}
 }
 
-func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
+func (server *Server) serviceHandlerDependencies() handlers.ServiceDependencies {
 	server.mu.RLock()
-	pluginInventory := append([]any(nil), server.Plugins...)
-	adminControl := server.PluginAdminControl
+	serviceInventory := append([]any(nil), server.Services...)
+	adminControl := server.ServiceAdminControl
 	server.mu.RUnlock()
 
-	dependencies := handlers.PluginDependencies{
+	dependencies := handlers.ServiceDependencies{
 		Management:          server.Management,
 		AuditWords:          server.AuditWords,
-		PluginIDField:       server.PluginIDField,
-		Plugins:             pluginInventory,
+		ServiceIDField:      server.ServiceIDField,
+		Services:            serviceInventory,
 		Operations:          server.Operations,
-		PluginLinks:         server.PluginLinks,
+		ServiceLinks:        server.ServiceLinks,
 		TrafficRollouts:     server.TrafficRollouts,
 		TrafficRolloutAPI:   server.TrafficRolloutAPI,
 		WriteJSON:           server.writeJSON,
@@ -82,21 +82,21 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 			return result, nil
 		}
 		dependencies.AdminSurfaceDigest = adminControl.SurfaceDigest
-		dependencies.DispatchAdmin = func(ctx context.Context, invocation handlers.AdminInvocation, input []byte) (handlers.PluginAdminResult, error) {
+		dependencies.DispatchAdmin = func(ctx context.Context, invocation handlers.AdminInvocation, input []byte) (handlers.ServiceAdminResult, error) {
 			result, err := adminControl.Action(ctx, sdkmodels.AdminActionInvocation{
 				CallerID: invocation.CallerID, InstanceID: invocation.InstanceID, PageID: invocation.PageID,
 				ActionID: invocation.ActionID, SurfaceDigest: invocation.SurfaceDigest, RequestID: invocation.RequestID,
 				IdempotencyKey: invocation.IdempotencyKey, IfMatch: invocation.IfMatch,
 			}, input)
-			return handlers.PluginAdminResult{Status: result.StatusCode, ContentType: server.Management.ContentTypes.JSON, Body: result.Body}, err
+			return handlers.ServiceAdminResult{Status: result.StatusCode, ContentType: server.Management.ContentTypes.JSON, Body: result.Body}, err
 		}
-		dependencies.ForwardArtifact = func(ctx context.Context, invocation handlers.AdminInvocation, metadata []byte, contentType string, artifact io.ReadCloser) (handlers.PluginAdminResult, error) {
+		dependencies.ForwardArtifact = func(ctx context.Context, invocation handlers.AdminInvocation, metadata []byte, contentType string, artifact io.ReadCloser) (handlers.ServiceAdminResult, error) {
 			result, err := adminControl.Artifact(ctx, sdkmodels.ArtifactInvocation{
 				CallerID: invocation.CallerID, InstanceID: invocation.InstanceID, PageID: invocation.PageID,
 				ActionID: invocation.ActionID, SurfaceDigest: invocation.SurfaceDigest, RequestID: invocation.RequestID,
 				IdempotencyKey: invocation.IdempotencyKey, IfMatch: invocation.IfMatch,
 			}, metadata, contentType, artifact)
-			return handlers.PluginAdminResult{Status: result.StatusCode, ContentType: server.Management.ContentTypes.JSON, Body: result.Body}, err
+			return handlers.ServiceAdminResult{Status: result.StatusCode, ContentType: server.Management.ContentTypes.JSON, Body: result.Body}, err
 		}
 		dependencies.RecordAdminOutcome = func(ctx context.Context, actor, instanceID, requestID string, succeeded bool) error {
 			if server.Audit == nil {
@@ -107,7 +107,7 @@ func (server *Server) pluginHandlerDependencies() handlers.PluginDependencies {
 				result = server.AuditWords.Audit.Results.Succeeded
 			}
 			return server.Audit.Record(ctx, models.AuditRecord{
-				Actor: actor, Action: server.AuditWords.Audit.Actions.PluginAdminAction,
+				Actor: actor, Action: server.AuditWords.Audit.Actions.ServiceAdminAction,
 				Resource: instanceID, Result: result, RequestID: requestID,
 			})
 		}
@@ -148,43 +148,43 @@ func (server *Server) handle(response http.ResponseWriter, request *http.Request
 	}
 	path := strings.TrimSuffix(request.URL.Path, "/")
 	if server.dispatchReadiness(response, request, path, requestID) ||
-		server.dispatchPluginRegistration(response, request, path, requestID) ||
-		server.dispatchPluginMetadata(response, request, path, requestID) ||
+		server.dispatchServiceRegistration(response, request, path, requestID) ||
+		server.dispatchServiceMetadata(response, request, path, requestID) ||
 		server.dispatchConfigBundles(response, request, path, requestID, actor) ||
 		server.dispatchAccess(response, request, path, requestID, actor) ||
-		server.dispatchPluginCollections(response, request, path, requestID, actor) ||
-		server.dispatchPluginLinks(response, request, path, requestID, actor) ||
+		server.dispatchServiceCollections(response, request, path, requestID, actor) ||
+		server.dispatchServiceLinks(response, request, path, requestID, actor) ||
 		server.dispatchAudit(response, request, path, requestID) ||
-		server.dispatchPluginActions(response, request, path, requestID, actor) ||
-		server.dispatchOperations(response, request, path, requestID) {
+		server.dispatchServiceActions(response, request, path, requestID, actor) ||
+		server.dispatchOperations(response, request, path, requestID, actor) {
 		return
 	}
 	server.writeProblem(response, 404, "not_found", "resource not found", requestID)
 }
 
-func (server *Server) dispatchPluginRegistration(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
-	if server.RegisterPlugin == nil || request.Method != http.MethodPost || !strings.HasPrefix(path, server.Management.Paths.Plugins+"/") {
+func (server *Server) dispatchServiceRegistration(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if server.RegisterService == nil || request.Method != http.MethodPost || !strings.HasPrefix(path, server.Management.Paths.Services+"/") {
 		return false
 	}
-	resource := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
+	resource := strings.TrimPrefix(path, server.Management.Paths.Services+"/")
 	parts := strings.Split(resource, "/")
 	if len(parts) != 3 || parts[0] == "" || parts[1] != "replicas" || parts[2] != "register" {
 		return false
 	}
-	handlers.PluginRegistration(response, request, server.RegisterPlugin, parts[0], server.writeJSON, server.writeProblem, requestID)
+	handlers.ServiceRegistration(response, request, server.RegisterService, parts[0], server.writeJSON, server.writeProblem, requestID)
 	return true
 }
 
-func (server *Server) dispatchPluginMetadata(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
-	if server.PluginMetadata == nil || request.Method != http.MethodGet || !strings.HasPrefix(path, server.Management.Paths.Plugins+"/") {
+func (server *Server) dispatchServiceMetadata(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+	if server.ServiceMetadata == nil || request.Method != http.MethodGet || !strings.HasPrefix(path, server.Management.Paths.Services+"/") {
 		return false
 	}
-	resource := strings.TrimPrefix(path, server.Management.Paths.Plugins+"/")
+	resource := strings.TrimPrefix(path, server.Management.Paths.Services+"/")
 	parts := strings.Split(resource, "/")
 	if len(parts) != 2 || parts[0] == "" || (parts[1] != "manifest" && parts[1] != "schema" && parts[1] != "status") {
 		return false
 	}
-	handlers.PluginMetadata(response, request, server.PluginMetadata, parts[0], parts[1], server.writeJSON, server.writeProblem, requestID)
+	handlers.ServiceMetadata(response, request, server.ServiceMetadata, parts[0], parts[1], server.writeJSON, server.writeProblem, requestID)
 	return true
 }
 
@@ -265,38 +265,38 @@ func (server *Server) dispatchAccess(response http.ResponseWriter, request *http
 	return false
 }
 
-func (server *Server) dispatchPluginCollections(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
-	if path == server.Management.Paths.Plugins && request.Method == http.MethodGet {
-		handlers.PluginList(server.pluginHandlerDependencies(), response, request, requestID)
+func (server *Server) dispatchServiceCollections(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if path == server.Management.Paths.Services && request.Method == http.MethodGet {
+		handlers.ServiceList(server.serviceHandlerDependencies(), response, request, requestID)
 		return true
 	}
 	if path == server.Management.Paths.AdminSurfaces && request.Method == http.MethodGet {
-		handlers.AdminSurfaceList(server.pluginHandlerDependencies(), response, request, requestID)
+		handlers.AdminSurfaceList(server.serviceHandlerDependencies(), response, request, requestID)
 		return true
 	}
-	pluginDependencies := server.pluginHandlerDependencies()
-	if handlers.IsTrafficRolloutDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
-		handlers.TrafficRolloutGet(pluginDependencies, response, request, path, requestID)
+	serviceDependencies := server.serviceHandlerDependencies()
+	if handlers.IsTrafficRolloutDetailPath(serviceDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.TrafficRolloutGet(serviceDependencies, response, request, path, requestID)
 		return true
 	}
-	if handlers.IsTrafficRolloutApprovalPath(pluginDependencies, path) {
-		handlers.TrafficRolloutApproveStage(pluginDependencies, response, request, path, requestID, actor)
+	if handlers.IsTrafficRolloutApprovalPath(serviceDependencies, path) {
+		handlers.TrafficRolloutApproveStage(serviceDependencies, response, request, path, requestID, actor)
 		return true
 	}
-	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
-		handlers.PluginSettings(pluginDependencies, response, pluginConfigurationServiceFromContext(request.Context()), request.Context(), path, requestID)
+	if handlers.IsServiceSettingsPath(serviceDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.ServiceSettings(serviceDependencies, response, serviceConfigurationServiceFromContext(request.Context()), request.Context(), path, requestID)
 		return true
 	}
-	if handlers.IsPluginSettingsPath(pluginDependencies, path) && request.Method == server.Management.Methods.Put {
-		handlers.PluginSettingsUpdate(pluginDependencies, response, request, pluginConfigurationServiceFromContext(request.Context()), path, requestID, actor)
+	if handlers.IsServiceSettingsPath(serviceDependencies, path) && request.Method == server.Management.Methods.Put {
+		handlers.ServiceSettingsUpdate(serviceDependencies, response, request, serviceConfigurationServiceFromContext(request.Context()), path, requestID, actor)
 		return true
 	}
-	if handlers.IsTrafficRolloutCollectionPath(pluginDependencies, path) && request.Method == server.Management.Methods.Post {
-		handlers.TrafficRolloutCreate(pluginDependencies, response, request, path, requestID, actor)
+	if handlers.IsTrafficRolloutCollectionPath(serviceDependencies, path) && request.Method == server.Management.Methods.Post {
+		handlers.TrafficRolloutCreate(serviceDependencies, response, request, path, requestID, actor)
 		return true
 	}
-	if handlers.IsPluginDetailPath(pluginDependencies, path) && request.Method == server.Management.Methods.Get {
-		handlers.PluginDetail(pluginDependencies, response, path, requestID)
+	if handlers.IsServiceDetailPath(serviceDependencies, path) && request.Method == server.Management.Methods.Get {
+		handlers.ServiceDetail(serviceDependencies, response, path, requestID)
 		return true
 	}
 	return false
@@ -310,29 +310,29 @@ func (server *Server) dispatchAudit(response http.ResponseWriter, request *http.
 	return true
 }
 
-func (server *Server) dispatchPluginLinks(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
-	pluginDependencies := server.pluginHandlerDependencies()
-	if handlers.IsPluginLinkCollectionPath(pluginDependencies, path) {
+func (server *Server) dispatchServiceLinks(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	serviceDependencies := server.serviceHandlerDependencies()
+	if handlers.IsServiceLinkCollectionPath(serviceDependencies, path) {
 		switch request.Method {
 		case server.Management.Methods.Get:
-			handlers.PluginLinkList(pluginDependencies, response, request, requestID)
+			handlers.ServiceLinkList(serviceDependencies, response, request, requestID)
 			return true
 		case server.Management.Methods.Post:
-			handlers.PluginLinkCreate(pluginDependencies, response, request, requestID, actor)
+			handlers.ServiceLinkCreate(serviceDependencies, response, request, requestID, actor)
 			return true
 		}
 		return false
 	}
-	if handlers.IsPluginLinkDetailPath(pluginDependencies, path) {
+	if handlers.IsServiceLinkDetailPath(serviceDependencies, path) {
 		switch request.Method {
 		case server.Management.Methods.Get:
-			handlers.PluginLinkGet(pluginDependencies, response, request, path, requestID)
+			handlers.ServiceLinkGet(serviceDependencies, response, request, path, requestID)
 			return true
 		case server.Management.Methods.Put:
-			handlers.PluginLinkReplace(pluginDependencies, response, request, path, requestID, actor)
+			handlers.ServiceLinkReplace(serviceDependencies, response, request, path, requestID, actor)
 			return true
 		case server.Management.Methods.Delete:
-			handlers.PluginLinkDelete(pluginDependencies, response, request, path, requestID, actor)
+			handlers.ServiceLinkDelete(serviceDependencies, response, request, path, requestID, actor)
 			return true
 		}
 		return false
@@ -340,20 +340,28 @@ func (server *Server) dispatchPluginLinks(response http.ResponseWriter, request 
 	return false
 }
 
-func (server *Server) dispatchPluginActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
-	pluginDependencies := server.pluginHandlerDependencies()
-	if handlers.IsPluginRollbackPath(pluginDependencies, path) && request.Method == server.Management.Methods.Post {
-		handlers.PluginSettingsRollback(pluginDependencies, response, request, pluginConfigurationServiceFromContext(request.Context()), path, requestID, actor)
+func (server *Server) dispatchServiceActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	serviceDependencies := server.serviceHandlerDependencies()
+	if handlers.IsServiceRollbackPath(serviceDependencies, path) && request.Method == server.Management.Methods.Post {
+		handlers.ServiceSettingsRollback(serviceDependencies, response, request, serviceConfigurationServiceFromContext(request.Context()), path, requestID, actor)
 		return true
 	}
-	if strings.HasPrefix(path, server.Management.Paths.Plugins+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
-		handlers.PluginAdmin(server.pluginHandlerDependencies(), response, request, path, requestID, actor)
+	if strings.HasPrefix(path, server.Management.Paths.Services+"/") && strings.Contains(path, "/"+server.Management.Paths.AdminPages+"/") && (request.Method == http.MethodGet || request.Method == http.MethodPost) {
+		handlers.ServiceAdmin(server.serviceHandlerDependencies(), response, request, path, requestID, actor)
 		return true
 	}
 	return false
 }
 
-func (server *Server) dispatchOperations(response http.ResponseWriter, request *http.Request, path, requestID string) bool {
+func (server *Server) dispatchOperations(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
+	if path == server.Management.Paths.OperationResolve {
+		if request.Method != server.Management.Methods.Post {
+			server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "operation resolve accepts POST", requestID)
+			return true
+		}
+		handlers.OperationResolve(server.managementHandlerDependencies(), response, request, requestID, actor)
+		return true
+	}
 	if !strings.HasPrefix(path, server.Management.Paths.Operations+"/") || request.Method != http.MethodGet {
 		return false
 	}

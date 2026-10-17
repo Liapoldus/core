@@ -14,18 +14,18 @@ func SelectTrafficRolloutCohorts(
 	plan models.TrafficRolloutPlan,
 	replicas []models.TrafficRolloutReplica,
 	now time.Time,
-) ([]models.PluginRolloutTarget, []models.PluginRolloutTarget, error) {
+) ([]models.ServiceRolloutTarget, []models.ServiceRolloutTarget, error) {
 	if now.IsZero() || !validSHA256(plan.ReleaseSHA256) || len(plan.Targets) == 0 || len(plan.Stages) == 0 ||
 		plan.Stages[len(plan.Stages)-1].CandidateWeightPercent != 100 {
-		return nil, nil, models.PluginConfigurationConflict{}
+		return nil, nil, models.ServiceConfigurationConflict{}
 	}
 	requested := make(map[string]models.TrafficRolloutTarget, len(plan.Targets))
 	for _, target := range plan.Targets {
 		if target.ReplicaID == "" || target.Incarnation == "" {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
 		if _, exists := requested[target.ReplicaID]; exists {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
 		requested[target.ReplicaID] = target
 	}
@@ -33,25 +33,25 @@ func SelectTrafficRolloutCohorts(
 	for _, replica := range replicas {
 		if replica.ReplicaID == "" || replica.Incarnation == "" || replica.LeaseExpiresAt.IsZero() ||
 			!validSHA256(replica.ReleaseSHA256) {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
 		if _, exists := registered[replica.ReplicaID]; exists {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
 		registered[replica.ReplicaID] = replica
 	}
 
-	candidate := make([]models.PluginRolloutTarget, 0, len(plan.Targets))
+	candidate := make([]models.ServiceRolloutTarget, 0, len(plan.Targets))
 	for replicaID, requestedTarget := range requested {
 		replica, exists := registered[replicaID]
 		if !exists || replica.Incarnation != requestedTarget.Incarnation || !replica.LeaseExpiresAt.After(now) ||
 			!replica.Ready || replica.ReleaseSHA256 != plan.ReleaseSHA256 {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
-		candidate = append(candidate, toPluginRolloutTarget(replica))
+		candidate = append(candidate, toServiceRolloutTarget(replica))
 	}
 
-	incumbent := make([]models.PluginRolloutTarget, 0, len(replicas))
+	incumbent := make([]models.ServiceRolloutTarget, 0, len(replicas))
 	incumbentRelease := ""
 	for replicaID, replica := range registered {
 		if _, isCandidate := requested[replicaID]; isCandidate || !replica.LeaseExpiresAt.After(now) || !replica.Ready {
@@ -60,20 +60,20 @@ func SelectTrafficRolloutCohorts(
 		if incumbentRelease == "" {
 			incumbentRelease = replica.ReleaseSHA256
 		} else if incumbentRelease != replica.ReleaseSHA256 {
-			return nil, nil, models.PluginConfigurationConflict{}
+			return nil, nil, models.ServiceConfigurationConflict{}
 		}
-		incumbent = append(incumbent, toPluginRolloutTarget(replica))
+		incumbent = append(incumbent, toServiceRolloutTarget(replica))
 	}
 	if plan.Stages[0].CandidateWeightPercent < 100 && len(incumbent) == 0 {
-		return nil, nil, models.PluginConfigurationConflict{}
+		return nil, nil, models.ServiceConfigurationConflict{}
 	}
 	sort.Slice(candidate, func(left, right int) bool { return candidate[left].ReplicaID < candidate[right].ReplicaID })
 	sort.Slice(incumbent, func(left, right int) bool { return incumbent[left].ReplicaID < incumbent[right].ReplicaID })
 	return candidate, incumbent, nil
 }
 
-func toPluginRolloutTarget(replica models.TrafficRolloutReplica) models.PluginRolloutTarget {
-	return models.PluginRolloutTarget{
+func toServiceRolloutTarget(replica models.TrafficRolloutReplica) models.ServiceRolloutTarget {
+	return models.ServiceRolloutTarget{
 		ReplicaID: replica.ReplicaID, IncarnationID: replica.Incarnation,
 		ReleaseSHA256: replica.ReleaseSHA256, LeaseExpiresAt: replica.LeaseExpiresAt,
 	}

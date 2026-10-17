@@ -27,10 +27,22 @@ func (service OperationService) FindByIdempotency(ctx context.Context, actor, sc
 	return service.Store.FindByIdempotency(ctx, actor, scope, key, requestDigest)
 }
 
+func (service OperationService) FindByIdempotencyKey(ctx context.Context, actor, scope, key string) (models.Operation, bool, error) {
+	return service.Store.FindByIdempotencyKey(ctx, actor, scope, key)
+}
+
 func (service OperationService) ListRecoverable(ctx context.Context, kind, pendingState, runningState string) ([]models.Operation, error) {
 	return service.Store.ListRecoverable(ctx, kind, pendingState, runningState)
 }
 
 func (service OperationService) Get(ctx context.Context, id string) (models.Operation, error) {
 	return service.Store.Get(ctx, id)
+}
+
+func (service OperationService) ReplicaOutcomes(ctx context.Context, operation models.Operation) ([]models.OperationReplicaOutcome, error) {
+	reader, ok := service.Store.(interfaces.OperationReplicaOutcomeReader)
+	if !ok {
+		return nil, nil
+	}
+	return reader.ReplicaOutcomes(ctx, operation.ID, operation.State, operation.ErrorCode)
 }

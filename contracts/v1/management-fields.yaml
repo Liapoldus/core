@@ -1,25 +1,26 @@
 paths:
   healthz: /healthz
   status: /api/status
-  plugins: /api/plugins
-  pluginLinks: /api/plugin-links
-  pluginLinkTargetSuffix: /{callerInstanceId}/{targetInstanceId}
-  pluginSettingsSuffix: /settings
-  pluginRollbackSuffix: rollback
-  adminSurfaces: /api/plugins/admin-surfaces
-  pluginIDSeparator: "/"
+  services: /api/services
+  serviceLinks: /api/service-links
+  serviceLinkTargetSuffix: /{callerInstanceId}/{targetInstanceId}
+  serviceSettingsSuffix: /settings
+  serviceRollbackSuffix: rollback
+  adminSurfaces: /api/services/admin-surfaces
+  serviceIDSeparator: "/"
   adminPages: admin/pages
   adminActions: actions
   adminQueryAction: query
   operations: /api/operations
+  operationResolve: /api/operations/resolve
   audit: /api/audit
   serviceKeys: /api/access/service-keys
 operationKinds:
-  pluginSettingsApply: plugin-settings-apply
-  pluginSettingsRollback: plugin-settings-rollback
-  pluginLinkCreate: plugin-link-create
-  pluginLinkReplace: plugin-link-replace
-  pluginLinkDelete: plugin-link-delete
+  serviceSettingsApply: service-settings-apply
+  serviceSettingsRollback: service-settings-rollback
+  serviceLinkCreate: service-link-create
+  serviceLinkReplace: service-link-replace
+  serviceLinkDelete: service-link-delete
 serviceKeys:
   nameMinLength: 1
   nameMaxLength: 80
@@ -47,6 +48,7 @@ json:
   expiresAt: expiresAt
   revokedAt: revokedAt
   updatedAt: updatedAt
+  replicaOutcomes: replicaOutcomes
   startedAt: startedAt
   finishedAt: finishedAt
   result: result
@@ -97,6 +99,11 @@ json:
   allowedNames: allowedNames
   revision: revision
   config: config
+  configuration: configuration
+  desiredGeneration: desiredGeneration
+  appliedGeneration: appliedGeneration
+  lastFailureCode: lastFailureCode
+  observedAt: observedAt
 headers:
   ifMatch: If-Match
   adminSurfaceDigest: X-Liapoldus-Admin-Surface-Digest
@@ -136,16 +143,21 @@ statuses:
   empty: empty
   notReady: not-ready
   recoveryRequired: recovery-required
+  unconfigured: unconfigured
+  unobserved: unobserved
+  acknowledged: acknowledged
+  stale: stale
+  unreachable: unreachable
 codes:
   bearerRequired: management_bearer_required
   managementUnavailable: management_unavailable
   idempotencyConflict: idempotency_conflict
-  pluginUnavailable: plugin_unavailable
-  pluginNotFound: plugin_not_found
-  pluginConfigInvalid: plugin_config_invalid
-  pluginRevisionConflict: plugin_revision_conflict
-  pluginLinkConflict: plugin_link_conflict
-  pluginLinkInvalid: plugin_link_invalid
+  serviceUnavailable: service_unavailable
+  serviceNotFound: service_not_found
+  serviceConfigInvalid: service_config_invalid
+  serviceRevisionConflict: service_revision_conflict
+  serviceLinkConflict: service_link_conflict
+  serviceLinkInvalid: service_link_invalid
   targetLost: target_lost
   activationFailed: activation_failed
   invalidRequest: invalid_request

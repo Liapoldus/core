@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import { createGoWorkspace, missingWorkspaceRepositories } from "../support/workspace.js";
 
 const root = resolve(import.meta.dirname, "../..");
-const missing = missingWorkspaceRepositories("plugin-sdk");
+const missing = missingWorkspaceRepositories("service-sdk");
 
 describe.skipIf(missing.length > 0)("SQLite startup integrity gate", () => {
   it("refuses an orphaned foreign key before Core serves requests", () => {
-    const workspace = createGoWorkspace("core", "plugin-sdk");
+    const workspace = createGoWorkspace("core", "service-sdk");
     let output: string;
     try {
       output = execFileSync("go", ["run", "./tests/fixtures/sqlite-integrity"], {

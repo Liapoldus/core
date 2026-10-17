@@ -58,56 +58,57 @@ type ManagementWords struct {
 		CreatedStatus int `yaml:"createdStatus"`
 	} `yaml:"serviceKeys"`
 	Codes struct {
-		BearerRequired         string `yaml:"bearerRequired"`
-		ManagementUnavailable  string `yaml:"managementUnavailable"`
-		IdempotencyConflict    string `yaml:"idempotencyConflict"`
-		PluginConfigInvalid    string `yaml:"pluginConfigInvalid"`
-		PluginRevisionConflict string `yaml:"pluginRevisionConflict"`
-		PluginLinkConflict     string `yaml:"pluginLinkConflict"`
-		PluginLinkInvalid      string `yaml:"pluginLinkInvalid"`
-		TargetLost             string `yaml:"targetLost"`
-		ActivationFailed       string `yaml:"activationFailed"`
-		PluginUnavailable      string `yaml:"pluginUnavailable"`
-		PluginNotFound         string `yaml:"pluginNotFound"`
-		InvalidRequest         string `yaml:"invalidRequest"`
-		ArtifactTooLarge       string `yaml:"artifactTooLarge"`
-		OperationNotFound      string `yaml:"operationNotFound"`
+		BearerRequired          string `yaml:"bearerRequired"`
+		ManagementUnavailable   string `yaml:"managementUnavailable"`
+		IdempotencyConflict     string `yaml:"idempotencyConflict"`
+		ServiceConfigInvalid    string `yaml:"serviceConfigInvalid"`
+		ServiceRevisionConflict string `yaml:"serviceRevisionConflict"`
+		ServiceLinkConflict     string `yaml:"serviceLinkConflict"`
+		ServiceLinkInvalid      string `yaml:"serviceLinkInvalid"`
+		TargetLost              string `yaml:"targetLost"`
+		ActivationFailed        string `yaml:"activationFailed"`
+		ServiceUnavailable      string `yaml:"serviceUnavailable"`
+		ServiceNotFound         string `yaml:"serviceNotFound"`
+		InvalidRequest          string `yaml:"invalidRequest"`
+		ArtifactTooLarge        string `yaml:"artifactTooLarge"`
+		OperationNotFound       string `yaml:"operationNotFound"`
 	} `yaml:"codes"`
 	Paths struct {
-		Healthz                string `yaml:"healthz"`
-		Status                 string `yaml:"status"`
-		Config                 string `yaml:"config"`
-		ConfigValidate         string `yaml:"configValidate"`
-		ConfigReload           string `yaml:"configReload"`
-		Reload                 string `yaml:"reload"`
-		Listeners              string `yaml:"listeners"`
-		Upstreams              string `yaml:"upstreams"`
-		Plugins                string `yaml:"plugins"`
-		PluginSettingsSuffix   string `yaml:"pluginSettingsSuffix"`
-		PluginRollbackSuffix   string `yaml:"pluginRollbackSuffix"`
-		AdminSurfaces          string `yaml:"adminSurfaces"`
-		AdminPages             string `yaml:"adminPages"`
-		AdminActions           string `yaml:"adminActions"`
-		AdminQueryAction       string `yaml:"adminQueryAction"`
-		Logs                   string `yaml:"logs"`
-		TLS                    string `yaml:"tls"`
-		Renew                  string `yaml:"renew"`
-		Revoke                 string `yaml:"revoke"`
-		Operations             string `yaml:"operations"`
-		Audit                  string `yaml:"audit"`
-		ServiceKeys            string `yaml:"serviceKeys"`
-		PluginLinks            string `yaml:"pluginLinks"`
-		PluginLinkTargetSuffix string `yaml:"pluginLinkTargetSuffix"`
-		PluginIDSeparator      string `yaml:"pluginIDSeparator"`
-		ConfigBundlePlan       string `yaml:"configBundlePlan"`
-		ConfigBundleApply      string `yaml:"configBundleApply"`
+		Healthz                 string `yaml:"healthz"`
+		Status                  string `yaml:"status"`
+		Config                  string `yaml:"config"`
+		ConfigValidate          string `yaml:"configValidate"`
+		ConfigReload            string `yaml:"configReload"`
+		Reload                  string `yaml:"reload"`
+		Listeners               string `yaml:"listeners"`
+		Upstreams               string `yaml:"upstreams"`
+		Services                string `yaml:"services"`
+		ServiceSettingsSuffix   string `yaml:"serviceSettingsSuffix"`
+		ServiceRollbackSuffix   string `yaml:"serviceRollbackSuffix"`
+		AdminSurfaces           string `yaml:"adminSurfaces"`
+		AdminPages              string `yaml:"adminPages"`
+		AdminActions            string `yaml:"adminActions"`
+		AdminQueryAction        string `yaml:"adminQueryAction"`
+		Logs                    string `yaml:"logs"`
+		TLS                     string `yaml:"tls"`
+		Renew                   string `yaml:"renew"`
+		Revoke                  string `yaml:"revoke"`
+		Operations              string `yaml:"operations"`
+		OperationResolve        string `yaml:"operationResolve"`
+		Audit                   string `yaml:"audit"`
+		ServiceKeys             string `yaml:"serviceKeys"`
+		ServiceLinks            string `yaml:"serviceLinks"`
+		ServiceLinkTargetSuffix string `yaml:"serviceLinkTargetSuffix"`
+		ServiceIDSeparator      string `yaml:"serviceIDSeparator"`
+		ConfigBundlePlan        string `yaml:"configBundlePlan"`
+		ConfigBundleApply       string `yaml:"configBundleApply"`
 	} `yaml:"paths"`
 	OperationKinds struct {
-		PluginSettingsApply    string `yaml:"pluginSettingsApply"`
-		PluginSettingsRollback string `yaml:"pluginSettingsRollback"`
-		PluginLinkCreate       string `yaml:"pluginLinkCreate"`
-		PluginLinkReplace      string `yaml:"pluginLinkReplace"`
-		PluginLinkDelete       string `yaml:"pluginLinkDelete"`
+		ServiceSettingsApply    string `yaml:"serviceSettingsApply"`
+		ServiceSettingsRollback string `yaml:"serviceSettingsRollback"`
+		ServiceLinkCreate       string `yaml:"serviceLinkCreate"`
+		ServiceLinkReplace      string `yaml:"serviceLinkReplace"`
+		ServiceLinkDelete       string `yaml:"serviceLinkDelete"`
 	} `yaml:"operationKinds"`
 	Methods struct {
 		Get    string `yaml:"get"`
@@ -143,6 +144,7 @@ type ManagementWords struct {
 		ExpiresAt               string `yaml:"expiresAt"`
 		RevokedAt               string `yaml:"revokedAt"`
 		UpdatedAt               string `yaml:"updatedAt"`
+		ReplicaOutcomes         string `yaml:"replicaOutcomes"`
 		StartedAt               string `yaml:"startedAt"`
 		FinishedAt              string `yaml:"finishedAt"`
 		Result                  string `yaml:"result"`
@@ -255,7 +257,7 @@ type ManagementWords struct {
 	} `yaml:"diagnostics"`
 }
 
-type PluginConfigurationWords struct {
+type ServiceConfigurationWords struct {
 	SchemaVersion       int64 `yaml:"schemaVersion"`
 	MaximumPayloadBytes int   `yaml:"maximumPayloadBytes"`
 	Slots               struct {
@@ -273,9 +275,9 @@ type PluginConfigurationWords struct {
 	} `yaml:"diagnostics"`
 }
 
-func LoadPluginConfiguration() (PluginConfigurationWords, error) {
+func LoadServiceConfiguration() (ServiceConfigurationWords, error) {
 	definition := storage.ConfigurationDefinitions()
-	var loaded PluginConfigurationWords
+	var loaded ServiceConfigurationWords
 	loaded.SchemaVersion = definition.SchemaVersion
 	loaded.MaximumPayloadBytes = definition.MaximumPayloadSize
 	loaded.Slots.Active = definition.Slots.Active
@@ -287,7 +289,7 @@ func LoadPluginConfiguration() (PluginConfigurationWords, error) {
 	loaded.Diagnostics.MigrationFailed = definition.Diagnostics.MigrationFailed
 	if loaded.SchemaVersion < 1 || loaded.MaximumPayloadBytes < 1 || loaded.Slots.Active == "" || loaded.Slots.Previous == "" || loaded.Slots.Staging == "" ||
 		loaded.OperationStates.Pending == "" || loaded.OperationStates.Running == "" || loaded.Diagnostics.InvalidContract == "" || loaded.Diagnostics.MigrationFailed == "" {
-		return PluginConfigurationWords{}, errors.New(loaded.Diagnostics.InvalidContract)
+		return ServiceConfigurationWords{}, errors.New(loaded.Diagnostics.InvalidContract)
 	}
 	return loaded, nil
 }
@@ -303,15 +305,15 @@ type AuditWords struct {
 			StaticToken string `yaml:"staticToken"`
 		} `yaml:"actors"`
 		Actions struct {
-			ServiceKeyCreate          string `yaml:"serviceKeyCreate"`
-			PluginSettingsCandidate   string `yaml:"pluginSettingsCandidate"`
-			PluginSettingsApply       string `yaml:"pluginSettingsApply"`
-			PluginSettingsApplyFailed string `yaml:"pluginSettingsApplyFailed"`
-			PluginSettingsRollback    string `yaml:"pluginSettingsRollback"`
-			PluginAdminAction         string `yaml:"pluginAdminAction"`
-			PluginLinkCreate          string `yaml:"pluginLinkCreate"`
-			PluginLinkReplace         string `yaml:"pluginLinkReplace"`
-			PluginLinkDelete          string `yaml:"pluginLinkDelete"`
+			ServiceKeyCreate           string `yaml:"serviceKeyCreate"`
+			ServiceSettingsCandidate   string `yaml:"serviceSettingsCandidate"`
+			ServiceSettingsApply       string `yaml:"serviceSettingsApply"`
+			ServiceSettingsApplyFailed string `yaml:"serviceSettingsApplyFailed"`
+			ServiceSettingsRollback    string `yaml:"serviceSettingsRollback"`
+			ServiceAdminAction         string `yaml:"serviceAdminAction"`
+			ServiceLinkCreate          string `yaml:"serviceLinkCreate"`
+			ServiceLinkReplace         string `yaml:"serviceLinkReplace"`
+			ServiceLinkDelete          string `yaml:"serviceLinkDelete"`
 		} `yaml:"actions"`
 		Resources struct {
 			ServiceKeys string `yaml:"serviceKeys"`

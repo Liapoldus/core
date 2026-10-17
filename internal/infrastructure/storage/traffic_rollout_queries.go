@@ -7,20 +7,20 @@ func trafficRolloutQueries() map[string]string {
     id, operation_id, instance_id, generation, release_sha256, plan_json,
     state, active_stage_index, controller_revision, revision, created_at, updated_at, completed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-		"traffic-rollout-instance-exists": `SELECT EXISTS(SELECT 1 FROM plugin_instances WHERE id = ?);`,
-		"traffic-rollout-active-generation": `SELECT COALESCE((SELECT generation FROM plugin_config_generations WHERE instance_id = ? AND slot = ?), 0),
-       COALESCE((SELECT sha256 FROM plugin_config_generations WHERE instance_id = ? AND slot = ?), '');`,
-		"traffic-rollout-staging-count":   `SELECT COUNT(*) FROM plugin_config_generations WHERE instance_id = ? AND slot = ?;`,
-		"traffic-rollout-next-generation": `SELECT COALESCE(MAX(generation), 0) + 1 FROM plugin_config_generations WHERE instance_id = ?;`,
-		"traffic-rollout-insert-generation": `INSERT INTO plugin_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
+		"traffic-rollout-instance-exists": `SELECT EXISTS(SELECT 1 FROM service_instances WHERE id = ?);`,
+		"traffic-rollout-active-generation": `SELECT COALESCE((SELECT generation FROM service_config_generations WHERE instance_id = ? AND slot = ?), 0),
+       COALESCE((SELECT sha256 FROM service_config_generations WHERE instance_id = ? AND slot = ?), '');`,
+		"traffic-rollout-staging-count":   `SELECT COUNT(*) FROM service_config_generations WHERE instance_id = ? AND slot = ?;`,
+		"traffic-rollout-next-generation": `SELECT COALESCE(MAX(generation), 0) + 1 FROM service_config_generations WHERE instance_id = ?;`,
+		"traffic-rollout-insert-generation": `INSERT INTO service_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?);`,
-		"traffic-rollout-delete-previous":      `DELETE FROM plugin_config_generations WHERE instance_id = ? AND slot = ?;`,
-		"traffic-rollout-move-generation-slot": `UPDATE plugin_config_generations SET slot = ? WHERE instance_id = ? AND generation = ? AND slot = ?;`,
-		"traffic-rollout-plugin-rollout-create": `INSERT INTO plugin_rollouts(operation_id, instance_id, generation, open, created_at)
+		"traffic-rollout-delete-previous":      `DELETE FROM service_config_generations WHERE instance_id = ? AND slot = ?;`,
+		"traffic-rollout-move-generation-slot": `UPDATE service_config_generations SET slot = ? WHERE instance_id = ? AND generation = ? AND slot = ?;`,
+		"traffic-rollout-service-rollout-create": `INSERT INTO service_rollouts(operation_id, instance_id, generation, open, created_at)
 VALUES (?, ?, ?, 1, ?);`,
-		"traffic-rollout-plugin-target-create": `INSERT INTO plugin_rollout_targets(operation_id, replica_id, incarnation_id, release_sha256, acknowledged)
+		"traffic-rollout-service-target-create": `INSERT INTO service_rollout_targets(operation_id, replica_id, incarnation_id, release_sha256, acknowledged)
 VALUES (?, ?, ?, ?, 0);`,
-		"traffic-rollout-plugin-target-lease-create": `INSERT INTO plugin_rollout_target_leases(operation_id, replica_id, lease_expires_at)
+		"traffic-rollout-service-target-lease-create": `INSERT INTO service_rollout_target_leases(operation_id, replica_id, lease_expires_at)
 VALUES (?, ?, ?);`,
 		"traffic-rollout-stage-create": `INSERT INTO traffic_rollout_stages (
     operation_id, stage_index, stage_id, candidate_weight_percent,
@@ -37,7 +37,7 @@ VALUES (?, ?, ?);`,
 FROM traffic_rollouts WHERE id = ?;`,
 		"traffic-rollout-open-configurations": `SELECT t.operation_id, t.instance_id, t.generation
 FROM traffic_rollouts AS t
-JOIN plugin_rollouts AS p ON p.operation_id = t.operation_id
+JOIN service_rollouts AS p ON p.operation_id = t.operation_id
 WHERE t.instance_id = ? AND p.open = 1
 ORDER BY t.created_at, t.operation_id;`,
 		"traffic-rollout-latest-state": `SELECT state FROM traffic_rollouts
@@ -46,7 +46,7 @@ ORDER BY created_at DESC, id DESC
 LIMIT 1;`,
 		"traffic-rollout-controller-visible": `SELECT t.id
 FROM traffic_rollouts AS t
-JOIN plugin_rollouts AS p ON p.operation_id = t.operation_id
+JOIN service_rollouts AS p ON p.operation_id = t.operation_id
 JOIN operations AS o ON o.id = t.operation_id
 WHERE p.open = 0 AND t.state = 'running' AND o.state IN ('pending', 'running')
 ORDER BY t.created_at, t.id;`,

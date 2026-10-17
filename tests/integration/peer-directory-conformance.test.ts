@@ -7,9 +7,9 @@ import { createGoWorkspace } from "../support/workspace.js";
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
 const execFileAsync = promisify(execFile);
 
-describe("Core and Plugin SDK peer-directory conformance", () => {
+describe("Core and Service SDK peer-directory conformance", () => {
   it("serves the real poll endpoint over mTLS and resolves it with the SDK", async () => {
-    const workspace = createGoWorkspace("core", "plugin-sdk");
+    const workspace = createGoWorkspace("core", "service-sdk");
     try {
       const { stdout } = await execFileAsync(
         "go",

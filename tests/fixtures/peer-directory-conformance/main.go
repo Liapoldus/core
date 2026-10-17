@@ -22,33 +22,33 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/v3/internal/domain/models"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 	"github.com/Liapoldus/core/v3/internal/presentation/api"
-	sdkapplication "github.com/Liapoldus/plugin-sdk/v2/application"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	sdkapplication "github.com/Liapoldus/service-sdk/v2/application"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	servicesdk "github.com/Liapoldus/service-sdk/v2/infrastructure"
 )
 
 // peer-directory-conformance is the cross-component gate for the v2 peer-link
 // surface: the real Core poll handler served over real mTLS is consumed by the
-// Plugin SDK PeerDirectoryClient and resolved by the Plugin SDK ResolvePeer.
+// Service SDK PeerDirectoryClient and resolved by the Service SDK ResolvePeer.
 // It proves the wire contract, caller binding, long-poll wake-up, schema parse,
 // stable/sequence routing and caller isolation across the component boundary.
 func main() {
 	ctx := context.Background()
 
-	lifecycle, err := plugins.LoadSDKReplicaLifecycleContract()
+	lifecycle, err := services.LoadSDKReplicaLifecycleContract()
 	check(err)
-	httpContract, err := pluginsdk.LoadHTTPContract()
+	httpContract, err := servicesdk.LoadHTTPContract()
 	check(err)
-	poll, err := pluginsdk.LoadPeerDirectoryPollContract()
+	poll, err := servicesdk.LoadPeerDirectoryPollContract()
 	check(err)
 
 	contractVersion := lifecycle.ContractVersion
 	now := func() time.Time { return time.Now().UTC() }
-	directory, err := plugins.NewPluginReplicaDirectory(lifecycle, now)
+	directory, err := services.NewServiceReplicaDirectory(lifecycle, now)
 	check(err)
-	changes := plugins.NewPeerDirectoryBroadcaster()
+	changes := services.NewPeerDirectoryBroadcaster()
 
 	caller := sdkmodels.PeerReplicaID{InstanceID: "caller-instance", ReplicaID: "caller-replica", IncarnationID: "inc-caller", PlacementID: "placement-one"}
 	otherCaller := sdkmodels.PeerReplicaID{InstanceID: "other-instance", ReplicaID: "other-replica", IncarnationID: "inc-other", PlacementID: "placement-two"}
@@ -103,7 +103,7 @@ func main() {
 	}
 
 	notFound := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) { response.WriteHeader(http.StatusTeapot) })
-	handler, err := api.NewPluginPeerDirectoryHandler(poll, directory, provider, changes.Subscribe, now, 15*time.Second, notFound)
+	handler, err := api.NewServicePeerDirectoryHandler(poll, directory, provider, changes.Subscribe, now, 15*time.Second, notFound)
 	check(err)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -137,7 +137,7 @@ func main() {
 	unchanged, err := callerClient.Poll(ctx, initial.ETag, 100)
 	check(err)
 
-	changedResult := make(chan pluginsdk.PeerDirectoryPollResult, 1)
+	changedResult := make(chan servicesdk.PeerDirectoryPollResult, 1)
 	changedErr := make(chan error, 1)
 	go func() {
 		result, pollErr := callerClient.Poll(ctx, initial.ETag, 5000)
@@ -199,7 +199,7 @@ func main() {
 		"unchangedPollNotModified":      unchanged.NotModified && unchanged.ETag == initial.ETag,
 		"policyChangeWakesLongPoll":     changed.NotModified == false && len(changed.Directory.Links) == 2 && changed.ETag != initial.ETag,
 		"otherCallerIsolated":           otherDirectory.Directory.Caller == otherCaller && targetLink(otherDirectory.Directory, otherTarget.InstanceID) != nil && targetLink(otherDirectory.Directory, target.InstanceID) == nil,
-		"foreignCertificateUnavailable": errors.Is(foreignErr, pluginsdk.ErrPeerDirectoryUnavailable),
+		"foreignCertificateUnavailable": errors.Is(foreignErr, servicesdk.ErrPeerDirectoryUnavailable),
 		"stableRoutingKeyDeterministic": stable == stableAgain && stable.TargetInstanceID == target.InstanceID,
 		"stableRoutingKeyUsesSocket":    stable.Carrier == sdkmodels.PeerCarrierUnix && strings.HasPrefix(stable.Endpoint, "/run/liapoldus/"),
 		"sequenceRoutingOrdinalZero":    sequence.TargetInstanceID == target.InstanceID && sequence.Carrier == sdkmodels.PeerCarrierUnix,
@@ -209,16 +209,16 @@ func main() {
 }
 
 func directoryClient(
-	httpContract pluginsdk.HTTPContract,
-	poll pluginsdk.PeerDirectoryPollContract,
+	httpContract servicesdk.HTTPContract,
+	poll servicesdk.PeerDirectoryPollContract,
 	authority *authority,
 	server tls.Certificate,
 	client tls.Certificate,
 	coreIdentity sdkmodels.PeerIdentity,
 	baseURL string,
 	identity sdkmodels.PeerReplicaID,
-) (*pluginsdk.PeerDirectoryClient, error) {
-	credentials, err := pluginsdk.LoadCredentials(httpContract, pluginsdk.CredentialsMaterial{
+) (*servicesdk.PeerDirectoryClient, error) {
+	credentials, err := servicesdk.LoadCredentials(httpContract, servicesdk.CredentialsMaterial{
 		CABundle:             authority.certificatePEM,
 		ServerCertificatePEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate[0]}),
 		ServerKeyPEM:         privateKeyPEM(server),
@@ -228,17 +228,17 @@ func directoryClient(
 	if err != nil {
 		return nil, err
 	}
-	provider, err := pluginsdk.NewStaticCredentialsProvider(credentials)
+	provider, err := servicesdk.NewStaticCredentialsProvider(credentials)
 	if err != nil {
 		return nil, err
 	}
-	mutualTLS, err := pluginsdk.NewMutualTLSClient(httpContract, provider, pluginsdk.MutualTLSClientConfig{
+	mutualTLS, err := servicesdk.NewMutualTLSClient(httpContract, provider, servicesdk.MutualTLSClientConfig{
 		Peer: coreIdentity, ServerName: "127.0.0.1", Revocation: notRevoked{}, Clock: wallClock{},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return pluginsdk.NewPeerDirectoryClient(poll, baseURL, mutualTLS, identity)
+	return servicesdk.NewPeerDirectoryClient(poll, baseURL, mutualTLS, identity)
 }
 
 type wallClock struct{}
@@ -319,7 +319,7 @@ func (authority *authority) issue(subject pkix.Name, usage []x509.ExtKeyUsage, d
 	)
 }
 
-func register(directory *plugins.PluginReplicaDirectory, lifecycle plugins.SDKReplicaLifecycleContract, contractVersion string, identity sdkmodels.PeerReplicaID, endpoints []sdkmodels.ReplicaPeerEndpoint) {
+func register(directory *services.ServiceReplicaDirectory, lifecycle services.SDKReplicaLifecycleContract, contractVersion string, identity sdkmodels.PeerReplicaID, endpoints []sdkmodels.ReplicaPeerEndpoint) {
 	_, err := directory.Register(registrationFor(contractVersion, identity, endpoints), certificateFor(takeURI(lifecycle, identity)))
 	check(err)
 }
@@ -341,7 +341,7 @@ func registrationFor(contractVersion string, identity sdkmodels.PeerReplicaID, e
 	}
 }
 
-func takeURI(contract plugins.SDKReplicaLifecycleContract, identity sdkmodels.PeerReplicaID) string {
+func takeURI(contract services.SDKReplicaLifecycleContract, identity sdkmodels.PeerReplicaID) string {
 	uri, err := contract.ReplicaIdentityURI(identity)
 	check(err)
 	return uri
@@ -353,7 +353,7 @@ func certificateFor(value string) *x509.Certificate {
 	return &x509.Certificate{URIs: []*url.URL{identifier}}
 }
 
-func pollError(ctx context.Context, client *pluginsdk.PeerDirectoryClient, etag string, waitMs int) error {
+func pollError(ctx context.Context, client *servicesdk.PeerDirectoryClient, etag string, waitMs int) error {
 	_, err := client.Poll(ctx, etag, waitMs)
 	return err
 }

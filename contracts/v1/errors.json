@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "errors": [
     {"code":"invalid_request","status":400,"title":"Некорректный запрос","detail":"Тело запроса отсутствует, повреждено или не соответствует опубликованной схеме."},
-    {"code":"plugin_not_found","status":404,"title":"Плагин не найден","detail":"Указанный plugin instance не существует."},
-    {"code":"plugin_config_invalid","status":422,"title":"Некорректная конфигурация плагина","detail":"JSON settings не соответствует schema активного Manifest."},
-    {"code":"plugin_revision_conflict","status":412,"title":"Версия конфигурации устарела","detail":"If-Match не соответствует текущей revision; active config не изменён."},
-    {"code":"plugin_link_conflict","status":409,"title":"Политика peer link уже существует","detail":"Для указанной caller-to-target пары уже есть link policy; используйте replace с If-Match."},
-    {"code":"plugin_link_invalid","status":422,"title":"Недопустимая политика peer link","detail":"Набор link rules не соответствует generic placement/carrier/contract-range схеме."},
+    {"code":"service_not_found","status":404,"title":"Сервис не найден","detail":"Указанный service instance не существует."},
+    {"code":"service_config_invalid","status":422,"title":"Некорректная конфигурация сервиса","detail":"JSON settings не соответствует schema активного Manifest."},
+    {"code":"service_revision_conflict","status":412,"title":"Версия конфигурации устарела","detail":"If-Match не соответствует текущей revision; active config не изменён."},
+    {"code":"service_link_conflict","status":409,"title":"Политика peer link уже существует","detail":"Для указанной caller-to-target пары уже есть link policy; используйте replace с If-Match."},
+    {"code":"service_link_invalid","status":422,"title":"Недопустимая политика peer link","detail":"Набор link rules не соответствует generic placement/carrier/contract-range схеме."},
     {"code":"target_lost","status":409,"title":"Целевая replica потеряна","detail":"Точная incarnation из rollout-когорты истекла или заменена; active generation не откатывается, автоматическая подмена не выполняется."},
     {"code":"idempotency_conflict","status":409,"title":"Конфликт ключа идемпотентности","detail":"Ключ уже использован для запроса с другим digest."},
     {"code":"artifact_invalid","status":422,"title":"Недопустимый артефакт","detail":"Archive повреждён, превышает лимит либо содержит запрещённые записи."},
@@ -17,9 +17,9 @@
     {"code":"management_bearer_required","status":401,"title":"Требуется service key","detail":"Management API требует действующий Bearer service key."},
     {"code":"management_unavailable","status":503,"title":"Management API недоступен","detail":"Не удалось выполнить операцию с постоянным состоянием Management API."},
     {"code":"forbidden","status":403,"title":"Доступ запрещён","detail":"Для операции требуется platform-admin."},
-    {"code":"plugin_unavailable","status":503,"title":"Плагин недоступен","detail":"Подключённый plugin instance не отвечает."},
-    {"code":"plugin_tls_rejected","status":502,"title":"TLS плагина отклонён","detail":"Plugin peer не прошёл проверку TLS identity."},
+    {"code":"service_unavailable","status":503,"title":"Сервис недоступен","detail":"Подключённый service instance не отвечает."},
+    {"code":"service_tls_rejected","status":502,"title":"TLS сервиса отклонён","detail":"Service peer не прошёл проверку TLS identity."},
     {"code":"resource_exhausted","status":503,"title":"Исчерпан ресурс","detail":"Операция превышает доступную concurrency или storage quota."}
   ],
-  "problemFormat": "application/problem+json; details contain no secret values, filesystem paths, private keys or raw plugin payloads."
+  "problemFormat": "application/problem+json; details contain no secret values, filesystem paths, private keys or raw service payloads."
 }

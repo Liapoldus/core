@@ -26,8 +26,8 @@ func auditDefinitions() sqliteAuditStoreContract {
 }
 
 // ConfigurationDefinitions supplies the shared immutable configuration policy.
-func ConfigurationDefinitions() pluginConfigurationStoreContract {
-	return pluginConfigurationStoreContract{SchemaVersion: 1,
+func ConfigurationDefinitions() serviceConfigurationStoreContract {
+	return serviceConfigurationStoreContract{SchemaVersion: 1,
 		MaximumPayloadSize: 262144,
 		TimestampLayout:    "2006-01-02T15:04:05.999999999Z07:00",
 		MigrationActor:     "migration",
@@ -48,19 +48,19 @@ func ConfigurationDefinitions() pluginConfigurationStoreContract {
 			InvalidDocument string
 			InvalidStore    string
 			MigrationFailed string
-		}{InvalidContract: "plugin configuration contract is invalid",
-			InvalidDocument: "plugin configuration document is invalid",
-			InvalidStore:    "plugin configuration store is invalid",
-			MigrationFailed: "plugin configuration migration failed; stored data was not changed"}}
+		}{InvalidContract: "service configuration contract is invalid",
+			InvalidDocument: "service configuration document is invalid",
+			InvalidStore:    "service configuration store is invalid",
+			MigrationFailed: "service configuration migration failed; stored data was not changed"}}
 }
 
-func linkPolicyDefinitions() pluginLinkPolicyStoreContract {
-	return pluginLinkPolicyStoreContract{InsertPolicy: "INSERT INTO plugin_link_policies(caller_instance_id, target_instance_id, revision, rules_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
-		SelectPolicy:       "SELECT revision, rules_json FROM plugin_link_policies WHERE caller_instance_id = ? AND target_instance_id = ?",
-		SelectPolicyExists: "SELECT EXISTS(SELECT 1 FROM plugin_link_policies WHERE caller_instance_id = ? AND target_instance_id = ?)",
-		SelectAllPolicies:  "SELECT caller_instance_id, target_instance_id, revision, rules_json FROM plugin_link_policies ORDER BY caller_instance_id, target_instance_id",
-		UpdatePolicy:       "UPDATE plugin_link_policies SET revision = ?, rules_json = ?, updated_at = ? WHERE caller_instance_id = ? AND target_instance_id = ? AND revision = ?",
-		DeletePolicy:       "DELETE FROM plugin_link_policies WHERE caller_instance_id = ? AND target_instance_id = ? AND revision = ?",
+func linkPolicyDefinitions() serviceLinkPolicyStoreContract {
+	return serviceLinkPolicyStoreContract{InsertPolicy: "INSERT INTO service_link_policies(caller_instance_id, target_instance_id, revision, rules_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+		SelectPolicy:       "SELECT revision, rules_json FROM service_link_policies WHERE caller_instance_id = ? AND target_instance_id = ?",
+		SelectPolicyExists: "SELECT EXISTS(SELECT 1 FROM service_link_policies WHERE caller_instance_id = ? AND target_instance_id = ?)",
+		SelectAllPolicies:  "SELECT caller_instance_id, target_instance_id, revision, rules_json FROM service_link_policies ORDER BY caller_instance_id, target_instance_id",
+		UpdatePolicy:       "UPDATE service_link_policies SET revision = ?, rules_json = ?, updated_at = ? WHERE caller_instance_id = ? AND target_instance_id = ? AND revision = ?",
+		DeletePolicy:       "DELETE FROM service_link_policies WHERE caller_instance_id = ? AND target_instance_id = ? AND revision = ?",
 		TimestampLayout:    "2006-01-02T15:04:05.000000000Z07:00",
 		Diagnostics: struct {
 			InvalidContract string

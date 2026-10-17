@@ -54,7 +54,7 @@ type fixtureReplica struct {
 	LeaseExpiresInSeconds int    `json:"leaseExpiresInSeconds"`
 }
 
-func identities(targets []models.PluginRolloutTarget) []map[string]string {
+func identities(targets []models.ServiceRolloutTarget) []map[string]string {
 	result := make([]map[string]string, 0, len(targets))
 	for _, target := range targets {
 		result = append(result, map[string]string{"replicaId": target.ReplicaID, "incarnation": target.IncarnationID})

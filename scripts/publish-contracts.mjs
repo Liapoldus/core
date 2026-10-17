@@ -65,3 +65,17 @@ for (const target of Object.keys(manifest.files)) {
   manifest.files[target] = `sha256:${createHash("sha256").update(contents).digest("hex")}`;
 }
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+// v2 traffic fields have the same Core owner; publish their mirror and
+// regenerate all digests from the final canonical contract bytes.
+const v2Directory = join(root, "contracts/v2");
+await writeFile(join(v2Directory, "traffic-rollout-fields.yaml"),
+  await readFile(join(sourceDirectory, "v2/traffic-rollout-fields.yaml")));
+const v2ManifestPath = join(v2Directory, "manifest.json");
+const v2Manifest = JSON.parse(await readFile(v2ManifestPath, "utf8"));
+for (const target of Object.keys(v2Manifest.files)) {
+  if (basename(target) !== target) throw new Error("invalid v2 contract file name");
+  const contents = await readFile(join(v2Directory, target));
+  v2Manifest.files[target] = `sha256:${createHash("sha256").update(contents).digest("hex")}`;
+}
+await writeFile(v2ManifestPath, `${JSON.stringify(v2Manifest, null, 2)}\n`);

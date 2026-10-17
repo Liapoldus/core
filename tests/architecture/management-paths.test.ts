@@ -13,15 +13,15 @@ describe("Management API route contract", () => {
     const paths = [
       "/healthz",
       "/api/status",
-      "/api/plugins",
+      "/api/services",
       "/api/operations",
       "/api/audit",
-      "/api/plugins/admin-surfaces",
-      "/api/plugins/",
+      "/api/services/admin-surfaces",
+      "/api/services/",
       "/admin/pages/",
     ];
     const contractFields = [
-      "healthz:", "status:", "plugins:", "operations:", "audit:",
+      "healthz:", "status:", "services:", "operations:", "audit:",
       "adminSurfaces:", "adminPages:", "adminActions:", "adminQueryAction:",
     ];
 
@@ -31,12 +31,12 @@ describe("Management API route contract", () => {
     }
   });
 
-  it("keeps plugin rollback on a contract path and omits every v1-forbidden lifecycle verb", async () => {
+  it("keeps service rollback on a contract path and omits every v1-forbidden lifecycle verb", async () => {
     const source = await readGoPackageSources(root, "internal/presentation/api");
     const contract = await readFile(join(root, "assets/contracts/management-fields.yaml"), "utf8");
 
-    expect(contract).toContain("pluginRollbackSuffix: rollback");
-    expect(contract).toContain("pluginSettingsRollback: plugin-settings-rollback");
+    expect(contract).toContain("serviceRollbackSuffix: rollback");
+    expect(contract).toContain("serviceSettingsRollback: service-settings-rollback");
     expect(source, "rollback path must come from the contract asset").not.toContain(`"/rollback"`);
 
     for (const verb of ["/restart", "/install", "/uninstall", "/supervise", "/scale"]) {

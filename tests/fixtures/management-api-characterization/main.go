@@ -41,16 +41,16 @@ func main() {
 		Management:     management,
 		AuditWords:     auditWords,
 		DataPlaneState: management.Statuses.Ready,
-		Plugins: []any{
+		Services: []any{
 			map[string]any{"id": "fixture-a", "name": "Alpha", "state": "ready"},
 			map[string]any{"id": "fixture-b", "name": "Beta", "state": "starting"},
 		},
-		PluginIDField: "id",
+		ServiceIDField: "id",
 	}
 	serverForRequests := httptest.NewServer(server.Handler())
 	defer serverForRequests.Close()
 
-	plugin := management.Paths.Plugins + "/fixture-a"
+	service := management.Paths.Services + "/fixture-a"
 	cases := []requestCase{
 		{name: "healthGet", method: http.MethodGet, path: management.Paths.Healthz},
 		{name: "healthHead", method: http.MethodHead, path: management.Paths.Healthz},
@@ -60,26 +60,26 @@ func main() {
 		{name: "healthWithoutBearer", method: http.MethodGet, path: management.Paths.Healthz},
 		{name: "serviceKeyListUnavailable", method: http.MethodGet, path: management.Paths.ServiceKeys, token: "characterization-token"},
 		{name: "serviceKeyCreateUnavailable", method: http.MethodPost, path: management.Paths.ServiceKeys, token: "characterization-token", body: `{}`},
-		{name: "pluginList", method: http.MethodGet, path: management.Paths.Plugins + "?limit=1", token: "characterization-token"},
-		{name: "invalidPluginPagination", method: http.MethodGet, path: management.Paths.Plugins + "?limit=0", token: "characterization-token"},
+		{name: "serviceList", method: http.MethodGet, path: management.Paths.Services + "?limit=1", token: "characterization-token"},
+		{name: "invalidServicePagination", method: http.MethodGet, path: management.Paths.Services + "?limit=0", token: "characterization-token"},
 		{name: "adminSurfaces", method: http.MethodGet, path: management.Paths.AdminSurfaces, token: "characterization-token"},
-		{name: "pluginDetail", method: http.MethodGet, path: plugin, token: "characterization-token"},
-		{name: "pluginNotFound", method: http.MethodGet, path: management.Paths.Plugins + "/missing", token: "characterization-token"},
-		{name: "pluginAdminUnavailable", method: http.MethodGet, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
-		{name: "pluginAdminPostUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.AdminPages + "/records/delete", token: "characterization-token", body: `{}`},
-		{name: "pluginRollbackUnavailable", method: http.MethodPost, path: plugin + "/" + management.Paths.PluginRollbackSuffix, token: "characterization-token"},
+		{name: "serviceDetail", method: http.MethodGet, path: service, token: "characterization-token"},
+		{name: "serviceNotFound", method: http.MethodGet, path: management.Paths.Services + "/missing", token: "characterization-token"},
+		{name: "serviceAdminUnavailable", method: http.MethodGet, path: service + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
+		{name: "serviceAdminPostUnavailable", method: http.MethodPost, path: service + "/" + management.Paths.AdminPages + "/records/delete", token: "characterization-token", body: `{}`},
+		{name: "serviceRollbackUnavailable", method: http.MethodPost, path: service + "/" + management.Paths.ServiceRollbackSuffix, token: "characterization-token"},
 		{name: "operationUnavailable", method: http.MethodGet, path: management.Paths.Operations + "/missing", token: "characterization-token"},
 		{name: "auditEmpty", method: http.MethodGet, path: management.Paths.Audit, token: "characterization-token"},
 		{name: "unknownRoute", method: http.MethodGet, path: "/api/unknown", token: "characterization-token"},
 		{name: "retiredConfigRoute", method: http.MethodGet, path: "/api/config", token: "characterization-token"},
-		{name: "unsupportedPluginMethod", method: http.MethodDelete, path: management.Paths.Plugins, token: "characterization-token"},
+		{name: "unsupportedServiceMethod", method: http.MethodDelete, path: management.Paths.Services, token: "characterization-token"},
 	}
 	if len(os.Args) > 1 && os.Args[1] == "route-matrix" {
 		cases = []requestCase{
-			{name: "pluginListPost", method: http.MethodPost, path: management.Paths.Plugins, token: "characterization-token"},
-			{name: "pluginDetailPut", method: http.MethodPut, path: plugin, token: "characterization-token"},
-			{name: "pluginAdminPatch", method: http.MethodPatch, path: plugin + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
-			{name: "pluginRollbackGet", method: http.MethodGet, path: plugin + "/" + management.Paths.PluginRollbackSuffix, token: "characterization-token"},
+			{name: "serviceListPost", method: http.MethodPost, path: management.Paths.Services, token: "characterization-token"},
+			{name: "serviceDetailPut", method: http.MethodPut, path: service, token: "characterization-token"},
+			{name: "serviceAdminPatch", method: http.MethodPatch, path: service + "/" + management.Paths.AdminPages + "/overview", token: "characterization-token"},
+			{name: "serviceRollbackGet", method: http.MethodGet, path: service + "/" + management.Paths.ServiceRollbackSuffix, token: "characterization-token"},
 			{name: "adminSurfacesPost", method: http.MethodPost, path: management.Paths.AdminSurfaces, token: "characterization-token"},
 			{name: "serviceKeyDelete", method: http.MethodDelete, path: management.Paths.ServiceKeys, token: "characterization-token"},
 			{name: "auditPost", method: http.MethodPost, path: management.Paths.Audit, token: "characterization-token"},

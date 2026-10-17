@@ -9,8 +9,8 @@ const coreRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /**
  * Resolves the workspace root that holds Core's sibling repositories. The
- * plugin-agnostic gate checks out only the Plugin SDK, so a scenario that spans
- * Core with real product plugins has to be able to state that it is out of scope
+ * service-agnostic gate checks out only the Service SDK, so a scenario that spans
+ * Core with real product services has to be able to state that it is out of scope
  * there instead of failing on a path that was never supposed to exist.
  */
 export function workspaceRoot(): string {
@@ -54,8 +54,8 @@ export function createGoWorkspace(...relativeModules: string[]): { path: string;
     // the local major modules in this generated workspace only; no checkout
     // receives a compatibility replace.
     for (const [modulePath, sibling] of [
-      ["github.com/Liapoldus/plugin-sdk/v2", "plugin-sdk"],
-      ["github.com/Liapoldus/pluginprotocol/v3", "pluginprotocol"],
+      ["github.com/Liapoldus/service-sdk/v2", "service-sdk"],
+      ["github.com/Liapoldus/wool/v3", "wool"],
     ] as const) {
       const localPath = join(workspaceRoot(), sibling);
       if (!existsSync(join(localPath, "go.mod"))) continue;

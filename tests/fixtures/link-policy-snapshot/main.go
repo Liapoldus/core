@@ -29,20 +29,20 @@ func main() {
 	management, err := config.LoadManagement()
 	check(err)
 
-	linkStore, err := storage.NewSQLitePluginLinkPolicyStore(database)
+	linkStore, err := storage.NewSQLiteServiceLinkPolicyStore(database)
 	check(err)
 	operationStore, err := storage.NewSQLiteOperationStore(database)
 	check(err)
-	snapshot, err := storage.NewPluginLinkPolicySnapshot(ctx, linkStore)
+	snapshot, err := storage.NewServiceLinkPolicySnapshot(ctx, linkStore)
 	check(err)
-	service := &application.PluginLinkPolicyService{
+	service := &application.ServiceLinkPolicyService{
 		Store: linkStore, Reader: linkStore, Operations: operationStore,
-		Kinds: application.PluginLinkPolicyOperationKinds{
-			Create:  management.OperationKinds.PluginLinkCreate,
-			Replace: management.OperationKinds.PluginLinkReplace,
-			Delete:  management.OperationKinds.PluginLinkDelete,
+		Kinds: application.ServiceLinkPolicyOperationKinds{
+			Create:  management.OperationKinds.ServiceLinkCreate,
+			Replace: management.OperationKinds.ServiceLinkReplace,
+			Delete:  management.OperationKinds.ServiceLinkDelete,
 		},
-		States: application.PluginLinkPolicyOperationStates{
+		States: application.ServiceLinkPolicyOperationStates{
 			Pending: management.Statuses.Pending, Succeeded: management.Statuses.Succeeded, Failed: management.Statuses.Failed,
 		},
 		Now:     time.Now,
@@ -52,7 +52,7 @@ func main() {
 	observations := map[string]any{}
 	observations["initialRules"] = len(snapshot.View().Rules("caller-a"))
 
-	policy := models.PluginLinkPolicy{
+	policy := models.ServiceLinkPolicy{
 		CallerInstanceID: "caller-a",
 		TargetInstanceID: "target-b",
 		Rules: []models.PeerLinkRule{{
@@ -60,14 +60,14 @@ func main() {
 			PlacementRule: models.PeerLinkPlacementRemote, Carrier: models.PeerLinkCarrierTCP, Weight: 5,
 		}},
 	}
-	_, err = service.Create(ctx, policy, models.AuditRecord{}, "admin", "req-1", "plugin-link", "key-create", "digest-a")
+	_, err = service.Create(ctx, policy, models.AuditRecord{}, "admin", "req-1", "service-link", "key-create", "digest-a")
 	check(err)
 	createdRules := snapshot.View().Rules("caller-a")
 	observations["afterCreateRules"] = len(createdRules)
 	observations["createWeight"] = int(createdRules[0].Weight)
 	observations["otherCallerRules"] = len(snapshot.View().Rules("caller-other"))
 
-	replacement := models.PluginLinkPolicy{
+	replacement := models.ServiceLinkPolicy{
 		CallerInstanceID: "caller-a",
 		TargetInstanceID: "target-b",
 		Rules: []models.PeerLinkRule{{
@@ -75,19 +75,19 @@ func main() {
 			PlacementRule: models.PeerLinkPlacementSame, Carrier: models.PeerLinkCarrierUnix, Weight: 3,
 		}},
 	}
-	_, err = service.Replace(ctx, replacement, 1, models.AuditRecord{}, "admin", "req-2", "plugin-link", "key-replace", "digest-b")
+	_, err = service.Replace(ctx, replacement, 1, models.AuditRecord{}, "admin", "req-2", "service-link", "key-replace", "digest-b")
 	check(err)
 	replacedRules := snapshot.View().Rules("caller-a")
 	observations["afterReplaceCount"] = len(replacedRules)
 	observations["replaceCarrier"] = replacedRules[0].Carrier
 
-	err = service.Delete(ctx, "caller-a", "target-b", 2, models.AuditRecord{}, "admin", "req-3", "plugin-link", "key-delete", "digest-c")
+	err = service.Delete(ctx, "caller-a", "target-b", 2, models.AuditRecord{}, "admin", "req-3", "service-link", "key-delete", "digest-c")
 	check(err)
 	observations["afterDeleteRules"] = len(snapshot.View().Rules("caller-a"))
 
-	_, err = service.Create(ctx, policy, models.AuditRecord{}, "admin", "req-4", "plugin-link", "key-restore", "digest-d")
+	_, err = service.Create(ctx, policy, models.AuditRecord{}, "admin", "req-4", "service-link", "key-restore", "digest-d")
 	check(err)
-	restored, err := storage.NewPluginLinkPolicySnapshot(ctx, linkStore)
+	restored, err := storage.NewServiceLinkPolicySnapshot(ctx, linkStore)
 	check(err)
 	observations["restartRestoredRules"] = len(restored.View().Rules("caller-a"))
 

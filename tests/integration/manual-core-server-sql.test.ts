@@ -5,10 +5,10 @@ import { createGoWorkspace, missingWorkspaceRepositories } from "../support/work
 
 const root = resolve(import.meta.dirname, "../..");
 const missing = missingWorkspaceRepositories(
-  "pluginprotocol",
-  "plugin-sdk",
-  "plugins/server",
-  "plugins/forms-db",
+  "wool",
+  "service-sdk",
+  "services/server",
+  "services/forms-db",
 );
 
 const databases = [
@@ -24,7 +24,7 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
     it.each(configuredDatabases)("uses $driver storage durably through Core and Server", ({ driver, variable }) => {
       const dsn = process.env[variable];
       if (!dsn) throw new Error("configured SQL integration lost its DSN");
-      const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol", "plugins/server", "plugins/forms-db");
+      const workspace = createGoWorkspace("core", "service-sdk", "wool", "services/server", "services/forms-db");
       let output: string;
       try {
         output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
@@ -46,7 +46,7 @@ describe.skipIf(missing.length > 0 || configuredDatabases.length === 0)(
       expect(result.formsDatabaseDriver).toBe(driver);
       expect(result.staleProductionGrantDenied).toBe(true);
       expect(result.formsListWithoutLeaseRejected).toBe(true);
-      expect(result.formsListRevokedReplicaDenied).toBe(true);
+      expect(result.formsListSurvivesControlPlaneRevocation).toBe(true);
       expect(result.coreDidNotObservePeerPayload).toBe(true);
       expect(result.incomingCookiesRedactedEverywhere).toBe(true);
       expect(result.coordinatedTrustRootRotationConverged).toBe(true);

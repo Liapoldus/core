@@ -1,0 +1,421 @@
+package handlers
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/Liapoldus/core/v3/internal/application"
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+)
+
+func ServiceList(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, requestID string) {
+	deps.WritePage(response, deps.Services, request, requestID)
+}
+
+func IsServiceSettingsPath(deps ServiceDependencies, path string) bool {
+	separator := deps.Management.Paths.ServiceIDSeparator
+	suffix := deps.Management.Paths.ServiceSettingsSuffix
+	if separator == "" || suffix == "" || deps.Management.Paths.Services == "" {
+		return false
+	}
+	prefix := deps.Management.Paths.Services + separator
+	resource := strings.TrimPrefix(path, prefix)
+	if resource == path || !strings.HasSuffix(resource, suffix) {
+		return false
+	}
+	instanceID := strings.TrimSuffix(resource, suffix)
+	return instanceID != "" && !strings.Contains(instanceID, separator)
+}
+
+func ServiceSettings(deps ServiceDependencies, response http.ResponseWriter, service *application.ServiceConfigurationService, ctx context.Context, path, requestID string) {
+	if service == nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	prefix := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
+	instanceID := strings.TrimSuffix(strings.TrimPrefix(path, prefix), deps.Management.Paths.ServiceSettingsSuffix)
+	revision, err := service.Current(ctx, instanceID)
+	if err != nil {
+		var missing models.ServiceConfigurationNotFound
+		if errors.As(err, &missing) {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
+			return
+		}
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+	response.Header().Set(deps.Management.Headers.ETag, revisionETag(revision.Revision))
+	deps.WriteJSON(response, http.StatusOK, map[string]any{
+		deps.Management.JSON.Revision: strconv.FormatInt(revision.Revision, 10),
+		deps.Management.JSON.Digest:   revision.Digest,
+		deps.Management.JSON.Config:   json.RawMessage(revision.SettingsJSON),
+	})
+}
+
+func AdminSurfaceList(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, requestID string) {
+	if deps.ListAdminSurfaces == nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	items, err := deps.ListAdminSurfaces(request.Context())
+	if err != nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	deps.WriteJSON(response, http.StatusOK, map[string]any{
+		deps.Management.JSON.Items:     items,
+		deps.Management.JSON.RequestID: requestID,
+	})
+}
+
+func IsServiceDetailPath(deps ServiceDependencies, path string) bool {
+	separator := deps.Management.Paths.ServiceIDSeparator
+	if deps.Management.Paths.Services == "" || separator == "" {
+		return false
+	}
+	prefix := deps.Management.Paths.Services + separator
+	instanceID := strings.TrimPrefix(path, prefix)
+	return instanceID != path && instanceID != "" && !strings.Contains(instanceID, separator)
+}
+
+func ServiceDetail(deps ServiceDependencies, response http.ResponseWriter, path, requestID string) {
+	separator := deps.Management.Paths.ServiceIDSeparator
+	instanceID := strings.TrimPrefix(path, deps.Management.Paths.Services+separator)
+	if deps.ServiceIDField == "" {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	}
+
+	var matched map[string]any
+	for _, item := range deps.Services {
+		service, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if candidateID, ok := service[deps.ServiceIDField].(string); ok && candidateID == instanceID {
+			matched = service
+			break
+		}
+	}
+	if matched == nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
+		return
+	}
+	deps.WriteJSON(response, http.StatusOK, matched)
+}
+
+func revisionETag(revision int64) string {
+	return strconv.Quote(strconv.FormatInt(revision, 10))
+}
+
+func ServiceAdmin(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, path, requestID, actor string) {
+	instanceID, pageID, actionID, query, matched := parseServiceAdminPath(deps, path)
+	if !matched {
+		deps.WriteProblem(response, http.StatusNotFound, deps.Management.Codes.OperationNotFound, deps.Management.Diagnostics.OperationNotFound, requestID)
+		return
+	}
+	outcome := false
+	if deps.RecordAdminOutcome == nil {
+		deps.WriteProblem(response, http.StatusServiceUnavailable, deps.AuditWords.Audit.StorageUnavailable.Code,
+			deps.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+		return
+	}
+	buffered := newAdminResponseBuffer()
+	destination := response
+	defer func() {
+		if err := deps.RecordAdminOutcome(request.Context(), actor, instanceID, requestID, outcome); err != nil {
+			deps.WriteProblem(destination, http.StatusServiceUnavailable, deps.AuditWords.Audit.StorageUnavailable.Code,
+				deps.AuditWords.Audit.StorageUnavailable.Detail, requestID)
+			return
+		}
+		buffered.Flush(destination)
+	}()
+	response = buffered
+	if deps.AdminSurfaceDigest == nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	if request.Method != deps.Management.Methods.Post {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	mediaType, params, mediaErr := mime.ParseMediaType(request.Header.Get(deps.Management.Headers.ContentType))
+	artifactAction := mediaErr == nil && mediaType == deps.AdminLimits.MultipartMediaType
+	requestedSurfaceDigest := strings.TrimSpace(request.Header.Get(deps.Management.Headers.AdminSurfaceDigest))
+	if requestedSurfaceDigest == "" {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if !query && !artifactAction && strings.TrimSpace(request.Header.Get(deps.Management.Headers.IfMatch)) == "" {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	idempotencyKey := request.Header.Get(deps.Management.Idempotency.Key)
+	if !query {
+		length := utf8.RuneCountInString(idempotencyKey)
+		if length < deps.Management.Idempotency.KeyMin || length > deps.Management.Idempotency.KeyMax {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+	}
+	surfaceDigest, err := deps.AdminSurfaceDigest(request.Context(), instanceID)
+	if err != nil || surfaceDigest == "" {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	if requestedSurfaceDigest != surfaceDigest {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceRevisionConflict, requestID)
+		return
+	}
+	invocation := AdminInvocation{
+		CallerID: actor, InstanceID: instanceID, PageID: pageID, ActionID: actionID,
+		SurfaceDigest: surfaceDigest, RequestID: requestID, IdempotencyKey: idempotencyKey,
+		IfMatch: request.Header.Get(deps.Management.Headers.IfMatch),
+	}
+	var result ServiceAdminResult
+	if mediaErr == nil && mediaType == deps.AdminLimits.MultipartMediaType {
+		if deps.ForwardArtifact == nil {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+			return
+		}
+		result, err = forwardServiceArtifact(deps, response, request, invocation, params["boundary"])
+	} else if mediaErr == nil && mediaType == deps.Management.ContentTypes.JSON {
+		if deps.DispatchAdmin == nil {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+			return
+		}
+		if deps.AdminLimits.JSONRequestBytes <= 0 {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+			return
+		}
+		input, decodeErr := decodeServiceSettings(request.Body, int(deps.AdminLimits.JSONRequestBytes))
+		if decodeErr != nil {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		result, err = deps.DispatchAdmin(request.Context(), invocation, input)
+	} else {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+		return
+	}
+	if err != nil {
+		if errors.Is(err, errAdminArtifactTooLarge) {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.ArtifactTooLarge, requestID)
+			return
+		}
+		if errors.Is(err, errAdminArtifactInvalid) {
+			deps.WriteCatalogProblem(response, deps.Management.Codes.InvalidRequest, requestID)
+			return
+		}
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	if result.Status < http.StatusOK || result.Status > 599 || !json.Valid(result.Body) {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
+		return
+	}
+	if result.ContentType == "" {
+		result.ContentType = deps.Management.ContentTypes.JSON
+	}
+	response.Header().Set(deps.Management.Headers.ContentType, result.ContentType)
+	response.WriteHeader(result.Status)
+	_, _ = response.Write(result.Body)
+	outcome = result.Status < http.StatusBadRequest
+}
+
+func parseServiceAdminPath(deps ServiceDependencies, path string) (instanceID, pageID, actionID string, query, matched bool) {
+	root := deps.Management.Paths.Services + deps.Management.Paths.ServiceIDSeparator
+	resource := strings.TrimPrefix(path, root)
+	if resource == path {
+		return "", "", "", false, false
+	}
+	instance, remaining, found := strings.Cut(resource, deps.Management.Paths.ServiceIDSeparator)
+	pagePrefix := deps.Management.Paths.AdminPages + deps.Management.Paths.ServiceIDSeparator
+	if !found || instance == "" || !strings.HasPrefix(remaining, pagePrefix) {
+		return "", "", "", false, false
+	}
+	parts := strings.Split(strings.TrimPrefix(remaining, pagePrefix), deps.Management.Paths.ServiceIDSeparator)
+	if len(parts) == 2 && parts[0] != "" && parts[1] == deps.Management.Paths.AdminQueryAction {
+		return instance, parts[0], deps.Management.Paths.AdminQueryAction, true, true
+	}
+	if len(parts) == 3 && parts[0] != "" && parts[1] == deps.Management.Paths.AdminActions && parts[2] != "" {
+		return instance, parts[0], parts[2], false, true
+	}
+	return "", "", "", false, false
+}
+
+func forwardServiceArtifact(deps ServiceDependencies, response http.ResponseWriter, request *http.Request, invocation AdminInvocation, boundary string) (ServiceAdminResult, error) {
+	limits := deps.AdminLimits
+	if deps.ForwardArtifact == nil || limits.ArtifactBytes <= 0 || limits.MinimumArtifact < 0 || limits.MetadataBytes <= 0 || limits.MaximumRequest <= 0 ||
+		limits.MetadataPartName == "" || limits.ArtifactPartName == "" || boundary == "" {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, limits.MaximumRequest)
+	multipartReader := multipart.NewReader(request.Body, boundary)
+	metadataPart, err := multipartReader.NextPart()
+	if err != nil {
+		return ServiceAdminResult{}, classifyAdminMultipartReadError(err)
+	}
+	if metadataPart.FormName() != limits.MetadataPartName {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	metadataType, _, err := mime.ParseMediaType(metadataPart.Header.Get(deps.Management.Headers.ContentType))
+	if err != nil || metadataType != limits.MetadataMediaType {
+		_ = metadataPart.Close()
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	metadata, err := io.ReadAll(io.LimitReader(metadataPart, limits.MetadataBytes+1))
+	closeErr := metadataPart.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if int64(len(metadata)) > limits.MetadataBytes {
+		return ServiceAdminResult{}, errAdminArtifactTooLarge
+	}
+	if err != nil || len(metadata) == 0 || !json.Valid(metadata) {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	if _, err := decodeServiceSettings(bytes.NewReader(metadata), int(limits.MetadataBytes)); err != nil {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	artifactPart, err := multipartReader.NextPart()
+	if err != nil {
+		return ServiceAdminResult{}, classifyAdminMultipartReadError(err)
+	}
+	if artifactPart.FormName() != limits.ArtifactPartName {
+		if artifactPart != nil {
+			_ = artifactPart.Close()
+		}
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	contentType, _, err := mime.ParseMediaType(artifactPart.Header.Get(deps.Management.Headers.ContentType))
+	if err != nil {
+		_ = artifactPart.Close()
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	checked := &checkedAdminArtifact{part: artifactPart, reader: multipartReader, maximum: limits.ArtifactBytes}
+	result, dispatchErr := deps.ForwardArtifact(request.Context(), invocation, metadata, contentType, checked)
+	if checked.tooLarge {
+		return ServiceAdminResult{}, errAdminArtifactTooLarge
+	}
+	if checked.invalid {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	if dispatchErr != nil {
+		return ServiceAdminResult{}, dispatchErr
+	}
+	if checked.read < limits.MinimumArtifact {
+		return ServiceAdminResult{}, errAdminArtifactInvalid
+	}
+	return result, dispatchErr
+}
+
+type checkedAdminArtifact struct {
+	part     *multipart.Part
+	reader   *multipart.Reader
+	maximum  int64
+	read     int64
+	checked  bool
+	tooLarge bool
+	invalid  bool
+}
+
+func (artifact *checkedAdminArtifact) Read(buffer []byte) (int, error) {
+	if artifact.read > artifact.maximum {
+		artifact.tooLarge = true
+		return 0, errAdminArtifactTooLarge
+	}
+	remaining := artifact.maximum + 1 - artifact.read
+	if int64(len(buffer)) > remaining {
+		buffer = buffer[:remaining]
+	}
+	n, err := artifact.part.Read(buffer)
+	artifact.read += int64(n)
+	var maximumError *http.MaxBytesError
+	if errors.As(err, &maximumError) {
+		artifact.tooLarge = true
+		return n, errAdminArtifactTooLarge
+	}
+	if artifact.read > artifact.maximum {
+		artifact.tooLarge = true
+		return n, errAdminArtifactTooLarge
+	}
+	if err == io.EOF && !artifact.checked {
+		artifact.checked = true
+		extra, nextErr := artifact.reader.NextPart()
+		if nextErr != io.EOF {
+			var maximumError *http.MaxBytesError
+			if errors.As(nextErr, &maximumError) {
+				artifact.tooLarge = true
+				return n, errAdminArtifactTooLarge
+			}
+			artifact.invalid = true
+			if extra != nil {
+				_ = extra.Close()
+			}
+			return n, errAdminArtifactInvalid
+		}
+	}
+	return n, err
+}
+
+func classifyAdminMultipartReadError(err error) error {
+	var maximumError *http.MaxBytesError
+	if errors.As(err, &maximumError) {
+		return errAdminArtifactTooLarge
+	}
+	return errAdminArtifactInvalid
+}
+
+func (artifact *checkedAdminArtifact) Close() error { return artifact.part.Close() }
+
+type adminResponseBuffer struct {
+	header http.Header
+	status int
+	body   bytes.Buffer
+}
+
+func newAdminResponseBuffer() *adminResponseBuffer {
+	return &adminResponseBuffer{header: make(http.Header)}
+}
+
+func (buffer *adminResponseBuffer) Header() http.Header { return buffer.header }
+
+func (buffer *adminResponseBuffer) WriteHeader(status int) {
+	if buffer.status == 0 {
+		buffer.status = status
+	}
+}
+
+func (buffer *adminResponseBuffer) Write(body []byte) (int, error) {
+	if buffer.status == 0 {
+		buffer.status = http.StatusOK
+	}
+	return buffer.body.Write(body)
+}
+
+func (buffer *adminResponseBuffer) Flush(destination http.ResponseWriter) {
+	for name, values := range buffer.header {
+		destination.Header()[name] = append([]string(nil), values...)
+	}
+	status := buffer.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	destination.WriteHeader(status)
+	_, _ = destination.Write(buffer.body.Bytes())
+}
+
+var (
+	errAdminArtifactInvalid  = errors.New("invalid service artifact request")
+	errAdminArtifactTooLarge = errors.New("service artifact request too large")
+)

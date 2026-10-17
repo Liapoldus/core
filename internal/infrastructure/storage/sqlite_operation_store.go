@@ -113,6 +113,23 @@ func (store *SQLiteOperationStore) FindByIdempotency(ctx context.Context, actor,
 	return operation, found, err
 }
 
+func (store *SQLiteOperationStore) FindByIdempotencyKey(ctx context.Context, actor, scope, key string) (models.Operation, bool, error) {
+	if store == nil || store.database == nil || actor == "" || scope == "" || key == "" {
+		return models.Operation{}, false, errors.New(store.contract.InvalidReservation)
+	}
+	var operationID string
+	err := store.database.QueryRowContext(ctx, store.queries["select-operation-idempotency-key"],
+		actor, scope, idempotencyKeyDigest(key), time.Now().UTC().Format(store.contract.TimestampLayout)).Scan(&operationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.Operation{}, false, nil
+	}
+	if err != nil {
+		return models.Operation{}, false, err
+	}
+	operation, err := store.Get(ctx, operationID)
+	return operation, err == nil, err
+}
+
 func (store *SQLiteOperationStore) Transition(ctx context.Context, id, fromState, toState, errorCode string) error {
 	if store == nil || store.database == nil || id == "" || fromState == "" || toState == "" {
 		return errors.New(store.contract.InvalidReservation)
@@ -199,6 +216,57 @@ func (store *SQLiteOperationStore) Get(ctx context.Context, id string) (models.O
 		return models.Operation{}, errors.New(store.contract.InvalidReservation)
 	}
 	return readOperation(ctx, store.database, store, id)
+}
+
+func (store *SQLiteOperationStore) ReplicaOutcomes(ctx context.Context, operationID, operationState, errorCode string) ([]models.OperationReplicaOutcome, error) {
+	if store == nil || store.database == nil || operationID == "" {
+		return nil, errors.New(store.contract.InvalidReservation)
+	}
+	rows, err := store.database.QueryContext(ctx, `SELECT targets.replica_id, rollouts.generation, targets.acknowledged
+FROM service_rollout_targets AS targets
+JOIN service_rollouts AS rollouts ON rollouts.operation_id = targets.operation_id
+WHERE targets.operation_id = ?
+ORDER BY targets.replica_id`, operationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	outcomes := make([]models.OperationReplicaOutcome, 0)
+	for rows.Next() {
+		var outcome models.OperationReplicaOutcome
+		var acknowledged int
+		if err := rows.Scan(&outcome.ReplicaID, &outcome.DesiredGeneration, &acknowledged); err != nil {
+			return nil, err
+		}
+		if outcome.ReplicaID == "" || outcome.DesiredGeneration < 1 || acknowledged < 0 || acknowledged > 1 {
+			return nil, errors.New(store.contract.InvalidReservation)
+		}
+		switch {
+		case acknowledged == 1:
+			outcome.State = "applied"
+		case operationState == "failed":
+			outcome.State = "failed"
+			if safeOperationErrorCode(errorCode) {
+				outcome.FailureCode = errorCode
+			}
+		default:
+			outcome.State = "pending"
+		}
+		outcomes = append(outcomes, outcome)
+	}
+	return outcomes, rows.Err()
+}
+
+func safeOperationErrorCode(value string) bool {
+	if len(value) == 0 || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if !(character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 func (store *SQLiteOperationStore) Payload(ctx context.Context, id string) (models.OperationPayload, bool, error) {

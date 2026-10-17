@@ -1,5 +1,5 @@
 management:
-  pluginCollectionSuffix: /rollouts
+  serviceCollectionSuffix: /rollouts
   metadataPart: metadata
   configurationPart: configuration
   metadataMediaType: application/json
@@ -7,19 +7,19 @@ management:
   multipartMediaType: multipart/form-data
   maximumMetadataBytes: 65536
   envelopeOverheadBytes: 65536
-  operationKind: plugin-traffic-rollout
-  auditAction: plugin_traffic_rollout.create
+  operationKind: service-traffic-rollout
+  auditAction: service_traffic_rollout.create
   approvalStageSegment: /stages/
   approvalSuffix: /approve
   rolloutIDSeparator: /
-  approvalOperationKind: plugin-traffic-rollout-stage-approval
-  approvalAuditAction: plugin_traffic_rollout.stage_approve
+  approvalOperationKind: service-traffic-rollout-stage-approval
+  approvalAuditAction: service_traffic_rollout.stage_approve
   controllerConfirmationAuditAction: traffic_rollout.confirm
   maximumControllerConfirmationBytes: 16384
   controllerJSON:
     rollouts: rollouts
     id: id
-    pluginId: pluginId
+    serviceId: serviceId
     activeGeneration: activeGeneration
     revision: revision
     releaseSha256: releaseSha256

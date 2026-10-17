@@ -14,7 +14,7 @@ type TrafficRolloutStore interface {
 	Create(context.Context, models.TrafficRolloutRecord) error
 	Get(context.Context, string) (models.TrafficRolloutRecord, error)
 	ControllerVisibleRollouts(context.Context) ([]models.TrafficRolloutRecord, error)
-	OpenConfigurationRollouts(context.Context, string) ([]models.PluginConfigurationRollout, error)
+	OpenConfigurationRollouts(context.Context, string) ([]models.ServiceConfigurationRollout, error)
 	ConfigurationCohortHeld(context.Context, string, string) (bool, error)
 	ConfirmStage(context.Context, string, int64, string, int, string, time.Time, models.AuditRecord) (models.TrafficRolloutRecord, error)
 	ConfirmStageOnce(context.Context, string, int64, string, int, string, string, string, string, time.Time, models.AuditRecord) (models.TrafficRolloutConfirmationReceipt, bool, error)

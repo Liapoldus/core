@@ -34,7 +34,7 @@ API rotation/revocation не входят в текущий scope. Срок де
 запросе. Mutation записывает actor key, action, resource, result и request ID
 в audit; raw credentials и TLS material туда не попадают.
 
-Management TLS roots отделены от plugin workload roots и Server ACME state.
+Management TLS roots отделены от service workload roots и Server ACME state.
 Для удалённого Management API применяются private network/VPN, mTLS и Bearer.
 
 ## Авторизация по операциям
@@ -45,10 +45,10 @@ Management TLS roots отделены от plugin workload roots и Server ACME 
 
 | Операция | Дополнительное правило |
 | --- | --- |
-| Чтение status, plugin metadata/settings, operations и audit | Нужен `platform-admin`; каждый запрос к `operationId` повторно авторизуется. |
+| Чтение status, service metadata/settings, operations и audit | Нужен `platform-admin`; каждый запрос к `operationId` повторно авторизуется. |
 | Изменение settings и rollback | Нужны `Idempotency-Key` и `If-Match` согласно OpenAPI; операции проверяются deny-by-default. |
-| Plugin process/workload lifecycle | Таких Management API операций нет. Оператор вручную запускает и обслуживает plugin processes. |
-| Plugin Admin Surface query/action | Нужны `platform-admin`, instance scope, active surface digest, schema-valid metadata и action-specific limits. |
+| Service process/workload lifecycle | Таких Management API операций нет. Оператор вручную запускает и обслуживает service processes. |
+| Service Admin Surface query/action | Нужны `platform-admin`, instance scope, active surface digest, schema-valid metadata и action-specific limits. |
 | Выпуск service key | Только bootstrap/admin authority; raw token возвращается только при выдаче и не доступен через list/read/audit. |
 
 Общие problem mappings: TLS client-certificate failure не является HTTP
@@ -58,6 +58,6 @@ schema — `422`; byte limit — `413`; unavailable dependency/recovery — `503
 Точная пара `status/code` задана в [error catalog](/spec/errors.json), а
 success statuses и обязательные headers — в [OpenAPI](/spec/management.openapi.yaml).
 
-Полная структура bootstrap и plugin credential границ находится в
+Полная структура bootstrap и service credential границ находится в
 [Security configuration](../configuration/security) и
 [целевой архитектуре](../architecture/target).

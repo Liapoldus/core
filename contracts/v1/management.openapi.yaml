@@ -3,10 +3,10 @@ info:
   title: Liapoldus Core Management API
   version: 1.0.0
   description: >-
-    Control-plane API единственного Core instance. Plugin instances входят в
+    Control-plane API единственного Core instance. Service instances входят в
     membership через аутентифицированную регистрацию и активные leases;
-    Management API не управляет их process/container lifecycle. Desired plugin
-    configuration хранится в SQLite и доставляется репликам через Plugin SDK
+    Management API не управляет их process/container lifecycle. Desired service
+    configuration хранится в SQLite и доставляется репликам через Service SDK
     REST Reload. Public traffic не проходит через этот API. Caddy
     Admin/group/TLS endpoints отсутствуют.
 servers:
@@ -38,10 +38,57 @@ paths:
               schema: { $ref: '#/components/schemas/CoreStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins:
+  /api/v2/settings:
     get:
-      operationId: listPlugins
-      summary: Список подключённых plugin instances
+      operationId: getCoreSettings
+      summary: Получить desired/effective revision и Core settings
+      description: >-
+        Возвращает только Core-owned settings. Значения путей сертификатов и
+        state storage являются конфигурационными ссылками, а не содержимым
+        файлов. CLI обязан спроецировать их в безопасные target-scoped IDs до
+        передачи данных в Studio.
+      responses:
+        '200':
+          description: Desired settings, effective revision and restart state
+          headers:
+            ETag:
+              schema: { type: string, pattern: '^"core-settings-[1-9][0-9]*"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoreSettingsSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    put:
+      operationId: updateCoreSettings
+      summary: Сохранить валидированные Core settings с CAS
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CoreSettingsInput' }
+      responses:
+        '200':
+          description: Новая desired revision сохранена; effective revision может отставать до перезапуска Core
+          headers:
+            ETag:
+              schema: { type: string, pattern: '^"core-settings-[1-9][0-9]*"$' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CoreSettingsSnapshot' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '415':
+          description: Ожидается application/json
+        '422': { $ref: '#/components/responses/Invalid' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/services:
+    get:
+      operationId: listServices
+      summary: Список подключённых service instances
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
@@ -50,7 +97,7 @@ paths:
           description: Metadata без секретов и private keys
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PluginList' }
+              schema: { $ref: '#/components/schemas/ServiceList' }
         '400': { $ref: '#/components/responses/InvalidListParameters' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -96,7 +143,7 @@ paths:
         '422': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugin-links:
+  /api/service-links:
     get:
       operationId: listPeerLinkPolicies
       summary: Список Core-owned caller-to-target peer policies
@@ -138,7 +185,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugin-links/{callerInstanceId}/{targetInstanceId}:
+  /api/service-links/{callerInstanceId}/{targetInstanceId}:
     parameters:
       - $ref: '#/components/parameters/CallerInstanceId'
       - $ref: '#/components/parameters/TargetInstanceId'
@@ -199,31 +246,31 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}:
+  /api/services/{serviceId}:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     get:
-      operationId: getPlugin
-      summary: Получить plugin instance metadata
+      operationId: getService
+      summary: Получить service instance metadata
       responses:
         '200':
-          description: Redacted plugin instance
+          description: Redacted service instance
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PluginInstance' }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
+              schema: { $ref: '#/components/schemas/ServiceInstance' }
+        '404': { $ref: '#/components/responses/ServiceNotFound' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/replicas/register:
+  /api/services/{serviceId}/replicas/register:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     post:
-      operationId: registerPluginReplicaMetadata
+      operationId: registerServiceReplicaMetadata
       summary: Принять безопасную runtime metadata от CLI
       description: >-
         Core принимает только artifact/instance/replica metadata. Manifest,
-        schema, identity и readiness Core получает сам через Plugin SDK REST.
+        schema, identity и readiness Core получает сам через Service SDK REST.
       requestBody:
         required: true
         content:
@@ -247,56 +294,94 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/manifest:
+  /api/services/{serviceId}/manifest:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     get:
-      operationId: getPluginManifest
+      operationId: getServiceManifest
       summary: Получить live manifest через Core-side SDK client
       responses:
-        '200': { description: Plugin-owned live manifest, content: { application/json: { schema: { type: object } } } }
-        '502': { description: Invalid live plugin metadata }
+        '200': { description: Service-owned live manifest, content: { application/json: { schema: { type: object } } } }
+        '502': { description: Invalid live service metadata }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/schema:
+  /api/services/{serviceId}/schema:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     get:
-      operationId: getPluginConfigurationSchema
+      operationId: getServiceConfigurationSchema
       summary: Получить live configuration schema через Core-side SDK client
       responses:
-        '200': { description: Plugin-owned configuration schema, content: { application/json: { schema: { type: object } } } }
-        '502': { description: Invalid live plugin metadata }
+        '200': { description: Service-owned configuration schema, content: { application/json: { schema: { type: object } } } }
+        '502': { description: Invalid live service metadata }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/status:
+  /api/services/{serviceId}/status:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     get:
-      operationId: getPluginRuntimeStatus
+      operationId: getServiceRuntimeStatus
       summary: Получить live identity/readiness через Core-side SDK client
       responses:
-        '200': { description: Redacted live plugin status }
+        '200':
+          description: Live status bound to the authenticated replica release
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [instanceId, replicaId, artifactId, artifactVersion, artifactDigest, identity, readiness, replicas]
+                properties:
+                  instanceId: { type: string }
+                  replicaId: { type: string }
+                  artifactId: { type: string }
+                  artifactVersion: { type: string }
+                  artifactDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                  identity: { type: object }
+                  readiness: { type: object }
+                  replicas:
+                    type: array
+                    minItems: 1
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [replicaId, artifactVersion, artifactDigest, identity, readiness, ready, configuration]
+                      properties:
+                        replicaId: { type: string, minLength: 1 }
+                        artifactVersion: { type: string, minLength: 1 }
+                        artifactDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                        identity: { type: object }
+                        readiness: { type: object }
+                        ready: { type: boolean }
+                        configuration:
+                          type: object
+                          additionalProperties: false
+                          required: [desiredGeneration, appliedGeneration, state]
+                          properties:
+                            desiredGeneration: { type: [integer, 'null'], minimum: 1 }
+                            appliedGeneration: { type: [integer, 'null'], minimum: 1 }
+                            state: { type: string, enum: [unconfigured, unobserved, pending, acknowledged, stale, failed, unreachable] }
+                            lastFailureCode: { type: string, maxLength: 64, pattern: '^[A-Za-z0-9_.-]*$' }
+                            observedAt: { type: string, format: date-time }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/{pluginId}/settings:
+  /api/services/{serviceId}/settings:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     get:
-      operationId: getPluginSettings
+      operationId: getServiceSettings
       summary: Получить desired JSON settings и revision
       responses:
         '200':
-          description: Versioned plugin config; secret values не возвращаются
+          description: Versioned service config; secret values не возвращаются
           headers:
             ETag:
               schema: { type: string }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PluginSettings' }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
+              schema: { $ref: '#/components/schemas/ServiceSettings' }
+        '404': { $ref: '#/components/responses/ServiceNotFound' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
     put:
-      operationId: applyPluginSettings
+      operationId: applyServiceSettings
       summary: Сохранить desired settings и уведомить реплики через SDK REST Reload
       parameters:
         - $ref: '#/components/parameters/IfMatch'
@@ -305,7 +390,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PluginSettingsInput' }
+            schema: { $ref: '#/components/schemas/ServiceSettingsInput' }
       responses:
         '202':
           description: Candidate apply начат; активируется после обязательных ACK
@@ -317,16 +402,16 @@ paths:
         '422': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins/{pluginId}/rollback:
+  /api/services/{serviceId}/rollback:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
     post:
-      operationId: rollbackPluginSettings
-      summary: Поменять местами active и previous и уведомить plugin через REST Reload
+      operationId: rollbackServiceSettings
+      summary: Поменять местами active и previous и уведомить service через REST Reload
       description: >-
         Rollback — операция Management API, которая меняет местами активное и
         предыдущее durable-генерации и затем уведомляет реплики обычным Reload.
-        Запрос не содержит конфигурацию plugin.
+        Запрос не содержит конфигурацию service.
       parameters:
         - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -336,17 +421,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OperationAccepted' }
-        '404': { $ref: '#/components/responses/PluginNotFound' }
+        '404': { $ref: '#/components/responses/ServiceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
         '400': { $ref: '#/components/responses/Invalid' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
-  /api/plugins/admin-surfaces:
+  /api/services/admin-surfaces:
     get:
       operationId: listAdminSurfaces
-      summary: Список validated plugin Admin Surface
+      summary: Список validated service Admin Surface
       responses:
         '200':
           description: Declarative surfaces без executable UI
@@ -356,16 +441,16 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins/{pluginId}/admin/pages/{page}/query:
+  /api/services/{serviceId}/admin/pages/{page}/query:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
       - name: page
         in: path
         required: true
         schema: { type: string }
       - $ref: '#/components/parameters/AdminSurfaceDigest'
     post:
-      operationId: queryPluginAdminPage
+      operationId: queryServiceAdminPage
       summary: Выполнить schema-bound Admin Surface query
       requestBody:
         required: true
@@ -385,9 +470,9 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-  /api/plugins/{pluginId}/admin/pages/{page}/actions/{action}:
+  /api/services/{serviceId}/admin/pages/{page}/actions/{action}:
     parameters:
-      - $ref: '#/components/parameters/PluginId'
+      - $ref: '#/components/parameters/ServiceId'
       - name: page
         in: path
         required: true
@@ -397,11 +482,11 @@ paths:
         required: true
         schema: { type: string }
       - $ref: '#/components/parameters/AdminSurfaceDigest'
-      - $ref: '#/components/parameters/PluginActionIfMatch'
+      - $ref: '#/components/parameters/ServiceActionIfMatch'
       - $ref: '#/components/parameters/IdempotencyKey'
     post:
-      operationId: executePluginAdminAction
-      summary: Выполнить объявленное plugin action
+      operationId: executeServiceAdminAction
+      summary: Выполнить объявленное service action
       requestBody:
         required: true
         content:
@@ -414,7 +499,7 @@ paths:
               properties:
                 metadata:
                   type: object
-                  description: JSON action input validated by the active Admin Surface schema; the plugin action declares its serialized-byte limit.
+                  description: JSON action input validated by the active Admin Surface schema; the service action declares its serialized-byte limit.
                   additionalProperties: true
                 artifact:
                   type: string
@@ -448,6 +533,50 @@ paths:
         '503': { $ref: '#/components/responses/Unavailable' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/operations/resolve:
+    post:
+      operationId: resolveOperationsByIdempotency
+      summary: Найти принятые операции текущего actor по idempotency keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scope, keys]
+              properties:
+                scope: { type: string, minLength: 1, maxLength: 1024 }
+                keys:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  uniqueItems: true
+                  items: { type: string, minLength: 1, maxLength: 512 }
+      responses:
+        '200':
+          description: Найденные операции без request/configuration payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, requestId]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, state, resourceId]
+                      properties:
+                        id: { type: string }
+                        state: { type: string }
+                        resourceId: { type: string }
+                        errorCode: { type: string }
+                  requestId: { type: string }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/operations/{operationId}:
     parameters:
       - name: operationId
@@ -529,8 +658,8 @@ components:
         Bearer token никогда не выдаётся browser. Пользовательские permissions
         остаются в клиентском backend и проверяются до обращения к Core.
   parameters:
-    PluginId:
-      name: pluginId
+    ServiceId:
+      name: serviceId
       in: path
       required: true
       schema: { type: string }
@@ -549,14 +678,14 @@ components:
       in: header
       required: true
       schema: { type: string }
-      description: Strong ETag целевого plugin-owned ресурса; не Admin Surface digest.
+      description: Strong ETag целевого service-owned ресурса; не Admin Surface digest.
     AdminSurfaceDigest:
       name: X-Liapoldus-Admin-Surface-Digest
       in: header
       required: true
       schema: { type: string, pattern: '^sha256:[a-f0-9]{64}$' }
-      description: Точный digest из активного Admin Surface для plugin instance.
-    PluginActionIfMatch:
+      description: Точный digest из активного Admin Surface для service instance.
+    ServiceActionIfMatch:
       name: If-Match
       in: header
       required: false
@@ -564,7 +693,7 @@ components:
       description: >-
         Resource-level CAS precondition. Required for JSON actions. Multipart
         artifact actions may omit it when creating the first revision; the
-        plugin enforces its metadata-level expectedCurrentRevision CAS.
+        service enforces its metadata-level expectedCurrentRevision CAS.
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -572,7 +701,7 @@ components:
       schema: { type: string, minLength: 1, maxLength: 128 }
       description: >-
         Durable mutations and multipart artifact actions deduplicate by actor,
-        resource/action and request fingerprint. For synchronous JSON plugin
+        resource/action and request fingerprint. For synchronous JSON service
         Admin Actions this value is correlation/audit metadata only; each
         accepted request invokes the action again.
     Limit:
@@ -608,9 +737,9 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
-    PluginCallFailed:
+    ServiceCallFailed:
       description: >-
-        502 plugin_call_failed: подробности ошибки плагина клиенту не возвращаются.
+        502 service_call_failed: подробности ошибки сервиса клиенту не возвращаются.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -637,7 +766,7 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
       description: >-
-        409 conflict: по операции код может быть plugin_instance_conflict
+        409 conflict: по операции код может быть service_instance_conflict
         или idempotency_conflict.
       content:
         application/problem+json:
@@ -645,14 +774,14 @@ components:
     PreconditionFailed:
       description: >-
         412 precondition failed: If-Match не соответствует актуальной revision;
-        код plugin_revision_conflict определяется resource contract.
+        код service_revision_conflict определяется resource contract.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Invalid:
       description: >-
         422 invalid request/schema. Код берётся из Error Catalog и зависит от
-        операции (например plugin_config_invalid или artifact_invalid).
+        операции (например service_config_invalid или artifact_invalid).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -662,9 +791,9 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
-    PluginNotFound:
+    ServiceNotFound:
       description: >-
-        404 plugin_not_found: plugin instance не существует.
+        404 service_not_found: service instance не существует.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -676,7 +805,7 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     Unavailable:
       description: >-
-        503 plugin_unavailable, management_unavailable, audit_unavailable,
+        503 service_unavailable, management_unavailable, audit_unavailable,
         activation_failed или resource_exhausted по причине отказа.
       content:
         application/problem+json:
@@ -775,7 +904,7 @@ components:
         operations: { type: array, items: { type: string, minLength: 1 } }
         requestId: { type: string }
       additionalProperties: false
-    PluginInstance:
+    ServiceInstance:
       type: object
       required: [id, state, desiredGeneration, appliedGeneration]
       properties:
@@ -787,11 +916,11 @@ components:
         appliedGeneration: { type: integer, minimum: 0 }
         replicas: { type: array, items: { type: object, additionalProperties: true } }
       additionalProperties: false
-    PluginList:
+    ServiceList:
       type: object
       required: [items, nextCursor, requestId]
       properties:
-        items: { type: array, items: { $ref: '#/components/schemas/PluginInstance' } }
+        items: { type: array, items: { $ref: '#/components/schemas/ServiceInstance' } }
         nextCursor: { type: [string, 'null'] }
         requestId: { type: string }
       additionalProperties: false
@@ -862,7 +991,7 @@ components:
         minimumVersion: { type: string, minLength: 1, maxLength: 64 }
         maximumVersionExclusive: { type: string, minLength: 1, maxLength: 64 }
       additionalProperties: false
-      description: Opaque plugin-owned contract compatibility claim; Core carries but does not interpret versions.
+      description: Opaque service-owned contract compatibility claim; Core carries but does not interpret versions.
     AdminSurfaceList:
       type: object
       required: [items, requestId]
@@ -870,7 +999,7 @@ components:
         items: { type: array, items: { type: object, additionalProperties: true } }
         requestId: { type: string }
       additionalProperties: false
-    PluginSettings:
+    ServiceSettings:
       type: object
       required: [revision, config]
       properties:
@@ -878,12 +1007,31 @@ components:
         digest: { type: string }
         config: { type: object, additionalProperties: true }
       additionalProperties: false
-    PluginSettingsInput:
+    ServiceSettingsInput:
       type: object
       required: [config]
       properties:
         config: { type: object, additionalProperties: true }
       additionalProperties: false
+    CoreSettingsSnapshot:
+      type: object
+      required: [desiredRevision, effectiveRevision, pending, restartRequired, settings]
+      properties:
+        desiredRevision: { type: integer, minimum: 1 }
+        effectiveRevision: { type: [integer, 'null'], minimum: 1 }
+        pending: { type: boolean }
+        restartRequired: { type: boolean }
+        settings:
+          type: object
+          additionalProperties: true
+          description: >-
+            Core-owned settings document. Management API callers may see local
+            filesystem references but never file contents, credentials or private keys.
+      additionalProperties: false
+    CoreSettingsInput:
+      type: object
+      additionalProperties: true
+      description: Полный Core settings document без response envelope.
     OperationAccepted:
       type: object
       required: [operationId, state, requestId]
@@ -912,6 +1060,21 @@ components:
         errorCode:
           type: string
           description: Safe code from the Core error catalog; absent unless state is failed or degraded.
+        replicaOutcomes:
+          type: array
+          description: Safe per-replica configuration rollout result. Present only when the operation has a durable replica cohort.
+          items: { $ref: '#/components/schemas/OperationReplicaOutcome' }
+      additionalProperties: false
+    OperationReplicaOutcome:
+      type: object
+      required: [replicaId, desiredGeneration, state]
+      properties:
+        replicaId: { type: string }
+        desiredGeneration: { type: integer, minimum: 1 }
+        state: { type: string, enum: [pending, applied, failed] }
+        failureCode:
+          type: string
+          description: Safe error-catalog code; present only for a failed replica.
       additionalProperties: false
     AuditPage:
       type: object
@@ -973,7 +1136,7 @@ components:
       description: >-
         RFC 9457 problem details расширяется обязательными code и requestId.
         Detail и title берутся из безопасного error catalog; secrets, paths,
-        raw plugin messages и payloads запрещены.
+        raw service messages и payloads запрещены.
       required: [type, title, status, code, detail, instance, requestId]
       properties:
         type: { type: string, format: uri-reference }

@@ -7,21 +7,21 @@
 Страница фиксирует согласованный следующий этап и не является альтернативным
 репозиторным TODO. Текущие owner tasks и проверяемые статусы находятся в
 [Core TODO](https://github.com/Liapoldus/core/blob/main/TODO.md) и TODO владельцев
-SDK, protocol и plugins. Исторические этапы v1 не перечисляются как незакрытый
+SDK, protocol и services. Исторические этапы v1 не перечисляются как незакрытый
 backlog.
 
 ## Текущие архитектурные границы
 
-- Core — plugin-agnostic control plane и единственный writer своей SQLite.
+- Core — service-agnostic control plane и единственный writer своей SQLite.
 - Bootstrap-параметры поступают из ENV; Core сам один раз создаёт SQLite и
   initial settings revision до открытия Management API. Рабочие настройки Core
-  и plugins изменяются через защищённый versioned API.
-- Configurations plugins — точные plugin-owned JSON bytes. Core валидирует
+  и services изменяются через защищённый versioned API.
+- Configurations services — точные service-owned JSON bytes. Core валидирует
   envelope, digest/CAS, durable operations и generation lifecycle, но не
   интерпретирует product fields.
-- Plugin SDK — независимый Core↔plugin REST contract. `pluginprotocol` — общий
-  plugin↔plugin transport contract; это разные репозитории и границы.
-- Plugin replicas сами регистрируются с mTLS identity, получают leases и
+- Service SDK — независимый Core↔service REST contract. `wool` — общий
+  service↔service transport contract; это разные репозитории и границы.
+- Service replicas сами регистрируются с mTLS identity, получают leases и
   fenced при истечении lease, конфликте incarnation или отзыве credentials.
 - Core не запускает процессы, не управляет контейнерами и не выбирает deployment
   provider. Deployment automation — standalone `liapoldus` CLI и его adapters.
@@ -95,12 +95,12 @@ v2 считается готовой только как согласованн�
   grant-checked CRUD/transactions. Runtime v2 применяет из Core atomic
   multi-module WASM generations, маршрутизирует команды по module/export и
   выполняет ограниченные host calls по per-command allowlist; sandbox не имеет
-  прямого I/O. Ни Domain HA/durability, ни cross-plugin ACID не обещаются.
+  прямого I/O. Ни Domain HA/durability, ни cross-service ACID не обещаются.
   Runtime-side HTTP terminal adapter использует только неизменённый
   опубликованный Server contract; изменение Server repository или переход на
   новую Server API входит в v3.
 - **Сквозной и эксплуатационный gate:** clean-environment сценарий запускает один
-  Core и отдельно размещённые плагины; проверяет restart/reconnect, конфигурацию,
+  Core и отдельно размещённые сервисы; проверяет restart/reconnect, конфигурацию,
   прямые разрешённые peer-вызовы, mTLS/CRL rotation, redaction, recovery,
   generic rollout, Core-owned Domain model/grants and volatile restart semantics,
   Runtime multi-module peer/WASM routing and absence of product payload in Core.
@@ -124,96 +124,58 @@ prompts — в `bigpikle/`; эти каталоги не публикуются 
 смешанные peer transports, Domain и Runtime. Server/forms-db repositories не
 меняются в v2; их текущие paths — только regression targets. Studio и standalone
 CLI входят в текущий v2 межрепозиторный workflow. Caddy-L4/public TCP/UDP, CAPTCHA/Identity,
-Core embedding API, Plugin SDK in-process/static composition, все дальнейшие
+Core embedding API, Service SDK REST composition, все дальнейшие
 Server/forms-db product changes (включая Server
 scaling/shared storage и forms-db multi-replica SQL compatibility/website content),
-отложены до v3. Установку и плановые обновления Core/plugins выполняет оператор
+отложены до v3. Установку и плановые обновления Core/services выполняет оператор
 выбранными средствами; Core не получает provider
 API ни в одном этапе. Identity и CAPTCHA заморожены до
-отдельной явной разморозки. `pluginprotocol` остаётся
+отдельной явной разморозки. `wool` остаётся
 единственной Go wire/session реализацией; второй Python engine не создаётся.
 Foreign bindings в v3 не заявляются. Core и SDK composition описаны в
 [целевой архитектуре](target) и [целевой архитектуре v3](v3).
 
-### V3: Plugin SDK in-process adapter и единый бинарник
+### V3: Core host API
 
-В v3 реализован in-process adapter для статически включённых доверенных Go
-plugins. Он заменяет только Core↔plugin REST внутри одного процесса: Core
-вызывает generic `Reload` interface, plugin сам pull-ит точное поколение через
-scoped `ConfigSource`, реализованный над immutable Core snapshot. Семантика
-generation/digest/ACK, rollback, grants, authorization, audit и errors остаётся
-общей с REST adapter. В том же SDK сохранить REST+mTLS adapter для отдельных и
-удалённых plugin processes; выбирать adapter явно на instance/composition, без
-fallback. Один executable с дочерними plugin processes остаётся REST-режимом,
-не in-process.
+Host API запускает один Core runtime с SQLite и Management API. Все runtime
+Services регистрируются через Service SDK REST+mTLS.
 
-In-process компоненты — одна граница доверия и отказа; mTLS между ними
-неприменим, panic containment не даёт process isolation. Поэтому в этот режим
-включаются только доверенные compiled-in modules. `pluginprotocol` не меняется:
-межплагинные вызовы остаются на его generic API с mTLS; прямые Go-вызовы и
-каналы между plugins не допускаются.
-
-**Gate:** SDK lifecycle conformance проходит одинаково через REST и in-process;
-проверены pull exact generation, exact raw bytes/digest, ACK/retry/failure,
-instance scoping, authorization/grants/audit и отмена. Smoke доказывает, что
-in-process профиль не открывает Core↔plugin REST listener, REST-профиль
-сохраняет mTLS, а plugin-to-plugin mTLS не изменяется.
-
-### V3: Core как Go library и статическая композиция
-
-Core предоставляет публичный host API, позволяющий Go-приложению создать,
-запустить, проверить readiness и остановить один Core runtime. API использует
-штатную composition root и bootstrap/config source; не раскрывает `internal/`
-типы, не обходит SQLite и не создаёт параллельную модель конфигурации. Core
-остаётся singleton относительно своей state database.
-
-Отдельный сборочный composition root включает Core и выбранные plugin factories
-в один executable. Встроенные Go plugins подключаются через Plugin SDK
-in-process adapter; REST adapter остаётся для отдельно запущенных и удалённых
-plugins. Состав фиксируется на build time; dynamic Go plugin loading,
-независимое обновление встроенного plugin без пересборки и обещание process
-isolation не входят в scope. Упаковка executable с child processes сама по себе
-не переводит их на in-process transport.
-
-**Gate:** host API smoke создаёт/закрывает один Core и освобождает ресурсы;
-composed binary содержит только явно включённые factories; in-process plugin
-проходит общий SDK Reload/config-pull/ACK corpus без REST listener. Отдельный
-process сохраняет REST+mTLS и тот же lifecycle contract. Ни один plugin не
-обходит Core/peer security boundary прямым вызовом `pluginprotocol`.
+**Gate:** host API smoke создаёт/закрывает Core и освобождает ресурсы; REST
+conformance сохраняет exact-generation bytes/digest, ACK и lease semantics.
 
 ### V3: Server и forms-db product development
 
-В v3 возобновить работу в `plugins/server/` и `plugins/forms-db/`; до этого их
+В v3 возобновить работу в `services/server/` и `services/forms-db/`; до этого их
   текущие behavior/contracts не менять, кроме отдельно одобренного исправления
   критического дефекта. Server scope объединяет multi-replica registration,
 release compatibility, shared site/CertMagic storage и ACME conformance с
 Caddy-L4/public TCP/UDP отдельными gates. forms-db scope объединяет replica и
 SQL schema compatibility/rollout для PostgreSQL, MySQL и MariaDB с website/
 content evolution. Core остаётся product-agnostic; owner contracts принадлежат
-plugins, а общие v2 lifecycle gates покрываются fixtures.
+services, а общие v2 lifecycle gates покрываются fixtures.
 
 ### V3: forms-db website и управление контентом
 
-В v3 отдельно спроектировать развитие forms-db в website/content plugin:
+В v3 отдельно спроектировать развитие forms-db в website/content service:
 контент принадлежит forms-db storage, административное редактирование доступно
-через plugin-owned UI, а endpoint/порт панели отделён от публичной доставки
-сайта. Публикацию и HTTP listener необходимо согласовать с Server plugin; Core
-хранит только opaque plugin settings и остаётся product-agnostic. Эта задача не
+через service-owned UI, а endpoint/порт панели отделён от публичной доставки
+сайта. Публикацию и HTTP listener необходимо согласовать с Server service; Core
+хранит только opaque service settings и остаётся product-agnostic. Эта задача не
 меняет опубликованные contracts и не предполагает, что текущие права `platform-admin`
 автоматически являются пользовательской ролевой моделью сайта.
 
 Порядок: (1) выбрать ownership между одним расширенным forms-db и отдельным
-website plugin; (2) согласовать модель контента, schema evolution и DB
+website service; (2) согласовать модель контента, schema evolution и DB
 migrations; (3) определить, кто обслуживает публичный сайт и кто владеет
 отдельным admin listener-ом; (4) спроектировать authN/authZ, provisioning,
 roles, audit и network exposure; (5) определить публикацию, immutable release,
 `current`/`previous`, rollback и восстановление; (6) обновить owner contracts,
 security model и conformance; (7) только затем реализовывать сквозной
-Core → Plugin SDK → forms-db/Server сценарий.
+Core → Service SDK → forms-db/Server сценарий.
 
 Канонические продуктовые вопросы и задачи принадлежат
 [forms-db v3 TODO](https://github.com/Liapoldus/forms-db/blob/main/TODO.md) и
-[документации forms-db](https://liapoldus.github.io/plugins/forms-db#направление-развития-в-v3-website-и-редактор-содержимого).
+[документации forms-db](https://liapoldus.github.io/services/forms-db#направление-развития-в-v3-website-и-редактор-содержимого).
 Этот roadmap задаёт лишь межсервисную последовательность; он не копирует
 forms-db schemas или product API. Ни website/content, ни replica/SQL
 compatibility forms-db не входят в v2 agent prompt.

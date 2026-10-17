@@ -9,15 +9,15 @@ func auditDefinitions() AuditWords {
 			StaticToken string "yaml:\"staticToken\""
 		} "yaml:\"actors\""
 		Actions struct {
-			ServiceKeyCreate          string "yaml:\"serviceKeyCreate\""
-			PluginSettingsCandidate   string "yaml:\"pluginSettingsCandidate\""
-			PluginSettingsApply       string "yaml:\"pluginSettingsApply\""
-			PluginSettingsApplyFailed string "yaml:\"pluginSettingsApplyFailed\""
-			PluginSettingsRollback    string "yaml:\"pluginSettingsRollback\""
-			PluginAdminAction         string "yaml:\"pluginAdminAction\""
-			PluginLinkCreate          string "yaml:\"pluginLinkCreate\""
-			PluginLinkReplace         string "yaml:\"pluginLinkReplace\""
-			PluginLinkDelete          string "yaml:\"pluginLinkDelete\""
+			ServiceKeyCreate           string "yaml:\"serviceKeyCreate\""
+			ServiceSettingsCandidate   string "yaml:\"serviceSettingsCandidate\""
+			ServiceSettingsApply       string "yaml:\"serviceSettingsApply\""
+			ServiceSettingsApplyFailed string "yaml:\"serviceSettingsApplyFailed\""
+			ServiceSettingsRollback    string "yaml:\"serviceSettingsRollback\""
+			ServiceAdminAction         string "yaml:\"serviceAdminAction\""
+			ServiceLinkCreate          string "yaml:\"serviceLinkCreate\""
+			ServiceLinkReplace         string "yaml:\"serviceLinkReplace\""
+			ServiceLinkDelete          string "yaml:\"serviceLinkDelete\""
 		} "yaml:\"actions\""
 		Resources struct {
 			ServiceKeys string "yaml:\"serviceKeys\""
@@ -36,24 +36,24 @@ func auditDefinitions() AuditWords {
 			StaticToken string "yaml:\"staticToken\""
 		}{StaticToken: "static-token"},
 		Actions: struct {
-			ServiceKeyCreate          string "yaml:\"serviceKeyCreate\""
-			PluginSettingsCandidate   string "yaml:\"pluginSettingsCandidate\""
-			PluginSettingsApply       string "yaml:\"pluginSettingsApply\""
-			PluginSettingsApplyFailed string "yaml:\"pluginSettingsApplyFailed\""
-			PluginSettingsRollback    string "yaml:\"pluginSettingsRollback\""
-			PluginAdminAction         string "yaml:\"pluginAdminAction\""
-			PluginLinkCreate          string "yaml:\"pluginLinkCreate\""
-			PluginLinkReplace         string "yaml:\"pluginLinkReplace\""
-			PluginLinkDelete          string "yaml:\"pluginLinkDelete\""
+			ServiceKeyCreate           string "yaml:\"serviceKeyCreate\""
+			ServiceSettingsCandidate   string "yaml:\"serviceSettingsCandidate\""
+			ServiceSettingsApply       string "yaml:\"serviceSettingsApply\""
+			ServiceSettingsApplyFailed string "yaml:\"serviceSettingsApplyFailed\""
+			ServiceSettingsRollback    string "yaml:\"serviceSettingsRollback\""
+			ServiceAdminAction         string "yaml:\"serviceAdminAction\""
+			ServiceLinkCreate          string "yaml:\"serviceLinkCreate\""
+			ServiceLinkReplace         string "yaml:\"serviceLinkReplace\""
+			ServiceLinkDelete          string "yaml:\"serviceLinkDelete\""
 		}{ServiceKeyCreate: "service_key.create",
-			PluginSettingsCandidate:   "plugin_settings.candidate",
-			PluginSettingsApply:       "plugin_settings.apply",
-			PluginSettingsApplyFailed: "plugin_settings.apply_failed",
-			PluginSettingsRollback:    "plugin_settings.rollback",
-			PluginAdminAction:         "plugin_admin.action",
-			PluginLinkCreate:          "plugin_link.create",
-			PluginLinkReplace:         "plugin_link.replace",
-			PluginLinkDelete:          "plugin_link.delete"},
+			ServiceSettingsCandidate:   "service_settings.candidate",
+			ServiceSettingsApply:       "service_settings.apply",
+			ServiceSettingsApplyFailed: "service_settings.apply_failed",
+			ServiceSettingsRollback:    "service_settings.rollback",
+			ServiceAdminAction:         "service_admin.action",
+			ServiceLinkCreate:          "service_link.create",
+			ServiceLinkReplace:         "service_link.replace",
+			ServiceLinkDelete:          "service_link.delete"},
 		Resources: struct {
 			ServiceKeys string "yaml:\"serviceKeys\""
 		}{ServiceKeys: "service-keys"},
@@ -120,13 +120,13 @@ func runtimeContractDefinitions() RuntimeWords {
 			OutputInvalid: "--output должен иметь значение text или json"}}
 }
 
-func grantDefinitions() PluginSecretGrantPolicy {
-	return PluginSecretGrantPolicy{SchemaVersion: 1,
+func grantDefinitions() ServiceSecretGrantPolicy {
+	return ServiceSecretGrantPolicy{SchemaVersion: 1,
 		MaximumOutstanding: 256}
 }
 
-func inventoryDefinitions() PluginInventoryContract {
-	return PluginInventoryContract{SelectInstances: "SELECT instances.id, instances.state, active.generation, instances.manifest_json, active.raw_json FROM plugin_instances AS instances JOIN plugin_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' ORDER BY instances.id",
+func inventoryDefinitions() ServiceInventoryContract {
+	return ServiceInventoryContract{SelectInstances: "SELECT instances.id, instances.state, active.generation, instances.manifest_json, active.raw_json FROM service_instances AS instances JOIN service_config_generations AS active ON active.instance_id = instances.id AND active.slot = 'active' ORDER BY instances.id",
 		ValidStates: []string{"configured",
 			"ready",
 			"degraded",
@@ -142,9 +142,9 @@ func inventoryDefinitions() PluginInventoryContract {
 			InvalidContract string "yaml:\"invalidContract\""
 			InvalidRecord   string "yaml:\"invalidRecord\""
 			InvalidManifest string "yaml:\"invalidManifest\""
-		}{InvalidContract: "plugin inventory contract is invalid",
-			InvalidRecord:   "plugin instance record is invalid",
-			InvalidManifest: "plugin instance manifest is invalid"}}
+		}{InvalidContract: "service inventory contract is invalid",
+			InvalidRecord:   "service instance record is invalid",
+			InvalidManifest: "service instance manifest is invalid"}}
 }
 
 func managementDefinitions() ManagementWords {
@@ -156,100 +156,102 @@ func managementDefinitions() ManagementWords {
 		NameMaxLength: 80,
 		CreatedStatus: 201},
 		Codes: struct {
-			BearerRequired         string "yaml:\"bearerRequired\""
-			ManagementUnavailable  string "yaml:\"managementUnavailable\""
-			IdempotencyConflict    string "yaml:\"idempotencyConflict\""
-			PluginConfigInvalid    string "yaml:\"pluginConfigInvalid\""
-			PluginRevisionConflict string "yaml:\"pluginRevisionConflict\""
-			PluginLinkConflict     string "yaml:\"pluginLinkConflict\""
-			PluginLinkInvalid      string "yaml:\"pluginLinkInvalid\""
-			TargetLost             string "yaml:\"targetLost\""
-			ActivationFailed       string "yaml:\"activationFailed\""
-			PluginUnavailable      string "yaml:\"pluginUnavailable\""
-			PluginNotFound         string "yaml:\"pluginNotFound\""
-			InvalidRequest         string "yaml:\"invalidRequest\""
-			ArtifactTooLarge       string "yaml:\"artifactTooLarge\""
-			OperationNotFound      string "yaml:\"operationNotFound\""
+			BearerRequired          string "yaml:\"bearerRequired\""
+			ManagementUnavailable   string "yaml:\"managementUnavailable\""
+			IdempotencyConflict     string "yaml:\"idempotencyConflict\""
+			ServiceConfigInvalid    string "yaml:\"serviceConfigInvalid\""
+			ServiceRevisionConflict string "yaml:\"serviceRevisionConflict\""
+			ServiceLinkConflict     string "yaml:\"serviceLinkConflict\""
+			ServiceLinkInvalid      string "yaml:\"serviceLinkInvalid\""
+			TargetLost              string "yaml:\"targetLost\""
+			ActivationFailed        string "yaml:\"activationFailed\""
+			ServiceUnavailable      string "yaml:\"serviceUnavailable\""
+			ServiceNotFound         string "yaml:\"serviceNotFound\""
+			InvalidRequest          string "yaml:\"invalidRequest\""
+			ArtifactTooLarge        string "yaml:\"artifactTooLarge\""
+			OperationNotFound       string "yaml:\"operationNotFound\""
 		}{BearerRequired: "management_bearer_required",
-			ManagementUnavailable:  "management_unavailable",
-			IdempotencyConflict:    "idempotency_conflict",
-			PluginConfigInvalid:    "plugin_config_invalid",
-			PluginRevisionConflict: "plugin_revision_conflict",
-			PluginLinkConflict:     "plugin_link_conflict",
-			PluginLinkInvalid:      "plugin_link_invalid",
-			TargetLost:             "target_lost",
-			ActivationFailed:       "activation_failed",
-			PluginUnavailable:      "plugin_unavailable",
-			PluginNotFound:         "plugin_not_found",
-			InvalidRequest:         "invalid_request",
-			ArtifactTooLarge:       "artifact_too_large",
-			OperationNotFound:      "not_found"},
+			ManagementUnavailable:   "management_unavailable",
+			IdempotencyConflict:     "idempotency_conflict",
+			ServiceConfigInvalid:    "service_config_invalid",
+			ServiceRevisionConflict: "service_revision_conflict",
+			ServiceLinkConflict:     "service_link_conflict",
+			ServiceLinkInvalid:      "service_link_invalid",
+			TargetLost:              "target_lost",
+			ActivationFailed:        "activation_failed",
+			ServiceUnavailable:      "service_unavailable",
+			ServiceNotFound:         "service_not_found",
+			InvalidRequest:          "invalid_request",
+			ArtifactTooLarge:        "artifact_too_large",
+			OperationNotFound:       "not_found"},
 		Paths: struct {
-			Healthz                string "yaml:\"healthz\""
-			Status                 string "yaml:\"status\""
-			Config                 string "yaml:\"config\""
-			ConfigValidate         string "yaml:\"configValidate\""
-			ConfigReload           string "yaml:\"configReload\""
-			Reload                 string "yaml:\"reload\""
-			Listeners              string "yaml:\"listeners\""
-			Upstreams              string "yaml:\"upstreams\""
-			Plugins                string "yaml:\"plugins\""
-			PluginSettingsSuffix   string "yaml:\"pluginSettingsSuffix\""
-			PluginRollbackSuffix   string "yaml:\"pluginRollbackSuffix\""
-			AdminSurfaces          string "yaml:\"adminSurfaces\""
-			AdminPages             string "yaml:\"adminPages\""
-			AdminActions           string "yaml:\"adminActions\""
-			AdminQueryAction       string "yaml:\"adminQueryAction\""
-			Logs                   string "yaml:\"logs\""
-			TLS                    string "yaml:\"tls\""
-			Renew                  string "yaml:\"renew\""
-			Revoke                 string "yaml:\"revoke\""
-			Operations             string "yaml:\"operations\""
-			Audit                  string "yaml:\"audit\""
-			ServiceKeys            string "yaml:\"serviceKeys\""
-			PluginLinks            string "yaml:\"pluginLinks\""
-			PluginLinkTargetSuffix string "yaml:\"pluginLinkTargetSuffix\""
-			PluginIDSeparator      string "yaml:\"pluginIDSeparator\""
-			ConfigBundlePlan       string "yaml:\"configBundlePlan\""
-			ConfigBundleApply      string "yaml:\"configBundleApply\""
+			Healthz                 string "yaml:\"healthz\""
+			Status                  string "yaml:\"status\""
+			Config                  string "yaml:\"config\""
+			ConfigValidate          string "yaml:\"configValidate\""
+			ConfigReload            string "yaml:\"configReload\""
+			Reload                  string "yaml:\"reload\""
+			Listeners               string "yaml:\"listeners\""
+			Upstreams               string "yaml:\"upstreams\""
+			Services                string "yaml:\"services\""
+			ServiceSettingsSuffix   string "yaml:\"serviceSettingsSuffix\""
+			ServiceRollbackSuffix   string "yaml:\"serviceRollbackSuffix\""
+			AdminSurfaces           string "yaml:\"adminSurfaces\""
+			AdminPages              string "yaml:\"adminPages\""
+			AdminActions            string "yaml:\"adminActions\""
+			AdminQueryAction        string "yaml:\"adminQueryAction\""
+			Logs                    string "yaml:\"logs\""
+			TLS                     string "yaml:\"tls\""
+			Renew                   string "yaml:\"renew\""
+			Revoke                  string "yaml:\"revoke\""
+			Operations              string "yaml:\"operations\""
+			OperationResolve        string "yaml:\"operationResolve\""
+			Audit                   string "yaml:\"audit\""
+			ServiceKeys             string "yaml:\"serviceKeys\""
+			ServiceLinks            string "yaml:\"serviceLinks\""
+			ServiceLinkTargetSuffix string "yaml:\"serviceLinkTargetSuffix\""
+			ServiceIDSeparator      string "yaml:\"serviceIDSeparator\""
+			ConfigBundlePlan        string "yaml:\"configBundlePlan\""
+			ConfigBundleApply       string "yaml:\"configBundleApply\""
 		}{Healthz: "/healthz",
-			Status:                 "/api/status",
-			Config:                 "",
-			ConfigValidate:         "",
-			ConfigReload:           "",
-			Reload:                 "",
-			Listeners:              "",
-			Upstreams:              "",
-			Plugins:                "/api/plugins",
-			PluginSettingsSuffix:   "/settings",
-			PluginRollbackSuffix:   "rollback",
-			AdminSurfaces:          "/api/plugins/admin-surfaces",
-			AdminPages:             "admin/pages",
-			AdminActions:           "actions",
-			AdminQueryAction:       "query",
-			Logs:                   "",
-			TLS:                    "",
-			Renew:                  "",
-			Revoke:                 "",
-			Operations:             "/api/operations",
-			Audit:                  "/api/audit",
-			ServiceKeys:            "/api/access/service-keys",
-			PluginLinks:            "/api/plugin-links",
-			PluginLinkTargetSuffix: "/{callerInstanceId}/{targetInstanceId}",
-			PluginIDSeparator:      "/",
-			ConfigBundlePlan:       "/api/config-bundles/plan",
-			ConfigBundleApply:      "/api/config-bundles/apply"},
+			Status:                  "/api/status",
+			Config:                  "",
+			ConfigValidate:          "",
+			ConfigReload:            "",
+			Reload:                  "",
+			Listeners:               "",
+			Upstreams:               "",
+			Services:                "/api/services",
+			ServiceSettingsSuffix:   "/settings",
+			ServiceRollbackSuffix:   "rollback",
+			AdminSurfaces:           "/api/services/admin-surfaces",
+			AdminPages:              "admin/pages",
+			AdminActions:            "actions",
+			AdminQueryAction:        "query",
+			Logs:                    "",
+			TLS:                     "",
+			Renew:                   "",
+			Revoke:                  "",
+			Operations:              "/api/operations",
+			OperationResolve:        "/api/operations/resolve",
+			Audit:                   "/api/audit",
+			ServiceKeys:             "/api/access/service-keys",
+			ServiceLinks:            "/api/service-links",
+			ServiceLinkTargetSuffix: "/{callerInstanceId}/{targetInstanceId}",
+			ServiceIDSeparator:      "/",
+			ConfigBundlePlan:        "/api/config-bundles/plan",
+			ConfigBundleApply:       "/api/config-bundles/apply"},
 		OperationKinds: struct {
-			PluginSettingsApply    string "yaml:\"pluginSettingsApply\""
-			PluginSettingsRollback string "yaml:\"pluginSettingsRollback\""
-			PluginLinkCreate       string "yaml:\"pluginLinkCreate\""
-			PluginLinkReplace      string "yaml:\"pluginLinkReplace\""
-			PluginLinkDelete       string "yaml:\"pluginLinkDelete\""
-		}{PluginSettingsApply: "plugin-settings-apply",
-			PluginSettingsRollback: "plugin-settings-rollback",
-			PluginLinkCreate:       "plugin-link-create",
-			PluginLinkReplace:      "plugin-link-replace",
-			PluginLinkDelete:       "plugin-link-delete"},
+			ServiceSettingsApply    string "yaml:\"serviceSettingsApply\""
+			ServiceSettingsRollback string "yaml:\"serviceSettingsRollback\""
+			ServiceLinkCreate       string "yaml:\"serviceLinkCreate\""
+			ServiceLinkReplace      string "yaml:\"serviceLinkReplace\""
+			ServiceLinkDelete       string "yaml:\"serviceLinkDelete\""
+		}{ServiceSettingsApply: "service-settings-apply",
+			ServiceSettingsRollback: "service-settings-rollback",
+			ServiceLinkCreate:       "service-link-create",
+			ServiceLinkReplace:      "service-link-replace",
+			ServiceLinkDelete:       "service-link-delete"},
 		Methods: struct {
 			Get    string "yaml:\"get\""
 			Post   string "yaml:\"post\""
@@ -287,6 +289,7 @@ func managementDefinitions() ManagementWords {
 			ExpiresAt               string "yaml:\"expiresAt\""
 			RevokedAt               string "yaml:\"revokedAt\""
 			UpdatedAt               string "yaml:\"updatedAt\""
+			ReplicaOutcomes         string "yaml:\"replicaOutcomes\""
 			StartedAt               string "yaml:\"startedAt\""
 			FinishedAt              string "yaml:\"finishedAt\""
 			Result                  string "yaml:\"result\""
@@ -364,6 +367,7 @@ func managementDefinitions() ManagementWords {
 			ExpiresAt:               "expiresAt",
 			RevokedAt:               "revokedAt",
 			UpdatedAt:               "updatedAt",
+			ReplicaOutcomes:         "replicaOutcomes",
 			StartedAt:               "startedAt",
 			FinishedAt:              "finishedAt",
 			Result:                  "result",
@@ -513,8 +517,8 @@ func managementDefinitions() ManagementWords {
 		}{OperationNotFound: "The requested operation does not exist."}}
 }
 
-func reconciliationDefinitions() PluginReconciliationPolicy {
-	return PluginReconciliationPolicy{SchemaVersion: 1,
+func reconciliationDefinitions() ServiceReconciliationPolicy {
+	return ServiceReconciliationPolicy{SchemaVersion: 1,
 		ReadinessPollMillis: 5000}
 }
 
@@ -527,18 +531,18 @@ func rolloutDefinitions() TrafficRolloutAPIContract {
 		MultipartMediaType:                 "multipart/form-data",
 		MaximumMetadataBytes:               65536,
 		EnvelopeOverheadBytes:              65536,
-		OperationKind:                      "plugin-traffic-rollout",
-		AuditAction:                        "plugin_traffic_rollout.create",
+		OperationKind:                      "service-traffic-rollout",
+		AuditAction:                        "service_traffic_rollout.create",
 		ApprovalStageSegment:               "/stages/",
 		ApprovalSuffix:                     "/approve",
 		RolloutIDSeparator:                 "/",
-		ApprovalOperationKind:              "plugin-traffic-rollout-stage-approval",
-		ApprovalAuditAction:                "plugin_traffic_rollout.stage_approve",
+		ApprovalOperationKind:              "service-traffic-rollout-stage-approval",
+		ApprovalAuditAction:                "service_traffic_rollout.stage_approve",
 		ControllerConfirmationAuditAction:  "traffic_rollout.confirm",
 		MaximumControllerConfirmationBytes: 16384,
 		ControllerJSON: TrafficControllerJSONFields{Rollouts: "rollouts",
 			ID:                                  "id",
-			PluginID:                            "pluginId",
+			ServiceID:                           "serviceId",
 			ActiveGeneration:                    "activeGeneration",
 			Revision:                            "revision",
 			ReleaseSHA256:                       "releaseSha256",
@@ -559,7 +563,7 @@ func sqliteDefinitions() SQLiteContract {
 		DatabaseFileMode:       0x180,
 		MaxOpenConnections:     1,
 		MaxIdleConnections:     1,
-		SchemaVersion:          14,
+		SchemaVersion:          16,
 		SystemGroupID:          "system",
 		HasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')",
 		MigrationVersionQuery:  "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",

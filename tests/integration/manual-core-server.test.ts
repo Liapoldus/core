@@ -6,19 +6,19 @@ import { createGoWorkspace, missingWorkspaceRepositories } from "../support/work
 const root = resolve(import.meta.dirname, "../..");
 
 // The fixture builds and starts the real Server and forms-db binaries, which
-// their own modules resolve from these siblings. The plugin-agnostic gate does
+// their own modules resolve from these siblings. The service-agnostic gate does
 // not check them out, so there the scenario is out of scope rather than failing;
 // the integration workflow checks out the full workspace and runs it.
 const missing = missingWorkspaceRepositories(
-  "pluginprotocol",
-  "plugin-sdk",
-  "plugins/server",
-  "plugins/forms-db",
+  "wool",
+  "service-sdk",
+  "services/server",
+  "services/forms-db",
 );
 
 describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db", () => {
-  it("publishes exact settings to both plugins and changes real Server HTTP traffic", () => {
-    const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol", "plugins/server", "plugins/forms-db");
+  it("publishes exact settings to both services and changes real Server HTTP traffic", () => {
+    const workspace = createGoWorkspace("core", "service-sdk", "wool", "services/server", "services/forms-db");
     let output: string;
     try {
       output = execFileSync("go", ["run", "./tests/fixtures/manual-core-server"], {
@@ -43,7 +43,7 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
       serverRestartConverged: true,
       coreUnavailableFailsClosed: true,
       coreUnavailableRecovered: true,
-      pluginControlRevocationEnforced: true,
+      serviceControlRevocationEnforced: true,
       coordinatedTrustRootRotationConverged: true,
       serverReconnectConverged: true,
       formsSubmit: true,
@@ -52,7 +52,7 @@ describe.skipIf(missing.length > 0)("manually launched Core, Server and forms-db
       formsAdminDeleteSemantics: true,
       staleProductionGrantDenied: true,
       formsListWithoutLeaseRejected: true,
-      formsListRevokedReplicaDenied: true,
+      formsListSurvivesControlPlaneRevocation: true,
       incomingCookiesRedactedEverywhere: true,
       coreDidNotObservePeerPayload: true,
       formsDatabaseDriver: "memory",

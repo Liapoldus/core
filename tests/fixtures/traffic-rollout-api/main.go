@@ -51,7 +51,7 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err = database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	store, err := storage.NewSQLiteTrafficRolloutStore(database)
 	check(err)
@@ -63,7 +63,7 @@ func main() {
 	check(err)
 	apiContract, err := config.LoadTrafficRolloutAPIContract()
 	check(err)
-	pluginConfigWords, err := config.LoadPluginConfiguration()
+	serviceConfigWords, err := config.LoadServiceConfiguration()
 	check(err)
 	now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	service := &application.TrafficRolloutService{
@@ -74,7 +74,7 @@ func main() {
 			LeaseExpiresAt: now.Add(time.Hour), Ready: true,
 		}}},
 		Validator: configValidator{}, SchemaVersion: 1, MaximumConfigurationBytes: 1024,
-		States: application.TrafficRolloutStates{Running: words.Statuses.Running, Pending: words.Statuses.Pending, Active: pluginConfigWords.Slots.Active},
+		States: application.TrafficRolloutStates{Running: words.Statuses.Running, Pending: words.Statuses.Pending, Active: serviceConfigWords.Slots.Active},
 		Now:    func() time.Time { return now },
 	}
 	server := &api.Server{
@@ -83,7 +83,7 @@ func main() {
 		TrafficRollouts: service, TrafficRolloutAPI: apiContract,
 	}
 	handler := server.Handler()
-	path := words.Paths.Plugins + "/forms" + apiContract.CollectionSuffix
+	path := words.Paths.Services + "/forms" + apiContract.CollectionSuffix
 	metadata := []byte(`{"releaseSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","targets":[{"replicaId":"candidate-1","incarnation":"inc-1"}],"stages":[{"id":"full","candidateWeightPercent":100,"minimumObservationSeconds":0}]}`)
 	configuration := []byte(` { "form" : {"fields":["email"]} } `)
 	accepted := sendCreate(handler, apiContract, words, path, metadata, configuration, http.MethodPost, `"0"`, "same-key")
@@ -105,7 +105,7 @@ func main() {
 	var count int
 	check(database.QueryRowContext(ctx, `SELECT COUNT(*) FROM traffic_rollouts`).Scan(&count))
 	var stored []byte
-	check(database.QueryRowContext(ctx, `SELECT raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms").Scan(&stored))
+	check(database.QueryRowContext(ctx, `SELECT raw_json FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms").Scan(&stored))
 	check(json.NewEncoder(os.Stdout).Encode(map[string]bool{
 		"accepted":                   accepted.Code == http.StatusAccepted,
 		"operationCreated":           responseHasOperation(accepted) && count == 1,

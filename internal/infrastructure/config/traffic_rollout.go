@@ -1,7 +1,7 @@
 package config
 
 type TrafficRolloutAPIContract struct {
-	CollectionSuffix                   string                      `yaml:"pluginCollectionSuffix"`
+	CollectionSuffix                   string                      `yaml:"serviceCollectionSuffix"`
 	MetadataPart                       string                      `yaml:"metadataPart"`
 	ConfigurationPart                  string                      `yaml:"configurationPart"`
 	MetadataMediaType                  string                      `yaml:"metadataMediaType"`
@@ -24,7 +24,7 @@ type TrafficRolloutAPIContract struct {
 type TrafficControllerJSONFields struct {
 	Rollouts                            string `yaml:"rollouts"`
 	ID                                  string `yaml:"id"`
-	PluginID                            string `yaml:"pluginId"`
+	ServiceID                           string `yaml:"serviceId"`
 	ActiveGeneration                    string `yaml:"activeGeneration"`
 	Revision                            string `yaml:"revision"`
 	ReleaseSHA256                       string `yaml:"releaseSha256"`

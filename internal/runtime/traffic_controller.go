@@ -11,22 +11,22 @@ import (
 
 	"github.com/Liapoldus/core/v3/internal/application"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 	"github.com/Liapoldus/core/v3/internal/presentation/api"
 )
 
 func trafficControllerTLS(configuration config.TrafficControllerConfig) (*tls.Config, error) {
 	certificate, err := loadKeyPair(configuration.Certificate, configuration.Key)
 	if err != nil {
-		return nil, errPluginControlTrustInvalid
+		return nil, errServiceControlTrustInvalid
 	}
 	roots, err := certPool(configuration.ClientCA)
 	if err != nil {
-		return nil, errPluginControlTrustInvalid
+		return nil, errServiceControlTrustInvalid
 	}
-	verifyRevocation, err := plugins.NewTLSRevocationVerifier(configuration.ClientCA, configuration.ClientCRLs)
+	verifyRevocation, err := services.NewTLSRevocationVerifier(configuration.ClientCA, configuration.ClientCRLs)
 	if err != nil {
-		return nil, errPluginControlTrustInvalid
+		return nil, errServiceControlTrustInvalid
 	}
 	return &tls.Config{
 		MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{certificate},
@@ -48,7 +48,7 @@ func startTrafficController(
 	}
 	listener, err := net.Listen("tcp", configuration.Listen)
 	if err != nil {
-		return nil, nil, errPluginControlListen
+		return nil, nil, errServiceControlListen
 	}
 	handler, err := api.NewTrafficControllerHandler(service, configuration.AllowedIdentities, apiContract)
 	if err != nil {
@@ -79,7 +79,7 @@ func serveManagementAndTrafficController(
 	ctx context.Context,
 	management *api.Server,
 	managementAddress string,
-	configuration *application.PluginConfigurationService,
+	configuration *application.ServiceConfigurationService,
 	ready chan<- struct{},
 	stopTrafficController func(),
 	trafficControllerDone <-chan error,

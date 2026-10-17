@@ -20,7 +20,7 @@ describe("architecture lint boundaries", () => {
       const block = dependencies.match(new RegExp(`${component}:[\\s\\S]*?(?=\\n  [\\w]+:|$)`))?.[0] ?? "";
       expect(block, `${component} must define mayDependOn`).toMatch(/mayDependOn: \[[^\]]*\]/);
       expect(block, `${component} must define canUse`).toMatch(/canUse: \[[^\]]*\]/);
-      expect(block).not.toContain("pluginprotocol");
+      expect(block).not.toContain("wool");
     }
   });
 
@@ -40,13 +40,13 @@ describe("architecture lint boundaries", () => {
     expect(architecture).toMatch(/yaml:\s*\{ in: \[gopkg\.in\/yaml\.v3\] \}/);
     expect(architecture).toMatch(/textNormalization:\s*\{ in: \[golang\.org\/x\/text\/cases, golang\.org\/x\/text\/unicode\/norm\] \}/);
     expect(architecture).not.toMatch(/protobuf:\s*\{/);
-    expect(architecture).toMatch(/pluginSDK:\s*\{ in: \[github\.com\/Liapoldus\/plugin-sdk\/v2,/);
+    expect(architecture).toMatch(/serviceSDK:\s*\{ in: \[github\.com\/Liapoldus\/service-sdk\/v2,/);
   });
 
   it("does not let storage depend on config or CLI depend on protocol adapters", async () => {
     const architecture = await readFile(join(root, ".go-arch-lint.yml"), "utf8");
     const dependencies = architecture.slice(architecture.indexOf("deps:"));
-    const storage = await readFile(join(root, "internal/infrastructure/storage/sqlite_plugin_instances.go"), "utf8");
+    const storage = await readFile(join(root, "internal/infrastructure/storage/sqlite_service_instances.go"), "utf8");
     const runtime = await readGoPackageSources(root, "internal/runtime");
 
     expect(dependencies).toMatch(/infrastructureStorage:[\s\S]*?mayDependOn: \[[^\]]*\]/);
@@ -55,8 +55,8 @@ describe("architecture lint boundaries", () => {
 
     expect(dependencies).toMatch(/runtime:[\s\S]*?mayDependOn: \[[^\]]*\]/);
     const runtimeDependencies = dependencies.match(/runtime:[\s\S]*?mayDependOn: \[([^\]]*)\]/)?.[1] ?? "";
-    expect(runtimeDependencies).not.toContain("pluginprotocol");
+    expect(runtimeDependencies).not.toContain("wool");
     expect(storage).not.toContain("internal/infrastructure/config");
-    expect(runtime).not.toContain("github.com/Liapoldus/pluginprotocol/v3");
+    expect(runtime).not.toContain("github.com/Liapoldus/wool/v3");
   });
 });

@@ -48,16 +48,16 @@ func (service *TrafficRolloutService) ControllerIntents(ctx context.Context) ([]
 
 type TrafficRolloutService struct {
 	Store                     interfaces.TrafficRolloutStore
-	ConfigurationStore        interfaces.PluginConfigurationReader
-	ConfigurationRollouts     interfaces.PluginConfigurationRolloutStore
-	Applier                   interfaces.PluginConfigurationRolloutApplier
+	ConfigurationStore        interfaces.ServiceConfigurationReader
+	ConfigurationRollouts     interfaces.ServiceConfigurationRolloutStore
+	Applier                   interfaces.ServiceConfigurationRolloutApplier
 	Operations                OperationService
 	Replicas                  TrafficRolloutReplicaSource
 	Validator                 TrafficRolloutConfigurationValidator
 	States                    TrafficRolloutStates
 	SchemaVersion             int64
 	MaximumConfigurationBytes int
-	OperationStates           PluginConfigurationOperationStates
+	OperationStates           ServiceConfigurationOperationStates
 	TargetLostCode            string
 	ScheduleWorker            func(func())
 	WorkerContext             context.Context
@@ -137,7 +137,7 @@ func (service *TrafficRolloutService) Create(ctx context.Context, command Create
 	}
 	for _, cohort := range []struct {
 		name    string
-		targets []models.PluginRolloutTarget
+		targets []models.ServiceRolloutTarget
 	}{{"candidate", candidates}, {"incumbent", incumbents}} {
 		for _, target := range cohort.targets {
 			record.Targets = append(record.Targets, models.TrafficRolloutCohortTarget{
@@ -171,7 +171,7 @@ func (service *TrafficRolloutService) ReconcileInstance(ctx context.Context, ins
 	}
 	if _, busy := service.reconciling[instanceID]; busy {
 		service.workersMu.Unlock()
-		return models.PluginConfigurationConvergencePending{}
+		return models.ServiceConfigurationConvergencePending{}
 	}
 	service.reconciling[instanceID] = struct{}{}
 	service.workersMu.Unlock()
@@ -191,49 +191,49 @@ func (service *TrafficRolloutService) ReconcileInstance(ctx context.Context, ins
 		}
 		current, _, err := service.ConfigurationStore.Current(ctx, instanceID)
 		if err != nil || current.Revision != rollout.Generation {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		candidate, err := service.ConfigurationStore.GetRevision(ctx, instanceID, rollout.Generation)
 		if err != nil || candidate.Revision != rollout.Generation || candidate.InstanceID != instanceID {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		targets, found, err := service.ConfigurationRollouts.Targets(ctx, rollout.OperationID)
 		if err != nil || !found || len(targets) == 0 {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		lost, err := service.Applier.LostConfigurationTargets(ctx, instanceID, targets)
 		if err != nil {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		if len(lost) != 0 {
 			states := service.OperationStates
 			if states.Pending == "" || states.Running == "" || states.Failed == "" || service.TargetLostCode == "" {
-				pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+				pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 				continue
 			}
 			if err := service.ConfigurationRollouts.FailRolloutTargetLost(ctx, rollout.OperationID, lost,
 				states.Pending, states.Running, states.Failed, service.TargetLostCode); err != nil {
-				pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+				pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			}
 			continue
 		}
 		acknowledged, applyErr := service.Applier.ApplyConfigurationToTargets(ctx, rollout.OperationID,
 			instanceID, strconv.FormatInt(rollout.Generation, 10), candidate.SettingsJSON, targets)
 		if err := service.ConfigurationRollouts.AcknowledgeTargets(ctx, rollout.OperationID, acknowledged); err != nil {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		if applyErr != nil {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		latest, found, err := service.ConfigurationRollouts.Targets(ctx, rollout.OperationID)
 		if err != nil || !found || len(latest) == 0 {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		allAcknowledged := true
@@ -241,11 +241,11 @@ func (service *TrafficRolloutService) ReconcileInstance(ctx context.Context, ins
 			allAcknowledged = allAcknowledged && target.Acknowledged
 		}
 		if !allAcknowledged {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 			continue
 		}
 		if err := service.ConfigurationRollouts.CompleteRollout(ctx, rollout.OperationID); err != nil {
-			pending = errors.Join(pending, models.PluginConfigurationConvergencePending{})
+			pending = errors.Join(pending, models.ServiceConfigurationConvergencePending{})
 		}
 	}
 	return pending

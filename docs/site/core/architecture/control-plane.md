@@ -1,11 +1,11 @@
 # Control plane: SQLite, конфигурации и поколения
 
 Эта страница описывает долговременное состояние Core и доставку конфигурации
-плагинам. Core всегда один; SQLite — единственная долговременная база Core и
+сервисам. Core всегда один; SQLite — единственная долговременная база Core и
 источник desired configuration. Каноническое распределение ответственности
-задано в [целевой архитектуре](target), а общий REST plugin contract принадлежит
-отдельной библиотеке Plugin SDK. `pluginprotocol` в этой модели не участвует в
-управлении Core и используется только для plugin-to-plugin взаимодействия.
+задано в [целевой архитектуре](target), а общий REST service contract принадлежит
+отдельной библиотеке Service SDK. `wool` в этой модели не участвует в
+управлении Core и используется только для service-to-service взаимодействия.
 
 ## Состояние Core в v2
 
@@ -14,10 +14,10 @@ SQLite хранит только control-plane state, нужный для вос
 
 | Данные | Содержимое | Не хранить |
 | --- | --- | --- |
-| Plugin instance | Стабильный ID, plugin identity, зарегистрированные replicas и timestamps. | Product-specific поля, binaries и process lifecycle. |
+| Service instance | Стабильный ID, service identity, зарегистрированные replicas и timestamps. | Product-specific поля, binaries и process lifecycle. |
 | Replica membership | Стабильный ID replica, отдельный REST control endpoint, ожидаемая mTLS identity и desired/observed status. | Private keys, bearer tokens и TLS secret bytes. |
 | Config generations | До одной строки на instance/slot: `instance_id`, монотонный `generation`, `slot`, точный `raw_json BLOB`, `sha256`, `schema_version`, `created_at`. Слоты: `active`, `previous` и непубликуемый `staging`. | Product-specific распарсенные поля и раскрытые секреты. |
-| Frozen rollout cohort | `plugin_rollouts`: operation, instance, generation и open/completed state; `plugin_rollout_targets`: точные `replica_id`, `incarnation_id`, release digest и per-target ACK. Membership неизменна после promotion. | Live endpoints, leases и credentials. |
+| Frozen rollout cohort | `service_rollouts`: operation, instance, generation и open/completed state; `service_rollout_targets`: точные `replica_id`, `incarnation_id`, release digest и per-target ACK. Membership неизменна после promotion. | Live endpoints, leases и credentials. |
 | Replica observations | Config generation, digest, replica identity и время наблюдения/подтверждения. Rollout ACK принадлежит неизменяемому target row. | Credentials целиком. |
 | Operations/idempotency | Тип операции, safe resource IDs, состояние, input digest, результат и timestamps. | Чувствительные request/response body. |
 | Access/audit | Actor, authorization result, mutation/resource и before/after digest. | Повторно выдаваемые tokens, cookies, authorization и secret values. |
@@ -25,35 +25,35 @@ SQLite хранит только control-plane state, нужный для вос
 SQLite — долговременное хранилище desired state и журнала операций. При старте
 Core проверяет БД и контрольные данные, восстанавливает подтверждённое состояние,
 строит immutable in-memory snapshot и использует snapshot на runtime-пути.
-Обработка обычного plugin request не читает SQLite. Плагины применяют настройки
+Обработка обычного service request не читает SQLite. Сервисы применяют настройки
 в собственную память и не обязаны иметь локальный application-config file.
 
 ### Владение данными
 
 - Core SQLite: desired JSON generations, replica endpoints/identities, scoped
   secret-grant metadata, operations, audit и active generation. Peer policies
-  и plugin-to-plugin grants не входят в текущий v2 scope.
-- Plugin binaries: оператор устанавливает, запускает, обновляет и резервирует
+  и service-to-service grants не входят в текущий v2 scope.
+- Service binaries: оператор устанавливает, запускает, обновляет и резервирует
   их отдельно; Core не хранит package store и не имеет process-control API.
-- Plugin storage: продуктовые данные и runtime artifacts. Server plugin отдельно
+- Service storage: продуктовые данные и runtime artifacts. Server service отдельно
   хранит ACME state, сертификаты и site releases на своём persistent volume.
-- Внешний secret provider: secret bytes. Core и плагины сохраняют ссылки и
+- Внешний secret provider: secret bytes. Core и сервисы сохраняют ссылки и
   ограниченные grant metadata, но не логируют раскрытые значения.
 
 ### Raw JSON и физическая модель поколений
 
-Единственное хранилище plugin configuration — таблица
-`plugin_config_generations` со столбцами `instance_id`, `generation`, `slot`,
+Единственное хранилище service configuration — таблица
+`service_config_generations` со столбцами `instance_id`, `generation`, `slot`,
 `raw_json BLOB`, `sha256`, `schema_version` и `created_at`. Ограничение
 уникальности `(instance_id, slot)` допускает не более одной строки каждого
 слота; `slot` принимает `active`, `previous` или `staging`. Generation
 уникален и монотонно увеличивается в пределах instance. Пустой slot представлен
 отсутствующей строкой.
 
-Management `PUT` принимает непосредственно JSON object plugin settings — без
+Management `PUT` принимает непосредственно JSON object service settings — без
 общей `{ "config": ... }` оболочки. До сохранения Core проверяет верхний лимит
 размера, корректный UTF-8, JSON object syntax, отсутствие дублирующихся ключей
-на любой глубине и generic JSON Schema подключённого plugin. Затем сохраняются
+на любой глубине и generic JSON Schema подключённого service. Затем сохраняются
 исходные bytes: decode/remarshal, каноникализация, сортировка ключей и изменение
 whitespace запрещены. SHA-256 считается по точному `raw_json`; config pull
 возвращает те же bytes, schema version, generation и digest. Парсинг для
@@ -77,12 +77,12 @@ incarnation_id, release_sha256)` и вызывает `Reload` только дл�
 `previous` и фиксирует собственную exact-incarnation cohort; partial ACK и
 recovery обрабатываются как durable operation без повторного вызова уже
 подтвердивших replicas. Это покрыто `registered-rollout-cohort.test.ts` и
-`plugin-settings-rollback.test.ts`. Данный локальный результат не закрывает
+`service-settings-rollback.test.ts`. Данный локальный результат не закрывает
 release-compatible Core/SDK build и полный hosted release gate.
 
 ## Два поколения конфигурации
 
-Для одного plugin instance Core хранит не более двух полных версий настроек:
+Для одного service instance Core хранит не более двух полных версий настроек:
 
 | Слот | Назначение | Изменение |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ references.
 
 ## REST pull и Reload
 
-Общий REST control contract задаёт Plugin SDK; его endpoint shapes и ошибки не
+Общий REST control contract задаёт Service SDK; его endpoint shapes и ошибки не
 дублируются этой страницей. Последовательность изменения настроек такова:
 
 1. Core ограниченно принимает и валидирует candidate в памяти; ошибка до полной
@@ -113,12 +113,12 @@ references.
 4. Для каждой обязательной replica Core вызывает REST `Reload` с целевым
    generation и семантикой «эта версия доступна и должна стать active». Это
    уведомление, а не передача настроек: в запросе нет конфигурационного
-   документа. Точная JSON-форма принадлежит Plugin SDK.
-5. Плагин сам обращается к защищённому Core REST endpoint и запрашивает ровно
+   документа. Точная JSON-форма принадлежит Service SDK.
+5. Сервис сам обращается к защищённому Core REST endpoint и запрашивает ровно
    указанный immutable generation. Core авторизует конкретные instance/replica,
    operation и generation; ответ содержит versioned JSON, schema version и
    digest.
-6. Плагин валидирует весь документ и атомарно меняет собственную in-memory
+6. Сервис валидирует весь документ и атомарно меняет собственную in-memory
    конфигурацию. Он возвращает Core подтверждение точных generation и digest.
    Если проверка или применение не прошли, локально остаётся его прежняя
    конфигурация.
@@ -133,13 +133,13 @@ references.
 
 `Reload` идемпотентен по instance, replica и generation. Повторный config pull
 `GET` возвращает тот же неизменяемый документ; Core не подменяет содержимое уже
-выданного generation. Плагин не опрашивает Core постоянно: он получает
+выданного generation. Сервис не опрашивает Core постоянно: он получает
 инициирующий Reload, а конфигурацию забирает сам. Core периодически опрашивает
 SDK readiness и фиксирует наблюдаемое состояние, но этот monitor read-only и
-никогда не вызывает `Reload`. Если оператор независимо перезапустил plugin при
+никогда не вызывает `Reload`. Если оператор независимо перезапустил service при
 работающем Core, replica остаётся degraded до ручного перезапуска Core. Startup
 reconciliation повторно сверяет identity и active generation и инициирует
-`Reload` при расхождении. Core не перезапускает plugin и не повторяет
+`Reload` при расхождении. Core не перезапускает service и не повторяет
 пользовательский Call.
 
 ## Частичный rollout и rollback в v2
@@ -154,11 +154,11 @@ active generation только replica с расхождением. Успешн
 после ACK всех обязательных replicas; уже завершённая как `failed` попытка
 остаётся в истории со своим исходом, даже если последующий reconcile устранил
 drift.
-Повтор не replay-ит пользовательский plugin Call с неизвестным исходом.
+Повтор не replay-ит пользовательский service Call с неизвестным исходом.
 
-Core Management API `POST /api/plugins/{pluginId}/rollback` начинает новое
+Core Management API `POST /api/services/{serviceId}/rollback` начинает новое
 roll-forward на содержимое `previous`: Core атомарно меняет `active` и
-`previous` местами до REST уведомлений. Plugin не получает
+`previous` местами до REST уведомлений. Service не получает
 специальную rollback-команду: Core вызывает обычный `Reload` с generation,
 ставшим active.
 Подтвердившие rollback generation replicas остаются eligible; отставшие
@@ -170,14 +170,14 @@ fenced/degraded до startup reconciliation после ручного перез
 В v2 Core повторно сводит только актуальный desired generation с replicas,
 имеющими живую аутентифицированную lease. При регистрации Core объявляет текущий
 `active` только этой replica; периодическая reconciliation затем проверяет точные identity,
-generation и digest через Plugin SDK readiness. Уже сошедшаяся replica не
+generation и digest через Service SDK readiness. Уже сошедшаяся replica не
 получает лишний вызов. Отстающей или неготовой replica повторно объявляется тот
 же immutable `Reload(generation, digest, schemaVersion)`, а результат
 фиксируется отдельно по replica. Отказ одного участника не блокирует попытки к
 остальным. Просроченная lease исключает replica из reconciliation и dispatch.
 
 Повторяется только идемпотентное уведомление о desired generation. Core не
-повторяет пользовательский plugin Call, submission, artifact upload или любой
+повторяет пользовательский service Call, submission, artifact upload или любой
 вызов с неизвестным побочным результатом. Частичный rollout остаётся
 roll-forward: нужные replicas fenced до точного ACK, а ручной rollback — новое
 desired generation, а не автоматическая compensation. Периодичность
@@ -206,15 +206,15 @@ recovery gate. Потеря exact incarnation имеет terminal outcome
 `failed/target_lost`; оно проверено локальным integration fixture, но ещё не
 входит в hosted release gate.
 
-Плагин удаляет отозванные revision-bound secret bytes из памяти после
+Сервис удаляет отозванные revision-bound secret bytes из памяти после
 подтверждённой смены конфигурации либо shutdown. Secret grants выдаются через
-Plugin SDK REST только для раскрытия plugin-owned secret references. Их нельзя
-использовать для разрешения межплагинных вызовов.
+Service SDK REST только для раскрытия service-owned secret references. Их нельзя
+использовать для разрешения межсервисных вызовов.
 
-## Межплагинная авторизация
+## Межсервисная авторизация
 
 В Core v2 Core хранит peer policy, распространяет её и выдаёт
-plugin-to-plugin interaction grants. Каждый plugin получает только разрешённую
+service-to-service interaction grants. Каждый service получает только разрешённую
 выборку policy для своей replica; protocol library не знает продуктов или
 именованных capability contracts.
 Централизованные caller/target policies, generation/ACK и bounded drain
@@ -226,18 +226,18 @@ SQLite и редактируется только защищённым Managemen
 аудируется и публикует новый immutable in-memory snapshot. Bootstrap YAML не
 содержит копию этих правил. Policy остаётся deny-by-default и содержит только
 generic instance IDs, placement, carrier, weight и opaque contract ranges.
-Plugin peer-directory long-poll пробуждается при смене policy или eligible
+Service peer-directory long-poll пробуждается при смене policy или eligible
 replica membership/readiness; lease expiry учитывается таймером ближайшего
 deadline, без обязательного фонового reaper. SDK владеет wire-shape long-poll,
 Core — авторизацией, durable policy и сборкой caller-scoped directory.
 
-`pluginprotocol` обеспечивает только общий межплагинный обмен. Он не задаёт
-plugin Manifest, REST lifecycle, settings, health API, secret redemption или
+`wool` обеспечивает только общий межсервисный обмен. Он не задаёт
+service Manifest, REST lifecycle, settings, health API, secret redemption или
 имена продуктовых методов. См. [границы protocol и SDK](protocol).
 
 ## Startup и crash recovery
 
-До объявления plugin replicas готовыми Core:
+До объявления service replicas готовыми Core:
 
 1. открывает SQLite, применяет поддерживаемые миграции и проверяет integrity;
 2. восстанавливает durable operations, `active`/`previous` и digest;
@@ -260,12 +260,12 @@ plugin Manifest, REST lifecycle, settings, health API, secret redemption или
 
 Повреждённая БД, digest mismatch или невозможность однозначно восстановить
 generation блокирует только соответствующие instance/bindings и требует
-операторского решения; Core не угадывает конфигурацию из runtime плагина.
+операторского решения; Core не угадывает конфигурацию из runtime сервиса.
 Backup Core включает согласованный SQLite snapshot, создаваемый standalone
 универсальным `liapoldus` CLI через target adapter; отдельно сохранённые Core bootstrap/configuration
 artifacts. Restore выполняется только при остановленном Core; CLI проверяет
 schema version, integrity и foreign keys и заменяет файл атомарно. Backup
-plugin volumes выполняется отдельно и включает plugin-owned данные, например
+service volumes выполняется отдельно и включает service-owned данные, например
 Server site releases и ACME state.
 
 Подробные публичные errors, operations и endpoints описаны в

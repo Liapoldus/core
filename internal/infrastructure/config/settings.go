@@ -10,10 +10,10 @@ import (
 )
 
 // Settings is Core's operational document. It contains mount references, never
-// secret values, database paths, or a static plugin endpoint registry.
+// secret values, database paths, or a static service endpoint registry.
 type Settings struct {
 	Management        ManagementSettings       `json:"management"`
-	PluginControl     ControlSettings          `json:"pluginControl"`
+	ServiceControl    ControlSettings          `json:"serviceControl"`
 	SecretRoot        string                   `json:"secretRoot"`
 	TrafficController *TrafficControllerConfig `json:"trafficController,omitempty"`
 }
@@ -56,22 +56,22 @@ func DecodeSettings(raw []byte) (Settings, error) {
 }
 
 func (s Settings) Validate() error {
-	if validListen(s.Management.Listen) != nil || validListen(s.PluginControl.Listen) != nil ||
+	if validListen(s.Management.Listen) != nil || validListen(s.ServiceControl.Listen) != nil ||
 		s.Management.MaxBodyBytes < 1 || s.Management.MaxBodyBytes > 16<<20 ||
 		validDuration(s.Management.HeaderTimeout) != nil || validDuration(s.Management.RequestTimeout) != nil ||
 		!filepath.IsAbs(s.SecretRoot) {
 		return ErrInvalidDocument
 	}
-	if _, err := PluginEndpoint(s.PluginControl.PublicURL); err != nil {
+	if _, err := ServiceEndpoint(s.ServiceControl.PublicURL); err != nil {
 		return ErrInvalidDocument
 	}
 	for _, path := range []string{s.Management.TLS.Certificate, s.Management.TLS.Key,
-		s.PluginControl.TLS.Certificate, s.PluginControl.TLS.Key, s.PluginControl.ReplicaClientCA, s.PluginControl.ReplicaServerCA} {
+		s.ServiceControl.TLS.Certificate, s.ServiceControl.TLS.Key, s.ServiceControl.ReplicaClientCA, s.ServiceControl.ReplicaServerCA} {
 		if !filepath.IsAbs(path) {
 			return ErrInvalidDocument
 		}
 	}
-	for _, path := range append(append([]string{s.Management.TLS.ClientCA}, s.PluginControl.ReplicaClientCRLs...), s.PluginControl.ReplicaServerCRLs...) {
+	for _, path := range append(append([]string{s.Management.TLS.ClientCA}, s.ServiceControl.ReplicaClientCRLs...), s.ServiceControl.ReplicaServerCRLs...) {
 		if path != "" && !filepath.IsAbs(path) {
 			return ErrInvalidDocument
 		}
@@ -101,11 +101,11 @@ func (s Settings) Bootstrap(statePath string) BootstrapConfig {
 		ManagementCertificate: s.Management.TLS.Certificate, ManagementKey: s.Management.TLS.Key,
 		ManagementClientCA: s.Management.TLS.ClientCA, ManagementMaxBodyBytes: s.Management.MaxBodyBytes,
 		ManagementHeaderTimeout: s.Management.HeaderTimeout, ManagementRequestTimeout: s.Management.RequestTimeout,
-		PluginControlListen: s.PluginControl.Listen, PluginControlPublicURL: s.PluginControl.PublicURL,
-		PluginControlCertificate: s.PluginControl.TLS.Certificate, PluginControlKey: s.PluginControl.TLS.Key,
-		PluginReplicaClientCA: s.PluginControl.ReplicaClientCA, PluginReplicaServerCA: s.PluginControl.ReplicaServerCA,
-		PluginReplicaClientCRLs: append([]string(nil), s.PluginControl.ReplicaClientCRLs...),
-		PluginReplicaServerCRLs: append([]string(nil), s.PluginControl.ReplicaServerCRLs...),
+		ServiceControlListen: s.ServiceControl.Listen, ServiceControlPublicURL: s.ServiceControl.PublicURL,
+		ServiceControlCertificate: s.ServiceControl.TLS.Certificate, ServiceControlKey: s.ServiceControl.TLS.Key,
+		ServiceReplicaClientCA: s.ServiceControl.ReplicaClientCA, ServiceReplicaServerCA: s.ServiceControl.ReplicaServerCA,
+		ServiceReplicaClientCRLs: append([]string(nil), s.ServiceControl.ReplicaClientCRLs...),
+		ServiceReplicaServerCRLs: append([]string(nil), s.ServiceControl.ReplicaServerCRLs...),
 	}
 }
 

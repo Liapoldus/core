@@ -44,8 +44,8 @@ function request(address: string, method: string, path: string, token?: string, 
 async function prepareCore(directory: string) {
   const binary = await buildCoreTestBinary();
   const address = await freeAddress();
-  const pluginControlAddress = await freeAddress();
-  const initialized = await initializeCore(binary, directory, address, pluginControlAddress);
+  const serviceControlAddress = await freeAddress();
+  const initialized = await initializeCore(binary, directory, address, serviceControlAddress);
   return { address, environment: initialized.environment, database: initialized.database, bootstrapToken: initialized.bootstrapToken };
 }
 
@@ -98,7 +98,7 @@ describe("one-time service-key issuance", () => {
       expect(await serviceKeyCount(prepared.database)).toBe(2);
       expect((await databaseBytes(prepared.database)).includes(Buffer.from(credential.token))).toBe(false);
 
-      for (const path of ["/api/status", "/api/plugins", "/api/audit"]) {
+      for (const path of ["/api/status", "/api/services", "/api/audit"]) {
         const response = await request(prepared.address, "GET", path, credential.token);
         expect(response.status).toBe(200);
         expect(response.body).not.toContain(credential.token);

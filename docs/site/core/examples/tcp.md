@@ -4,5 +4,5 @@
 указатель на отложенную функцию; settings schema, реализацию и acceptance
 нужно проектировать отдельно на следующем этапе.
 
-Внутренний TCP carrier в `pluginprotocol` — отдельная plugin↔plugin сеть и не
+Внутренний TCP carrier в `wool` — отдельная service↔service сеть и не
 является публичным relay.

@@ -34,8 +34,8 @@ import (
 	"syscall"
 	"time"
 
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	pluginsdk "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	servicesdk "github.com/Liapoldus/service-sdk/v2/infrastructure"
 	_ "modernc.org/sqlite"
 )
 
@@ -243,8 +243,8 @@ func run() error {
 	newOrigin := httpOrigin("new")
 	defer newOrigin.Close()
 	coreRoot := repositoryRoot()
-	serverRoot := filepath.Clean(filepath.Join(coreRoot, "..", "plugins", "server"))
-	formsRoot := filepath.Clean(filepath.Join(coreRoot, "..", "plugins", "forms-db"))
+	serverRoot := filepath.Clean(filepath.Join(coreRoot, "..", "services", "server"))
+	formsRoot := filepath.Clean(filepath.Join(coreRoot, "..", "services", "forms-db"))
 	serverDataHome := filepath.Join(directory, "server-data")
 	if err := os.MkdirAll(serverDataHome, 0o700); err != nil {
 		return err
@@ -288,19 +288,39 @@ func run() error {
 	if token == "" {
 		return errors.New("Core bootstrap returned no service credential")
 	}
-	server := exec.Command(serverBinary,
-		"--instance-id=server-child", "--replica-id=server-replica", "--rest-listen="+restAddress,
-		"--core-url=https://"+controlAddress, "--core-server-name=localhost",
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(root) {
+		return errors.New("invalid test trust root")
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, Timeout: 5 * time.Second}
+	base := "https://" + managementAddress
+	core := exec.Command(coreBinary, "serve")
+	core.Dir = coreRoot
+	core.Env = childEnvironment
+	coreLogs := &safeBuffer{}
+	core.Stdout = coreLogs
+	core.Stderr = coreLogs
+	if err := core.Start(); err != nil {
+		return err
+	}
+	defer func() { stop(core) }()
+	if err := waitForHealth(client, base, core); err != nil {
+		return err
+	}
+	serverArgs := []string{
+		"--instance-id=server-child", "--replica-id=server-replica", "--rest-listen=" + restAddress,
+		"--rest-advertise-url=https://" + restAddress,
+		"--core-url=https://" + controlAddress, "--core-server-name=localhost",
 		"--core-common-name=core-child", "--core-client-common-name=core-child",
-		"--ca-file="+filepath.Join(directory, "root.pem"),
-		"--server-cert="+filepath.Join(directory, "server-registration.pem"), "--server-key="+filepath.Join(directory, "server-registration.key"),
-		"--client-cert="+filepath.Join(directory, "server-registration.pem"), "--client-key="+filepath.Join(directory, "server-registration.key"),
-		"--crl-file="+filepath.Join(directory, "revocation.pem"),
-		"--peer-target-id=forms-child", "--peer-endpoint="+formsPeerAddress,
-		"--peer-identity=spiffe://liapoldus.test/server", "--peer-expected-identity=spiffe://liapoldus.test/forms",
-		"--peer-ca-file="+filepath.Join(directory, "root.pem"),
-		"--peer-cert="+filepath.Join(directory, "server.pem"), "--peer-key="+filepath.Join(directory, "server.key"),
-	)
+		"--ca-file=" + filepath.Join(directory, "root.pem"),
+		"--server-cert=" + filepath.Join(directory, "server-registration.pem"), "--server-key=" + filepath.Join(directory, "server-registration.key"),
+		"--client-cert=" + filepath.Join(directory, "server-registration.pem"), "--client-key=" + filepath.Join(directory, "server-registration.key"),
+		"--crl-file=" + filepath.Join(directory, "revocation.pem"),
+		"--peer-identity=spiffe://liapoldus/service/server-child/server-replica/manual-server-incarnation",
+		"--peer-ca-file=" + filepath.Join(directory, "root.pem"),
+		"--peer-cert=" + filepath.Join(directory, "server.pem"), "--peer-key=" + filepath.Join(directory, "server.key"),
+	}
+	server := exec.Command(serverBinary, serverArgs...)
 	server.Dir = serverRoot
 	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
 	serverLogs := &safeBuffer{}
@@ -319,7 +339,7 @@ func run() error {
 		"--client-cert=" + filepath.Join(directory, "forms-registration.pem"), "--client-key=" + filepath.Join(directory, "forms-registration.key"),
 		"--crl-file=" + filepath.Join(directory, "revocation.pem"),
 		"--peer-listen=" + formsPeerAddress, "--peer-identity=spiffe://liapoldus.test/forms",
-		"--peer-allowed-caller=spiffe://liapoldus.test/server",
+		"--peer-allowed-caller=spiffe://liapoldus/service/server-child/server-replica/manual-server-incarnation",
 		"--peer-ca-file=" + filepath.Join(directory, "root.pem"),
 		"--peer-cert=" + filepath.Join(directory, "forms.pem"), "--peer-key=" + filepath.Join(directory, "forms.key"),
 		"--peer-carrier=tcp",
@@ -334,43 +354,23 @@ func run() error {
 		return err
 	}
 	defer func() { stop(forms) }()
-	roots := x509.NewCertPool()
-	if !roots.AppendCertsFromPEM(root) {
-		return errors.New("invalid test trust root")
-	}
 	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
 		return fmt.Errorf("%w (Server logs: %s)", err, serverLogs.String())
 	}
 	if err := waitServerHealth(formsRESTAddress, roots, coreCert); err != nil {
 		return fmt.Errorf("%w (forms-db logs: %s)", err, formsLogs.String())
 	}
-	core := exec.Command(coreBinary, "serve")
-	core.Dir = coreRoot
-	core.Env = childEnvironment
-	coreLogs := &safeBuffer{}
-	core.Stdout = coreLogs
-	core.Stderr = coreLogs
-	if err := core.Start(); err != nil {
-		return err
-	}
-	defer func() { stop(core) }()
-	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, Timeout: 5 * time.Second}
-	base := "https://" + managementAddress
-	if err := waitForHealth(client, base, core); err != nil {
-		return err
-	}
-	stopServerLease, err := registerTestReplica(controlAddress, directory, "server-child", "server-replica", "manual-server-incarnation", restAddress, "server-registration")
-	if err != nil {
-		return fmt.Errorf("register Server replica: %w", err)
-	}
-	defer func() { stopServerLease() }()
-	stopFormsLease, err := registerTestReplica(controlAddress, directory, "forms-child", "forms-replica", "manual-forms-incarnation", formsRESTAddress, "forms-registration")
+	stopFormsLease, err := registerTestReplica(controlAddress, directory, "forms-child", "forms-replica", "manual-forms-incarnation", formsRESTAddress, "forms-registration",
+		sdkmodels.ReplicaPeerEndpoint{Carrier: sdkmodels.PeerCarrierTCP, Endpoint: formsPeerAddress, SecurityProfile: sdkmodels.PeerSecurityMTLS})
 	if err != nil {
 		return fmt.Errorf("register forms-db replica: %w", err)
 	}
 	defer func() { stopFormsLease() }()
-	if err := waitForPluginInstances(databasePath, "server-child", "forms-child"); err != nil {
-		return fmt.Errorf("Core did not durably admit plugin registrations: %w", err)
+	if err := createServiceLinkPolicy(client, base, token, "server-child", "forms-child"); err != nil {
+		return fmt.Errorf("create Server-to-forms service link policy: %w", err)
+	}
+	if err := waitForServiceInstances(databasePath, "server-child", "forms-child"); err != nil {
+		return fmt.Errorf("Core did not durably admit service registrations: %w", err)
 	}
 	firstSettings := settings(publicAddress, siteAddress, oldOrigin.Addr())
 	firstID, err := putSettings(client, base, token, `"0"`, "initial-server-config-0001", firstSettings)
@@ -387,7 +387,7 @@ func run() error {
 	sitePublishAccepted, siteOperationCompleted, err := publishSite(client, base, token, siteAddress)
 	if err != nil {
 		return fmt.Errorf("%w (replicas: %s; Server logs: %s; Core logs: %s)", err,
-			pluginReplicaObservations(databasePath), serverLogs.lifecycleSummary(), coreLogs.String())
+			serviceReplicaObservations(databasePath), serverLogs.lifecycleSummary(), coreLogs.String())
 	}
 	publishedSite, err := readPublic(siteAddress)
 	if err != nil || publishedSite != "published-site" {
@@ -405,7 +405,7 @@ func run() error {
 	if err := waitOperation(client, base, token, secondID, databasePath); err != nil {
 		return err
 	}
-	formsID, err := putPluginSettings(client, base, token, "forms-child", `"0"`, "initial-forms-config-0001", formsSettings)
+	formsID, err := putServiceSettings(client, base, token, "forms-child", `"0"`, "initial-forms-config-0001", formsSettings)
 	if err != nil {
 		return fmt.Errorf("initial forms-db settings: %w", err)
 	}
@@ -422,20 +422,21 @@ func run() error {
 		return fmt.Errorf("production stale-grant check failed: %w", err)
 	}
 	if !staleProductionGrantDenied {
-		return errors.New("Core accepted a secret grant after its plugin configuration generation changed")
+		return errors.New("Core accepted a secret grant after its service configuration generation changed")
 	}
 	const allowedCookieValue = "liapoldus-allowed-cookie-marker"
 	const unlistedCookieValue = "liapoldus-unlisted-cookie-marker"
 	formsSubmit, err := submitFormWithCookies(publicAddress, "core-e2e@example.test", allowedCookieValue, unlistedCookieValue)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w (Server diagnostics: %q; forms-db diagnostics: %q; replicas: %s)", err,
+			serverLogs.String(), formsLogs.String(), serviceReplicaObservations(databasePath))
 	}
 	incomingCookiesRedactedEverywhere := corePayloadAbsent(databasePath, coreLogs, allowedCookieValue) &&
 		corePayloadAbsent(databasePath, coreLogs, unlistedCookieValue) &&
 		!serverLogs.contains(allowedCookieValue) && !serverLogs.contains(unlistedCookieValue) &&
 		!formsLogs.contains(allowedCookieValue) && !formsLogs.contains(unlistedCookieValue)
 	if !incomingCookiesRedactedEverywhere {
-		return errors.New("an incoming cookie value appeared in Core state or plugin diagnostics")
+		return errors.New("an incoming cookie value appeared in Core state or service diagnostics")
 	}
 	formsListRoundTrip, err := listSubmittedForm(publicAddress)
 	if err != nil {
@@ -463,14 +464,12 @@ func run() error {
 	stop(core)
 	coreUnavailableStatus, coreUnavailableBody, err := listSubmittedFormResponse(publicAddress)
 	if err != nil || coreUnavailableStatus != http.StatusServiceUnavailable {
-		return errors.New("forms list did not fail closed while Core secret-grant service was unavailable")
+		return errors.New("forms list did not fail closed while Core peer directory was unavailable")
 	}
-	var coreUnavailableProblem struct {
-		Code string `json:"code"`
-	}
-	if json.Unmarshal(coreUnavailableBody, &coreUnavailableProblem) != nil || coreUnavailableProblem.Code != "storage_unavailable" ||
-		bytes.Contains(coreUnavailableBody, []byte("forms-child-dsn")) || bytes.Contains(coreUnavailableBody, []byte("cursor-signing")) {
-		return errors.New("Core-unavailable response did not use the bounded redacted forms error")
+	if len(coreUnavailableBody) != 0 || !strings.Contains(serverLogs.String(), `"stage":"directory_poll"`) ||
+		strings.Contains(serverLogs.String(), "forms-child-dsn") || strings.Contains(serverLogs.String(), "cursor-signing") {
+		return fmt.Errorf("Core-unavailable request did not fail closed with bounded diagnostics: status=%d bodyBytes=%d Server diagnostics=%q",
+			coreUnavailableStatus, len(coreUnavailableBody), serverLogs.String())
 	}
 	coreUnavailableFailsClosed := true
 	core = exec.Command(coreBinary, "serve")
@@ -480,6 +479,20 @@ func run() error {
 		return err
 	}
 	if err := waitForHealth(client, base, core); err != nil {
+		return err
+	}
+	// A lost Core lease is fail-closed. Restart the service after Core returns,
+	// matching the local runtime's container restart boundary.
+	stop(server)
+	server = exec.Command(serverBinary, serverArgs...)
+	server.Dir = serverRoot
+	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+	server.Stdout = serverLogs
+	server.Stderr = serverLogs
+	if err := server.Start(); err != nil {
+		return err
+	}
+	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
 		return err
 	}
 	if _, err := waitForConvergence(client, base, token); err != nil {
@@ -523,7 +536,7 @@ func run() error {
 			return fmt.Errorf("list external SQL submission before forms-db restart: %w", err)
 		}
 		if !formsDataPersistedBeforeRestart {
-			return errors.New("forms-db external SQL submission was not readable before plugin restart")
+			return errors.New("forms-db external SQL submission was not readable before service restart")
 		}
 	}
 	stop(forms)
@@ -551,6 +564,18 @@ func run() error {
 	if err := waitForHealth(client, base, core); err != nil {
 		return err
 	}
+	stop(server)
+	server = exec.Command(serverBinary, serverArgs...)
+	server.Dir = serverRoot
+	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+	server.Stdout = serverLogs
+	server.Stderr = serverLogs
+	if err := server.Start(); err != nil {
+		return err
+	}
+	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
+		return err
+	}
 	if _, err := waitForConvergence(client, base, token); err != nil {
 		return fmt.Errorf("forms-db manual restart recovery: %w", err)
 	}
@@ -560,7 +585,7 @@ func run() error {
 	}
 	formsPeerReconnected := true
 	if formsDriver != "memory" && !formsDataPersistedAfterRestart {
-		return errors.New("forms-db external SQL submission did not persist after plugin restart")
+		return errors.New("forms-db external SQL submission did not persist after service restart")
 	}
 	formsListWithoutLeaseRejected, err := rejectFormsListWithoutLease(
 		client, base, token, formsBinary, formsArgs, formsRoot, childEnvironment,
@@ -593,22 +618,21 @@ func run() error {
 	var active, previous int64
 	var stored []byte
 	var digest string
-	if err := database.QueryRow(`SELECT generation, raw_json, sha256 FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, "server-child").Scan(&active, &stored, &digest); err != nil {
+	if err := database.QueryRow(`SELECT generation, raw_json, sha256 FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, "server-child").Scan(&active, &stored, &digest); err != nil {
 		return err
 	}
-	if err := database.QueryRow(`SELECT generation FROM plugin_config_generations WHERE instance_id = ? AND slot = 'previous'`, "server-child").Scan(&previous); err != nil {
+	if err := database.QueryRow(`SELECT generation FROM service_config_generations WHERE instance_id = ? AND slot = 'previous'`, "server-child").Scan(&previous); err != nil {
 		return err
 	}
 	var formsActive int64
 	var formsStored []byte
-	if err := database.QueryRow(`SELECT generation, raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms-child").Scan(&formsActive, &formsStored); err != nil {
+	if err := database.QueryRow(`SELECT generation, raw_json FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms-child").Scan(&formsActive, &formsStored); err != nil {
 		return err
 	}
 	if !bytes.Equal(formsStored, formsSettings) {
 		return errors.New("Core changed forms-db settings bytes")
 	}
 	_ = database.Close()
-	serverArgs := append([]string(nil), server.Args[1:]...)
 	stop(server)
 	if err := waitForDegraded(client, base, token); err != nil {
 		return err
@@ -638,6 +662,18 @@ func run() error {
 	if err := waitForHealth(client, base, core); err != nil {
 		return err
 	}
+	stop(server)
+	server = exec.Command(serverBinary, serverArgs...)
+	server.Dir = serverRoot
+	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+	server.Stdout = serverLogs
+	server.Stderr = serverLogs
+	if err := server.Start(); err != nil {
+		return err
+	}
+	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
+		return err
+	}
 	serverReconnectConverged, err := waitForConvergence(client, base, token)
 	if err != nil {
 		return fmt.Errorf("Server manual restart recovery: %w", err)
@@ -648,15 +684,6 @@ func run() error {
 	}
 	stop(core)
 	stop(server)
-	server = exec.Command(serverBinary, serverArgs...)
-	server.Dir = serverRoot
-	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
-	if err := server.Start(); err != nil {
-		return err
-	}
-	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
-		return err
-	}
 	core = exec.Command(coreBinary, "serve")
 	core.Dir = coreRoot
 	core.Env = childEnvironment
@@ -664,6 +691,17 @@ func run() error {
 		return err
 	}
 	if err := waitForHealth(client, base, core); err != nil {
+		return err
+	}
+	server = exec.Command(serverBinary, serverArgs...)
+	server.Dir = serverRoot
+	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+	server.Stdout = serverLogs
+	server.Stderr = serverLogs
+	if err := server.Start(); err != nil {
+		return err
+	}
+	if err := waitServerHealth(restAddress, roots, coreCert); err != nil {
 		return err
 	}
 	coreRestartConverged, err := waitForConvergence(client, base, token)
@@ -696,8 +734,8 @@ func run() error {
 		return err
 	}
 	revokedStatus, revokedErr := pullGeneration(controlAddress, roots, revokedCert, 2)
-	pluginControlRevocationEnforced := revokedErr != nil || revokedStatus != http.StatusOK
-	if !pluginControlRevocationEnforced {
+	serviceControlRevocationEnforced := revokedErr != nil || revokedStatus != http.StatusOK
+	if !serviceControlRevocationEnforced {
 		return errors.New("Core accepted a replica identity listed in its configured signed CRL")
 	}
 	oldRoots := roots.Clone()
@@ -707,8 +745,7 @@ func run() error {
 	}
 	// The fixture's renewal clients hold the trust root and certificate loaded
 	// at registration time. Stop them before rotating the files and recreate
-	// them after Core and both plugin processes trust the replacement root.
-	stopServerLease()
+	// them after Core and both service processes trust the replacement root.
 	stopFormsLease()
 	stop(forms)
 	stop(server)
@@ -729,6 +766,16 @@ func run() error {
 	if !roots.AppendCertsFromPEM(rotated.root) {
 		return errors.New("invalid rotated trust root")
 	}
+	client = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, Timeout: 5 * time.Second}
+	core = exec.Command(coreBinary, "serve")
+	core.Dir = coreRoot
+	core.Env = childEnvironment
+	if err := core.Start(); err != nil {
+		return err
+	}
+	if err := waitForHealth(client, base, core); err != nil {
+		return err
+	}
 	forms = exec.Command(formsBinary, formsArgs...)
 	forms.Dir = formsRoot
 	forms.Env = childEnvironment
@@ -740,59 +787,63 @@ func run() error {
 	server = exec.Command(serverBinary, serverArgs...)
 	server.Dir = serverRoot
 	server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+	server.Stdout = serverLogs
+	server.Stderr = serverLogs
 	if err := server.Start(); err != nil {
 		return err
 	}
-	client = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}, Timeout: 5 * time.Second}
 	if err := waitServerHealth(restAddress, roots, rotated.core); err != nil {
 		return err
 	}
 	if err := waitServerHealth(formsRESTAddress, roots, rotated.core); err != nil {
 		return err
 	}
-	core = exec.Command(coreBinary, "serve")
-	core.Dir = coreRoot
-	core.Env = childEnvironment
-	if err := core.Start(); err != nil {
-		return err
-	}
-	if err := waitForHealth(client, base, core); err != nil {
-		return err
-	}
-	stopServerLease, err = registerTestReplica(controlAddress, directory, "server-child", "server-replica", "manual-server-incarnation", restAddress, "server-registration")
-	if err != nil {
-		return fmt.Errorf("register Server replica after trust-root rotation: %w", err)
-	}
-	stopFormsLease, err = registerTestReplica(controlAddress, directory, "forms-child", "forms-replica", "manual-forms-incarnation", formsRESTAddress, "forms-registration")
+	stopFormsLease, err = registerTestReplica(controlAddress, directory, "forms-child", "forms-replica", "manual-forms-incarnation", formsRESTAddress, "forms-registration",
+		sdkmodels.ReplicaPeerEndpoint{Carrier: sdkmodels.PeerCarrierTCP, Endpoint: formsPeerAddress, SecurityProfile: sdkmodels.PeerSecurityMTLS})
 	if err != nil {
 		return fmt.Errorf("register forms-db replica after trust-root rotation: %w", err)
 	}
+	if err := createServiceLinkPolicy(client, base, token, "server-child", "forms-child"); err != nil {
+		return fmt.Errorf("restore Server-to-forms service link policy after trust-root rotation: %w", err)
+	}
 	if _, err := waitForConvergence(client, base, token); err != nil {
 		return fmt.Errorf("trust-root rotation recovery (%s; server=%s; forms=%s): %w",
-			pluginReplicaObservations(databasePath), serverLogs.lifecycleSummary(), formsLogs.lifecycleSummary(), err)
+			serviceReplicaObservations(databasePath), serverLogs.lifecycleSummary(), formsLogs.lifecycleSummary(), err)
 	}
 	newRootPullStatus, newRootPullErr := pullGeneration(controlAddress, roots, rotated.formsRegistration, 2)
 	oldRootPullStatus, oldRootPullErr := pullGeneration(controlAddress, oldRoots, issued.formsRegistration, 2)
 	coordinatedTrustRootRotationConverged := newRootPullErr == nil && newRootPullStatus == http.StatusOK &&
 		(oldRootPullErr != nil || oldRootPullStatus != http.StatusOK)
 	if !coordinatedTrustRootRotationConverged {
-		return errors.New("Core and manually restarted plugin replicas did not converge on the replacement trust root")
+		return errors.New("Core and manually restarted service replicas did not converge on the replacement trust root")
 	}
-	formsListRevokedReplicaDenied, err := denyFormsListForRevokedReplica(
+	formsListSurvivesControlPlaneRevocation, err := keepFormsListAvailableAfterControlPlaneRevocation(
 		client, base, token, coreBinary, coreRoot, directory, childEnvironment,
 		controlAddress, roots, rotated.formsRegistration, publicAddress,
 		rotated.formsRevokedCRL,
-		&core, coreLogs,
+		&core, coreLogs, func() error {
+			stop(server)
+			server = exec.Command(serverBinary, serverArgs...)
+			server.Dir = serverRoot
+			server.Env = replaceEnvironment(childEnvironment, "XDG_DATA_HOME", serverDataHome)
+			server.Stdout = serverLogs
+			server.Stderr = serverLogs
+			if err := server.Start(); err != nil {
+				return err
+			}
+			return waitServerHealth(restAddress, roots, rotated.core)
+		},
 	)
 	if err != nil {
-		return fmt.Errorf("production revoked-replica forms.list check failed: %w", err)
+		return fmt.Errorf("forms.list data-plane check after Core REST revocation failed: %w (server=%s; forms=%s)",
+			err, serverLogs.lifecycleSummary(), formsLogs.lifecycleSummary())
 	}
 	if formsSQLProxy != nil {
 		candidateSettings, candidateErr := buildRejectedFormsSettings(directory, formsDriver, formsSettings)
 		if candidateErr != nil {
 			return candidateErr
 		}
-		candidateID, candidateErr := putPluginSettings(client, base, token, "forms-child", `"2"`, "rejected-forms-config-0004", candidateSettings)
+		candidateID, candidateErr := putServiceSettings(client, base, token, "forms-child", `"2"`, "rejected-forms-config-0004", candidateSettings)
 		if candidateErr != nil {
 			return fmt.Errorf("rejected forms-db candidate settings: %w", candidateErr)
 		}
@@ -817,7 +868,7 @@ func run() error {
 		if submitErr != nil {
 			return fmt.Errorf("forms-db did not resume submissions after candidate rollback: %w", submitErr)
 		}
-		storedSettings, readErr := activePluginSettings(databasePath, "forms-child")
+		storedSettings, readErr := activeServiceSettings(databasePath, "forms-child")
 		if readErr != nil {
 			return readErr
 		}
@@ -845,51 +896,51 @@ func run() error {
 	return json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"first": first, "second": second, "afterRollback": afterRollback,
 		"active": active, "previous": previous,
-		"exactDigest":                           bytes.Equal(stored, firstSettings) && digest == hex.EncodeToString(hash[:]),
-		"formsActive":                           formsActive,
-		"restartedServer":                       restartedServer,
-		"sitePublishAccepted":                   sitePublishAccepted,
-		"siteOperationCompleted":                siteOperationCompleted,
-		"publishedSite":                         publishedSite,
-		"restartedPublishedSite":                restartedPublishedSite,
-		"serverRestartConverged":                serverRestartConverged,
-		"coreRestartConverged":                  coreRestartConverged,
-		"coreUnavailableFailsClosed":            coreUnavailableFailsClosed,
-		"coreUnavailableRecovered":              coreUnavailableRecovered,
-		"pluginControlRevocationEnforced":       pluginControlRevocationEnforced,
-		"coordinatedTrustRootRotationConverged": coordinatedTrustRootRotationConverged,
-		"serverReconnectConverged":              serverReconnectConverged,
-		"formsSubmit":                           formsSubmit,
-		"formsAdminQueryRoundTrip":              formsAdminQueryRoundTrip,
-		"formsAdminCursorGrantRoundTrip":        formsAdminCursorGrantRoundTrip,
-		"formsAdminDeleteSemantics":             formsAdminDeleteSemantics,
-		"staleProductionGrantDenied":            staleProductionGrantDenied,
-		"formsListWithoutLeaseRejected":         formsListWithoutLeaseRejected,
-		"formsListRevokedReplicaDenied":         formsListRevokedReplicaDenied,
-		"incomingCookiesRedactedEverywhere":     incomingCookiesRedactedEverywhere,
-		"coreDidNotObservePeerPayload":          coreDidNotObservePeerPayload,
-		"formsDatabaseDriver":                   formsDriver,
-		"formsListRoundTrip":                    formsListRoundTrip,
-		"formsConcurrentRoundTrip":              formsConcurrentRoundTrip,
-		"formsCandidateRefusalPreserved":        formsCandidateRefusalPreserved,
-		"formsCandidateRollbackRecovered":       formsCandidateRollbackRecovered,
-		"formsListAfterCandidateRollback":       formsListAfterCandidateRollback,
-		"formsPeerReconnected":                  formsPeerReconnected,
-		"formsStorageUnavailableDuringOutage":   formsStorageUnavailableDuringOutage,
-		"formsStorageRecoveredAfterOutage":      formsStorageRecoveredAfterOutage,
-		"childNoSQLDSNEnvironment":              childNoSQLDSNEnvironment,
-		"formsDataPersistedAfterRestart":        formsDataPersistedAfterRestart,
+		"exactDigest":                             bytes.Equal(stored, firstSettings) && digest == hex.EncodeToString(hash[:]),
+		"formsActive":                             formsActive,
+		"restartedServer":                         restartedServer,
+		"sitePublishAccepted":                     sitePublishAccepted,
+		"siteOperationCompleted":                  siteOperationCompleted,
+		"publishedSite":                           publishedSite,
+		"restartedPublishedSite":                  restartedPublishedSite,
+		"serverRestartConverged":                  serverRestartConverged,
+		"coreRestartConverged":                    coreRestartConverged,
+		"coreUnavailableFailsClosed":              coreUnavailableFailsClosed,
+		"coreUnavailableRecovered":                coreUnavailableRecovered,
+		"serviceControlRevocationEnforced":        serviceControlRevocationEnforced,
+		"coordinatedTrustRootRotationConverged":   coordinatedTrustRootRotationConverged,
+		"serverReconnectConverged":                serverReconnectConverged,
+		"formsSubmit":                             formsSubmit,
+		"formsAdminQueryRoundTrip":                formsAdminQueryRoundTrip,
+		"formsAdminCursorGrantRoundTrip":          formsAdminCursorGrantRoundTrip,
+		"formsAdminDeleteSemantics":               formsAdminDeleteSemantics,
+		"staleProductionGrantDenied":              staleProductionGrantDenied,
+		"formsListWithoutLeaseRejected":           formsListWithoutLeaseRejected,
+		"formsListSurvivesControlPlaneRevocation": formsListSurvivesControlPlaneRevocation,
+		"incomingCookiesRedactedEverywhere":       incomingCookiesRedactedEverywhere,
+		"coreDidNotObservePeerPayload":            coreDidNotObservePeerPayload,
+		"formsDatabaseDriver":                     formsDriver,
+		"formsListRoundTrip":                      formsListRoundTrip,
+		"formsConcurrentRoundTrip":                formsConcurrentRoundTrip,
+		"formsCandidateRefusalPreserved":          formsCandidateRefusalPreserved,
+		"formsCandidateRollbackRecovered":         formsCandidateRollbackRecovered,
+		"formsListAfterCandidateRollback":         formsListAfterCandidateRollback,
+		"formsPeerReconnected":                    formsPeerReconnected,
+		"formsStorageUnavailableDuringOutage":     formsStorageUnavailableDuringOutage,
+		"formsStorageRecoveredAfterOutage":        formsStorageRecoveredAfterOutage,
+		"childNoSQLDSNEnvironment":                childNoSQLDSNEnvironment,
+		"formsDataPersistedAfterRestart":          formsDataPersistedAfterRestart,
 	})
 }
 
-func pluginReplicaObservations(path string) string {
+func serviceReplicaObservations(path string) string {
 	databaseURL := (&url.URL{Scheme: "file", Path: path}).String() + "?mode=ro"
 	database, err := sql.Open("sqlite", databaseURL)
 	if err != nil {
 		return "observations-unavailable"
 	}
 	defer database.Close()
-	rows, err := database.Query(`SELECT instance_id, replica_id, observed_generation, observed_state, COALESCE(last_failure_code, '') FROM plugin_replicas ORDER BY instance_id, replica_id`)
+	rows, err := database.Query(`SELECT instance_id, replica_id, observed_generation, observed_state, COALESCE(last_failure_code, '') FROM service_replicas ORDER BY instance_id, replica_id`)
 	if err != nil {
 		return "observations-unavailable"
 	}
@@ -928,16 +979,16 @@ func denyProductionGrantAfterGenerationChange(
 	if json.Unmarshal(settings, &configured) != nil || configured.CursorSecretRef == "" {
 		return false, errors.New("forms-db settings have no cursor secret reference")
 	}
-	contract, err := pluginsdk.LoadHTTPContract()
+	contract, err := servicesdk.LoadHTTPContract()
 	if err != nil {
-		return false, errors.New("Plugin SDK HTTP contract unavailable to integration fixture")
+		return false, errors.New("Service SDK HTTP contract unavailable to integration fixture")
 	}
 	database, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		return false, errors.New("Core settings database unavailable to integration fixture")
 	}
 	var generation int64
-	err = database.QueryRow(`SELECT generation FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms-child").Scan(&generation)
+	err = database.QueryRow(`SELECT generation FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, "forms-child").Scan(&generation)
 	_ = database.Close()
 	if err != nil || generation < 1 {
 		return false, errors.New("forms-db active configuration generation unavailable")
@@ -969,7 +1020,7 @@ func denyProductionGrantAfterGenerationChange(
 		payload, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
 		_ = response.Body.Close()
 		return false, fmt.Errorf("Core refused scoped grant for the active generation (status=%d body=%s replicas=%s)",
-			response.StatusCode, payload, pluginReplicaObservations(databasePath))
+			response.StatusCode, payload, serviceReplicaObservations(databasePath))
 	}
 	var grant sdkmodels.SecretGrant
 	decodeErr := json.NewDecoder(io.LimitReader(response.Body, issue.MaximumResponseBytes)).Decode(&grant)
@@ -977,7 +1028,7 @@ func denyProductionGrantAfterGenerationChange(
 	if decodeErr != nil || grant.Handle == "" {
 		return false, errors.New("Core returned an invalid scoped grant")
 	}
-	operationID, err := putPluginSettings(managementClient, managementBase, token, "forms-child", `"1"`, "stale-grant-generation-0002", settings)
+	operationID, err := putServiceSettings(managementClient, managementBase, token, "forms-child", `"1"`, "stale-grant-generation-0002", settings)
 	if err != nil {
 		return false, err
 	}
@@ -1039,7 +1090,7 @@ func rejectFormsListWithoutLease(
 	}
 	*forms = process
 	if _, err := waitForConvergence(client, base, token); err != nil {
-		return false, fmt.Errorf("forms-db did not recover after obtaining a fresh lease (%s): %w", pluginReplicaObservations(databasePath), err)
+		return false, fmt.Errorf("forms-db did not recover after obtaining a fresh lease (%s): %w", serviceReplicaObservations(databasePath), err)
 	}
 	if err := waitForFormsListAvailable(publicAddress); err != nil {
 		return false, errors.New("forms.list did not recover after forms-db obtained a fresh lease")
@@ -1054,7 +1105,7 @@ func waitForFormsListAvailable(publicAddress string) error {
 		if err == nil && status == http.StatusOK {
 			return nil
 		}
-		if err != nil && !strings.Contains(err.Error(), "connection refused") {
+		if err != nil && !errors.Is(err, syscall.ECONNREFUSED) {
 			return err
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -1062,7 +1113,21 @@ func waitForFormsListAvailable(publicAddress string) error {
 	return errors.New("forms.list remained unavailable after generation recovery")
 }
 
-func denyFormsListForRevokedReplica(
+func waitForFormsListResponse(publicAddress string) (int, []byte, error) {
+	deadline := time.Now().Add(10 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, body, err := listSubmittedFormResponse(publicAddress)
+		if err == nil {
+			return status, body, nil
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	return 0, nil, lastErr
+}
+
+func keepFormsListAvailableAfterControlPlaneRevocation(
 	client *http.Client,
 	base, token, coreBinary, coreRoot, directory string,
 	childEnvironment []string,
@@ -1073,10 +1138,18 @@ func denyFormsListForRevokedReplica(
 	revokedClientCRL []byte,
 	core **exec.Cmd,
 	coreLogs *safeBuffer,
+	restartServer func() error,
 ) (bool, error) {
-	status, _, err := listSubmittedFormResponse(publicAddress)
+	if err := waitForFormsListAvailable(publicAddress); err != nil {
+		return false, fmt.Errorf("forms.list did not become available before Core REST revocation: %w", err)
+	}
+	status, body, err := listSubmittedFormResponse(publicAddress)
 	if err != nil || status != http.StatusOK {
-		return false, errors.New("forms.list was not available before workload revocation")
+		var problem struct {
+			Code string `json:"code"`
+		}
+		_ = json.Unmarshal(body, &problem)
+		return false, fmt.Errorf("forms.list was not available before Core REST revocation (status=%d, problem_code=%q, response_bytes=%d, request_error=%v)", status, problem.Code, len(body), err)
 	}
 	clientRevocationPath := filepath.Join(directory, "client-revocation.pem")
 	if err := os.WriteFile(clientRevocationPath, revokedClientCRL, 0o600); err != nil {
@@ -1105,21 +1178,22 @@ func denyFormsListForRevokedReplica(
 	if err := startCore(); err != nil {
 		return false, err
 	}
+	if err := restartServer(); err != nil {
+		return false, errors.New("Server could not restart after Core's replica trust update")
+	}
 	pullStatus, pullErr := pullGeneration(controlAddress, roots, formsCredential, 3)
 	if pullErr == nil && pullStatus == http.StatusOK {
 		return false, errors.New("Core accepted a replica certificate listed in its client CRL")
 	}
-	status, body, err := listSubmittedFormResponse(publicAddress)
+	status, body, err = waitForFormsListResponse(publicAddress)
 	if err != nil {
-		return false, errors.New("Server did not return a bounded response for revoked-replica forms.list")
+		return false, fmt.Errorf("Server did not return a bounded response for forms.list after Core REST revocation: %w", err)
 	}
-	var problem struct {
-		Code string `json:"code"`
-	}
-	if status != http.StatusServiceUnavailable || json.Unmarshal(body, &problem) != nil ||
-		problem.Code != "storage_unavailable" || bytes.Contains(body, []byte("forms-child-dsn")) ||
+	var response any
+	if status != http.StatusOK || len(body) > 4096 || json.Unmarshal(body, &response) != nil ||
+		bytes.Contains(body, []byte("forms-child-dsn")) ||
 		bytes.Contains(body, []byte("cursor-signing")) || bytes.Contains(body, []byte(token)) {
-		return false, errors.New("revoked-replica forms.list was not denied with a bounded redacted response")
+		return false, fmt.Errorf("independent forms.list data plane did not remain available with a bounded redacted response (status=%d bodyBytes=%d)", status, len(body))
 	}
 	revision, _, err = coreSettingsWithCurrentRevision(client, base, token)
 	if err != nil {
@@ -1132,8 +1206,11 @@ func denyFormsListForRevokedReplica(
 	if err := startCore(); err != nil {
 		return false, err
 	}
+	if err := restartServer(); err != nil {
+		return false, errors.New("Server could not restart after restoring Core's replica trust")
+	}
 	if _, err := waitForConvergence(client, base, token); err != nil {
-		return false, errors.New("Core and plugin replicas did not reconverge after restoring replica trust")
+		return false, errors.New("Core and service replicas did not reconverge after restoring replica trust")
 	}
 	if err := waitForFormsListAvailable(publicAddress); err != nil {
 		return false, errors.New("forms.list did not recover after restoring replica trust")
@@ -1151,13 +1228,13 @@ func coreSettingsWithRevokedClientCRL(client *http.Client, base, token, crlPath 
 		return nil, nil, 0, errors.New("invalid stored settings")
 	}
 	var control map[string]json.RawMessage
-	if json.Unmarshal(settings["pluginControl"], &control) != nil {
-		return nil, nil, 0, errors.New("invalid stored plugin-control settings")
+	if json.Unmarshal(settings["serviceControl"], &control) != nil {
+		return nil, nil, 0, errors.New("invalid stored service-control settings")
 	}
 	crls, _ := json.Marshal([]string{crlPath})
 	control["replicaClientCRLs"] = crls
 	controlJSON, _ := json.Marshal(control)
-	settings["pluginControl"] = controlJSON
+	settings["serviceControl"] = controlJSON
 	modified, err := json.Marshal(settings)
 	return raw, modified, revision, err
 }
@@ -1214,7 +1291,7 @@ func queryFormsAdminThroughCore(client *http.Client, base, token, databasePath, 
 	if err != nil {
 		return false, false, fmt.Errorf("read prior forms Admin Action audit count: %w", err)
 	}
-	request, err := http.NewRequest(http.MethodGet, base+"/api/plugins/admin-surfaces", nil)
+	request, err := http.NewRequest(http.MethodGet, base+"/api/services/admin-surfaces", nil)
 	if err != nil {
 		return false, false, err
 	}
@@ -1232,7 +1309,7 @@ func queryFormsAdminThroughCore(client *http.Client, base, token, databasePath, 
 	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&surfaces)
 	_ = response.Body.Close()
 	if decodeErr != nil || response.StatusCode != http.StatusOK {
-		return false, false, errors.New("Core did not return plugin Admin Surface inventory")
+		return false, false, errors.New("Core did not return service Admin Surface inventory")
 	}
 	found := false
 	surfaceDigest := ""
@@ -1245,7 +1322,7 @@ func queryFormsAdminThroughCore(client *http.Client, base, token, databasePath, 
 	if !found || surfaceDigest == "" {
 		return false, false, errors.New("Core Admin Surface inventory omitted the forms-db instance")
 	}
-	endpoint := "/api/plugins/forms-child/admin/pages/submissions/query"
+	endpoint := "/api/services/forms-child/admin/pages/submissions/query"
 	containsExpectedRecord := true
 	responseItemCounts := make([]int, 0, 2)
 	matchingRecords := 0
@@ -1349,7 +1426,7 @@ func verifyFormsAdminDeleteThroughCore(client *http.Client, base, token, databas
 			SHA256     string `json:"sha256"`
 		} `json:"items"`
 	}
-	surfaceRequest, err := http.NewRequest(http.MethodGet, base+"/api/plugins/admin-surfaces", nil)
+	surfaceRequest, err := http.NewRequest(http.MethodGet, base+"/api/services/admin-surfaces", nil)
 	if err != nil {
 		return false, err
 	}
@@ -1373,7 +1450,7 @@ func verifyFormsAdminDeleteThroughCore(client *http.Client, base, token, databas
 	if surfaceDigest == "" {
 		return false, errors.New("Core Admin Surface inventory omitted the forms-db digest")
 	}
-	endpoint := "/api/plugins/forms-child/admin/pages/submissions/actions/delete"
+	endpoint := "/api/services/forms-child/admin/pages/submissions/actions/delete"
 	input, err := json.Marshal(map[string]string{"site": "manual-site", "schemaName": "contact", "id": recordID})
 	if err != nil {
 		return false, err
@@ -1648,14 +1725,14 @@ func buildRejectedFormsSettings(directory, driver string, active []byte) ([]byte
 	return json.Marshal(settings)
 }
 
-func activePluginSettings(databasePath, instanceID string) ([]byte, error) {
+func activeServiceSettings(databasePath, instanceID string) ([]byte, error) {
 	database, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		return nil, err
 	}
 	defer database.Close()
 	var settings []byte
-	if err := database.QueryRow(`SELECT raw_json FROM plugin_config_generations WHERE instance_id = ? AND slot = 'active'`, instanceID).Scan(&settings); err != nil {
+	if err := database.QueryRow(`SELECT raw_json FROM service_config_generations WHERE instance_id = ? AND slot = 'active'`, instanceID).Scan(&settings); err != nil {
 		return nil, err
 	}
 	return settings, nil
@@ -1695,7 +1772,7 @@ func environmentHasVariable(environment []string, name string) bool {
 }
 
 func build(directory, binary, target string) error {
-	command := exec.Command("go", "build", "-o", binary, target)
+	command := exec.Command("go", "build", "-mod=readonly", "-o", binary, target)
 	command.Dir = directory
 	command.Env = append(os.Environ(), "GOTOOLCHAIN=go1.26.0")
 	if output, err := command.CombinedOutput(); err != nil {
@@ -1756,11 +1833,15 @@ func settings(publicAddress, siteAddress, origin string) []byte {
 		},
 		"routes": []any{
 			map[string]any{"id": "forms-submit", "listenerId": "web",
-				"match":   map[string]any{"path": map[string]any{"type": "exact", "value": "/forms/submit"}},
-				"handler": map[string]any{"type": "plugin", "instanceId": "forms-child", "capability": "forms.submit", "mode": "call", "requestCookieNames": []string{"session"}}},
+				"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/submit",
+					"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
+					"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
+				"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.submit", "mode": "call", "requestCookieNames": []string{"session"}}},
 			map[string]any{"id": "forms-list", "listenerId": "web",
-				"match":   map[string]any{"path": map[string]any{"type": "exact", "value": "/forms/list"}},
-				"handler": map[string]any{"type": "plugin", "instanceId": "forms-child", "capability": "forms.list", "mode": "call"}},
+				"api": map[string]any{"version": "server-http/v1", "method": "POST", "path": "/forms/list",
+					"body":      map[string]any{"required": true, "schema": map[string]any{"type": "object"}},
+					"responses": []any{map[string]any{"status": 200, "contentType": "application/json", "schema": map[string]any{"type": "object"}, "example": map[string]any{}}}},
+				"handler": map[string]any{"type": "service", "instanceId": "forms-child", "capability": "forms.list", "mode": "call"}},
 			map[string]any{"id": "proxy", "listenerId": "web", "handler": map[string]any{
 				"type": "reverseProxy", "upstreams": []any{map[string]any{"origin": "http://" + origin, "weight": 100}}}},
 			map[string]any{"id": "site", "listenerId": "sites", "handler": map[string]any{"type": "static", "siteId": "manual-site"}},
@@ -1770,7 +1851,7 @@ func settings(publicAddress, siteAddress, origin string) []byte {
 }
 
 func publishSite(client *http.Client, base, token, siteAddress string) (bool, bool, error) {
-	surfaceRequest, err := http.NewRequest(http.MethodGet, base+"/api/plugins/admin-surfaces", nil)
+	surfaceRequest, err := http.NewRequest(http.MethodGet, base+"/api/services/admin-surfaces", nil)
 	if err != nil {
 		return false, false, err
 	}
@@ -1788,7 +1869,7 @@ func publishSite(client *http.Client, base, token, siteAddress string) (bool, bo
 	decodeErr := json.NewDecoder(io.LimitReader(surfaceResponse.Body, 1<<20)).Decode(&surface)
 	_ = surfaceResponse.Body.Close()
 	if decodeErr != nil || surfaceResponse.StatusCode != http.StatusOK {
-		return false, false, errors.New("Core did not publish plugin Admin Surface digests")
+		return false, false, errors.New("Core did not publish service Admin Surface digests")
 	}
 	surfaceDigest := ""
 	for _, item := range surface.Items {
@@ -1832,7 +1913,7 @@ func publishSite(client *http.Client, base, token, siteAddress string) (bool, bo
 	if err := writer.Close(); err != nil {
 		return false, false, err
 	}
-	endpoint := base + "/api/plugins/server-child/admin/pages/sites/actions/publish"
+	endpoint := base + "/api/services/server-child/admin/pages/sites/actions/publish"
 	request, err := http.NewRequest(http.MethodPost, endpoint, &body)
 	if err != nil {
 		return false, false, err
@@ -1860,7 +1941,7 @@ func publishSite(client *http.Client, base, token, siteAddress string) (bool, bo
 	if err := json.Unmarshal(receiptBytes, &receipt); err != nil || receipt.OperationID == "" || receipt.State != "accepted" {
 		return false, false, fmt.Errorf("invalid Server artifact receipt: %s", receiptBytes)
 	}
-	statusEndpoint := base + "/api/plugins/server-child/admin/pages/sites/actions/status"
+	statusEndpoint := base + "/api/services/server-child/admin/pages/sites/actions/status"
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		statusBody, _ := json.Marshal(map[string]string{"operationId": receipt.OperationID})
@@ -1966,10 +2047,10 @@ func waitForHealth(client *http.Client, base string, child *exec.Cmd) error {
 	return errors.New("Core Management API did not become healthy")
 }
 
-func registerTestReplica(controlAddress, directory, instanceID, replicaID, incarnationID, restAddress, credentialName string) (func(), error) {
-	contract, err := pluginsdk.LoadReplicaLifecycleContract()
+func registerTestReplica(controlAddress, directory, instanceID, replicaID, incarnationID, restAddress, credentialName string, peerEndpoints ...sdkmodels.ReplicaPeerEndpoint) (func(), error) {
+	contract, err := servicesdk.LoadReplicaLifecycleContract()
 	if err != nil {
-		return nil, errors.New("load Plugin SDK registration contract")
+		return nil, errors.New("load Service SDK registration contract")
 	}
 	identity := sdkmodels.PeerReplicaID{InstanceID: instanceID, ReplicaID: replicaID, IncarnationID: incarnationID, PlacementID: "local-test"}
 	uri, err := contract.ReplicaIdentityURI(identity)
@@ -2004,9 +2085,10 @@ func registerTestReplica(controlAddress, directory, instanceID, replicaID, incar
 	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
 	request := sdkmodels.ReplicaRegistrationRequest{
 		ContractVersion: contract.ContractVersion, Identity: identity, RestEndpoint: "https://" + restAddress,
-		PeerEndpoints:       []sdkmodels.ReplicaPeerEndpoint{},
+		PeerEndpoints:       peerEndpoints,
 		Release:             sdkmodels.ReplicaRelease{Version: "1.0.0", SHA256: strings.Repeat("0", 64)},
 		AdvertisedContracts: []sdkmodels.ContractVersion{}, AcceptedContracts: []sdkmodels.ContractRange{},
+		AppliedGeneration: "1", Ready: true,
 	}
 	register := func() error {
 		body, marshalErr := json.Marshal(request)
@@ -2056,7 +2138,37 @@ func registerTestReplica(controlAddress, directory, instanceID, replicaID, incar
 	}, nil
 }
 
-func waitForPluginInstances(databasePath string, instanceIDs ...string) error {
+func createServiceLinkPolicy(client *http.Client, base, token, callerInstanceID, targetInstanceID string) error {
+	body, err := json.Marshal(map[string]any{
+		"callerInstanceId": callerInstanceID,
+		"targetInstanceId": targetInstanceID,
+		"rules": []any{map[string]any{
+			"placementRule": "remote", "carrier": "tcp", "weight": 100, "requiredContracts": []any{},
+		}},
+	})
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequest(http.MethodPost, base+"/api/service-links", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "manual-e2e-server-forms-link-v1")
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return fmt.Errorf("Core returned HTTP %d: %s", response.StatusCode, body)
+	}
+	return nil
+}
+
+func waitForServiceInstances(databasePath string, instanceIDs ...string) error {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		database, err := sql.Open("sqlite", databasePath)
@@ -2064,7 +2176,7 @@ func waitForPluginInstances(databasePath string, instanceIDs ...string) error {
 			ready := true
 			for _, instanceID := range instanceIDs {
 				var found int
-				if database.QueryRow(`SELECT COUNT(*) FROM plugin_registered_instances WHERE instance_id = ?`, instanceID).Scan(&found) != nil || found != 1 {
+				if database.QueryRow(`SELECT COUNT(*) FROM service_registered_instances WHERE instance_id = ?`, instanceID).Scan(&found) != nil || found != 1 {
 					ready = false
 					break
 				}
@@ -2076,7 +2188,7 @@ func waitForPluginInstances(databasePath string, instanceIDs ...string) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return errors.New("one or more plugin replicas did not complete authenticated registration")
+	return errors.New("one or more service replicas did not complete authenticated registration")
 }
 
 func waitForConvergence(client *http.Client, base, token string) (bool, error) {
@@ -2108,7 +2220,7 @@ func waitForConvergence(client *http.Client, base, token string) (bool, error) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return false, fmt.Errorf("Core did not converge declared plugin replicas after restart: %s", lastState)
+	return false, fmt.Errorf("Core did not converge declared service replicas after restart: %s", lastState)
 }
 
 func waitForDegraded(client *http.Client, base, token string) error {
@@ -2135,7 +2247,7 @@ func waitForDegraded(client *http.Client, base, token string) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return errors.New("Core did not mark the stopped plugin replica degraded")
+	return errors.New("Core did not mark the stopped service replica degraded")
 }
 
 func waitServerHealth(address string, roots *x509.CertPool, credential certificate) error {
@@ -2161,7 +2273,7 @@ func waitServerHealth(address string, roots *x509.CertPool, credential certifica
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("Plugin SDK REST endpoint %s did not become healthy: %s", address, lastError)
+	return fmt.Errorf("Service SDK REST endpoint %s did not become healthy: %s", address, lastError)
 }
 
 func pullGeneration(address string, roots *x509.CertPool, credential certificate, generation int64) (int, error) {
@@ -2172,7 +2284,7 @@ func pullGeneration(address string, roots *x509.CertPool, credential certificate
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
 		RootCAs: roots, Certificates: []tls.Certificate{pair}, ServerName: "localhost", MinVersion: tls.VersionTLS12,
 	}}, Timeout: 5 * time.Second}
-	response, err := client.Get("https://" + address + "/internal/v1/plugin-config/" + strconv.FormatInt(generation, 10))
+	response, err := client.Get("https://" + address + "/internal/v1/service-config/" + strconv.FormatInt(generation, 10))
 	if err != nil {
 		return 0, err
 	}
@@ -2182,11 +2294,11 @@ func pullGeneration(address string, roots *x509.CertPool, credential certificate
 }
 
 func putSettings(client *http.Client, base, token, etag, key string, raw []byte) (string, error) {
-	return putPluginSettings(client, base, token, "server-child", etag, key, raw)
+	return putServiceSettings(client, base, token, "server-child", etag, key, raw)
 }
 
 func rollbackSettings(client *http.Client, base, token, instanceID, etag, key string) (string, error) {
-	request, err := http.NewRequest(http.MethodPost, base+"/api/plugins/"+instanceID+"/rollback", nil)
+	request, err := http.NewRequest(http.MethodPost, base+"/api/services/"+instanceID+"/rollback", nil)
 	if err != nil {
 		return "", err
 	}
@@ -2213,8 +2325,8 @@ func rollbackSettings(client *http.Client, base, token, instanceID, etag, key st
 	return body.OperationID, nil
 }
 
-func putPluginSettings(client *http.Client, base, token, instanceID, etag, key string, raw []byte) (string, error) {
-	request, err := http.NewRequest(http.MethodPut, base+"/api/plugins/"+instanceID+"/settings", bytes.NewReader(raw))
+func putServiceSettings(client *http.Client, base, token, instanceID, etag, key string, raw []byte) (string, error) {
+	request, err := http.NewRequest(http.MethodPut, base+"/api/services/"+instanceID+"/settings", bytes.NewReader(raw))
 	if err != nil {
 		return "", err
 	}
@@ -2280,8 +2392,8 @@ func waitOperation(client *http.Client, base, token, id, databasePath string) er
 	}
 	defer database.Close()
 	var slot, replicaState, failure string
-	_ = database.QueryRow(`SELECT slot FROM plugin_config_generations WHERE instance_id = ? ORDER BY generation DESC LIMIT 1`, "server-child").Scan(&slot)
-	_ = database.QueryRow(`SELECT observed_state, last_failure_code FROM plugin_replicas WHERE instance_id = ? LIMIT 1`, "server-child").Scan(&replicaState, &failure)
+	_ = database.QueryRow(`SELECT slot FROM service_config_generations WHERE instance_id = ? ORDER BY generation DESC LIMIT 1`, "server-child").Scan(&slot)
+	_ = database.QueryRow(`SELECT observed_state, last_failure_code FROM service_replicas WHERE instance_id = ? LIMIT 1`, "server-child").Scan(&replicaState, &failure)
 	return fmt.Errorf("Core settings operation did not complete (last state %q; slot %q; replica %q; code %q)", lastState, slot, replicaState, failure)
 }
 
@@ -2491,7 +2603,7 @@ func waitForFormsList(address string) (bool, error) {
 		if err == nil {
 			return found, nil
 		}
-		if err != nil && !strings.Contains(err.Error(), "HTTP 503") {
+		if err != nil && !strings.Contains(err.Error(), "HTTP 503") && !errors.Is(err, syscall.ECONNREFUSED) {
 			return false, err
 		}
 		lastErr = err
@@ -2555,19 +2667,19 @@ func issueCertificates() (certificateSet, error) {
 			NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
 			KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}}
 		if name == "server-child" {
-			peerIdentity, _ := url.Parse("spiffe://liapoldus.test/server")
+			peerIdentity, _ := url.Parse("spiffe://liapoldus/service/server-child/server-replica/manual-server-incarnation")
 			template.URIs = []*url.URL{peerIdentity}
 		}
 		if name == "forms-child" {
-			peerIdentity, _ := url.Parse("spiffe://liapoldus.test/forms")
+			peerIdentity, _ := url.Parse("spiffe://liapoldus/service/forms-child/forms-replica/manual-forms-incarnation")
 			template.URIs = []*url.URL{peerIdentity}
 		}
 		if name == "server-registration" {
-			registrationIdentity, _ := url.Parse("spiffe://liapoldus/plugin/server-child/server-replica/manual-server-incarnation")
+			registrationIdentity, _ := url.Parse("spiffe://liapoldus/service/server-child/server-replica/manual-server-incarnation")
 			template.URIs = []*url.URL{registrationIdentity}
 		}
 		if name == "forms-registration" || name == "forms-registration-revoked" {
-			registrationIdentity, _ := url.Parse("spiffe://liapoldus/plugin/forms-child/forms-replica/manual-forms-incarnation")
+			registrationIdentity, _ := url.Parse("spiffe://liapoldus/service/forms-child/forms-replica/manual-forms-incarnation")
 			template.URIs = []*url.URL{registrationIdentity}
 		}
 		der, err := x509.CreateCertificate(rand.Reader, template, root, &leafKey.PublicKey, key)

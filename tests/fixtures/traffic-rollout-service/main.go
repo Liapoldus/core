@@ -46,7 +46,7 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err = database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	rollouts, err := storage.NewSQLiteTrafficRolloutStore(database)
 	check(err)
@@ -54,11 +54,11 @@ func main() {
 	check(err)
 	now := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
 	configuration := []byte(`{"fields":["name"]}`)
-	configurationSchema := []byte(`{"$id":"https://example.test/plugin-config.json","type":"object","required":["fields"],"properties":{"fields":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}`)
+	configurationSchema := []byte(`{"$id":"https://example.test/service-config.json","type":"object","required":["fields"],"properties":{"fields":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}`)
 	plan := []byte(`{"releaseSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","targets":[{"replicaId":"candidate-1","incarnation":"inc-candidate"}],"stages":[{"id":"canary","candidateWeightPercent":20,"minimumObservationSeconds":60,"requireManualApproval":true},{"id":"full","candidateWeightPercent":100,"minimumObservationSeconds":0}]}`)
 	reservation := models.OperationReservation{
 		Operation: models.Operation{ID: "operation-1", Kind: "traffic-rollout", State: "pending", CreatedAt: now, RequestID: "request-1", Actor: "operator", Resource: "forms"},
-		Scope:     "/api/plugins/forms/rollouts", Key: "rollout-key", RequestDigest: digest([]byte("same request")),
+		Scope:     "/api/services/forms/rollouts", Key: "rollout-key", RequestDigest: digest([]byte("same request")),
 	}
 	service := &application.TrafficRolloutService{
 		Store: rollouts, Operations: application.OperationService{Store: operations},
@@ -93,8 +93,8 @@ func main() {
 		"candidateExact":           hasTarget(stored.Targets, "candidate", "candidate-1", "inc-candidate"),
 		"incumbentCaptured":        hasTarget(stored.Targets, "incumbent", "stable-1", "inc-stable"),
 		"invalidCandidateRejected": exactErr != nil, "staleIncarnationRejected": staleErr != nil,
-		"pluginSchemaAccepted": config.ValidateJSONSchemaDocument(configuration, configurationSchema) == nil,
-		"pluginSchemaRejected": config.ValidateJSONSchemaDocument([]byte(`{"fields":false}`), configurationSchema) != nil,
+		"serviceSchemaAccepted": config.ValidateJSONSchemaDocument(configuration, configurationSchema) == nil,
+		"serviceSchemaRejected": config.ValidateJSONSchemaDocument([]byte(`{"fields":false}`), configurationSchema) != nil,
 	}))
 }
 

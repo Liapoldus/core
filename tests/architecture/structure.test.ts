@@ -33,7 +33,7 @@ describe("Core architecture", () => {
 
   it("uses one domain declaration per file", async () => {
     for (const group of ["models", "interfaces"]) {
-      const files = await goFiles(join(root, "internal", "domain", group));
+      const files = (await goFiles(join(root, "internal", "domain", group))).filter((file) => !file.endsWith("_test.go"));
       for (const file of files) {
         const source = await readFile(file, "utf8");
         const declarations = source.match(/^type\s+[A-Za-z_][A-Za-z0-9_]*/gm) ?? [];
@@ -46,8 +46,8 @@ describe("Core architecture", () => {
     expect(await directories(join(root, "internal", "application"))).toEqual([]);
     expect(await directories(join(root, "internal", "infrastructure"))).toEqual([
       "config",
-      "plugins",
       "security",
+      "services",
       "storage",
     ]);
   });

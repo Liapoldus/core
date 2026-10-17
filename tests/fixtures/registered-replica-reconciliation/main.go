@@ -9,38 +9,38 @@ import (
 	"time"
 
 	"github.com/Liapoldus/core/v3/internal/domain/models"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
 )
 
 const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-type source struct{ replicas []plugins.LivePluginReplica }
+type source struct{ replicas []services.LiveServiceReplica }
 
-func (value source) Snapshot() []plugins.LivePluginReplica { return value.replicas }
-func (source) HasRegisteredInstance(string) bool           { return true }
+func (value source) Snapshot() []services.LiveServiceReplica { return value.replicas }
+func (source) HasRegisteredInstance(string) bool             { return true }
 
 type store struct {
-	active models.PluginConfigurationRevision
+	active models.ServiceConfigurationRevision
 }
 
-func (value store) Current(context.Context, string) (models.PluginConfigurationRevision, models.PluginConfigurationPointers, error) {
-	return value.active, models.PluginConfigurationPointers{InstanceID: value.active.InstanceID, CurrentRevision: value.active.Revision}, nil
+func (value store) Current(context.Context, string) (models.ServiceConfigurationRevision, models.ServiceConfigurationPointers, error) {
+	return value.active, models.ServiceConfigurationPointers{InstanceID: value.active.InstanceID, CurrentRevision: value.active.Revision}, nil
 }
-func (value store) GetRevision(context.Context, string, int64) (models.PluginConfigurationRevision, error) {
+func (value store) GetRevision(context.Context, string, int64) (models.ServiceConfigurationRevision, error) {
 	return value.active, nil
 }
-func (store) CreateCandidate(context.Context, string, string, string, string, int64, int64, []byte, models.AuditRecord) (models.PluginConfigurationRevision, error) {
-	return models.PluginConfigurationRevision{}, errors.New("unused")
+func (store) CreateCandidate(context.Context, string, string, string, string, int64, int64, []byte, models.AuditRecord) (models.ServiceConfigurationRevision, error) {
+	return models.ServiceConfigurationRevision{}, errors.New("unused")
 }
-func (store) ActivateCandidate(context.Context, string, int64, int64, models.AuditRecord) (models.PluginConfigurationPointers, error) {
-	return models.PluginConfigurationPointers{}, errors.New("unused")
+func (store) ActivateCandidate(context.Context, string, int64, int64, models.AuditRecord) (models.ServiceConfigurationPointers, error) {
+	return models.ServiceConfigurationPointers{}, errors.New("unused")
 }
-func (store) FailCandidate(context.Context, string, int64, int64, models.AuditRecord) (models.PluginConfigurationPointers, error) {
-	return models.PluginConfigurationPointers{}, errors.New("unused")
+func (store) FailCandidate(context.Context, string, int64, int64, models.AuditRecord) (models.ServiceConfigurationPointers, error) {
+	return models.ServiceConfigurationPointers{}, errors.New("unused")
 }
-func (store) RestorePrevious(context.Context, string, int64, models.AuditRecord) (models.PluginConfigurationPointers, error) {
-	return models.PluginConfigurationPointers{}, errors.New("unused")
+func (store) RestorePrevious(context.Context, string, int64, models.AuditRecord) (models.ServiceConfigurationPointers, error) {
+	return models.ServiceConfigurationPointers{}, errors.New("unused")
 }
 
 type observation struct {
@@ -48,7 +48,7 @@ type observation struct {
 	values map[string]bool
 }
 
-func (recorder *observation) RecordReplicaObservation(_ context.Context, _, replicaID string, _ int64, acknowledged, _ bool) {
+func (recorder *observation) RecordReplicaObservation(_ context.Context, _, replicaID, _ string, _ int64, acknowledged, _ bool) {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()
 	recorder.values[replicaID] = acknowledged
@@ -80,7 +80,7 @@ func (client *replicaClient) Reload(_ context.Context, request sdkmodels.Reload)
 	defer client.mu.Unlock()
 	client.reloads++
 	if client.failFirst && client.reloads == 1 {
-		return sdkmodels.ReloadAcknowledgement{}, plugins.ErrPluginUnavailable
+		return sdkmodels.ReloadAcknowledgement{}, services.ErrServiceUnavailable
 	}
 	client.generation, client.sha256, client.ready = request.Generation, request.SHA256, true
 	return sdkmodels.ReloadAcknowledgement{
@@ -97,11 +97,11 @@ func (client *replicaClient) reloadCount() int {
 
 func main() {
 	now := time.Now().UTC()
-	active := models.PluginConfigurationRevision{
+	active := models.ServiceConfigurationRevision{
 		InstanceID: "server", Revision: 7, SchemaVersion: 1, Digest: digest,
 		SettingsJSON: []byte(`{"mode":"test"}`),
 	}
-	replicas := []plugins.LivePluginReplica{
+	replicas := []services.LiveServiceReplica{
 		live("replica-current", now, true, "7", digest),
 		live("replica-stale", now, true, "6", digest),
 		live("replica-flaky", now, false, "6", digest),
@@ -113,15 +113,15 @@ func main() {
 		"replica-flaky":   {instanceID: "server", replicaID: "replica-flaky", generation: "6", sha256: digest, schemaVersion: "1", failFirst: true},
 		"replica-expired": {instanceID: "server", replicaID: "replica-expired", generation: "6", sha256: digest, schemaVersion: "1"},
 	}
-	resolver := plugins.NewRegisteredReplicaReloadResolver(source{replicas: replicas}, func(_ context.Context, replica plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	resolver := services.NewRegisteredReplicaReloadResolver(source{replicas: replicas}, func(_ context.Context, replica services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		client := clients[replica.Registration.Identity.ReplicaID]
 		if client == nil {
-			return nil, nil, plugins.ErrPluginUnavailable
+			return nil, nil, services.ErrServiceUnavailable
 		}
 		return client, func() {}, nil
 	}, func() time.Time { return now })
 	recorder := &observation{values: map[string]bool{}}
-	applier := &plugins.SDKConfigurationApplier{Store: store{active: active}, Registered: resolver, Observations: recorder}
+	applier := &services.SDKConfigurationApplier{Store: store{active: active}, Registered: resolver, Observations: recorder}
 	firstErr := applier.ReconcileRegisteredReplicas(context.Background())
 	if firstErr == nil {
 		panic("partial refusal was hidden")
@@ -164,8 +164,8 @@ func main() {
 	}
 }
 
-func live(replicaID string, now time.Time, ready bool, generation, sha256 string) plugins.LivePluginReplica {
-	return plugins.LivePluginReplica{
+func live(replicaID string, now time.Time, ready bool, generation, sha256 string) services.LiveServiceReplica {
+	return services.LiveServiceReplica{
 		Registration: sdkmodels.ReplicaRegistrationRequest{
 			Identity:     sdkmodels.PeerReplicaID{InstanceID: "server", ReplicaID: replicaID, IncarnationID: "inc-1", PlacementID: "node-a"},
 			RestEndpoint: "https://" + replicaID + ".example:9443", Ready: ready, AppliedGeneration: generation,

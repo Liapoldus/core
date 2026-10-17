@@ -4,40 +4,40 @@ package config
 // root from environment variables and persisted JSON settings. It is not a
 // user-facing file format; project files and Git are owned by standalone CLI.
 type BootstrapConfig struct {
-	SourcePath               string
-	StatePath                string
-	ManagementListen         string
-	ManagementCertificate    string
-	ManagementKey            string
-	ManagementClientCA       string
-	ManagementMaxBodyBytes   int64
-	ManagementHeaderTimeout  string
-	ManagementRequestTimeout string
-	PluginControlListen      string
-	PluginControlPublicURL   string
-	PluginControlCertificate string
-	PluginControlKey         string
-	PluginReplicaClientCA    string
-	PluginReplicaServerCA    string
-	PluginReplicaClientCRLs  []string
-	PluginReplicaServerCRLs  []string
-	Plugins                  []PluginInstanceConfig
+	SourcePath                string
+	StatePath                 string
+	ManagementListen          string
+	ManagementCertificate     string
+	ManagementKey             string
+	ManagementClientCA        string
+	ManagementMaxBodyBytes    int64
+	ManagementHeaderTimeout   string
+	ManagementRequestTimeout  string
+	ServiceControlListen      string
+	ServiceControlPublicURL   string
+	ServiceControlCertificate string
+	ServiceControlKey         string
+	ServiceReplicaClientCA    string
+	ServiceReplicaServerCA    string
+	ServiceReplicaClientCRLs  []string
+	ServiceReplicaServerCRLs  []string
+	Services                  []ServiceInstanceConfig
 }
 
-// PluginReplicaConfig is one operator-declared plugin replica. Endpoint and
+// ServiceReplicaConfig is one operator-declared service replica. Endpoint and
 // expected identity are the normative registration values for the Core process
-// lifetime: Core never derives, discovers or accepts them from a plugin.
-type PluginReplicaConfig struct {
+// lifetime: Core never derives, discovers or accepts them from a service.
+type ServiceReplicaConfig struct {
 	ReplicaID            string
 	Endpoint             string
 	ExpectedPeerIdentity PeerIdentityConfig
 }
 
-// PluginInstanceConfig is one operator-declared plugin instance and the
+// ServiceInstanceConfig is one operator-declared service instance and the
 // replicas that serve it.
-type PluginInstanceConfig struct {
+type ServiceInstanceConfig struct {
 	InstanceID string
-	Replicas   []PluginReplicaConfig
+	Replicas   []ServiceReplicaConfig
 }
 
 // PeerIdentityConfig is the expected mTLS identity of one replica, expressed

@@ -38,8 +38,8 @@ function request(address: string, method: string, path: string, token?: string, 
 async function prepareCore(directory: string) {
   const binary = await buildCoreTestBinary();
   const address = await freeAddress();
-  const pluginControlAddress = await freeAddress();
-  const initialized = await initializeCore(binary, directory, address, pluginControlAddress);
+  const serviceControlAddress = await freeAddress();
+  const initialized = await initializeCore(binary, directory, address, serviceControlAddress);
   return { address, environment: initialized.environment, database: initialized.database, bootstrapToken: initialized.bootstrapToken };
 }
 

@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// PluginEndpoint validates one operator-declared replica origin. Core dials
+// ServiceEndpoint validates one operator-declared replica origin. Core dials
 // exactly this address and never learns it from a redirect or advertisement.
-func PluginEndpoint(endpoint string) (*url.URL, error) {
+func ServiceEndpoint(endpoint string) (*url.URL, error) {
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
 		parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {

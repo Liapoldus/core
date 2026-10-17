@@ -21,11 +21,11 @@ describe("atomic traffic rollout submission", () => {
 				activeGeneration: 1,
 				activeRawJSON: '{ "settings" : [1, 2] }',
 				trafficRollouts: 1,
-				pluginRollouts: 1,
-				pluginTargets: 1,
+				serviceRollouts: 1,
+				serviceTargets: 1,
 				operations: 1,
 				auditEvents: 1,
-				pluginTargetIDs: ["candidate-1"],
+				serviceTargetIDs: ["candidate-1"],
 			});
 		} finally {
 			await rm(directory, { recursive: true, force: true });

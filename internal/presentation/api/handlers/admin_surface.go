@@ -1,7 +1,7 @@
 package handlers
 
 type AdminSurface struct {
-	Plugin       string   `json:"plugin"`
+	Service      string   `json:"service"`
 	Namespace    string   `json:"namespace"`
 	Version      string   `json:"version"`
 	Title        string   `json:"title"`

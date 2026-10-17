@@ -20,8 +20,8 @@ describe("traffic rollout application service", () => {
 				incumbentCaptured: true,
 				invalidCandidateRejected: true,
 				staleIncarnationRejected: true,
-				pluginSchemaAccepted: true,
-				pluginSchemaRejected: true,
+				serviceSchemaAccepted: true,
+				serviceSchemaRejected: true,
 			});
 		} finally {
 			await rm(directory, { recursive: true, force: true });

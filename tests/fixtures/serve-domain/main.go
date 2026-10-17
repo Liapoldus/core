@@ -1,7 +1,7 @@
 package main
 
-// serve-domain proves the real Core -> Plugin SDK -> Domain configuration and
-// the mTLS pluginprotocol data path. It is run from the multi-repository test
+// serve-domain proves the real Core -> Service SDK -> Domain configuration and
+// the mTLS wool data path. It is run from the multi-repository test
 // workspace with the Domain module path as its only argument.
 
 import (
@@ -34,8 +34,8 @@ import (
 
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/service-sdk/v2/infrastructure"
 )
 
 const (
@@ -43,8 +43,8 @@ const (
 	domainReplica   = "domain-replica"
 	runtimeInstance = "runtime-child"
 	runtimeReplica  = "runtime-replica"
-	writerURI       = "spiffe://liapoldus.test/plugins/writer/replica/writer/incarnation/1"
-	readerURI       = "spiffe://liapoldus.test/plugins/reader/replica/reader/incarnation/1"
+	writerURI       = "spiffe://liapoldus.test/services/writer/replica/writer/incarnation/1"
+	readerURI       = "spiffe://liapoldus.test/services/reader/replica/reader/incarnation/1"
 )
 
 var peerClientBinary string
@@ -197,7 +197,7 @@ func run() error {
 	if err := os.Mkdir(runtimeArtifacts, 0o700); err != nil {
 		return err
 	}
-	peerClientBinary = filepath.Join(workDirectory, "plugin-peer-client")
+	peerClientBinary = filepath.Join(workDirectory, "service-peer-client")
 	if err := build(domainRoot, peerClientBinary, "./tests/fixtures/peer-client"); err != nil {
 		return err
 	}
@@ -434,7 +434,7 @@ func run() error {
 	}
 	objectID := created.Data.Operations[0].ID
 	// Exercise the actual cross-process retry path: the request traverses a new
-	// authenticated pluginprotocol session, but the process-local write ledger
+	// authenticated wool session, but the process-local write ledger
 	// must return the original generated UUID without applying a second create.
 	createdRetry, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, writerURI,
 		filepath.Join(workDirectory, "writer.pem"), filepath.Join(workDirectory, "writer.key"), filepath.Join(workDirectory, "root.pem"), "domain.transaction",
@@ -496,7 +496,7 @@ func run() error {
 	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "3", runtimeProcess); err != nil {
 		return err
 	}
-	// Plugin-local readiness is acknowledged before Core's renewable peer
+	// Service-local readiness is acknowledged before Core's renewable peer
 	// directory lease necessarily publishes the new eligible state. Do not
 	// start the side-effecting WASM call until Core's caller-scoped directory
 	// confirms Domain is routable for this Runtime incarnation.
@@ -515,7 +515,7 @@ func run() error {
 	runtimeObject, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, readerURI, filepath.Join(workDirectory, "reader.pem"), filepath.Join(workDirectory, "reader.key"), filepath.Join(workDirectory, "root.pem"), "domain.get",
 		[]byte(fmt.Sprintf(`{"entity":"Entry","id":%q}`, runtimeObjectID)))
 	if err != nil || !runtimeObject.OK || !runtimeObject.Data.Found || runtimeObject.Data.Object.Title != "from-runtime" {
-		return fmt.Errorf("Runtime-created object was not visible to another authenticated plugin: response=%s err=%v", marshalEnvelope(runtimeObject), err)
+		return fmt.Errorf("Runtime-created object was not visible to another authenticated service: response=%s err=%v", marshalEnvelope(runtimeObject), err)
 	}
 	restrictedMethodCall, err := callRuntime(ctx, domainRoot, runtimePeerAddress, runtimeURI, readerURI, "writeEntryMethodDenied", []string{"Entry"}, filepath.Join(workDirectory, "reader.pem"), filepath.Join(workDirectory, "reader.key"), filepath.Join(workDirectory, "root.pem"))
 	if err != nil || restrictedMethodCall.Status != http.StatusOK || restrictedMethodCall.Body.Output.OK {
@@ -836,8 +836,8 @@ func run() error {
 		"queryResultLimitEnforced": true, "transactionResultLimitIsAtomic": true,
 		"runtimeGrantDenied":      true,
 		"runtimeCoreGrantApplied": true, "runtimeWriteAccepted": true,
-		"runtimeWriteVisibleToOtherPlugin": true,
-		"runtimeEntityNarrowingDenied":     true, "runtimeMethodNarrowingDenied": true,
+		"runtimeWriteVisibleToOtherService": true,
+		"runtimeEntityNarrowingDenied":      true, "runtimeMethodNarrowingDenied": true,
 		"domainRestartLostVolatileData": true, "domainReconnectRestoredGeneration": true,
 		"runtimeHostCallReconnected": true, "runtimeRestartReloadedCoreGeneration": true,
 		"runtimeCoreLinkRevocationDenied": true, "runtimeGracefulDeregisterObserved": true,
@@ -902,7 +902,7 @@ func updateSettings(ctx context.Context, client *http.Client, management config.
 }
 
 func updateSettingsForInstance(ctx context.Context, client *http.Client, management config.ManagementWords, baseURL, token, instanceID string, revision int, idempotencyKey string, settings []byte) (string, error) {
-	path := management.Paths.Plugins + management.Paths.PluginIDSeparator + instanceID + management.Paths.PluginSettingsSuffix
+	path := management.Paths.Services + management.Paths.ServiceIDSeparator + instanceID + management.Paths.ServiceSettingsSuffix
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, baseURL+path, strings.NewReader(string(settings)))
 	if err != nil {
 		return "", err
@@ -1020,16 +1020,16 @@ func seedDomainConfiguration(ctx context.Context, databasePath, domainRoot strin
 		return err
 	}
 	defer database.Close()
-	manifest, err := os.ReadFile(filepath.Join(domainRoot, "contracts", "v2", "plugin.json"))
+	manifest, err := os.ReadFile(filepath.Join(domainRoot, "contracts", "v2", "service.json"))
 	if err != nil {
 		return err
 	}
 	settings := domainSettings(writerURI)
 	digest := sha256.Sum256(settings)
-	if _, err := database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, domainInstance, manifest, "configured"); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, domainInstance, manifest, "configured"); err != nil {
 		return err
 	}
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, err = database.ExecContext(ctx, `INSERT INTO service_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		domainInstance, 1, "active", settings, hex.EncodeToString(digest[:]), 2, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -1050,27 +1050,27 @@ func seedRuntimeConfiguration(ctx context.Context, databasePath, runtimeRoot, re
 		return err
 	}
 	defer database.Close()
-	manifest, err := os.ReadFile(filepath.Join(runtimeRoot, "contracts", "v2", "plugin.json"))
+	manifest, err := os.ReadFile(filepath.Join(runtimeRoot, "contracts", "v2", "manifest.json"))
 	if err != nil {
 		return err
 	}
 	settings := runtimeSettingsDocument(readDigest, writeDigest, drainDigest)
 	digest := sha256.Sum256(settings)
-	if _, err := database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, runtimeInstance, manifest, "configured"); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, runtimeInstance, manifest, "configured"); err != nil {
 		return err
 	}
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, err = database.ExecContext(ctx, `INSERT INTO service_config_generations(instance_id, generation, slot, raw_json, sha256, schema_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		runtimeInstance, 1, "active", settings, hex.EncodeToString(digest[:]), 2, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 
 func runtimeSettingsDocument(readDigest, writeDigest, drainDigest string) []byte {
-	return []byte(fmt.Sprintf(`{"schemaVersion":"2","modules":[{"moduleId":"domainReader","sha256":%q},{"moduleId":"domainWriter","sha256":%q},{"moduleId":"domainDrainWriter","sha256":%q}],"commands":[{"name":"readEntry","moduleId":"domainReader","export":"invoke","entities":["Entry"],"calls":[{"plugin":"domain","method":"domain.get"}]},{"name":"writeEntry","moduleId":"domainWriter","export":"invoke","entities":["Entry"],"calls":[{"plugin":"domain","method":"domain.transaction"}]},{"name":"writeEntryMethodDenied","moduleId":"domainWriter","export":"invoke","entities":["Entry"],"calls":[{"plugin":"domain","method":"domain.get"}]},{"name":"drainWrite","moduleId":"domainDrainWriter","export":"invoke","entities":["Entry"],"calls":[{"plugin":"domain","method":"domain.transaction"}]}]}`, readDigest, writeDigest, drainDigest))
+	return []byte(fmt.Sprintf(`{"schemaVersion":"2","modules":[{"moduleId":"domainReader","sha256":%q},{"moduleId":"domainWriter","sha256":%q},{"moduleId":"domainDrainWriter","sha256":%q}],"commands":[{"name":"readEntry","moduleId":"domainReader","export":"invoke","entities":["Entry"],"calls":[{"service":"domain","method":"domain.get"}]},{"name":"writeEntry","moduleId":"domainWriter","export":"invoke","entities":["Entry"],"calls":[{"service":"domain","method":"domain.transaction"}]},{"name":"writeEntryMethodDenied","moduleId":"domainWriter","export":"invoke","entities":["Entry"],"calls":[{"service":"domain","method":"domain.get"}]},{"name":"drainWrite","moduleId":"domainDrainWriter","export":"invoke","entities":["Entry"],"calls":[{"service":"domain","method":"domain.transaction"}]}]}`, readDigest, writeDigest, drainDigest))
 }
 
 func createRuntimeDomainLink(ctx context.Context, client *http.Client, management config.ManagementWords, baseURL, token string) error {
 	body := []byte(fmt.Sprintf(`{"callerInstanceId":%q,"targetInstanceId":%q,"rules":[{"placementRule":"remote","carrier":"tcp","weight":100,"requiredContracts":[]}]}`, runtimeInstance, domainInstance))
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+management.Paths.PluginLinks, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+management.Paths.ServiceLinks, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -1090,7 +1090,7 @@ func createRuntimeDomainLink(ctx context.Context, client *http.Client, managemen
 }
 
 func deleteRuntimeDomainLink(ctx context.Context, client *http.Client, management config.ManagementWords, baseURL, token string) error {
-	path := management.Paths.PluginLinks + management.Paths.PluginIDSeparator + runtimeInstance + management.Paths.PluginIDSeparator + domainInstance
+	path := management.Paths.ServiceLinks + management.Paths.ServiceIDSeparator + runtimeInstance + management.Paths.ServiceIDSeparator + domainInstance
 	request, err := http.NewRequestWithContext(ctx, http.MethodDelete, baseURL+path, nil)
 	if err != nil {
 		return err
@@ -1187,17 +1187,17 @@ func pollRuntimeDirectory(ctx context.Context, coreAddress, directory string, id
 }
 
 func domainReadModule() ([]byte, error) {
-	payload := []byte(`{"plugin":"domain","method":"domain.get","payload":{"entity":"Entry","id":"018f47a0-7b1c-7abc-8def-0123456789ab"}}`)
+	payload := []byte(`{"service":"domain","method":"domain.get","payload":{"entity":"Entry","id":"018f47a0-7b1c-7abc-8def-0123456789ab"}}`)
 	return domainHostCallModule(payload)
 }
 
 func domainWriteModule() ([]byte, error) {
-	payload := []byte(`{"plugin":"domain","method":"domain.transaction","payload":{"operations":[{"kind":"create","entity":"Entry","object":{"title":"from-runtime"}}]}}`)
+	payload := []byte(`{"service":"domain","method":"domain.transaction","payload":{"operations":[{"kind":"create","entity":"Entry","object":{"title":"from-runtime"}}]}}`)
 	return domainHostCallModule(payload)
 }
 
 func domainWriteThenLoopModule() ([]byte, error) {
-	payload := []byte(`{"plugin":"domain","method":"domain.transaction","payload":{"operations":[{"kind":"create","entity":"Entry","object":{"title":"runtime-drain-committed","category":"article"}}]}}`)
+	payload := []byte(`{"service":"domain","method":"domain.transaction","payload":{"operations":[{"kind":"create","entity":"Entry","object":{"title":"runtime-drain-committed","category":"article"}}]}}`)
 	return domainHostCallThenLoopModule(payload, 5000000)
 }
 
@@ -1208,7 +1208,7 @@ func domainHostCallModule(payload []byte) ([]byte, error) {
 func domainHostCallThenLoopModule(payload []byte, iterations uint32) ([]byte, error) {
 	typeSection := []byte{2, 0x60, 1, 0x7f, 1, 0x7f, 0x60, 2, 0x7f, 0x7f, 1, 0x7e}
 	importSection := []byte{1}
-	importSection = appendWasmName(importSection, "liapoldus.plugin.v2")
+	importSection = appendWasmName(importSection, "liapoldus.service.v2")
 	importSection = appendWasmName(importSection, "call")
 	importSection = append(importSection, 0, 1)
 	functionSection := []byte{2, 0, 1}
@@ -1358,14 +1358,14 @@ func callPeer(ctx context.Context, domainRoot, endpoint, expectedURI, callerURI,
 	command.Stdin = bytes.NewReader(payload)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("plugin peer client failed: %w: %s", err, strings.TrimSpace(string(output)))
+		return nil, fmt.Errorf("service peer client failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return output, nil
 }
 
 // dropNextPeerCallResponse terminates TLS on both sides using the same
-// authenticated identities, forwards generic pluginprotocol frames, and drops
-// the first successful unary result after the upstream plugin has produced it.
+// authenticated identities, forwards generic wool frames, and drops
+// the first successful unary result after the upstream service has produced it.
 // The Domain commit therefore occurs normally, while the caller observes a
 // transport failure and must resolve the outcome through its writeId.
 func dropNextPeerCallResponse(
@@ -1531,7 +1531,7 @@ func assertReplicaGenerationRefused(ctx context.Context, client *http.Client, en
 		}
 		response, err := client.Do(request)
 		if err != nil {
-			return fmt.Errorf("plugin readiness request failed while retaining generation %s: %w", generation, err)
+			return fmt.Errorf("service readiness request failed while retaining generation %s: %w", generation, err)
 		}
 		var readiness sdkmodels.Readiness
 		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&readiness)
@@ -1542,7 +1542,7 @@ func assertReplicaGenerationRefused(ctx context.Context, client *http.Client, en
 		}
 		select {
 		case <-process.done:
-			return fmt.Errorf("plugin exited while retaining generation %s: %w", generation, process.err)
+			return fmt.Errorf("service exited while retaining generation %s: %w", generation, process.err)
 		case <-timer.C:
 			return nil
 		case <-ctx.Done():
@@ -1626,7 +1626,7 @@ func stopProcess(started *process) {
 }
 
 func build(directory, binary, target string) error {
-	command := exec.Command("go", "build", "-o", binary, target)
+	command := exec.Command("go", "build", "-mod=readonly", "-o", binary, target)
 	command.Dir = directory
 	command.Env = os.Environ()
 	if output, err := command.CombinedOutput(); err != nil {

@@ -1,14 +1,14 @@
 erDiagram
-    PLUGIN_INSTANCE ||--o{ PLUGIN_CONFIG_GENERATION : owns
-    PLUGIN_INSTANCE ||--o{ REPLICA : has
+    SERVICE_INSTANCE ||--o{ SERVICE_CONFIG_GENERATION : owns
+    SERVICE_INSTANCE ||--o{ REPLICA : has
     REPLICA ||--o{ REPLICA_GENERATION : acknowledges
-    PLUGIN_INSTANCE ||--o{ OPERATION : changes
+    SERVICE_INSTANCE ||--o{ OPERATION : changes
     SERVICE_KEY ||--o{ OPERATION : requests
     OPERATION ||--o| IDEMPOTENCY_RECORD : deduplicates
     SERVICE_KEY ||--o{ AUDIT_EVENT : acts
     OPERATION ||--o{ AUDIT_EVENT : records
 
-    PLUGIN_INSTANCE {
+    SERVICE_INSTANCE {
         text id PK
         text package_id
         text desired_mode
@@ -16,7 +16,7 @@ erDiagram
         integer created_at
         integer updated_at
     }
-    PLUGIN_CONFIG_GENERATION {
+    SERVICE_CONFIG_GENERATION {
         text instance_id PK, FK
         integer generation PK
         text slot UK
@@ -27,7 +27,7 @@ erDiagram
     }
     REPLICA {
         text id PK
-        text plugin_id FK
+        text service_id FK
         text endpoint
         text expected_identity
         text state
@@ -41,7 +41,7 @@ erDiagram
     }
     OPERATION {
         text id PK
-        text plugin_id FK
+        text service_id FK
         text service_key_id FK
         text kind
         text state

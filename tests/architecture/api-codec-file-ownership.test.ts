@@ -16,7 +16,7 @@ describe("API codec ownership", () => {
   it("removes codec declarations from the legacy adapter file", async () => {
     const source = await readFile(join(apiRoot, "adapter.go"), "utf8").catch(() => "");
 
-    expect(source).not.toMatch(/^type pluginCookiePolicyInput struct \{/m);
+    expect(source).not.toMatch(/^type serviceCookiePolicyInput struct \{/m);
     expect(source).not.toMatch(/^func sliceValues\(/m);
   });
 });

@@ -17,7 +17,7 @@ type SQLiteTrafficRolloutStore struct {
 	database        *sql.DB
 	queries         map[string]string
 	timestampLayout string
-	configuration   pluginConfigurationStoreContract
+	configuration   serviceConfigurationStoreContract
 	operation       *SQLiteOperationStore
 	idempotencyTill time.Time
 	audit           *SQLiteAuditStore
@@ -37,7 +37,7 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 	operation := reservation.Operation
 	if !validOperation(operation) || reservation.Scope == "" || reservation.Key == "" || reservation.RequestDigest == "" ||
 		reservation.Payload != nil || submission.ExpectedRevision < 0 || submission.SchemaVersion < 1 ||
-		len(submission.SettingsJSON) > store.configuration.MaximumPayloadSize || !validPluginConfiguration(submission.SettingsJSON) ||
+		len(submission.SettingsJSON) > store.configuration.MaximumPayloadSize || !validServiceConfiguration(submission.SettingsJSON) ||
 		submission.Record.OperationID != operation.ID || submission.Record.InstanceID != operation.Resource ||
 		!validConfigurationAudit(submission.Audit) || submission.Audit.Actor != operation.Actor ||
 		submission.Audit.Resource != operation.Resource || submission.Audit.RequestID != operation.RequestID {
@@ -76,7 +76,7 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 		return models.Operation{}, false, err
 	}
 	if !instanceExists {
-		return models.Operation{}, false, models.PluginConfigurationNotFound{}
+		return models.Operation{}, false, models.ServiceConfigurationNotFound{}
 	}
 	var activeGeneration int64
 	var activeDigest string
@@ -85,14 +85,14 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 		return models.Operation{}, false, err
 	}
 	if activeGeneration != submission.ExpectedRevision {
-		return models.Operation{}, false, models.PluginConfigurationConflict{}
+		return models.Operation{}, false, models.ServiceConfigurationConflict{}
 	}
 	var stagingCount int
 	if err := tx.QueryRowContext(ctx, store.queries["traffic-rollout-staging-count"], operation.Resource, store.configuration.Slots.Staging).Scan(&stagingCount); err != nil {
 		return models.Operation{}, false, err
 	}
 	if stagingCount != 0 {
-		return models.Operation{}, false, models.PluginConfigurationConflict{}
+		return models.Operation{}, false, models.ServiceConfigurationConflict{}
 	}
 	var generation int64
 	if err := tx.QueryRowContext(ctx, store.queries["traffic-rollout-next-generation"], operation.Resource).Scan(&generation); err != nil {
@@ -117,7 +117,7 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 	if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-insert-generation"], operation.Resource, generation,
 		store.configuration.Slots.Staging, submission.SettingsJSON, configDigest, submission.SchemaVersion, createdAt); err != nil {
 		if isUniqueConstraint(err) {
-			return models.Operation{}, false, models.PluginConfigurationConflict{}
+			return models.Operation{}, false, models.ServiceConfigurationConflict{}
 		}
 		return models.Operation{}, false, err
 	}
@@ -130,7 +130,7 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 	if !validTrafficRolloutRecord(record) {
 		return models.Operation{}, false, models.TrafficRolloutInvalid{}
 	}
-	if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-plugin-rollout-create"], operation.ID,
+	if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-service-rollout-create"], operation.ID,
 		record.InstanceID, generation, createdAt); err != nil {
 		if isUniqueConstraint(err) {
 			return models.Operation{}, false, models.TrafficRolloutConflict{}
@@ -144,11 +144,11 @@ func (store *SQLiteTrafficRolloutStore) CreateAndPromote(ctx context.Context, su
 		if target.Cohort != "candidate" {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-plugin-target-create"], operation.ID,
+		if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-service-target-create"], operation.ID,
 			target.ReplicaID, target.IncarnationID, target.ReleaseSHA256); err != nil {
 			return models.Operation{}, false, err
 		}
-		if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-plugin-target-lease-create"], operation.ID,
+		if _, err := tx.ExecContext(ctx, store.queries["traffic-rollout-service-target-lease-create"], operation.ID,
 			target.ReplicaID, target.LeaseExpiresAt.UTC().Format(store.timestampLayout)); err != nil {
 			return models.Operation{}, false, err
 		}
@@ -631,8 +631,8 @@ func (store *SQLiteTrafficRolloutStore) Get(ctx context.Context, id string) (mod
 }
 
 // OpenConfigurationRollouts returns durable candidate-generation barriers for
-// one plugin instance. It is used both after create and during process recovery.
-func (store *SQLiteTrafficRolloutStore) OpenConfigurationRollouts(ctx context.Context, instanceID string) ([]models.PluginConfigurationRollout, error) {
+// one service instance. It is used both after create and during process recovery.
+func (store *SQLiteTrafficRolloutStore) OpenConfigurationRollouts(ctx context.Context, instanceID string) ([]models.ServiceConfigurationRollout, error) {
 	if store == nil || store.database == nil || instanceID == "" {
 		return nil, models.TrafficRolloutInvalid{}
 	}
@@ -641,9 +641,9 @@ func (store *SQLiteTrafficRolloutStore) OpenConfigurationRollouts(ctx context.Co
 		return nil, err
 	}
 	defer rows.Close()
-	rollouts := make([]models.PluginConfigurationRollout, 0)
+	rollouts := make([]models.ServiceConfigurationRollout, 0)
 	for rows.Next() {
-		var rollout models.PluginConfigurationRollout
+		var rollout models.ServiceConfigurationRollout
 		if err := rows.Scan(&rollout.OperationID, &rollout.InstanceID, &rollout.Generation); err != nil {
 			return nil, err
 		}
@@ -824,7 +824,7 @@ func validSHA256(value string) bool {
 	return err == nil && len(decoded) == 32
 }
 
-// ControllerVisibleRollouts hides candidate details until the exact plugin
+// ControllerVisibleRollouts hides candidate details until the exact service
 // configuration cohort has acknowledged its generation and the barrier closes.
 func (store *SQLiteTrafficRolloutStore) ControllerVisibleRollouts(ctx context.Context) ([]models.TrafficRolloutRecord, error) {
 	if store == nil || store.database == nil {

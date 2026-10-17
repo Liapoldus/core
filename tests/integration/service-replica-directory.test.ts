@@ -1,0 +1,35 @@
+import { execFile } from "node:child_process";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { describe, expect, it } from "vitest";
+import { parseJsonObject } from "../support/json.js";
+
+const execFileAsync = promisify(execFile);
+const coreRoot = join(import.meta.dirname, "../..");
+
+describe("Core live service replica directory", () => {
+	it("binds registration to the authenticated SAN, enforces lease/incarnation rules, and expires replicas", async () => {
+		const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/service-replica-directory"], { cwd: coreRoot });
+		const result = parseJsonObject(stdout);
+
+		expect(result.validRegistration).toBe(true);
+		expect(result.activeDuplicateRenews).toBe(true);
+		expect(result.certificateIdentityMismatchRejected).toBe(true);
+		expect(result.changedImmutableMetadataRejected).toBe(true);
+		expect(result.oldIncarnationRenewalRejected).toBe(true);
+		expect(result.expiredSameIncarnationRegistrationRejected).toBe(true);
+		expect(result.newIncarnationReplacesExpired).toBe(true);
+		expect(result.expiredReplicaNotEligible).toBe(true);
+		expect(result.authenticatedHTTPRegistration).toBe(true);
+		expect(result.registrationWaitsForSnapshotActivation).toBe(true);
+		expect(result.reloadHookRunsAfterRegistrationPublication).toBe(true);
+		expect(result.reloadHookReceivesExactReplica).toBe(true);
+		expect(result.identityMismatchHTTPRejected).toBe(true);
+		expect(result.oversizedRegistrationRejected).toBe(true);
+		expect(result.concurrentRegistrationSurvivesPersistenceFailure).toBe(true);
+		expect(result.unregisteredIdentityRejected).toBe(true);
+		expect(result.registeredIdentityAdmitted).toBe(true);
+		expect(result.expiredIdentityRejected).toBe(true);
+		expect(result.replacedIncarnationIsFenced).toBe(true);
+	}, 30_000);
+});

@@ -27,10 +27,10 @@ describe("Management API route/method dispatch characterization", () => {
     );
 
     expect(dispatch).toEqual({
-      pluginListPost: { status: 404, code: "not_found" },
-      pluginDetailPut: { status: 404, code: "not_found" },
-      pluginAdminPatch: { status: 404, code: "not_found" },
-      pluginRollbackGet: { status: 404, code: "not_found" },
+      serviceListPost: { status: 404, code: "not_found" },
+      serviceDetailPut: { status: 404, code: "not_found" },
+      serviceAdminPatch: { status: 404, code: "not_found" },
+      serviceRollbackGet: { status: 404, code: "not_found" },
       adminSurfacesPost: { status: 404, code: "not_found" },
       serviceKeyDelete: { status: 404, code: "not_found" },
       auditPost: { status: 404, code: "not_found" },

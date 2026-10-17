@@ -8,26 +8,26 @@ import (
 
 	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
 	"github.com/Liapoldus/core/v3/internal/domain/models"
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
 )
 
 const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-type source struct{ replicas []plugins.LivePluginReplica }
+type source struct{ replicas []services.LiveServiceReplica }
 
-func (value *source) Snapshot() []plugins.LivePluginReplica {
-	return append([]plugins.LivePluginReplica(nil), value.replicas...)
+func (value *source) Snapshot() []services.LiveServiceReplica {
+	return append([]services.LiveServiceReplica(nil), value.replicas...)
 }
 func (*source) HasRegisteredInstance(string) bool { return true }
 
 type configReader struct {
-	interfaces.PluginConfigurationStore
-	revision models.PluginConfigurationRevision
+	interfaces.ServiceConfigurationStore
+	revision models.ServiceConfigurationRevision
 }
 
-func (reader configReader) Current(context.Context, string) (models.PluginConfigurationRevision, models.PluginConfigurationPointers, error) {
-	return reader.revision, models.PluginConfigurationPointers{}, nil
+func (reader configReader) Current(context.Context, string) (models.ServiceConfigurationRevision, models.ServiceConfigurationPointers, error) {
+	return reader.revision, models.ServiceConfigurationPointers{}, nil
 }
 
 type reloadClient struct {
@@ -44,17 +44,17 @@ func (client reloadClient) Reload(_ context.Context, reload sdkmodels.Reload) (s
 func main() {
 	ctx := context.Background()
 	raw := []byte(`{"config":"exact"}`)
-	revision := models.PluginConfigurationRevision{InstanceID: "instance-one", Revision: 7,
+	revision := models.ServiceConfigurationRevision{InstanceID: "instance-one", Revision: 7,
 		SchemaVersion: 2, Digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", SettingsJSON: raw}
 	calls := []string{}
-	current := &source{replicas: []plugins.LivePluginReplica{
+	current := &source{replicas: []services.LiveServiceReplica{
 		live("replica-a", "incarnation-new"), live("replica-b", "incarnation-b"),
 	}}
-	resolver := plugins.NewRegisteredReplicaReloadResolver(current, func(_ context.Context, replica plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	resolver := services.NewRegisteredReplicaReloadResolver(current, func(_ context.Context, replica services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		return reloadClient{identity: replica.Registration.Identity, calls: &calls}, nil, nil
 	}, nil)
-	applier := &plugins.SDKConfigurationApplier{Store: configReader{revision: revision}, Registered: resolver}
-	targets := []models.PluginRolloutTarget{
+	applier := &services.SDKConfigurationApplier{Store: configReader{revision: revision}, Registered: resolver}
+	targets := []models.ServiceRolloutTarget{
 		{ReplicaID: "replica-a", IncarnationID: "incarnation-a", ReleaseSHA256: digest, LeaseExpiresAt: time.Now().UTC().Add(time.Minute)},
 		{ReplicaID: "replica-b", IncarnationID: "incarnation-b", ReleaseSHA256: digest, LeaseExpiresAt: time.Now().UTC().Add(time.Minute)},
 	}
@@ -63,7 +63,7 @@ func main() {
 	firstCalls := append([]string(nil), calls...)
 
 	calls = []string{}
-	current.replicas = []plugins.LivePluginReplica{live("replica-a", "incarnation-a"), live("replica-b", "incarnation-b")}
+	current.replicas = []services.LiveServiceReplica{live("replica-a", "incarnation-a"), live("replica-b", "incarnation-b")}
 	targets[1].Acknowledged = true
 	secondAck, secondErr := applier.ApplyConfigurationToTargets(ctx, "operation-one", revision.InstanceID, "7", raw, targets)
 	check(secondErr)
@@ -77,15 +77,15 @@ func main() {
 	}))
 }
 
-func live(replicaID, incarnationID string) plugins.LivePluginReplica {
+func live(replicaID, incarnationID string) services.LiveServiceReplica {
 	identity := sdkmodels.PeerReplicaID{InstanceID: "instance-one", ReplicaID: replicaID,
 		IncarnationID: incarnationID, PlacementID: "placement-one"}
-	return plugins.LivePluginReplica{Registration: sdkmodels.ReplicaRegistrationRequest{
+	return services.LiveServiceReplica{Registration: sdkmodels.ReplicaRegistrationRequest{
 		Identity: identity, Release: sdkmodels.ReplicaRelease{Version: "1.0.0", SHA256: digest},
 	}, LeaseExpires: time.Now().UTC().Add(time.Minute)}
 }
 
-func identities(targets []models.PluginRolloutTarget) []string {
+func identities(targets []models.ServiceRolloutTarget) []string {
 	result := make([]string, 0, len(targets))
 	for _, target := range targets {
 		result = append(result, target.ReplicaID+"/"+target.IncarnationID)

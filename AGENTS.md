@@ -4,25 +4,24 @@
 
 Core is the single-instance Core control plane and the durable source of
 desired configuration. It stores versioned JSON in SQLite, builds immutable
-in-memory snapshots, and exposes exact generations to plugins through the
-Plugin SDK REST+mTLS adapter or the explicit in-process adapter for trusted
-statically composed Go plugins. Core notifies each plugin replica with
-`Reload(generation)`; the plugin pulls that exact generation through the
+in-memory snapshots, and exposes exact generations to services through the
+Service SDK REST+mTLS adapter. Core notifies each service replica with
+`Reload(generation)`; the service pulls that exact generation through the
 selected adapter. Core does not serve public traffic or implement
-product-specific data planes; those belong to independently connected plugins.
+product-specific data planes; those belong to independently connected services.
 
 The normative architecture, public Management API, environment bootstrap, public
 error contract and Core implementation guides are owned by this repository in
 `docs/site/core/`. The VitePress aggregator publishes those files while
 preserving their public routes. The standalone
-Plugin SDK in workspace directory `plugin-sdk/` is the owner of plugin-facing
-REST lifecycle/configuration APIs and common plugin facilities; its Go module
-path is `github.com/Liapoldus/plugin-sdk/v2`. The sole owner of
-plugin-to-plugin transport and generic peer
+Service SDK in workspace directory `service-sdk/` is the owner of service-facing
+REST lifecycle/configuration APIs and common service facilities; its Go module
+path is `github.com/Liapoldus/service-sdk/v2`. The sole owner of
+service-to-service transport and generic peer
 communication is
-`/Users/docup/Projects/Liapoldus Engine/pluginprotocol`. Core may use the
-Plugin SDK REST client and trusted in-process lifecycle adapter, but must not
-import or call `pluginprotocol` for lifecycle/configuration. Do not copy
+`/Users/docup/Projects/Liapoldus Engine/wool`. Core may use the
+Service SDK REST client, but must not
+import or call `wool` for lifecycle/configuration. Do not copy
 SDK or peer protocol contracts into Core except generated/mirrored build assets
 explicitly required by the contract-publication check.
 
@@ -33,21 +32,21 @@ local process lifecycle, backup/restore, migration and remote API calls; it
 never imports Core internals or provides a second Core command dispatcher.
 Core has no user-facing command dispatcher, migration binary or database CLI.
 Runtime YAML/JSON loaders and static endpoint fallback are not supported.
-Replicas become eligible through authenticated Plugin SDK registration and active
+Replicas become eligible through authenticated Service SDK registration and active
 leases. Core does not supervise or install workloads.
 
 ## Architecture and implementation rules
 
-- Core owns generic plugin instance metadata, desired settings, authenticated
+- Core owns generic service instance metadata, desired settings, authenticated
   replica observations and leases, durable operations, Core Management access
-  and audit, and generic plugin-to-plugin peer-link policy. This is distinct
+  and audit, and generic service-to-service peer-link policy. This is distinct
   from scoped,
-  one-use secret grants: Core must expose those through the Plugin SDK REST
-  control API for opaque secret references used by a plugin's own configuration.
-  Secret grants are not plugin-to-plugin permissions and must never be added to
-  `pluginprotocol`. Keep the grant API generic and bound to the authenticated
+  one-use secret grants: Core must expose those through the Service SDK REST
+  control API for opaque secret references used by a service's own configuration.
+  Secret grants are not service-to-service permissions and must never be added to
+  `wool`. Keep the grant API generic and bound to the authenticated
   replica, exact active generation, reference and purpose. Core must not contain
-  plugin-name, capability-name, provider, or product-specific branches.
+  service-name, capability-name, provider, or product-specific branches.
 - In v3, generic caller→target peer-link policy is Core-owned desired state in
   SQLite and is authored through the authenticated Management API with CAS and
   audit. Do not put mutable policy values in bootstrap YAML or static contract
@@ -55,31 +54,30 @@ leases. Core does not supervise or install workloads.
   peer-directory long-poll; Core composes the directory but never proxies peer
   calls or interprets product contracts.
 - SQLite is the only durable Core store for desired configuration and control
-  metadata. Each plugin instance has exactly two durable configuration slots
-  that are ever published to a plugin: `active` and `previous`. A third
+  metadata. Each service instance has exactly two durable configuration slots
+  that are ever published to a service: `active` and `previous`. A third
   internal slot, `staging`, holds the validated candidate for a limited time
   so that promotion, rollback and interrupted-operation recovery are durable;
-  it is never pullable by a replica. Store plugin configurations as raw JSON
+  it is never pullable by a replica. Store service configurations as raw JSON
   BLOBs; do not decode and re-encode them. Compute the generation digest over
   the exact stored UTF-8 bytes. Core may validate JSON syntax, size, duplicate
-  keys, and a generic plugin-owned JSON Schema, but must not interpret
+  keys, and a generic service-owned JSON Schema, but must not interpret
   product-specific fields. Runtime paths use immutable in-memory snapshots and
   never read configuration files. Core exposes an exact immutable
-  JSON generation; REST plugins pull it from Core after REST `Reload(generation)`;
-  in-process plugins receive the same exact active/previous snapshot through the
-  SDK adapter. Plugins must not read application settings from
+  JSON generation; REST services pull it from Core after REST `Reload(generation)`;
+  Services must not read application settings from
   environment variables, argv, or application config files.
-- The operator owns Core/plugin binary provenance and process lifecycle in every
+- The operator owns Core/service binary provenance and process lifecycle in every
   version. Deployment tooling must not author product JSON or Core configuration generations. Core
   only connects to explicitly registered endpoints, applies state, and checks
-  health. Core must not install, start, stop, restart, scale, or delete plugin
+  health. Core must not install, start, stop, restart, scale, or delete service
   processes/containers, and must not contain release installation,
   adoption/uninstall workflows, or container-provider control. Core is not a
   certificate authority. A replica's advertised release digest is compatibility
   metadata, not Core verification of the binary's provenance.
 - `Reload(generation)`, exact-generation config retrieval and scoped secret
-  redemption use the Plugin SDK REST or in-process lifecycle adapter, not
-  `pluginprotocol`. Rollback is a
+  redemption use the Service SDK REST lifecycle adapter, not
+  `wool`. Rollback is a
   Core Management API operation that swaps `active`/`previous` and notifies
   replicas through ordinary `Reload`. After validating a candidate, promote it
   to desired `active` in the same SQLite transaction that moves former `active`
@@ -88,22 +86,21 @@ leases. Core does not supervise or install workloads.
   rollout is roll-forward: keep the promoted generation as desired, record
   per-replica acknowledgements, mark the instance degraded, and fence replicas
   that have not acknowledged that generation. Core has no background retry
-  loop; reconciliation after a Core/plugin restart may re-announce the same
-  immutable generation, relying on the Plugin SDK's idempotent Reload contract.
+  loop; reconciliation after a Core/service restart may re-announce the same
+  immutable generation, relying on the Service SDK's idempotent Reload contract.
   Do not replay a non-idempotent operation whose outcome is unknown. Secrets are never
   embedded in config JSON or returned/logged; scoped redemption uses the
-  Plugin SDK REST API.
-- `pluginprotocol` is a standalone, plugin-agnostic library for plugin-to-plugin
+  Service SDK REST API.
+- `wool` is a standalone, service-agnostic library for service-to-service
   communication only. It has no Core lifecycle/configuration methods and no
   product-specific capabilities. Its configurable physical transport must not
-  change plugin-defined application endpoints. The separate Plugin SDK is a
-  standalone Go module independent of `pluginprotocol`; all plugins use it for
+  change service-defined application endpoints. The separate Service SDK is a
+  standalone Go module independent of `wool`; all services use it for
   their common REST endpoints, configuration, health, metrics, logging, and
   error handling.
-- Keep one lifecycle contract with two explicit adapters: REST+mTLS for separate
-  processes and in-process for trusted Go composition. Both use the same
-  generation, digest, ACK, readiness and failure semantics. There is no
-  automatic fallback between adapters and no third lifecycle API.
+- Core calls Services exclusively through Service SDK REST+mTLS. Wool belongs
+  to independent service-to-service data planes. StudioPlugins are editor
+  extensions only. Control-plane clients follow Studio → CLI → Core → Service SDK.
 - `internal/domain` contains exactly `models/` and `interfaces/`; each model,
   interface, and typed error belongs to a focused subject package. Only validating
   constructors and model validation are permitted there. `internal/application`
@@ -123,8 +120,8 @@ leases. Core does not supervise or install workloads.
   private keys or grant handles.
 - Do not add product-specific runtime, API, or state to Core, or introduce
   PostgreSQL/S3. Product data planes, including HTTP/TLS and L4 servers, belong
-  exclusively to independently connected plugins; Core only manages generic
-  plugin lifecycle and desired configuration.
+  exclusively to independently connected services; Core only manages generic
+  service lifecycle and desired configuration.
 - Target macOS and Linux. Keep build, CI and operator documentation aligned
   with the approved target; preserve unrelated dirty and untracked files.
 
@@ -156,7 +153,7 @@ leases. Core does not supervise or install workloads.
   `feat(core): <concise change>`. A commit contains both tests and implementation.
 - `tests/unit/` covers deterministic public behavior through CLI/controlled
   fixtures. `tests/integration/` covers the compiled Core process, Management
-  API, SQLite recovery, filesystem state and plugin child-process behavior.
+  API, SQLite recovery, filesystem state and service child-process behavior.
 - Until the Core v2 contract is complete, contract tests fetch the canonical documentation
   contracts from `Liapoldus/liapoldus.github.io` `main`; network failure must
   fail verification rather than silently use an untracked fallback.
@@ -179,3 +176,15 @@ Code-owned models and declarations are canonical for generated OpenAPI, schemas,
 public errors and vectors. Generated public contracts are deterministic build
 artifacts. Protobuf remains the canonical wire source where applicable; do not
 add a second generator for the same protocol.
+
+## Studio configurator boundary
+
+The workspace-approved target is [`../studio/plan.md`](../studio/plan.md). Core
+may expose service-owned live manifest/schema/readiness/status and typed
+configuration/resource operations to the CLI. Treat declarative Studio UI
+metadata as opaque service-owned metadata: Core validates bounded JSON and
+authorization/ownership, but does not interpret widgets or product fields.
+Studio never calls Core directly; the path remains Studio → typed CLI → Core.
+Resources and restart-required settings must use explicit versioned Core/CLI
+operations and preserve desired/effective/applied state. Do not add Docker,
+Studio renderer, Server, or Echo product behavior to Core.

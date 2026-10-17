@@ -20,20 +20,20 @@ type Dependencies struct {
 	WriteCatalogProblem func(http.ResponseWriter, string, string)
 }
 
-type PluginDependencies struct {
+type ServiceDependencies struct {
 	Management          config.ManagementWords
 	AuditWords          config.AuditWords
-	PluginIDField       string
-	Plugins             []any
+	ServiceIDField      string
+	Services            []any
 	AdminLimits         AdminLimits
 	Operations          application.OperationService
-	PluginLinks         *application.PluginLinkPolicyService
+	ServiceLinks        *application.ServiceLinkPolicyService
 	TrafficRollouts     *application.TrafficRolloutService
 	TrafficRolloutAPI   config.TrafficRolloutAPIContract
 	ListAdminSurfaces   func(context.Context) ([]AdminSurfaceItem, error)
 	AdminSurfaceDigest  func(context.Context, string) (string, error)
-	DispatchAdmin       func(context.Context, AdminInvocation, []byte) (PluginAdminResult, error)
-	ForwardArtifact     func(context.Context, AdminInvocation, []byte, string, io.ReadCloser) (PluginAdminResult, error)
+	DispatchAdmin       func(context.Context, AdminInvocation, []byte) (ServiceAdminResult, error)
+	ForwardArtifact     func(context.Context, AdminInvocation, []byte, string, io.ReadCloser) (ServiceAdminResult, error)
 	RecordAdminOutcome  func(context.Context, string, string, string, bool) error
 	WriteJSON           func(http.ResponseWriter, int, any)
 	WriteProblem        func(http.ResponseWriter, int, string, string, string)
@@ -41,7 +41,7 @@ type PluginDependencies struct {
 	WritePage           func(http.ResponseWriter, any, *http.Request, string)
 }
 
-type PluginAdminResult struct {
+type ServiceAdminResult struct {
 	Status      int
 	ContentType string
 	Body        []byte

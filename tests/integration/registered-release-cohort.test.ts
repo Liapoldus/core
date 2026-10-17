@@ -9,7 +9,7 @@ const coreRoot = join(import.meta.dirname, "../..");
 
 describe("registered release cohort compatibility", () => {
 	it("blocks configuration activation for mixed releases without mutual contract acceptance", async () => {
-		const workspace = createGoWorkspace("core", "plugin-sdk");
+		const workspace = createGoWorkspace("core", "service-sdk");
 		try {
 			const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/registered-release-cohort"], {
 				cwd: coreRoot,

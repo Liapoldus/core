@@ -14,12 +14,12 @@ const coreRoot = join(import.meta.dirname, "../..");
 const raceEnvironment = { ...process.env, GORACE: "halt_on_error=1" };
 
 describe("race detection", () => {
-  it("applies and reads plugin configurations concurrently without a data race", async () => {
+  it("applies and reads service configurations concurrently without a data race", async () => {
     const directory = await mkdtemp(join(tmpdir(), "liapoldus-race-"));
     try {
       const result = await execFileAsync(
         "go",
-        ["run", "-race", "./tests/fixtures/plugin-config-concurrency", join(directory, "core.db")],
+        ["run", "-race", "./tests/fixtures/service-config-concurrency", join(directory, "core.db")],
         { cwd: coreRoot, timeout: 180_000, env: raceEnvironment },
       );
       expect(result.stderr).not.toContain("DATA RACE");

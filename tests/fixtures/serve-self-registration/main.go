@@ -34,8 +34,8 @@ import (
 
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/service-sdk/v2/infrastructure"
 )
 
 const (
@@ -377,7 +377,7 @@ func registrationMarkers(path string) ([]string, error) {
 		return nil, err
 	}
 	defer database.Close()
-	return storage.ListRegisteredPluginInstances(ctx, database)
+	return storage.ListRegisteredServiceInstances(ctx, database)
 }
 
 func contains(values []string, target string) bool { return count(values, target) > 0 }

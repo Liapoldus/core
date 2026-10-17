@@ -13,9 +13,9 @@ import (
 
 // ConfigBundleService is the Core-side adapter for the standalone CLI bundle
 // contract. It deliberately delegates persistence and rollout to the existing
-// plugin configuration service.
+// service configuration service.
 type ConfigBundleService struct {
-	Configurations  *PluginConfigurationService
+	Configurations  *ServiceConfigurationService
 	Operations      OperationService
 	OperationKind   string
 	Pending         string
@@ -66,10 +66,10 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 			CreatedAt: time.Now().UTC(), RequestID: requestID, Actor: actor, Resource: item.ID}
 		payload := &models.OperationPayload{Version: 1, Resource: item.ID, ExpectedRevision: expected,
 			SchemaVersion: plan.Services[index].SchemaVersion, Digest: request.Bundle.Digest}
-		// The plugin configuration service owns the durable operation and rollout.
+		// The service configuration service owns the durable operation and rollout.
 		// A service-scoped key makes retries of one bundle idempotent per item.
 		reservationKey := idempotencyKey + ":" + item.ID
-		command := ApplyPluginConfigurationCommand{
+		command := ApplyServiceConfigurationCommand{
 			InstanceID: item.ID, ExpectedRevision: expected, SchemaVersion: plan.Services[index].SchemaVersion,
 			SettingsJSON:   item.Settings,
 			CandidateAudit: models.AuditRecord{Actor: actor, Action: service.CandidateAction, Result: service.SucceededResult, RequestID: requestID},

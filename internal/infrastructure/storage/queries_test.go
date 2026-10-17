@@ -15,9 +15,10 @@ func TestCompiledQueriesPreserveSQL(t *testing.T) {
 		count   int
 		digest  string
 	}{
-		{"configuration", configurationQueries(), 51, "4f86695cec22eb62633540807e99232031ee0e6a04031dbd260a853a74908df2"},
-		{"operation", operationQueries(), 9, "b307862290234f828eee15bea13e29d038cbfb9bc707d311f61aeed14ebab3e3"},
-		{"trafficRollout", trafficRolloutQueries(), 31, "1c9708587a028a098e0554170aab6c52693d4e56274516b226bff3650c4ce05b"},
+		{"historicalConfiguration", historicalConfigurationQueries(), 51, "4f86695cec22eb62633540807e99232031ee0e6a04031dbd260a853a74908df2"},
+		{"configuration", configurationQueries(), 51, "3766c063a67928cd8355a72e583fee5edb318f47409252a34cf7e1dc782a3c24"},
+		{"operation", operationQueries(), 10, "eba1b7d3b71c5e4d150d64e11ab9a072090ac56a60e6399bd604347d71cc005f"},
+		{"trafficRollout", trafficRolloutQueries(), 31, "943263731b6b34eff7d72d716bc52e5f5e668c0f13ea4d7cefc212bb21e0adc4"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

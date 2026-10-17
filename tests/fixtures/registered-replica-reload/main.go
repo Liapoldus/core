@@ -9,17 +9,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
 )
 
 type source struct {
-	replicas []plugins.LivePluginReplica
+	replicas []services.LiveServiceReplica
 	known    bool
 }
 
-func (value source) Snapshot() []plugins.LivePluginReplica { return value.replicas }
-func (value source) HasRegisteredInstance(string) bool     { return value.known }
+func (value source) Snapshot() []services.LiveServiceReplica { return value.replicas }
+func (value source) HasRegisteredInstance(string) bool       { return value.known }
 
 type recordingClient struct {
 	id   string
@@ -39,7 +39,7 @@ func (client recordingClient) Reload(_ context.Context, request sdkmodels.Reload
 
 func main() {
 	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
-	registrations := []plugins.LivePluginReplica{
+	registrations := []services.LiveServiceReplica{
 		{Registration: notReadyRegistration("replica-b", "https://replica-b.example:9443"), LeaseExpires: now.Add(time.Minute)},
 		{Registration: registration("replica-expired", "https://expired.example:9443"), LeaseExpires: now.Add(-time.Second)},
 		{Registration: registration("replica-a", "https://replica-a.example:9443"), LeaseExpires: now.Add(time.Minute)},
@@ -47,9 +47,9 @@ func main() {
 	var mu sync.Mutex
 	called := make([]string, 0, 2)
 	released := 0
-	resolver := plugins.NewRegisteredReplicaReloadResolver(source{replicas: registrations}, func(_ context.Context, replica plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	resolver := services.NewRegisteredReplicaReloadResolver(source{replicas: registrations}, func(_ context.Context, replica services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		if replica.Registration.RestEndpoint == "https://bad.example:9443" {
-			return nil, nil, plugins.ErrPluginUnavailable
+			return nil, nil, services.ErrServiceUnavailable
 		}
 		return recordingClient{id: replica.Registration.Identity.ReplicaID, mu: &mu, seen: &called}, func() { released++ }, nil
 	}, func() time.Time { return now })
@@ -57,7 +57,7 @@ func main() {
 	if err != nil || !found {
 		panic("registered replicas did not resolve")
 	}
-	fanout, ok := client.(*plugins.SDKReloadFanout)
+	fanout, ok := client.(*services.SDKReloadFanout)
 	if !ok {
 		panic("registered replicas did not produce a fanout")
 	}
@@ -74,22 +74,22 @@ func main() {
 	}
 	sort.Strings(called)
 
-	emptyResolver := plugins.NewRegisteredReplicaReloadResolver(source{}, func(context.Context, plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	emptyResolver := services.NewRegisteredReplicaReloadResolver(source{}, func(context.Context, services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		return nil, nil, errors.New("must not build")
 	}, func() time.Time { return now })
 	_, _, emptyFound, emptyErr := emptyResolver.Resolve(context.Background(), "forms")
-	expiredResolver := plugins.NewRegisteredReplicaReloadResolver(source{replicas: registrations, known: true}, func(context.Context, plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	expiredResolver := services.NewRegisteredReplicaReloadResolver(source{replicas: registrations, known: true}, func(context.Context, services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		return nil, nil, errors.New("must not build")
 	}, func() time.Time { return now.Add(2 * time.Minute) })
 	_, _, expiredFound, expiredErr := expiredResolver.Resolve(context.Background(), "forms")
 
 	partialClosed := 0
-	badResolver := plugins.NewRegisteredReplicaReloadResolver(source{replicas: []plugins.LivePluginReplica{
+	badResolver := services.NewRegisteredReplicaReloadResolver(source{replicas: []services.LiveServiceReplica{
 		{Registration: registration("replica-good", "https://good.example:9443"), LeaseExpires: now.Add(time.Minute)},
 		{Registration: registration("replica-zbad", "https://bad.example:9443"), LeaseExpires: now.Add(time.Minute)},
-	}}, func(_ context.Context, replica plugins.LivePluginReplica) (plugins.SDKReloadClient, func(), error) {
+	}}, func(_ context.Context, replica services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		if replica.Registration.RestEndpoint == "https://bad.example:9443" {
-			return nil, nil, plugins.ErrPluginUnavailable
+			return nil, nil, services.ErrServiceUnavailable
 		}
 		return recordingClient{id: replica.Registration.Identity.ReplicaID, mu: &mu, seen: &called}, func() { partialClosed++ }, nil
 	}, func() time.Time { return now })
@@ -98,8 +98,8 @@ func main() {
 	result := map[string]any{
 		"found": found, "replicaIDs": replicaIDs, "called": called, "released": released,
 		"emptyDirectoryUsesStatic":           emptyFound || emptyErr != nil,
-		"expiredInstanceFenced":              expiredFound && errors.Is(expiredErr, plugins.ErrPluginUnavailable),
-		"invalidMemberRejectedWholeSnapshot": badFound && errors.Is(badErr, plugins.ErrPluginUnavailable),
+		"expiredInstanceFenced":              expiredFound && errors.Is(expiredErr, services.ErrServiceUnavailable),
+		"invalidMemberRejectedWholeSnapshot": badFound && errors.Is(badErr, services.ErrServiceUnavailable),
 		"closedPartialClients":               partialClosed,
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {

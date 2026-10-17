@@ -41,7 +41,7 @@ func ReadSecretReference(bootstrapPath, reference string, maximumBytes int64) ([
 	return contents, nil
 }
 
-// ValidateJSONSchemaDocument applies a plugin-owned JSON Schema to an opaque
+// ValidateJSONSchemaDocument applies a service-owned JSON Schema to an opaque
 // JSON document without decoding it into a Core product model.
 func ValidateJSONSchemaDocument(document, schemaContents []byte) error {
 	var instance any

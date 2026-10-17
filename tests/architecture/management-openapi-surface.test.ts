@@ -16,24 +16,27 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const implementedOperations = [
   "GET /healthz",
   "GET /api/status",
-  "GET /api/plugins",
-  "GET /api/plugins/{pluginId}",
-  "GET /api/plugins/{pluginId}/manifest",
-  "GET /api/plugins/{pluginId}/schema",
-  "GET /api/plugins/{pluginId}/settings",
-  "GET /api/plugins/{pluginId}/status",
-  "PUT /api/plugins/{pluginId}/settings",
-  "POST /api/plugins/{pluginId}/rollback",
-  "GET /api/plugin-links",
-  "POST /api/plugin-links",
-  "GET /api/plugin-links/{callerInstanceId}/{targetInstanceId}",
-  "PUT /api/plugin-links/{callerInstanceId}/{targetInstanceId}",
-  "DELETE /api/plugin-links/{callerInstanceId}/{targetInstanceId}",
-  "GET /api/plugins/admin-surfaces",
-  "POST /api/plugins/{pluginId}/admin/pages/{page}/query",
-  "POST /api/plugins/{pluginId}/admin/pages/{page}/actions/{action}",
-  "POST /api/plugins/{pluginId}/replicas/register",
+  "GET /api/v2/settings",
+  "PUT /api/v2/settings",
+  "GET /api/services",
+  "GET /api/services/{serviceId}",
+  "GET /api/services/{serviceId}/manifest",
+  "GET /api/services/{serviceId}/schema",
+  "GET /api/services/{serviceId}/settings",
+  "GET /api/services/{serviceId}/status",
+  "PUT /api/services/{serviceId}/settings",
+  "POST /api/services/{serviceId}/rollback",
+  "GET /api/service-links",
+  "POST /api/service-links",
+  "GET /api/service-links/{callerInstanceId}/{targetInstanceId}",
+  "PUT /api/service-links/{callerInstanceId}/{targetInstanceId}",
+  "DELETE /api/service-links/{callerInstanceId}/{targetInstanceId}",
+  "GET /api/services/admin-surfaces",
+  "POST /api/services/{serviceId}/admin/pages/{page}/query",
+  "POST /api/services/{serviceId}/admin/pages/{page}/actions/{action}",
+  "POST /api/services/{serviceId}/replicas/register",
   "GET /api/operations/{operationId}",
+  "POST /api/operations/resolve",
   "GET /api/audit",
   "GET /api/access/service-keys",
   "POST /api/access/service-keys",
@@ -75,16 +78,17 @@ describe("published Management OpenAPI surface", () => {
   it("advertises no v1-forbidden registration or lifecycle operation", async () => {
     const yaml = await readFile(join(root, "contracts/v1/management.openapi.yaml"), "utf8");
     const forbidden = [
-      "POST /api/plugins",
-      "PUT /api/plugins/{pluginId}",
-      "DELETE /api/plugins/{pluginId}",
+      "POST /api/services",
+      "PUT /api/services/{serviceId}",
+      "DELETE /api/services/{serviceId}",
     ];
     for (const operation of forbidden) {
       expect(declaredOperations(yaml), operation).not.toContain(operation);
     }
-    for (const word of ["supervised", "supervise", "install", "uninstall", "restart", "scale", "release reference"]) {
-      expect(yaml, word).not.toContain(word);
+    for (const operation of declaredOperations(yaml)) {
+      expect(operation).not.toMatch(/\/(?:restart|install|uninstall|supervise|scale)(?:\/|$)/);
     }
+    expect(yaml).not.toContain("release reference");
   });
 
   it("keeps every component $ref resolvable and every component used", async () => {
@@ -117,20 +121,32 @@ describe("published Management OpenAPI surface", () => {
     // than by an explicit $ref, so only data components must be referenced.
     for (const component of defined) {
       if (component.startsWith("securitySchemes/")) continue;
-      if (component === "responses/InternalError" || component === "responses/PluginCallFailed") continue;
+      if (component === "responses/InternalError" || component === "responses/ServiceCallFailed") continue;
       expect(referenced, `unused component ${component}`).toContain(component);
     }
   });
 
-  it("routes plugin Admin Surface listing at the dispatched path", async () => {
+  it("routes service Admin Surface listing at the dispatched path", async () => {
     const [yaml, fields, source] = await Promise.all([
       readFile(join(root, "contracts/v1/management.openapi.yaml"), "utf8"),
       readFile(join(root, "assets/contracts/management-fields.yaml"), "utf8"),
       readGoPackageSources(root, "internal/presentation/api"),
     ]);
-    expect(fields).toContain("adminSurfaces: /api/plugins/admin-surfaces");
-    expect(yaml).toContain("  /api/plugins/admin-surfaces:");
+    expect(fields).toContain("adminSurfaces: /api/services/admin-surfaces");
+    expect(yaml).toContain("  /api/services/admin-surfaces:");
     expect(yaml).not.toContain("/admin/surface");
     expect(source).toContain("AdminSurfaceList");
+  });
+
+  it("publishes the Core-owned settings CAS boundary", async () => {
+    const yaml = await readFile(join(root, "contracts/v1/management.openapi.yaml"), "utf8");
+    const path = yaml.split("  /api/v2/settings:")[1]?.split("\n  /")[0] ?? "";
+
+    expect(path).toContain("operationId: getCoreSettings");
+    expect(path).toContain("operationId: updateCoreSettings");
+    expect(path).toContain("IfMatch");
+    expect(path).toContain("CoreSettingsSnapshot");
+    expect(path).toContain("CoreSettingsInput");
+    expect(path).toContain("PreconditionFailed");
   });
 });

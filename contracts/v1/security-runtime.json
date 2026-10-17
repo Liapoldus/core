@@ -10,21 +10,21 @@
     "roles": ["platform-admin"],
     "userAuthorization": "Core v1 has no human user or role database; an external management backend may authenticate users before calling Core. Core authenticates and audits only the authenticated client binding principal.",
     "rawKey": "Service key plaintext is returned once during create/rotate; only a verifier/hash is persisted.",
-    "trustRoots": "Management client trust roots and plugin workload trust roots MUST be distinct.",
+    "trustRoots": "Management client trust roots and service workload trust roots MUST be distinct.",
     "health": "Unauthenticated health endpoint exposes process health only and no configuration or runtime inventory."
   },
-  "plugins": {
-    "local": "Core supervises a plugin process on an assigned loopback endpoint.",
-    "remote": "A stable Service endpoint uses TLS/mTLS; each externally issued workload-replica identity maps to one logical plugin instance.",
-    "clientIdentities": "Remote Core control RPCs and plugin data-plane Call/Stream use distinct workload client identities and scopes; the plugin rejects RPCs outside the identity scope.",
+  "services": {
+    "local": "Core supervises a service process on an assigned loopback endpoint.",
+    "remote": "A stable Service endpoint uses TLS/mTLS; each externally issued workload-replica identity maps to one logical service instance.",
+    "clientIdentities": "Remote Core control RPCs and service data-plane Call/Stream use distinct workload client identities and scopes; the service rejects RPCs outside the identity scope.",
     "replicas": "Ready replicas share protocol, release, Manifest and settings digests; every new gRPC connection repeats TLS validation and handshake.",
     "recovery": "Core reconnects without replaying a unary Call with unknown outcome; an interrupted Stream closes and is not migrated to another replica.",
-    "degradedMode": "An unavailable plugin degrades only its bound routes; unrelated routes remain available.",
-    "dataPath": "Connected data-plane plugins handle user traffic directly; Core Management API never proxies user request bodies.",
-    "grantBroker": "Only a narrow plugin-to-Core scoped-secret redemption callback is permitted; it does not proxy client traffic.",
+    "degradedMode": "An unavailable service degrades only its bound routes; unrelated routes remain available.",
+    "dataPath": "Connected data-plane services handle user traffic directly; Core Management API never proxies user request bodies.",
+    "grantBroker": "Only a narrow service-to-Core scoped-secret redemption callback is permitted; it does not proxy client traffic.",
     "coreCa": false,
     "downgrade": false,
-    "pluginToPluginTraffic": false,
+    "serviceToServiceTraffic": false,
     "managementApiInUserRequestPath": false,
     "rotation": "External CA rotation uses credential replacement and rolling restart; rejected/revoked certificates fail closed."
   },
@@ -36,7 +36,7 @@
   },
   "storage": {
     "database": "SQLite on local filesystem; network filesystem database mounts are unsupported.",
-    "artifactStore": "Plugin-owned runtime files remain outside Core; plugin settings and revisions are stored in SQLite.",
+    "artifactStore": "Service-owned runtime files remain outside Core; service settings and revisions are stored in SQLite.",
     "runtime": "Active configuration is hydrated into an immutable in-memory snapshot; user request paths do not read SQLite or config files.",
     "secretValuesInDatabase": false
   }

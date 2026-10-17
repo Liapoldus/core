@@ -16,9 +16,9 @@ export async function initializeCore(_binary: string, directory: string, managem
   const replicaServerCA = join(directory, "replica-server-ca.crt");
   await Promise.all([
     execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1", "-keyout", privateKey, "-out", certificate]),
-    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=plugin-control", "-keyout", controlKey, "-out", controlCertificate]),
-    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=plugin-replica-ca", "-keyout", join(directory, "replica-client-ca.key"), "-out", replicaClientCA]),
-    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=plugin-replica-server-ca", "-keyout", join(directory, "replica-server-ca.key"), "-out", replicaServerCA]),
+    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=service-control", "-keyout", controlKey, "-out", controlCertificate]),
+    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=service-replica-ca", "-keyout", join(directory, "replica-client-ca.key"), "-out", replicaClientCA]),
+    execFileAsync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=service-replica-server-ca", "-keyout", join(directory, "replica-server-ca.key"), "-out", replicaServerCA]),
   ]);
   const environment: NodeJS.ProcessEnv = {
     ...process.env,

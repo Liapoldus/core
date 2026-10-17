@@ -2,15 +2,15 @@
 
 Core читает при запуске только bootstrap-переменную `CORE_SQLITE_PATH` и уже
 инициализированные настройки из SQLite. Environment не создаёт и не
-переопределяет сохранённые значения. Plugin settings изменяются через
+переопределяет сохранённые значения. Service settings изменяются через
 Management API с CAS/ETag и audit.
 
 | Документ | Назначение |
 | --- | --- |
 | [Bootstrap и запуск](bootstrap) | SQLite state и источник настроек при старте. |
-| [Plugin configuration API](/core/api/config) | CAS, versioned JSON, REST Reload/config pull и operation lifecycle. |
+| [Service configuration API](/core/api/config) | CAS, versioned JSON, REST Reload/config pull и operation lifecycle. |
 | [Config bundles](/core/api/config-bundles) | API-only доставка Git revision из standalone CLI. |
 | [Безопасность](security) | Раздельные REST и peer-network identities, grants и redaction. |
-| [Транспорты](transports) | Трафик, который обслуживает отдельный Server plugin. |
+| [Транспорты](transports) | Трафик, который обслуживает отдельный Server service. |
 | [Каталог ошибок](errors) | Публичные safe errors и problem response. |
 | [Архитектура](../architecture/target) | Единственная каноническая модель состояния и владения. |

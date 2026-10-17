@@ -1,0 +1,30 @@
+package services
+
+import (
+	"context"
+	"strconv"
+
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+)
+
+// SDKReplicaReadinessClient reports the exact generation applied by one
+// authenticated replica.
+type SDKReplicaReadinessClient interface {
+	Readiness(context.Context) (sdkmodels.Readiness, error)
+}
+
+func readinessMatches(readiness sdkmodels.Readiness, instanceID, replicaID string, active models.ServiceConfigurationRevision) bool {
+	return readiness.Ready &&
+		readiness.Generation == strconv.FormatInt(active.Revision, 10) &&
+		readiness.SHA256 == active.Digest &&
+		readiness.SchemaVersion == strconv.FormatInt(active.SchemaVersion, 10) &&
+		readiness.InstanceID == instanceID &&
+		readiness.ReplicaID == replicaID
+}
+
+func (applier *SDKConfigurationApplier) recordOutcome(ctx context.Context, instanceID, replicaID, incarnationID string, generation int64, acknowledged, unreachable bool) {
+	if applier.Observations != nil {
+		applier.Observations.RecordReplicaObservation(ctx, instanceID, replicaID, incarnationID, generation, acknowledged, unreachable)
+	}
+}

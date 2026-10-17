@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Liapoldus/core/v3/internal/infrastructure/plugins"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/v3/internal/runtime"
-	sdkmodels "github.com/Liapoldus/plugin-sdk/v2/domain/models"
-	sdkinfrastructure "github.com/Liapoldus/plugin-sdk/v2/infrastructure"
+	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
+	sdkinfrastructure "github.com/Liapoldus/service-sdk/v2/infrastructure"
 )
 
 func main() {
@@ -36,12 +36,12 @@ func main() {
 		AdvertisedContracts: []sdkmodels.ContractVersion{},
 		AcceptedContracts:   []sdkmodels.ContractRange{},
 	}
-	firstDirectory, err := plugins.NewPluginReplicaDirectory(lifecycle, nil)
+	firstDirectory, err := services.NewServiceReplicaDirectory(lifecycle, nil)
 	check(err)
 	database, err := runtime.OpenDatabase(ctx, statePath)
 	check(err)
 	_, err = firstDirectory.RegisterAndPersist(ctx, registration, certificate, func(ctx context.Context, registration sdkmodels.ReplicaRegistrationRequest) error {
-		return storage.RegisterPluginInstanceReplica(ctx, database, registration.Identity.InstanceID,
+		return storage.RegisterServiceInstanceReplica(ctx, database, registration.Identity.InstanceID,
 			registration.Identity.ReplicaID, []byte("{}"), "configured", storage.ReplicaObservedPending, "2026-10-06T00:00:00Z")
 	})
 	check(err)
@@ -49,15 +49,15 @@ func main() {
 
 	database, err = runtime.OpenDatabase(ctx, statePath)
 	check(err)
-	registeredInstances, err := storage.ListRegisteredPluginInstances(ctx, database)
+	registeredInstances, err := storage.ListRegisteredServiceInstances(ctx, database)
 	check(err)
 	check(database.Close())
 
-	restartedDirectory, err := plugins.NewPluginReplicaDirectory(lifecycle, nil)
+	restartedDirectory, err := services.NewServiceReplicaDirectory(lifecycle, nil)
 	check(err)
 	restartedDirectory.MarkRegisteredInstances(registeredInstances)
 	_, registeredAdmitted := restartedDirectory.Resolve(certificate)
-	staticAllowed := certificateFor("spiffe://liapoldus/plugin/static-forms/replica-a/inc-a")
+	staticAllowed := certificateFor("spiffe://liapoldus/service/static-forms/replica-a/inc-a")
 	_, staticAdmitted := restartedDirectory.Resolve(staticAllowed)
 
 	check(json.NewEncoder(os.Stdout).Encode(map[string]bool{

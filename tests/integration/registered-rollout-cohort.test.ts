@@ -12,7 +12,7 @@ const coreRoot = join(import.meta.dirname, "../..");
 describe("registered replica rollout cohort", () => {
 	it("rolls back through a durable exact-incarnation cohort and recovers partial ACK", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "liapoldus-rollout-rollback-"));
-		const workspace = createGoWorkspace("core", "plugin-sdk");
+		const workspace = createGoWorkspace("core", "service-sdk");
 		const database = join(directory, "core.db");
 		try {
 			const { stdout: begin } = await execFileAsync("go", ["run", "./tests/fixtures/registered-rollout-cohort", database, "rollback-begin"], {
@@ -46,7 +46,7 @@ describe("registered replica rollout cohort", () => {
 
 	it("recovers against the frozen replica incarnation set without admitting a replacement", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "liapoldus-rollout-cohort-"));
-		const workspace = createGoWorkspace("core", "plugin-sdk");
+		const workspace = createGoWorkspace("core", "service-sdk");
 		const database = join(directory, "core.db");
 		try {
 			const { stdout: begin } = await execFileAsync("go", ["run", "./tests/fixtures/registered-rollout-cohort", database, "begin"], {
@@ -90,7 +90,7 @@ describe("registered replica rollout cohort", () => {
 	}, 45_000);
 
 	it("reloads only exact frozen incarnations and does not replay acknowledged replicas", async () => {
-		const workspace = createGoWorkspace("core", "plugin-sdk");
+		const workspace = createGoWorkspace("core", "service-sdk");
 		try {
 		const { stdout } = await execFileAsync("go", ["run", "./tests/fixtures/registered-rollout-exact-dispatch"], {
 			cwd: coreRoot,

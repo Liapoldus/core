@@ -6,14 +6,14 @@ import { createGoWorkspace, missingWorkspaceRepositories, workspaceRoot } from "
 
 const execFileAsync = promisify(execFile);
 const coreRoot = fileURLToPath(new URL("../..", import.meta.url));
-const missing = missingWorkspaceRepositories("plugin-sdk", "pluginprotocol", "plugins/domain", "plugins/runtime");
+const missing = missingWorkspaceRepositories("service-sdk", "wool", "services/domain", "services/runtime");
 
 describe.skipIf(missing.length > 0)("real Core -> SDK -> Domain data plane", () => {
-  it("applies Core-owned settings and enforces Domain grants through Runtime over authenticated pluginprotocol", async () => {
-    const workspace = createGoWorkspace("core", "plugin-sdk", "pluginprotocol", "plugins/domain", "plugins/runtime");
+  it("applies Core-owned settings and enforces Domain grants through Runtime over authenticated wool", async () => {
+    const workspace = createGoWorkspace("core", "service-sdk", "wool", "services/domain", "services/runtime");
     try {
       const result = await execFileAsync("go", [
-        "run", "./tests/fixtures/serve-domain", `${workspaceRoot()}/plugins/domain`, `${workspaceRoot()}/plugins/runtime`,
+        "run", "./tests/fixtures/serve-domain", `${workspaceRoot()}/services/domain`, `${workspaceRoot()}/services/runtime`,
       ], {
         cwd: coreRoot,
         encoding: "utf8",
@@ -45,7 +45,7 @@ describe.skipIf(missing.length > 0)("real Core -> SDK -> Domain data plane", () 
         runtimeGrantDenied: true,
         runtimeCoreGrantApplied: true,
         runtimeWriteAccepted: true,
-        runtimeWriteVisibleToOtherPlugin: true,
+        runtimeWriteVisibleToOtherService: true,
         runtimeEntityNarrowingDenied: true,
         runtimeMethodNarrowingDenied: true,
         domainRestartLostVolatileData: true,

@@ -12,7 +12,7 @@ const coreRoot = join(import.meta.dirname, "../..");
 describe("registered release cohort configuration activation", () => {
 	it("preserves both published generations and clears staging when the release gate rejects", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "liapoldus-release-cohort-activation-"));
-		const workspace = createGoWorkspace("core", "plugin-sdk");
+		const workspace = createGoWorkspace("core", "service-sdk");
 		try {
 			const { stdout } = await execFileAsync(
 				"go",
@@ -21,13 +21,13 @@ describe("registered release cohort configuration activation", () => {
 			);
 			expect(JSON.parse(stdout)).toEqual({
 				operationState: "failed",
-				operationErrorCode: "plugin_revision_conflict",
+				operationErrorCode: "service_revision_conflict",
 				activeGeneration: 2,
 				activeRaw: '{ "release" : "stable" }\n',
 				previousGeneration: 1,
 				previousRaw: '{\n  "release" : "older"\n}\n',
 				stagingPresent: false,
-				pluginApplyCalls: 0,
+				serviceApplyCalls: 0,
 			});
 		} finally {
 			workspace.cleanup();

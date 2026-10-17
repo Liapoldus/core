@@ -18,10 +18,10 @@ describe("Core v2 traffic rollout contract", () => {
 
 	it("separates platform-admin rollout authoring from the mTLS controller surface", async () => {
 		const openapi = await readFile(join(root, "contracts/v2/traffic-rollout.openapi.yaml"), "utf8");
-		expect(openapi).toContain("/api/plugins/{pluginId}/rollouts:");
+		expect(openapi).toContain("/api/services/{serviceId}/rollouts:");
 		expect(openapi).toContain("/internal/v2/traffic-rollouts:");
 		expect(openapi).toContain("/internal/v2/traffic-rollouts/{rolloutId}/confirmation:");
-		expect(openapi).toContain("/api/plugins/{pluginId}/rollouts/{rolloutId}/stages/{stageId}/approve:");
+		expect(openapi).toContain("/api/services/{serviceId}/rollouts/{rolloutId}/stages/{stageId}/approve:");
 		expect(openapi).toContain("type: mutualTLS");
 		expect(openapi).toContain("PlatformAdminBearer");
 		expect(openapi).toContain("TrafficControllerMTLS");
@@ -35,8 +35,8 @@ describe("Core v2 traffic rollout contract", () => {
 	it("keeps the immediate settings endpoint distinct from staged traffic rollout", async () => {
 		const fields = await readFile(join(root, "assets/contracts/management-fields.yaml"), "utf8");
 		const openapi = await readFile(join(root, "contracts/v2/traffic-rollout.openapi.yaml"), "utf8");
-		expect(fields).toContain("pluginSettingsSuffix: /settings");
-		expect(openapi).toContain("/api/plugins/{pluginId}/rollouts:");
+		expect(fields).toContain("serviceSettingsSuffix: /settings");
+		expect(openapi).toContain("/api/services/{serviceId}/rollouts:");
 		expect(openapi).toContain("configuration:");
 		expect(openapi).toContain("format: binary");
 	});

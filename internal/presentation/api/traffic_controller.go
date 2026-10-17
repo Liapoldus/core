@@ -127,9 +127,9 @@ func NewTrafficControllerHandler(service *application.TrafficRolloutService, all
 			case errors.As(err, &idempotencyConflict):
 				code = management.Codes.IdempotencyConflict
 			case errors.As(err, &rolloutConflict):
-				code = management.Codes.PluginRevisionConflict
+				code = management.Codes.ServiceRevisionConflict
 			case errors.As(err, &notFound):
-				code = management.Codes.PluginNotFound
+				code = management.Codes.ServiceNotFound
 			case errors.As(err, &invalid):
 				code = management.Codes.InvalidRequest
 			}
@@ -244,7 +244,7 @@ func controllerIntents(records []models.TrafficRolloutRecord, fields config.Traf
 		}
 		intent := map[string]any{
 			fields.ID:               record.ID,
-			fields.PluginID:         record.InstanceID,
+			fields.ServiceID:        record.InstanceID,
 			fields.ActiveGeneration: record.Generation,
 			fields.Revision:         record.Revision,
 			fields.ReleaseSHA256:    record.ReleaseSHA256,

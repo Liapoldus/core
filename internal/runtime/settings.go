@@ -66,7 +66,7 @@ func initialSettings() (config.Settings, error) {
 		Management: config.ManagementSettings{Listen: value("MANAGEMENT_LISTEN", "127.0.0.1:8080"),
 			TLS:          config.TLSReferences{Certificate: value("MANAGEMENT_CERTIFICATE", ""), Key: value("MANAGEMENT_KEY", ""), ClientCA: value("MANAGEMENT_CLIENT_CA", "")},
 			MaxBodyBytes: 1048576, HeaderTimeout: value("HEADER_TIMEOUT", "5s"), RequestTimeout: value("REQUEST_TIMEOUT", "30s")},
-		PluginControl: config.ControlSettings{Listen: value("CONTROL_LISTEN", "127.0.0.1:8081"), PublicURL: value("CONTROL_PUBLIC_URL", "https://localhost:8081"),
+		ServiceControl: config.ControlSettings{Listen: value("CONTROL_LISTEN", "127.0.0.1:8081"), PublicURL: value("CONTROL_PUBLIC_URL", "https://localhost:8081"),
 			TLS:             config.TLSReferences{Certificate: value("CONTROL_CERTIFICATE", ""), Key: value("CONTROL_KEY", "")},
 			ReplicaClientCA: value("REPLICA_CLIENT_CA", ""), ReplicaServerCA: value("REPLICA_SERVER_CA", ""),
 			ReplicaClientCRLs: filepath.SplitList(value("REPLICA_CLIENT_CRLS", "")), ReplicaServerCRLs: filepath.SplitList(value("REPLICA_SERVER_CRLS", ""))},

@@ -1,5 +1,131 @@
 # Core v3 — production readiness
 
+## Operator service-secret reference catalog — 2026-10-17
+
+- Studio plan now defines safe metadata ownership: CLI vault owns secret values;
+  Core stores opaque reference ID, service ID, SDK purpose, label, lifecycle
+  state and server creation time only. Core must enforce the exact service and
+  purpose again when issuing the existing generation-bound SDK grant.
+- Added the Core domain metadata model and focused validation tests. The model
+  rejects paths as IDs, malformed opaque IDs, unsafe service/purpose values,
+  control characters in labels and unknown lifecycle states. Focused model
+  test passes. No storage/API/SDK grant enforcement is wired yet; the next
+  complete Core increment is SQLite migration + idempotent register/list/revoke
+  use case + grant authorization and Management API tests. No Core process or
+  database was opened/changed.
+
+## Nomenclature migration regression — 2026-10-16
+
+- Full `GOWORK=off go test ./...` initially caught
+  `TestSchemaPreservesMigrationHistory`: migration edits had changed two SQL
+  comments inside the immutable historical `SchemaSQL` baseline. Restored those
+  original comment bytes instead of weakening the digest guard. Targeted storage
+  tests and the full Core Go suite now pass. New service-table naming remains
+  owned by its versioned migration; historical schema bytes stay unchanged.
+
+## Studio configurator Core boundary — 2026-10-13
+
+Scope: [`../studio/plan.md`](../studio/plan.md). Core owns only generic service
+metadata, desired configuration generations, peer-link policy, typed operations
+and explicit resource/restart state. Service-specific fields and UI descriptors
+remain opaque; no Studio renderer or product behavior belongs in Core.
+
+- [x] Local code includes Core-backed service manifest/schema/status reads and
+  a safe service-replica registration boundary; prior workspace snapshot reports
+  Core/SDK process smoke, but this inventory did not rerun those tests.
+- [x] Core now matches CLI artifact ID/version/digest and control endpoint to the
+  exact live authenticated SDK replica release/REST registration before accepting
+  runtime registration; advertised peer endpoints are checked when present.
+  The SDK release digest is explicitly treated as a replica claim, not proof of
+  binary provenance. Live manifest identity/version is checked before the CLI
+  registration reports success.
+- [x] Management service status now returns instance/replica identity and the
+  artifact ID/version/digest from the authenticated replica release alongside
+  live identity/readiness metadata. Handler tests reject missing release
+  provenance; Studio can fence manifest/schema reads against the selected
+  Project artifact and detect replica/release changes. This binds reported
+  metadata to Core's authenticated registration claim, not to measured binary
+  bytes or cryptographic runtime attestation.
+- [x] `GET /api/operations/{id}` now returns safe `replicaOutcomes` for durable
+  configuration rollouts (replica ID, desired generation, pending/applied/failed
+  and catalog error code only). The CLI operation client preserves the Core
+  response, and Studio Output renders validated per-replica results; no replica
+  endpoint, incarnation, settings payload or credentials enter the renderer.
+- [x] `OperationReplicaOutcomeReader` расположен в отдельном domain-interface
+  файле, сохраняя owner-правило одного объявления типа на файл. Полный Core
+  Vitest suite прошёл 158/158 тестов; Go tests прошли после перестановки файла.
+- [x] Metadata resolution now snapshots every currently leased replica's
+  authenticated release claim in deterministic replica-ID order and fails
+  closed when live version/digest claims are mixed. The Management status
+  response carries the complete release set; handler tests reject inconsistent
+  sets. SDK manifest/schema are fetched only after homogeneous release claims
+  are established. This is a rollout consistency barrier, not binary attestation.
+- [x] Manual Core→Server→forms-db smoke fixture now uses the current
+  `server-http/v1` route contract (no route matcher alongside API path, matching
+  methods, and typed request-body schema). `forms-db` accepts the additive opaque
+  `parameters` member from Server's HTTP envelope while still decoding only the
+  original body. `core/tests/integration/manual-core-server.test.ts` passed after
+  reproducing and fixing the regression.
+- [x] Revalidate the Core→Service SDK live metadata adapter after the local
+  nomenclature changes. `TestCoreReadsLiveMetadataThroughServiceSDKRESTOverMTLS`
+  uses the real SDK client and HTTP contract against an mTLS service endpoint;
+  Core reads live manifest, configuration schema, identity and readiness from
+  SDK-declared routes and pins the service URI identity.
+- [x] Core child-process metadata acceptance now starts real Core, admits a
+  Service replica over mTLS, and serves contract-fixture REST metadata from the
+  authenticated endpoint. Management API manifest/schema/status results match
+  the live responses, including an opaque `service-configuration-ui/v1`
+  descriptor nested in the manifest. Focused child-process test passed
+  2026-10-15. This proves Core process wiring and Core→SDK-client transport,
+  not the production Service SDK handler implementation.
+- [~] The full typed CLI→Core→Service SDK child-process path, including CLI
+  registration and configuration apply, remains open. The direct
+  CLI→Service REST path remains forbidden.
+- [x] Relay the versioned configuration-UI descriptor unchanged inside the
+  bounded service-owned manifest. Management API rejects metadata above 256 KiB
+  and non-object JSON without interpreting widget semantics; handler tests cover
+  opaque descriptor pass-through, over-limit documents and invalid root types.
+- [ ] Define/verify typed resource publish and restart-required settings
+  operations; preserve desired/effective revisions, approvals, recovery and
+  replica applied-generation state.
+- [x] Publish the implemented operator-only `GET/PUT /api/v2/settings` CAS
+  boundary in Management OpenAPI, including desired/effective revisions and the
+  restart-required state. Focused OpenAPI/router parity suite passes. This only
+  closes contract discoverability; CLI typed update, Studio form, restart and
+  recovery workflows remain open.
+- [~] 2026-10-16 focused Core artifact-forwarding acceptance:
+  `npm test -- --run integration/service-artifact-forwarding.test.ts` passes.
+  It proves authorization, byte/metadata bounds, streaming, operation binding,
+  idempotency enforcement and no filename forwarding for one service artifact
+  action. It does not close the typed CLI→Core→SDK publish lifecycle, durable
+  Project resource reference, operation recovery, restart-required settings or
+  replica desired/effective-generation outcomes above.
+- [~] Metadata size/root-type and opaque UI pass-through tests now pass. Add
+  service ownership/authorization integration coverage and resource operation
+  recovery/Core restart outcome tests; coordinate public contract changes with
+  `cli/` and `service-sdk/` owners.
+- [~] Local `PATH=<bundled-node>/bin:$PATH GOWORK=off GOFLAGS=-p=1
+  LIAPOLDUS_DOCS_USE_WORKTREE=1 make check`, `go vet ./...`,
+  `make staticcheck-u1000` and Docker architecture lint pass. The new live SDK
+  metadata mTLS adapter test passes. Published-contract parity,
+  authorization/ownership coverage, resource operation recovery and the Studio
+  → CLI → Core → SDK child-process scenario remain open. Do not call the
+  broader Core v3 production gates complete from this Studio-specific work.
+- [x] Повторная локальная проверка 2026-10-14: с `GOTOOLCHAIN=go1.26.0`,
+  `GOFLAGS=-p=1`, bundled Node и `LIAPOLDUS_DOCS_USE_WORKTREE=1` прошли
+  `make build test typecheck lint` (96 Vitest-файлов прошли, 1 skipped,
+  158 тестов passed). Изолированный `integration/manual-core-server.test.ts`
+  прошёл отдельно за 76.81 с; в одном предыдущем полном запуске та же проверка
+  дала отказ revoked-replica assertion, который не воспроизвёлся ни в
+  изолированном повторе, ни в полном suite. Root cause пока не найден, поэтому
+  это отмечено как наблюдавшаяся нестабильность, а не как исправленный дефект.
+- [x] 2026-10-15: manual Core/Server/forms-db recovery poll теперь пережидает
+  временный `ECONNREFUSED` при повторном поднятии HTTP listener наряду с
+  bounded HTTP 503 retries. До исправления full `make check` падал на
+  `/forms/list` сразу после restart; целевой `manual-core-server.test.ts`
+  прошёл (1/1, 92.23 с), а полный Core gate затем прошёл: 96 Vitest-файлов,
+  158 тестов, typecheck, lint и architecture lint.
+
 ## Завершённый breaking cutover
 
 - [x] V2 bootstrap cutover: Core читает уже инициализированный SQLite state и
@@ -53,12 +179,12 @@
 
 - Продолжить инфраструктуру Ansible в отдельном репозитории; продуктовые
   репозитории и Studio не зависят от него.
-- Развивать Studio как отдельную среду проектов, файлов, Git и Studio plugins.
+- Развивать Studio как отдельную среду проектов, файлов, Git и Studio services.
   Studio не имеет Core API adapter; target connections, deploy и Core
-  lifecycle принадлежат standalone CLI/CI. Plugin configuration UI поставляет
-  plugin; Studio встраивает только declarative surfaces.
-- Укрепить cross-repository conformance для REST+mTLS и in-process adapters,
-  включая host smoke с реальным plugin-owned applier.
+  lifecycle принадлежат standalone CLI/CI. Service configuration UI поставляет
+  service; Studio встраивает только declarative surfaces.
+- Укрепить cross-repository conformance для Service SDK REST+mTLS,
+  включая host smoke с реальным service-owned applier.
 
 ## Проверки последнего прохода
 
@@ -78,19 +204,19 @@
 - VitePress aggregator build прошёл после исправления двух битых Core links.
   Не обновлять immutable source pins для незакоммиченных owner changes.
 - Ручной Core→Server/forms-db прогон подтвердил restart, registration leases,
-  settings rollback, plugin Admin query/delete, trust-root rotation и отказ
+  settings rollback, service Admin query/delete, trust-root rotation и отказ
   от отозванной identity.
 - Реальный Core→SDK→Domain→Runtime child-process gate теперь проверяет отказ
   Core активировать семантически неверные Domain grant и Runtime module-route
-  generations (`activation_failed`), сохранение старой plugin readiness-state
+  generations (`activation_failed`), сохранение старой service readiness-state
   как pending/not-ready и восстановление после последующих валидных settings.
   Сценарий прошёл через TypeScript integration wrapper на bundled Node.
 - Тот же real-process gate теперь синхронизирует Runtime SIGTERM с уже
   выполняющимся WASM host call: запись сначала подтверждается чтением из Domain,
   новые invocations отвергаются, принятый вызов завершается и Core видит
   deregistration. Runtime получает новый mTLS incarnation grant отдельной
-  Core-owned Domain settings generation. Core `PluginMetadata` callback также
-  приведён к owner-типу `models.PluginMetadata`, необходимому для сборки этого
+  Core-owned Domain settings generation. Core `ServiceMetadata` callback также
+  приведён к owner-типу `models.ServiceMetadata`, необходимому для сборки этого
   рабочего дерева.
 - Последний полный локальный `make check` прошёл: Go build/tests, Vitest (95
   файлов passed, один skipped; 156 тестов passed), TypeScript typecheck/lint и
@@ -98,7 +224,7 @@
   раздела: race/staticcheck/golangci-lint, чистая ветка, hosted CI и docs build.
   Сквозной Core→SDK→Domain→Runtime drain-тест также прошёл отдельно.
 - После него acceptance fixture ускорен сборкой одного peer-client binary и
-  ожиданием Core directory eligibility после plugin-local readiness. Это
+  ожиданием Core directory eligibility после service-local readiness. Это
   устранило корректный fail-closed `no_ready_peer` при eventual-consistent
   обновлении lease; guest drain loop остаётся bounded ниже пятисекундного ABI
   deadline. Два последовательных полных Core→SDK→Domain→Runtime process run

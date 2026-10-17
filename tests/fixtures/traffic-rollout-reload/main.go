@@ -42,15 +42,15 @@ type rolloutApplier struct {
 	lost    bool
 }
 
-func (*rolloutApplier) CaptureConfigurationTargets(context.Context, string) ([]models.PluginRolloutTarget, bool, error) {
+func (*rolloutApplier) CaptureConfigurationTargets(context.Context, string) ([]models.ServiceRolloutTarget, bool, error) {
 	return nil, false, nil
 }
 
-func (applier *rolloutApplier) LostConfigurationTargets(_ context.Context, _ string, targets []models.PluginRolloutTarget) ([]models.PluginRolloutTarget, error) {
+func (applier *rolloutApplier) LostConfigurationTargets(_ context.Context, _ string, targets []models.ServiceRolloutTarget) ([]models.ServiceRolloutTarget, error) {
 	if !applier.lost {
 		return nil, nil
 	}
-	lost := make([]models.PluginRolloutTarget, 0, len(targets))
+	lost := make([]models.ServiceRolloutTarget, 0, len(targets))
 	for _, target := range targets {
 		if !target.Acknowledged {
 			lost = append(lost, target)
@@ -59,7 +59,7 @@ func (applier *rolloutApplier) LostConfigurationTargets(_ context.Context, _ str
 	return lost, nil
 }
 
-func (applier *rolloutApplier) ApplyConfigurationToTargets(_ context.Context, _, _, _ string, _ []byte, targets []models.PluginRolloutTarget) ([]models.PluginRolloutTarget, error) {
+func (applier *rolloutApplier) ApplyConfigurationToTargets(_ context.Context, _, _, _ string, _ []byte, targets []models.ServiceRolloutTarget) ([]models.ServiceRolloutTarget, error) {
 	called := make([]string, 0, len(targets))
 	for _, target := range targets {
 		if !target.Acknowledged {
@@ -67,7 +67,7 @@ func (applier *rolloutApplier) ApplyConfigurationToTargets(_ context.Context, _,
 		}
 	}
 	applier.calls = append(applier.calls, called)
-	acknowledged := make([]models.PluginRolloutTarget, 0, len(called))
+	acknowledged := make([]models.ServiceRolloutTarget, 0, len(called))
 	for _, target := range targets {
 		if target.Acknowledged || (applier.partial && target.ReplicaID == "candidate-b") {
 			continue
@@ -77,7 +77,7 @@ func (applier *rolloutApplier) ApplyConfigurationToTargets(_ context.Context, _,
 	}
 	if applier.partial {
 		applier.partial = false
-		return acknowledged, models.PluginConfigurationConvergencePending{}
+		return acknowledged, models.ServiceConfigurationConvergencePending{}
 	}
 	return acknowledged, nil
 }
@@ -96,11 +96,11 @@ func main() {
 	}, contract.Schema)
 	check(err)
 	defer database.Close()
-	_, err = database.ExecContext(ctx, `INSERT INTO plugin_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
+	_, err = database.ExecContext(ctx, `INSERT INTO service_instances(id, manifest_json, state) VALUES (?, ?, ?)`, "forms", []byte(`{}`), "ready")
 	check(err)
 	trafficStore, err := storage.NewSQLiteTrafficRolloutStore(database)
 	check(err)
-	configurationStore, err := storage.NewSQLitePluginConfigurationStore(database)
+	configurationStore, err := storage.NewSQLiteServiceConfigurationStore(database)
 	check(err)
 	operationStore, err := storage.NewSQLiteOperationStore(database)
 	check(err)
@@ -109,7 +109,7 @@ func main() {
 	plan := []byte(`{"releaseSha256":"` + candidateDigest + `","targets":[{"replicaId":"candidate-a","incarnation":"inc-a"},{"replicaId":"candidate-b","incarnation":"inc-b"}],"stages":[{"id":"canary","candidateWeightPercent":10,"minimumObservationSeconds":30},{"id":"full","candidateWeightPercent":100,"minimumObservationSeconds":0}]}`)
 	reservation := models.OperationReservation{
 		Operation: models.Operation{ID: "operation-1", Kind: "traffic-rollout", State: "pending", CreatedAt: now, RequestID: "request-1", Actor: "operator", Resource: "forms"},
-		Scope:     "/api/plugins/forms/rollouts", Key: "rollout-key", RequestDigest: digest([]byte("same request")),
+		Scope:     "/api/services/forms/rollouts", Key: "rollout-key", RequestDigest: digest([]byte("same request")),
 	}
 	applier := &rolloutApplier{partial: true}
 	service := &application.TrafficRolloutService{
@@ -121,7 +121,7 @@ func main() {
 			{ReplicaID: "incumbent", Incarnation: "inc-stable", ReleaseSHA256: incumbentDigest, LeaseExpiresAt: now.Add(time.Minute), Ready: true},
 		}},
 		Validator: configValidator{}, States: application.TrafficRolloutStates{Running: "running", Active: "active", Pending: "pending"},
-		OperationStates: application.PluginConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed"},
+		OperationStates: application.ServiceConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed"},
 		TargetLostCode:  "target_lost",
 		Now:             func() time.Time { return now },
 	}
@@ -134,7 +134,7 @@ func main() {
 	firstPending := firstErr != nil
 	service = &application.TrafficRolloutService{
 		Store: trafficStore, ConfigurationStore: configurationStore, ConfigurationRollouts: configurationStore,
-		Applier: applier, OperationStates: application.PluginConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed"},
+		Applier: applier, OperationStates: application.ServiceConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed"},
 		TargetLostCode: "target_lost", States: application.TrafficRolloutStates{Completed: "completed"},
 	}
 	secondErr := service.ReconcileInstance(ctx, "forms")
@@ -149,18 +149,18 @@ func main() {
 		allAcknowledged = allAcknowledged && target.Acknowledged
 	}
 	var barrierClosed bool
-	check(database.QueryRowContext(ctx, `SELECT open = 0 FROM plugin_rollouts WHERE operation_id = ?`, "operation-1").Scan(&barrierClosed))
+	check(database.QueryRowContext(ctx, `SELECT open = 0 FROM service_rollouts WHERE operation_id = ?`, "operation-1").Scan(&barrierClosed))
 	heldDuringRollout, err := service.ConfigurationCohortHeld(ctx, "forms")
 	check(err)
 	_, ordinaryConfigErr := configurationStore.CreateCandidate(ctx, "ordinary-operation", "settings", "pending", "forms", 1, 1,
 		[]byte(`{"fields":["phone"]}`), models.AuditRecord{Actor: "operator", Action: "settings", Resource: "forms", Result: "succeeded", RequestID: "request-settings"})
-	var rolloutConflict models.PluginConfigurationConflict
+	var rolloutConflict models.ServiceConfigurationConflict
 	ordinarySettingsBlocked := errors.As(ordinaryConfigErr, &rolloutConflict)
 	// Re-open the barrier to model a process recovering an unresolved operation
 	// whose selected incarnation is now authoritatively lost.
-	_, err = database.ExecContext(ctx, `UPDATE plugin_rollouts SET open = 1, completed_at = NULL WHERE operation_id = ?`, "operation-1")
+	_, err = database.ExecContext(ctx, `UPDATE service_rollouts SET open = 1, completed_at = NULL WHERE operation_id = ?`, "operation-1")
 	check(err)
-	_, err = database.ExecContext(ctx, `UPDATE plugin_rollout_targets SET acknowledged = 0 WHERE operation_id = ?`, "operation-1")
+	_, err = database.ExecContext(ctx, `UPDATE service_rollout_targets SET acknowledged = 0 WHERE operation_id = ?`, "operation-1")
 	check(err)
 	_, err = database.ExecContext(ctx, `UPDATE traffic_rollouts SET state = 'running', revision = revision + 1, completed_at = NULL WHERE id = ?`, "rollout-1")
 	check(err)

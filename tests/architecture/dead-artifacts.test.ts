@@ -16,35 +16,35 @@ describe("removed unreferenced legacy artifacts", () => {
       "internal/domain/models/actor.go",
       "internal/domain/interfaces/authorizer.go",
       "internal/application/management_service.go",
-      "contracts/v1/plugin-contracts.json",
+      "contracts/v1/service-contracts.json",
       "internal/infrastructure/storage/management.go",
       "internal/infrastructure/storage/audit.go",
-      "tests/fixtures/plugin-grant/main.go",
-      "internal/infrastructure/plugins/protocol.go",
-      "internal/infrastructure/plugins/runtime.go",
-      "internal/infrastructure/plugins/supervisor.go",
-      "internal/infrastructure/plugins/local_launch.go",
-      "internal/infrastructure/plugins/manifest.go",
-      "internal/infrastructure/plugins/manifest_modes.go",
-      "internal/infrastructure/plugins/inventory_manifest.go",
-      "internal/infrastructure/plugins/grant_broker.go",
-      "assets/contracts/plugin-runtime.json",
+      "tests/fixtures/service-grant/main.go",
+      "internal/infrastructure/services/protocol.go",
+      "internal/infrastructure/services/runtime.go",
+      "internal/infrastructure/services/supervisor.go",
+      "internal/infrastructure/services/local_launch.go",
+      "internal/infrastructure/services/manifest.go",
+      "internal/infrastructure/services/manifest_modes.go",
+      "internal/infrastructure/services/inventory_manifest.go",
+      "internal/infrastructure/services/grant_broker.go",
+      "assets/contracts/service-runtime.json",
       "assets/contracts/local-launch.schema.json",
     ];
 
     for (const path of removedPaths) {
       expect(existsSync(join(coreRoot, path)), path).toBe(false);
     }
-    expect(existsSync(join(coreRoot, "tests/fixtures/plugin-grant")), "empty plugin-grant fixture directory").toBe(false);
+    expect(existsSync(join(coreRoot, "tests/fixtures/service-grant")), "empty service-grant fixture directory").toBe(false);
     for (const fixture of [
-      "http-stream-plugin",
-      "invalid-manifest-plugin",
-      "plugin-grpc",
-      "plugin-manifest-check",
-      "plugin-manifest-mode-gate",
-      "plugin-process-launcher",
-      "plugin-runtime-config-apply",
-      "serve-plugin-child",
+      "http-stream-service",
+      "invalid-manifest-service",
+      "service-grpc",
+      "service-manifest-check",
+      "service-manifest-mode-gate",
+      "service-process-launcher",
+      "service-runtime-config-apply",
+      "serve-service-child",
     ]) {
       expect(existsSync(join(coreRoot, "tests/fixtures", fixture)), fixture).toBe(false);
     }
@@ -52,25 +52,25 @@ describe("removed unreferenced legacy artifacts", () => {
 
   it("does not restore v2 Caddy runtime, local launch or binary release fixtures", () => {
     const v2Fixtures = [
-      "caddy-plugin",
+      "caddy-service",
       "caddy-runtime",
       "caddy-runtime-reload",
       "caddy-http-stream",
-      "caddy-l4-plugin",
+      "caddy-l4-service",
       "caddy-cookie-policy",
       "caddy-cookie-policy-stream",
       "caddy-module-probe",
       "external-caddy",
       "external-caddy-admin-proxy",
       "external-caddy-custom",
-      "external-caddy-plugin-host",
-      "serve-local-plugin-products",
-      "serve-plugin-composition",
+      "external-caddy-service-host",
+      "serve-local-service-products",
+      "serve-service-composition",
       "group-release-store",
       "group-release-recovery",
       "group-release-reservation-race",
       "group-release-process-state",
-      "group-release-plugin-mode-preflight",
+      "group-release-service-mode-preflight",
     ];
 
     for (const fixture of v2Fixtures) {

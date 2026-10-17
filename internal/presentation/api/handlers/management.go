@@ -113,5 +113,11 @@ func OperationGet(deps ManagementDependencies, response http.ResponseWriter, req
 	if operation.ErrorCode != "" {
 		result[deps.Management.JSON.ErrorCode] = operation.ErrorCode
 	}
+	if outcomes, outcomeErr := deps.Operations.ReplicaOutcomes(request.Context(), operation); outcomeErr != nil {
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		return
+	} else if len(outcomes) > 0 {
+		result[deps.Management.JSON.ReplicaOutcomes] = outcomes
+	}
 	deps.WriteJSON(response, http.StatusOK, result)
 }
