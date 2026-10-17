@@ -52,6 +52,13 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 	if err != nil {
 		return models.ConfigBundleApply{}, err
 	}
+	// Validate the whole candidate set before reserving or scheduling any item.
+	// A refusal by a later service must not start an earlier service's rollout.
+	for _, item := range request.Bundle.Services {
+		if err := service.Configurations.ValidateCandidate(ctx, item.ID, item.Settings); err != nil {
+			return models.ConfigBundleApply{}, err
+		}
+	}
 	if service.OperationKind == "" || service.Pending == "" || service.Operations.Store == nil {
 		return models.ConfigBundleApply{}, errors.New("operation service unavailable")
 	}

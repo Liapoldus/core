@@ -35,6 +35,11 @@ type observedApplier struct {
 	calls int
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*observedApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *observedApplier) ApplyConfiguration(context.Context, string, string, []byte) error {
 	applier.calls++
 	return nil

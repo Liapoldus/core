@@ -20,6 +20,11 @@ type applier struct {
 	cancel   context.CancelFunc
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*applier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (a *applier) ApplyConfiguration(ctx context.Context, _ string, revision string, config []byte) error {
 	if a.reject {
 		if a.cancel != nil {

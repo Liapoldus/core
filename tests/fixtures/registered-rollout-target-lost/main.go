@@ -21,6 +21,11 @@ type targetLossApplier struct {
 	lateReload bool
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*targetLossApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *targetLossApplier) ApplyConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }

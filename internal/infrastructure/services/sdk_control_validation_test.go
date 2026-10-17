@@ -21,6 +21,8 @@ func (validationReplicaSource) HasRegisteredInstance(string) bool { return true 
 
 type validationReloadClient struct{}
 
+func (validationReloadClient) ValidateConfiguration(context.Context, []byte) error { return nil }
+
 func (validationReloadClient) Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
 	return sdkmodels.ReloadAcknowledgement{}, nil
 }

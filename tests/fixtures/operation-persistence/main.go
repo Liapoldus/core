@@ -25,6 +25,11 @@ type fixtureApplier struct {
 	raw      []byte
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*fixtureApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (a *fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, raw []byte) error {
 	a.revision = revision
 	a.raw = append(a.raw[:0], raw...)

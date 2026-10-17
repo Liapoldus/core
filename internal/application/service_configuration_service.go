@@ -63,6 +63,18 @@ type ServiceConfigurationRecoveryAudit struct {
 
 var SnapshotActivationLock sync.Mutex
 
+// ValidateCandidate checks an opaque document without publishing a generation.
+func (service *ServiceConfigurationService) ValidateCandidate(ctx context.Context, instanceID string, document []byte) error {
+	if service == nil || service.Applier == nil {
+		return models.ServiceConfigurationUnavailable{}
+	}
+	validator, ok := service.Applier.(TrafficRolloutConfigurationValidator)
+	if !ok {
+		return models.ServiceConfigurationUnavailable{}
+	}
+	return validator.ValidateTrafficRolloutConfiguration(ctx, instanceID, document)
+}
+
 // RestorePreviousConfiguration swaps active and previous. Registered v2
 // instances commit the exact authenticated replica cohort with that pointer
 // swap; fixed-endpoint instances retain the ordinary store path.
@@ -221,6 +233,15 @@ func (service *ServiceConfigurationService) Apply(ctx context.Context, command A
 	}
 	if current.Revision != command.ExpectedRevision {
 		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+	}
+	if err := service.ValidateCandidate(ctx, command.InstanceID, command.SettingsJSON); err != nil {
+		if command.CandidateRevision > 0 {
+			if _, failErr := service.Store.FailCandidate(context.WithoutCancel(ctx), command.InstanceID, command.CandidateRevision,
+				command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
+				return models.ServiceConfigurationRevision{}, errors.Join(err, failErr)
+			}
+		}
+		return models.ServiceConfigurationRevision{}, err
 	}
 	command.CandidateAudit.DigestBefore = current.Digest
 	var candidate models.ServiceConfigurationRevision
@@ -471,6 +492,13 @@ func (service *ServiceConfigurationService) recoverOperation(ctx context.Context
 		SettingsJSON: candidate.SettingsJSON, AppliedAudit: withConfigurationAudit(appliedAudit, operation.Resource),
 		FailedAudit: models.AuditRecord{Actor: operation.Actor, Action: service.RecoveryAudit.FailedAction,
 			Result: service.RecoveryAudit.Failed, RequestID: operation.RequestID}}
+	if err := service.ValidateCandidate(ctx, operation.Resource, candidate.SettingsJSON); err != nil {
+		if _, failErr := service.Store.FailCandidate(ctx, operation.Resource, candidate.Revision, current.Revision,
+			withConfigurationAudit(command.FailedAudit, operation.Resource)); failErr != nil {
+			return errors.Join(err, failErr)
+		}
+		return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.OperationFailureCodes.ApplyFailed)
+	}
 	if _, err := service.activateCandidate(ctx, command, candidate); err != nil {
 		var conflict models.ServiceConfigurationConflict
 		if errors.As(err, &conflict) {

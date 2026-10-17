@@ -34,6 +34,11 @@ type fixtureApplier struct {
 	unavailable bool
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*fixtureApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, configuration []byte) error {
 	applier.calls = append(applier.calls, applyCall{Revision: revision, Config: string(configuration)})
 	if applier.started != nil {

@@ -21,6 +21,11 @@ type missingAcknowledgement struct {
 	sawPrevious int64
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*missingAcknowledgement) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *missingAcknowledgement) ApplyConfiguration(ctx context.Context, instanceID, _ string, _ []byte) error {
 	_, pointers, err := applier.store.Current(ctx, instanceID)
 	if err != nil {

@@ -48,6 +48,14 @@ CLI обязан сохранить связь между commit, bundle digest 
 получать итоговое состояние через `GET /api/operations/{id}`. Состояния
 `failed` и `degraded` не считаются успешным применением.
 
+До создания первой операции Core проверяет все service settings по live-схеме
+и вызывает SDK `config-validate` каждой затронутой зарегистрированной реплики.
+Отказ на этой стадии не изменяет активные generation ни одного сервиса.
+Core не удаляет исходный файл: canonical settings остаются в проекте,
+которым управляет CLI/Studio. Повторное сохранение может отправить исправленный
+кандидат. Проверка не резервирует внешние ресурсы; сбой уже начавшейся
+активации остаётся ошибкой rollout и требует сверки operation/replica status.
+
 Settings остаются opaque для generic Core envelope. Их схема и product-specific
 семантика принадлежат зарегистрированному service. Core сам владеет SQLite,
 generations, replicas, leases, rollout и audit; CLI не записывает эти таблицы.

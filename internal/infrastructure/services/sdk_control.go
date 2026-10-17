@@ -65,6 +65,10 @@ type serviceConfigurationSchemaClient interface {
 	ConfigurationSchema(context.Context) ([]byte, error)
 }
 
+type serviceConfigurationValidationClient interface {
+	ValidateConfiguration(context.Context, []byte) error
+}
+
 type sdkMetadataClient interface {
 	Manifest(context.Context) ([]byte, error)
 	ConfigurationSchema(context.Context) ([]byte, error)
@@ -350,7 +354,7 @@ func (applier *SDKConfigurationApplier) TrafficRolloutReplicas(ctx context.Conte
 }
 
 // ValidateTrafficRolloutConfiguration validates an opaque candidate against
-// every live ready replica's service-owned schema before Core promotes it.
+// every live replica's service-owned schema and validator before Core promotes it.
 func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID string, document []byte) error {
 	if resolver == nil || resolver.Source == nil || resolver.Build == nil || resolver.ValidateSchema == nil || instanceID == "" {
 		return ErrServiceUnavailable
@@ -361,7 +365,7 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 	now := resolver.Now().UTC()
 	validated := 0
 	for _, live := range resolver.Source.Snapshot() {
-		if live.Registration.Identity.InstanceID != instanceID || !live.Registration.Ready || !live.LeaseExpires.After(now) {
+		if live.Registration.Identity.InstanceID != instanceID || !live.LeaseExpires.After(now) {
 			continue
 		}
 		client, release, err := resolver.Build(ctx, live)
@@ -377,6 +381,13 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 		}
 		schema, err := schemaClient.ConfigurationSchema(ctx)
 		if err != nil || resolver.ValidateSchema(document, schema) != nil {
+			return models.ServiceConfigurationConflict{}
+		}
+		validator, ok := client.(serviceConfigurationValidationClient)
+		if !ok {
+			return ErrServiceUnavailable
+		}
+		if err := validator.ValidateConfiguration(ctx, document); err != nil {
 			return models.ServiceConfigurationConflict{}
 		}
 		validated++

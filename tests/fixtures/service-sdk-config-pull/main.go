@@ -142,6 +142,10 @@ func main() {
 	registeredReloads := services.NewRegisteredReplicaReloadResolver(registered, func(context.Context, services.LiveServiceReplica) (services.SDKReloadClient, func(), error) {
 		return countingReloadClient{delegate: reloadClient, count: &dynamicReloadCalls}, nil, nil
 	}, nil)
+	// This fixture isolates exact-generation pull and reload behavior. Its
+	// synthetic SDK client explicitly accepts the candidate after returning a
+	// minimal schema; service-owned semantic validation is covered separately.
+	registeredReloads.ValidateSchema = func(document, schema []byte) error { return nil }
 	applier := &services.SDKConfigurationApplier{
 		Store: store, Snapshot: snapshot,
 		Registered: registeredReloads,
@@ -192,6 +196,12 @@ func (client countingReloadClient) Reload(ctx context.Context, reload sdkmodels.
 	*client.count++
 	return client.delegate.Reload(ctx, reload)
 }
+
+func (countingReloadClient) ConfigurationSchema(context.Context) ([]byte, error) {
+	return []byte(`{"type":"object"}`), nil
+}
+
+func (countingReloadClient) ValidateConfiguration(context.Context, []byte) error { return nil }
 
 type certificateSet struct {
 	roots   *x509.CertPool

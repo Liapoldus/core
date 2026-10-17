@@ -371,8 +371,7 @@ func run() error {
 			readFixtureLog(workDirectory, "runtime"), readFixtureLog(workDirectory, "core"), readFixtureLog(workDirectory, "domain"))
 	}
 	// Reject a Runtime generation whose command points outside its immutable
-	// module catalog. The old catalog remains active but fenced until Core
-	// announces a valid replacement generation.
+	// module catalog. Preflight refusal leaves the old catalog ready and active.
 	invalidRuntimeSettings := bytes.Replace(runtimeSettingsDocument(readDigest, writeDigest, drainDigest),
 		[]byte(`"moduleId":"domainReader"`), []byte(`"moduleId":"missingModule"`), 1)
 	runtimeOperationID, err := updateSettingsForInstance(ctx, readinessClient, management, managementBase, bootstrapToken,
@@ -380,22 +379,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, runtimeOperationID, management.Codes.ActivationFailed); err != nil {
+	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, runtimeOperationID, "service_revision_conflict"); err != nil {
 		return err
 	}
-	if err := assertReplicaGenerationRefused(ctx, readinessClient, runtimeReadinessURL, "1", "2", runtimeProcess, 500*time.Millisecond); err != nil {
+	if err := assertReplicaGenerationRefused(ctx, readinessClient, runtimeReadinessURL, "1", "", runtimeProcess, 500*time.Millisecond); err != nil {
 		return err
 	}
 	validRuntimeSettings := runtimeSettingsDocument(readDigest, writeDigest, drainDigest)
 	runtimeOperationID, err = updateSettingsForInstance(ctx, readinessClient, management, managementBase, bootstrapToken,
-		runtimeInstance, 2, "runtime-settings-recovery-2", validRuntimeSettings)
+		runtimeInstance, 1, "runtime-settings-recovery-2", validRuntimeSettings)
 	if err != nil {
 		return err
 	}
 	if err := waitForOperation(ctx, readinessClient, management, managementBase, bootstrapToken, runtimeOperationID); err != nil {
-		return err
+		return fmt.Errorf("Runtime configuration recovery failed: %w; runtime=%s core=%s", err,
+			readFixtureLog(workDirectory, "runtime"), readFixtureLog(workDirectory, "core"))
 	}
-	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "3", runtimeProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "2", runtimeProcess); err != nil {
 		return err
 	}
 	if err := waitForRuntimeDirectory(ctx, controlAddress, workDirectory, runtimeIdentity); err != nil {
@@ -466,10 +466,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, operationID, management.Codes.ActivationFailed); err != nil {
+	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, operationID, "service_revision_conflict"); err != nil {
 		return err
 	}
-	if err := assertReplicaGenerationRefused(ctx, readinessClient, readinessURL, "1", "2", domainProcess, 500*time.Millisecond); err != nil {
+	if err := assertReplicaGenerationRefused(ctx, readinessClient, readinessURL, "1", "", domainProcess, 500*time.Millisecond); err != nil {
 		return err
 	}
 	retainedRead, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, readerURI, filepath.Join(workDirectory, "reader.pem"), filepath.Join(workDirectory, "reader.key"), filepath.Join(workDirectory, "root.pem"), "domain.get",
@@ -483,17 +483,18 @@ func run() error {
 		return fmt.Errorf("invalid Core candidate changed active Domain grants: response=%s err=%v", marshalEnvelope(retainedGrant), err)
 	}
 	settingsGeneration2 := domainSettings(readerURI, runtimeURI)
-	operationID, err = updateSettings(ctx, readinessClient, management, managementBase, bootstrapToken, 2, "domain-grants-update-2", settingsGeneration2)
+	operationID, err = updateSettings(ctx, readinessClient, management, managementBase, bootstrapToken, 1, "domain-grants-update-2", settingsGeneration2)
 	if err != nil {
 		return err
 	}
 	if err := waitForOperation(ctx, readinessClient, management, managementBase, bootstrapToken, operationID); err != nil {
+		return fmt.Errorf("Domain valid settings update failed: %w; domain=%s core=%s", err,
+			readFixtureLog(workDirectory, "domain"), readFixtureLog(workDirectory, "core"))
+	}
+	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "2", domainProcess); err != nil {
 		return err
 	}
-	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "3", domainProcess); err != nil {
-		return err
-	}
-	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "3", runtimeProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "2", runtimeProcess); err != nil {
 		return err
 	}
 	// Service-local readiness is acknowledged before Core's renewable peer
@@ -537,14 +538,14 @@ func run() error {
 		return fmt.Errorf("removed Core write grant remained active: response=%s err=%v", marshalEnvelope(writerWrite), err)
 	}
 	settingsGeneration3 := domainSettingsWithCategory(readerURI)
-	operationID, err = updateSettings(ctx, readinessClient, management, managementBase, bootstrapToken, 3, "domain-model-update-3", settingsGeneration3)
+	operationID, err = updateSettings(ctx, readinessClient, management, managementBase, bootstrapToken, 2, "domain-model-update-3", settingsGeneration3)
 	if err != nil {
 		return err
 	}
 	if err := waitForOperation(ctx, readinessClient, management, managementBase, bootstrapToken, operationID); err != nil {
 		return err
 	}
-	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "4", domainProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "3", domainProcess); err != nil {
 		return err
 	}
 	resetRead, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, readerURI, filepath.Join(workDirectory, "reader.pem"), filepath.Join(workDirectory, "reader.key"), filepath.Join(workDirectory, "root.pem"), "domain.get",
@@ -668,7 +669,7 @@ func run() error {
 		return err
 	}
 	defer stopProcess(domainProcess)
-	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "4", domainProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "3", domainProcess); err != nil {
 		return err
 	}
 	restartedRead, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, readerURI, filepath.Join(workDirectory, "reader.pem"), filepath.Join(workDirectory, "reader.key"), filepath.Join(workDirectory, "root.pem"), "domain.get",
@@ -716,7 +717,7 @@ func run() error {
 		return err
 	}
 	defer stopProcess(runtimeProcess)
-	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "3", runtimeProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, runtimeReadinessURL, "2", runtimeProcess); err != nil {
 		return err
 	}
 	if err := waitForRuntimeDirectory(ctx, controlAddress, workDirectory, runtimeIdentity); err != nil {
@@ -724,14 +725,14 @@ func run() error {
 	}
 	runtimeGrantSettings := domainSettingsWithCategory(readerURI, runtimeURI)
 	operationID, err = updateSettings(ctx, readinessClient, management, managementBase, bootstrapToken,
-		4, "domain-runtime-restart-grant-4", runtimeGrantSettings)
+		3, "domain-runtime-restart-grant-4", runtimeGrantSettings)
 	if err != nil {
 		return err
 	}
 	if err := waitForOperation(ctx, readinessClient, management, managementBase, bootstrapToken, operationID); err != nil {
 		return err
 	}
-	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "5", domainProcess); err != nil {
+	if err := waitForDomainGeneration(ctx, readinessClient, readinessURL, "4", domainProcess); err != nil {
 		return err
 	}
 	directRuntimeGrant, err := callDomain(ctx, domainRoot, domainPeerAddress, domainURI, runtimeURI,
@@ -918,7 +919,7 @@ func updateSettingsForInstance(ctx context.Context, client *http.Client, managem
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusAccepted {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-		return "", fmt.Errorf("Core settings update returned HTTP %d: %s", response.StatusCode, body)
+		return "", fmt.Errorf("Core settings update %q for %s at revision %d returned HTTP %d: %s", idempotencyKey, instanceID, revision, response.StatusCode, body)
 	}
 	var payload struct {
 		ID string `json:"operationId"`
@@ -1536,9 +1537,9 @@ func assertReplicaGenerationRefused(ctx context.Context, client *http.Client, en
 		var readiness sdkmodels.Readiness
 		decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&readiness)
 		_ = response.Body.Close()
-		if response.StatusCode != http.StatusServiceUnavailable || decodeErr != nil || readiness.Ready ||
+		if response.StatusCode != http.StatusOK || decodeErr != nil || !readiness.Ready ||
 			readiness.Generation != generation || readiness.PendingGeneration != pendingGeneration {
-			return fmt.Errorf("invalid candidate did not retain the fenced active generation: status=%d generation=%q pending=%q ready=%v decode=%v", response.StatusCode, readiness.Generation, readiness.PendingGeneration, readiness.Ready, decodeErr)
+			return fmt.Errorf("invalid candidate did not retain the ready active generation: status=%d generation=%q pending=%q ready=%v decode=%v", response.StatusCode, readiness.Generation, readiness.PendingGeneration, readiness.Ready, decodeErr)
 		}
 		select {
 		case <-process.done:

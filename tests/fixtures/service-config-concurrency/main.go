@@ -32,6 +32,11 @@ type slowApplier struct {
 	calls atomic.Int64
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*slowApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *slowApplier) ApplyConfiguration(_ context.Context, _ string, _ string, _ []byte) error {
 	applier.calls.Add(1)
 	time.Sleep(2 * time.Millisecond)

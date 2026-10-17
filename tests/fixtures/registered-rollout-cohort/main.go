@@ -20,6 +20,11 @@ type cohortApplier struct {
 	calls     []string
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*cohortApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *cohortApplier) ApplyConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }

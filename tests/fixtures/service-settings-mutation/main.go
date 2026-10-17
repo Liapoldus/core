@@ -27,6 +27,11 @@ type fixtureApplier struct {
 	calls chan applyCall
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (fixtureApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, configuration []byte) error {
 	applier.calls <- applyCall{Revision: revision, Config: string(configuration)}
 	var settings map[string]any

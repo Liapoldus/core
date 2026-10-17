@@ -34,6 +34,11 @@ type fixtureApplier struct {
 	release   chan struct{}
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*fixtureApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *fixtureApplier) ApplyConfiguration(_ context.Context, _ string, revision string, configuration []byte) error {
 	applier.mu.Lock()
 	block := applier.blockNext

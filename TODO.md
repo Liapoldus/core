@@ -233,3 +233,10 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   targeted architecture + integration tests прошли: 3 файла / 10 тестов.
 - Server Go tests и полный Vitest suite — прошли; forms-db Vitest — 22 файла,
   35 tests passed, 6 skipped; отдельная Node contract проверка — 2/2.
+
+
+## Candidate preflight and retention — 2026-10-17
+
+- Core validates every service in a config bundle against its live SDK schema and service-owned `ValidateConfiguration` endpoint before creating any bundle operation. Single-service apply validates again before activation and during recovery. A service refusal removes the Core staging candidate; the canonical Project file remains available for correction/retry and active configuration/readiness is preserved.
+- Real Core → SDK → Domain/Runtime integration passed, including invalid Runtime module route and Domain grant candidates, retained generation/readiness/data, valid recovery, and subsequent restarts. Full `make check` passed (96 Vitest files, 159 tests; one skipped), architecture lint and `go vet ./...` passed. SDK-pull fixture now explicitly stubs the added validation contract.
+- Linux/arm64 Core candidate SHA-256 `8869c6f051324e1dac71211eca56daa540f290e0ceee4051eaace071bd4bfe9d` is built but not installed. Local smoke, commit/push and documentation pin update remain pending exact artifact confirmation and repository publication.

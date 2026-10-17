@@ -18,6 +18,11 @@ type partialApplier struct {
 	genIDsApplied []string
 }
 
+// This fixture isolates activation; candidate validation succeeds independently.
+func (*partialApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+	return nil
+}
+
 func (applier *partialApplier) ApplyConfiguration(_ context.Context, _ string, generation string, _ []byte) error {
 	applier.calls++
 	applier.genIDsApplied = append(applier.genIDsApplied, generation)
