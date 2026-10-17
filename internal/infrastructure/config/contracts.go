@@ -97,6 +97,7 @@ type ManagementWords struct {
 		OperationResolve        string `yaml:"operationResolve"`
 		Audit                   string `yaml:"audit"`
 		ServiceKeys             string `yaml:"serviceKeys"`
+		ServiceSecretsSuffix    string `yaml:"serviceSecretsSuffix"`
 		ServiceLinks            string `yaml:"serviceLinks"`
 		ServiceLinkTargetSuffix string `yaml:"serviceLinkTargetSuffix"`
 		ServiceIDSeparator      string `yaml:"serviceIDSeparator"`
@@ -311,6 +312,8 @@ type AuditWords struct {
 			ServiceSettingsApplyFailed string `yaml:"serviceSettingsApplyFailed"`
 			ServiceSettingsRollback    string `yaml:"serviceSettingsRollback"`
 			ServiceAdminAction         string `yaml:"serviceAdminAction"`
+			ServiceSecretCreate        string `yaml:"serviceSecretCreate"`
+			ServiceSecretRevoke        string `yaml:"serviceSecretRevoke"`
 			ServiceLinkCreate          string `yaml:"serviceLinkCreate"`
 			ServiceLinkReplace         string `yaml:"serviceLinkReplace"`
 			ServiceLinkDelete          string `yaml:"serviceLinkDelete"`

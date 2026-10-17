@@ -12,6 +12,7 @@ import (
 	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 	"github.com/Liapoldus/core/v3/internal/presentation/api"
 )
@@ -43,7 +44,7 @@ var errInvalidServiceRESTControl = errors.New("invalid service REST control conf
 // startServiceRESTControl serves the Service SDK private control endpoints for
 // exact-generation config pulls and scoped secret grants. It never starts,
 // supervises, or relaunches a service process.
-func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces.ServiceRetainedConfigurationReader, bootstrapPath string) (func(), error) {
+func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces.ServiceRetainedConfigurationReader, references interfaces.ServiceSecretReferenceStore, secretRoot string) (func(), error) {
 	if configuration == nil {
 		return nil, errInvalidServiceRESTControl
 	}
@@ -61,7 +62,7 @@ func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces
 		return nil, errInvalidServiceRESTControl
 	}
 	contract, err := services.LoadSDKHTTPContract()
-	if err != nil || bootstrapPath == "" {
+	if err != nil || secretRoot == "" || references == nil {
 		return nil, errInvalidServiceRESTControl
 	}
 	grantPolicy, err := config.LoadServiceSecretGrantPolicy()
@@ -70,8 +71,9 @@ func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces
 	}
 	grantService := &application.ServiceSecretGrantService{
 		Configurations: store,
+		References:     references,
 		ResolveSecret: func(ctx context.Context, reference string, maximumBytes int64) ([]byte, error) {
-			return config.ReadSecretReference(bootstrapPath, reference, maximumBytes)
+			return security.ReadStagedServiceSecret(secretRoot, reference, maximumBytes)
 		},
 		GrantTTL:            time.Duration(contract.Deadlines.CoreSecretGrantSeconds) * time.Second,
 		MaximumValueBytes:   contract.Core.SecretGrant.Redemption.MaximumResponseBytes,

@@ -262,6 +262,63 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/services/{serviceId}/secrets:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+    get:
+      operationId: listServiceSecretReferences
+      summary: Получить opaque-ссылки секретов одного сервиса
+      parameters:
+        - name: purpose
+          in: query
+          required: false
+          schema: { type: string, maxLength: 192 }
+      responses:
+        '200':
+          description: Только безопасные метаданные ссылок; значения и пути хранилища не возвращаются
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceSecretReferenceList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      operationId: createServiceSecretReference
+      summary: Зарегистрировать opaque-ссылку на секрет для сервиса и назначения
+      description: >-
+        CLI передаёт только reference, purpose и label после сохранения значения
+        в локальном secret store. Core никогда не принимает secret bytes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ServiceSecretReferenceCreate' }
+      responses:
+        '201':
+          description: Ссылка создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceSecretReference' }
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /api/services/{serviceId}/secrets/{reference}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+      - name: reference
+        in: path
+        required: true
+        schema: { type: string, pattern: '^ssr:v1:[0-9a-f]{32}$' }
+    delete:
+      operationId: revokeServiceSecretReference
+      summary: Отозвать ссылку; следующие grant-запросы будут отклонены
+      responses:
+        '204': { description: Reference отозван }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
   /api/services/{serviceId}/replicas/register:
     parameters:
       - $ref: '#/components/parameters/ServiceId'
@@ -924,6 +981,33 @@ components:
         nextCursor: { type: [string, 'null'] }
         requestId: { type: string }
       additionalProperties: false
+    ServiceSecretReferenceCreate:
+      type: object
+      additionalProperties: false
+      required: [reference, purpose, label]
+      properties:
+        reference: { type: string, pattern: '^ssr:v1:[0-9a-f]{32}$' }
+        purpose: { type: string, minLength: 1, maxLength: 192, pattern: '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$' }
+        label: { type: string, minLength: 1, maxLength: 512 }
+    ServiceSecretReference:
+      type: object
+      additionalProperties: false
+      required: [reference, serviceId, purpose, label, state, createdAt]
+      properties:
+        reference: { type: string, pattern: '^ssr:v1:[0-9a-f]{32}$' }
+        serviceId: { type: string }
+        purpose: { type: string }
+        label: { type: string }
+        state: { type: string, enum: [active, revoked] }
+        createdAt: { type: string, format: date-time }
+    ServiceSecretReferenceList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceSecretReference' }
     PeerLinkPolicyList:
       type: object
       required: [items, nextCursor, requestId]

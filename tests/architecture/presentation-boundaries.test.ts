@@ -65,6 +65,7 @@ describe("presentation package ownership", () => {
       "ConfigBundles",
       "ServiceAdminControl",
       "ServiceLinks",
+      "ServiceSecretReferences",
       "ServiceMetadata",
       "RegisterService",
       "TrafficRollouts",
@@ -83,7 +84,7 @@ describe("presentation package ownership", () => {
       "TLSConfig",
       "contractOnce",
     ]);
-    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(24);
+    expect(fields.filter((name) => name[0] === name[0].toUpperCase())).toHaveLength(25);
     expect(fields.filter((name) => name[0] === name[0].toLowerCase())).toHaveLength(2);
   });
 

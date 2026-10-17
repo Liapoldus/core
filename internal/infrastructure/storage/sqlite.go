@@ -104,6 +104,13 @@ func OpenSQLite(ctx context.Context, path string, options SQLiteOptions, schema 
 			_ = database.Close()
 			return nil, err
 		}
+		currentSchemaVersion = 16
+	}
+	if currentSchemaVersion == 16 && options.SchemaVersion >= 17 {
+		if err := migrateServiceSecretReferences(ctx, database); err != nil {
+			_ = database.Close()
+			return nil, err
+		}
 	}
 	var resultingSchemaVersion int
 	if err := database.QueryRowContext(ctx, options.MigrationVersionQuery).Scan(&resultingSchemaVersion); err != nil || resultingSchemaVersion != options.SchemaVersion {

@@ -31,3 +31,13 @@ func TestServiceSecretReferenceValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestServiceSecretReferenceAllowsServiceScopedPurposeToken(t *testing.T) {
+	reference := ServiceSecretReference{
+		ID: "ssr:v1:0123456789abcdef0123456789abcdef", ServiceID: "forms-child",
+		Purpose: "storage-dsn", Label: "Database connection", State: ServiceSecretReferenceActive,
+	}
+	if err := reference.Validate(); err != nil {
+		t.Fatalf("valid service-scoped purpose token rejected: %v", err)
+	}
+}

@@ -14,7 +14,7 @@ describe("Core v2 durable traffic rollout state", () => {
 		try {
 			const result = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", join(directory, "core.db")], { cwd: coreRoot });
 			const database = JSON.parse(result.stdout) as { migrationVersion: number; requiredTables: string[] };
-		expect(database.migrationVersion).toBe(16);
+		expect(database.migrationVersion).toBe(17);
 			expect(database.requiredTables).toEqual(expect.arrayContaining([
 				"traffic_rollouts",
 				"traffic_rollout_stages",

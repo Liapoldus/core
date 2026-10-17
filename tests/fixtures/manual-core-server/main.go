@@ -147,6 +147,14 @@ type certificateSet struct {
 	formsRevokedCRL    []byte
 }
 
+const (
+	formsCursorSecretReference = "ssr:v1:11111111111111111111111111111111"
+	formsDSNSecretReference    = "ssr:v1:22222222222222222222222222222222"
+	formsCandidateDSNReference = "ssr:v1:33333333333333333333333333333333"
+	formsCursorSecretPurpose   = "cursor-signing"
+	formsDSNSecretPurpose      = "storage-dsn"
+)
+
 func main() {
 	if err := run(); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -371,6 +379,15 @@ func run() error {
 	}
 	if err := waitForServiceInstances(databasePath, "server-child", "forms-child"); err != nil {
 		return fmt.Errorf("Core did not durably admit service registrations: %w", err)
+	}
+	for _, reference := range []struct{ id, purpose, label string }{
+		{formsCursorSecretReference, formsCursorSecretPurpose, "Forms cursor signing key"},
+		{formsDSNSecretReference, formsDSNSecretPurpose, "Forms database connection"},
+		{formsCandidateDSNReference, formsDSNSecretPurpose, "Forms rejected candidate connection"},
+	} {
+		if err := createServiceSecretReference(client, base, token, "forms-child", reference.id, reference.purpose, reference.label); err != nil {
+			return fmt.Errorf("register forms secret reference: %w", err)
+		}
 	}
 	siteArchiveBytes, err := siteArchive()
 	if err != nil {
@@ -1682,12 +1699,44 @@ func (proxy *databaseProxy) Close() {
 	<-proxy.acceptDone
 }
 
+func createServiceSecretReference(client *http.Client, base, token, serviceID, reference, purpose, label string) error {
+	body, err := json.Marshal(map[string]string{"reference": reference, "purpose": purpose, "label": label})
+	if err != nil {
+		return errors.New("could not encode service secret metadata")
+	}
+	request, err := http.NewRequest(http.MethodPost, base+"/api/services/"+serviceID+"/secrets", bytes.NewReader(body))
+	if err != nil {
+		return errors.New("could not create service secret metadata request")
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return errors.New("Core service secret metadata request failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Core rejected service secret metadata with status %d", response.StatusCode)
+	}
+	var created struct {
+		Reference string `json:"reference"`
+		ServiceID string `json:"serviceId"`
+		Purpose   string `json:"purpose"`
+		State     string `json:"state"`
+	}
+	if json.NewDecoder(io.LimitReader(response.Body, 16<<10)).Decode(&created) != nil ||
+		created.Reference != reference || created.ServiceID != serviceID || created.Purpose != purpose || created.State != "active" {
+		return errors.New("Core returned invalid service secret metadata")
+	}
+	return nil
+}
+
 func buildFormsSettings(directory, driver, dsn string) ([]byte, error) {
 	cursorKey := make([]byte, 32)
 	if _, err := rand.Read(cursorKey); err != nil {
 		return nil, err
 	}
-	cursorPath := filepath.Join(directory, "forms-cursor-key")
+	cursorPath := filepath.Join(directory, formsCursorSecretReference)
 	if err := os.WriteFile(cursorPath, cursorKey, 0o600); err != nil {
 		clear(cursorKey)
 		return nil, err
@@ -1695,7 +1744,7 @@ func buildFormsSettings(directory, driver, dsn string) ([]byte, error) {
 	clear(cursorKey)
 	settings := map[string]any{
 		"driver":          driver,
-		"cursorSecretRef": "file:" + cursorPath,
+		"cursorSecretRef": formsCursorSecretReference,
 		"tablePrefix":     "forms_e2e_" + randomHex(6),
 		"schemas": map[string]any{
 			"contact": map[string]any{
@@ -1708,13 +1757,13 @@ func buildFormsSettings(directory, driver, dsn string) ([]byte, error) {
 	}
 	if driver != "memory" {
 		dsnBytes := []byte(dsn)
-		dsnPath := filepath.Join(directory, "forms-storage-dsn")
+		dsnPath := filepath.Join(directory, formsDSNSecretReference)
 		writeErr := os.WriteFile(dsnPath, dsnBytes, 0o600)
 		clear(dsnBytes)
 		if writeErr != nil {
 			return nil, writeErr
 		}
-		settings["dsn"] = "file:" + dsnPath
+		settings["dsn"] = formsDSNSecretReference
 	}
 	return json.Marshal(settings)
 }
@@ -1733,11 +1782,11 @@ func buildRejectedFormsSettings(directory, driver string, active []byte) ([]byte
 	default:
 		return nil, errors.New("candidate rejection fixture requires an external SQL driver")
 	}
-	dsnPath := filepath.Join(directory, "forms-rejected-candidate-dsn")
+	dsnPath := filepath.Join(directory, formsCandidateDSNReference)
 	if err := os.WriteFile(dsnPath, []byte(dsn), 0o600); err != nil {
 		return nil, err
 	}
-	settings["dsn"] = "file:" + dsnPath
+	settings["dsn"] = formsCandidateDSNReference
 	settings["tablePrefix"] = "forms_candidate_" + randomHex(6)
 	return json.Marshal(settings)
 }

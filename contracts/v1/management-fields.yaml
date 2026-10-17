@@ -2,6 +2,7 @@ paths:
   healthz: /healthz
   status: /api/status
   services: /api/services
+  serviceSecretsSuffix: secrets
   serviceLinks: /api/service-links
   serviceLinkTargetSuffix: /{callerInstanceId}/{targetInstanceId}
   serviceSettingsSuffix: /settings
@@ -59,6 +60,10 @@ json:
   resource: resource
   digestBefore: digestBefore
   digestAfter: digestAfter
+  reference: reference
+  purpose: purpose
+  label: label
+  serviceId: serviceId
   name: name
   role: role
   token: token

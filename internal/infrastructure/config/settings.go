@@ -96,7 +96,7 @@ func (s Settings) Validate() error {
 // the composition root's ENV bootstrap, not from the persisted document.
 func (s Settings) Bootstrap(statePath string) BootstrapConfig {
 	return BootstrapConfig{
-		StatePath: statePath, SourcePath: filepath.Join(s.SecretRoot, "reference-base"),
+		StatePath: statePath, SecretRoot: s.SecretRoot,
 		ManagementListen:      s.Management.Listen,
 		ManagementCertificate: s.Management.TLS.Certificate, ManagementKey: s.Management.TLS.Key,
 		ManagementClientCA: s.Management.TLS.ClientCA, ManagementMaxBodyBytes: s.Management.MaxBodyBytes,

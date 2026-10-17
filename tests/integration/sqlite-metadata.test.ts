@@ -20,7 +20,7 @@ describe("SQLite control-plane state", () => {
       expect(firstReport).toMatchObject({
         journalMode: "wal",
         foreignKeys: 1,
-        migrationVersion: 16,
+        migrationVersion: 17,
         requiredTables: expect.arrayContaining(["schema_migrations", "service_instances", "service_config_generations", "service_keys", "operations", "idempotency", "operation_payloads", "audit_events", "service_rollouts", "service_rollout_targets", "service_link_policies", "traffic_rollouts", "traffic_rollout_stages", "traffic_rollout_cohort_targets", "traffic_rollout_confirmations"]),
       });
       expect(firstReport.requiredTables).toContain("service_replicas");
@@ -35,7 +35,7 @@ describe("SQLite control-plane state", () => {
       const second = await execFileAsync("go", ["run", "./tests/fixtures/sqlite-probe", database], {
         cwd: coreRoot,
       });
-      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 16, migrationCount: 14 });
+      expect(JSON.parse(second.stdout)).toMatchObject({ migrationVersion: 17, migrationCount: 15 });
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

@@ -4,7 +4,7 @@ package config
 // root from environment variables and persisted JSON settings. It is not a
 // user-facing file format; project files and Git are owned by standalone CLI.
 type BootstrapConfig struct {
-	SourcePath                string
+	SecretRoot                string
 	StatePath                 string
 	ManagementListen          string
 	ManagementCertificate     string

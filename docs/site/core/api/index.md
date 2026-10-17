@@ -27,6 +27,8 @@ group или TLS endpoints.
 
 Подробно: [аутентификация](authentication),
 [service configuration](config) и [operations](operations).
+Management API также предоставляет scoped catalog для
+[service secret references](../configuration/secrets).
 
 Core-owned settings доступны только operator Management API через
 `GET/PUT /api/v2/settings`. `If-Match` защищает запись от stale revision;

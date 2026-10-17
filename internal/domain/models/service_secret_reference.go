@@ -24,7 +24,7 @@ type ServiceSecretReference struct {
 }
 
 func (reference ServiceSecretReference) Validate() error {
-	if !validOpaqueServiceSecretReferenceID(reference.ID) || !validPeerLinkIdentifier(reference.ServiceID) ||
+	if !ValidServiceSecretReferenceID(reference.ID) || !validPeerLinkIdentifier(reference.ServiceID) ||
 		!validServiceSecretPurpose(reference.Purpose) || !validServiceSecretLabel(reference.Label) ||
 		(reference.State != ServiceSecretReferenceActive && reference.State != ServiceSecretReferenceRevoked) {
 		return ServiceSecretReferenceInvalid{}
@@ -32,7 +32,7 @@ func (reference ServiceSecretReference) Validate() error {
 	return nil
 }
 
-func validOpaqueServiceSecretReferenceID(value string) bool {
+func ValidServiceSecretReferenceID(value string) bool {
 	const prefix = "ssr:v1:"
 	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+32 {
 		return false
@@ -50,7 +50,7 @@ func validServiceSecretPurpose(value string) bool {
 		return false
 	}
 	parts := strings.Split(value, ".")
-	if len(parts) < 2 || len(parts) > 8 {
+	if len(parts) < 1 || len(parts) > 8 {
 		return false
 	}
 	for _, part := range parts {

@@ -21,24 +21,25 @@ type Dependencies struct {
 }
 
 type ServiceDependencies struct {
-	Management          config.ManagementWords
-	AuditWords          config.AuditWords
-	ServiceIDField      string
-	Services            []any
-	AdminLimits         AdminLimits
-	Operations          application.OperationService
-	ServiceLinks        *application.ServiceLinkPolicyService
-	TrafficRollouts     *application.TrafficRolloutService
-	TrafficRolloutAPI   config.TrafficRolloutAPIContract
-	ListAdminSurfaces   func(context.Context) ([]AdminSurfaceItem, error)
-	AdminSurfaceDigest  func(context.Context, string) (string, error)
-	DispatchAdmin       func(context.Context, AdminInvocation, []byte) (ServiceAdminResult, error)
-	ForwardArtifact     func(context.Context, AdminInvocation, []byte, string, io.ReadCloser) (ServiceAdminResult, error)
-	RecordAdminOutcome  func(context.Context, string, string, string, bool) error
-	WriteJSON           func(http.ResponseWriter, int, any)
-	WriteProblem        func(http.ResponseWriter, int, string, string, string)
-	WriteCatalogProblem func(http.ResponseWriter, string, string)
-	WritePage           func(http.ResponseWriter, any, *http.Request, string)
+	Management              config.ManagementWords
+	AuditWords              config.AuditWords
+	ServiceIDField          string
+	Services                []any
+	AdminLimits             AdminLimits
+	Operations              application.OperationService
+	ServiceLinks            *application.ServiceLinkPolicyService
+	ServiceSecretReferences *application.ServiceSecretReferenceService
+	TrafficRollouts         *application.TrafficRolloutService
+	TrafficRolloutAPI       config.TrafficRolloutAPIContract
+	ListAdminSurfaces       func(context.Context) ([]AdminSurfaceItem, error)
+	AdminSurfaceDigest      func(context.Context, string) (string, error)
+	DispatchAdmin           func(context.Context, AdminInvocation, []byte) (ServiceAdminResult, error)
+	ForwardArtifact         func(context.Context, AdminInvocation, []byte, string, io.ReadCloser) (ServiceAdminResult, error)
+	RecordAdminOutcome      func(context.Context, string, string, string, bool) error
+	WriteJSON               func(http.ResponseWriter, int, any)
+	WriteProblem            func(http.ResponseWriter, int, string, string, string)
+	WriteCatalogProblem     func(http.ResponseWriter, string, string)
+	WritePage               func(http.ResponseWriter, any, *http.Request, string)
 }
 
 type ServiceAdminResult struct {

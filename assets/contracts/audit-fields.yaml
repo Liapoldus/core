@@ -9,6 +9,8 @@ audit:
     serviceSettingsApplyFailed: service_settings.apply_failed
     serviceSettingsRollback: service_settings.rollback
     serviceAdminAction: service_admin.action
+    serviceSecretCreate: service_secret.create
+    serviceSecretRevoke: service_secret.revoke
     serviceLinkCreate: service_link.create
     serviceLinkReplace: service_link.replace
     serviceLinkDelete: service_link.delete

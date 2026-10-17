@@ -45,6 +45,7 @@ type bootstrapStores struct {
 	keyStore            *storage.SQLiteServiceKeyStore
 	operationStore      *storage.SQLiteOperationStore
 	serviceConfigStore  *storage.SQLiteServiceConfigurationStore
+	serviceSecretStore  *storage.SQLiteServiceSecretReferenceStore
 	serviceLinkStore    *storage.SQLiteServiceLinkPolicyStore
 	trafficRolloutStore *storage.SQLiteTrafficRolloutStore
 	serviceConfigWords  config.ServiceConfigurationWords
@@ -346,7 +347,7 @@ func serveBootstrap(ctx context.Context, options runContext, bootstrap config.Bo
 	if err := convergenceSnapshot.Refresh(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	stopRESTControl, controlErr := startServiceRESTControl(controlPlane, configurationSnapshot, bootstrap.SourcePath)
+	stopRESTControl, controlErr := startServiceRESTControl(controlPlane, configurationSnapshot, stores.serviceSecretStore, bootstrap.SecretRoot)
 	if controlErr != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
@@ -487,6 +488,9 @@ func loadBootstrapStores(options runContext, bootstrap config.BootstrapConfig, d
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.serviceConfigStore, err = storage.NewSQLiteServiceConfigurationStore(database); err != nil {
+		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
+	}
+	if stores.serviceSecretStore, err = storage.NewSQLiteServiceSecretReferenceStore(database); err != nil {
 		return stores, failBootstrap(options, options.words.Exits.Internal, options.words.Diagnostics.ConfigInvalid)
 	}
 	if stores.serviceConfigWords, err = config.LoadServiceConfiguration(); err != nil {
@@ -650,6 +654,7 @@ func newManagementServer(dependencies managementServerDependencies) *api.Server 
 				}
 			},
 		},
+		ServiceSecretReferences: &application.ServiceSecretReferenceService{Store: stores.serviceSecretStore},
 		ServiceMetadata: func(ctx context.Context, instanceID string) (models.ServiceMetadata, error) {
 			metadata, err := dependencies.serviceControl.RegisteredReloads.Metadata(ctx, instanceID)
 			if err != nil {

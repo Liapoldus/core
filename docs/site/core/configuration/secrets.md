@@ -1,24 +1,34 @@
-# Секреты и grants
+# Секреты сервисов
 
-Core SQLite хранит только secret references; plaintext secret values и private
-keys не попадают в DB, legacy YAML, service settings JSON, audit, error или
-logs. Service SDK REST config pull отдаёт versioned config и opaque references.
-Значение выдаёт scoped grant через защищённый Core REST endpoint; он ограничен
-instance и settings revision либо одним конкретным call.
+Core хранит только opaque-ссылки на секреты. Значения принадлежат локальному
+secret store CLI и не передаются через Management API, JSON-конфигурацию,
+журнал аудита или ответы API.
 
-Сервис хранит активные application settings и разрешённые значения только в
-памяти. После REST `Reload(generation)` он сам pull-ит указанную revision,
-атомарно применяет settings/resources и отзывает старые config grants;
-per-call grant очищается после использования. Service не читает app env/config
-file.
+## Ссылка и назначение
 
-Workload TLS private keys доставляются отдельным infrastructure credential
-provider (локальный bootstrap pipe, remote PEM mount или SPIFFE API), а не
-передаются через Service SDK REST. Management TLS identity, service workload
-identity и Caddy ACME storage — разные trust domains. Секреты и credentials
-редактируются до любого error/log/trace/audit boundary.
+У каждой ссылки есть стабильный формат `ssr:v1:<32 lowercase hex>`, service ID,
+назначение (`purpose`), подпись для оператора и состояние `active` или
+`revoked`. Reference всегда ограничен одним сервисом и одним назначением.
+Например, ссылка `server.http.auth.bearer` не может быть использована для
+TLS-сертификата или другим сервисом.
 
-Peer transport grant metadata не копируется в Core docs; общий REST grant
-lifecycle принадлежит Service SDK. Канон межсервисного обмена —
-[wool](https://github.com/Liapoldus/wool). См.
-[security boundaries](security).
+CLI записывает значение в локальное защищённое хранилище и регистрирует в Core
+только reference, purpose и label. Для чтения сервис проходит SDK REST+mTLS
+grant-путь. Core выдаёт одноразовый короткоживущий handle только
+аутентифицированной replica, если ссылка присутствует в точной active
+generation и назначение совпадает. Перед redeem Core повторно проверяет active
+generation, service, purpose и статус ссылки. Если ссылку отозвали после выдачи
+handle, чтение всё равно отклоняется.
+
+## Management API
+
+Список и создание ссылок доступны по
+`/api/services/{serviceId}/secrets`; параметр `purpose` фильтрует список.
+Создание принимает только `reference`, `purpose` и `label`. Удаление
+`/api/services/{serviceId}/secrets/{reference}` отзывает ссылку и добавляет
+аудит-событие. Отзыв необратим; для ротации создаётся новая ссылка, сервисная
+конфигурация переводится на неё, затем старую можно отозвать.
+
+Core SQLite хранит только каталог metadata. Он не хранит секретные значения,
+файловые пути, vault locator или grant handles. Удалённые и отозванные ссылки
+остаются в каталоге как история; новый секрет всегда получает новый reference.

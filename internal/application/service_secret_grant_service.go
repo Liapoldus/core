@@ -16,6 +16,7 @@ import (
 
 type ServiceSecretGrantService struct {
 	Configurations      interfaces.ServiceRetainedConfigurationReader
+	References          interfaces.ServiceSecretReferenceStore
 	ResolveSecret       interfaces.ServiceSecretReferenceResolver
 	GrantTTL            time.Duration
 	MaximumValueBytes   int64
@@ -41,7 +42,7 @@ func (service *ServiceSecretGrantService) Issue(
 	identity models.ServiceReplicaIdentity,
 	reference, purpose, generation string,
 ) (models.ServiceSecretGrantReceipt, error) {
-	if service == nil || service.Configurations == nil || service.ResolveSecret == nil ||
+	if service == nil || service.Configurations == nil || service.References == nil || service.ResolveSecret == nil ||
 		service.GrantTTL <= 0 || service.MaximumValueBytes <= 0 || service.MaximumOutstanding <= 0 ||
 		service.Now == nil || service.Random == nil || identity.InstanceID == "" || identity.Fingerprint == "" ||
 		reference == "" || len(reference) > service.MaximumReferenceLen || purpose == "" || len(purpose) > service.MaximumPurposeLen {
@@ -53,6 +54,11 @@ func (service *ServiceSecretGrantService) Issue(
 	}
 	active, isActive, err := service.Configurations.Retained(ctx, identity.InstanceID, generationNumber)
 	if err != nil || !isActive || active.Revision != generationNumber || !documentContainsString(active.SettingsJSON, reference) {
+		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantDenied)
+	}
+	metadata, err := service.References.Get(ctx, identity.InstanceID, reference)
+	if err != nil || metadata.Validate() != nil || metadata.State != models.ServiceSecretReferenceActive ||
+		metadata.ServiceID != identity.InstanceID || metadata.ID != reference || metadata.Purpose != purpose {
 		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantDenied)
 	}
 	if err := ctx.Err(); err != nil {
@@ -93,7 +99,7 @@ func (service *ServiceSecretGrantService) Redeem(
 	identity models.ServiceReplicaIdentity,
 	handle string,
 ) ([]byte, error) {
-	if service == nil || service.Configurations == nil || service.ResolveSecret == nil ||
+	if service == nil || service.Configurations == nil || service.References == nil || service.ResolveSecret == nil ||
 		service.MaximumValueBytes <= 0 || service.Now == nil || identity.InstanceID == "" || identity.Fingerprint == "" || handle == "" {
 		return nil, grantFailure(models.ServiceSecretGrantUnavailable)
 	}
@@ -127,6 +133,11 @@ func (service *ServiceSecretGrantService) Redeem(
 	}
 	active, isActive, err := service.Configurations.Retained(ctx, entry.InstanceID, generation)
 	if err != nil || !isActive || active.Revision != generation || !documentContainsString(active.SettingsJSON, entry.Reference) {
+		return nil, grantFailure(models.ServiceSecretGrantDenied)
+	}
+	metadata, err := service.References.Get(ctx, entry.InstanceID, entry.Reference)
+	if err != nil || metadata.Validate() != nil || metadata.State != models.ServiceSecretReferenceActive ||
+		metadata.ServiceID != entry.InstanceID || metadata.ID != entry.Reference || metadata.Purpose != entry.Purpose {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
 	value, err := service.ResolveSecret(ctx, entry.Reference, service.MaximumValueBytes)

@@ -15,6 +15,8 @@ func auditDefinitions() AuditWords {
 			ServiceSettingsApplyFailed string "yaml:\"serviceSettingsApplyFailed\""
 			ServiceSettingsRollback    string "yaml:\"serviceSettingsRollback\""
 			ServiceAdminAction         string "yaml:\"serviceAdminAction\""
+			ServiceSecretCreate        string "yaml:\"serviceSecretCreate\""
+			ServiceSecretRevoke        string "yaml:\"serviceSecretRevoke\""
 			ServiceLinkCreate          string "yaml:\"serviceLinkCreate\""
 			ServiceLinkReplace         string "yaml:\"serviceLinkReplace\""
 			ServiceLinkDelete          string "yaml:\"serviceLinkDelete\""
@@ -42,6 +44,8 @@ func auditDefinitions() AuditWords {
 			ServiceSettingsApplyFailed string "yaml:\"serviceSettingsApplyFailed\""
 			ServiceSettingsRollback    string "yaml:\"serviceSettingsRollback\""
 			ServiceAdminAction         string "yaml:\"serviceAdminAction\""
+			ServiceSecretCreate        string "yaml:\"serviceSecretCreate\""
+			ServiceSecretRevoke        string "yaml:\"serviceSecretRevoke\""
 			ServiceLinkCreate          string "yaml:\"serviceLinkCreate\""
 			ServiceLinkReplace         string "yaml:\"serviceLinkReplace\""
 			ServiceLinkDelete          string "yaml:\"serviceLinkDelete\""
@@ -51,6 +55,8 @@ func auditDefinitions() AuditWords {
 			ServiceSettingsApplyFailed: "service_settings.apply_failed",
 			ServiceSettingsRollback:    "service_settings.rollback",
 			ServiceAdminAction:         "service_admin.action",
+			ServiceSecretCreate:        "service_secret.create",
+			ServiceSecretRevoke:        "service_secret.revoke",
 			ServiceLinkCreate:          "service_link.create",
 			ServiceLinkReplace:         "service_link.replace",
 			ServiceLinkDelete:          "service_link.delete"},
@@ -208,6 +214,7 @@ func managementDefinitions() ManagementWords {
 			OperationResolve        string "yaml:\"operationResolve\""
 			Audit                   string "yaml:\"audit\""
 			ServiceKeys             string "yaml:\"serviceKeys\""
+			ServiceSecretsSuffix    string "yaml:\"serviceSecretsSuffix\""
 			ServiceLinks            string "yaml:\"serviceLinks\""
 			ServiceLinkTargetSuffix string "yaml:\"serviceLinkTargetSuffix\""
 			ServiceIDSeparator      string "yaml:\"serviceIDSeparator\""
@@ -236,6 +243,7 @@ func managementDefinitions() ManagementWords {
 			OperationResolve:        "/api/operations/resolve",
 			Audit:                   "/api/audit",
 			ServiceKeys:             "/api/access/service-keys",
+			ServiceSecretsSuffix:    "secrets",
 			ServiceLinks:            "/api/service-links",
 			ServiceLinkTargetSuffix: "/{callerInstanceId}/{targetInstanceId}",
 			ServiceIDSeparator:      "/",
@@ -563,7 +571,7 @@ func sqliteDefinitions() SQLiteContract {
 		DatabaseFileMode:       0x180,
 		MaxOpenConnections:     1,
 		MaxIdleConnections:     1,
-		SchemaVersion:          16,
+		SchemaVersion:          17,
 		SystemGroupID:          "system",
 		HasMigrationTableQuery: "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations')",
 		MigrationVersionQuery:  "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",

@@ -17,32 +17,33 @@ import (
 )
 
 type Server struct {
-	CoreSettings        interfaces.CoreSettings
-	ValidateSettings    func([]byte) error
-	Token               string
-	ServiceAccounts     []models.ServiceAccount
-	mu                  sync.RWMutex
-	Operations          application.OperationService
-	ConfigBundles       *application.ConfigBundleService
-	ServiceAdminControl *services.SDKAdminControl
-	ServiceLinks        *application.ServiceLinkPolicyService
-	ServiceMetadata     func(context.Context, string) (models.ServiceMetadata, error)
-	RegisterService     func(context.Context, models.ServiceRegistration) (models.ServiceRegistrationResult, error)
-	TrafficRollouts     *application.TrafficRolloutService
-	TrafficRolloutAPI   config.TrafficRolloutAPIContract
-	Services            []any
-	ServiceIDField      string
-	Audit               *application.AuditService
-	AccessService       *application.AccessService
-	DataPlaneState      string
-	DataPlaneReason     string
-	DataPlaneReadiness  func(context.Context) (string, string)
-	DataPlaneDrift      func(context.Context) bool
-	AuditWords          config.AuditWords
-	Management          config.ManagementWords
-	Errors              config.ErrorCatalog
-	TLSConfig           *tls.Config
-	contractOnce        sync.Once
+	CoreSettings            interfaces.CoreSettings
+	ValidateSettings        func([]byte) error
+	Token                   string
+	ServiceAccounts         []models.ServiceAccount
+	mu                      sync.RWMutex
+	Operations              application.OperationService
+	ConfigBundles           *application.ConfigBundleService
+	ServiceAdminControl     *services.SDKAdminControl
+	ServiceLinks            *application.ServiceLinkPolicyService
+	ServiceSecretReferences *application.ServiceSecretReferenceService
+	ServiceMetadata         func(context.Context, string) (models.ServiceMetadata, error)
+	RegisterService         func(context.Context, models.ServiceRegistration) (models.ServiceRegistrationResult, error)
+	TrafficRollouts         *application.TrafficRolloutService
+	TrafficRolloutAPI       config.TrafficRolloutAPIContract
+	Services                []any
+	ServiceIDField          string
+	Audit                   *application.AuditService
+	AccessService           *application.AccessService
+	DataPlaneState          string
+	DataPlaneReason         string
+	DataPlaneReadiness      func(context.Context) (string, string)
+	DataPlaneDrift          func(context.Context) bool
+	AuditWords              config.AuditWords
+	Management              config.ManagementWords
+	Errors                  config.ErrorCatalog
+	TLSConfig               *tls.Config
+	contractOnce            sync.Once
 }
 
 func (server *Server) Handler() http.Handler {

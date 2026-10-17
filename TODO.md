@@ -2,17 +2,22 @@
 
 ## Operator service-secret reference catalog — 2026-10-17
 
-- Studio plan now defines safe metadata ownership: CLI vault owns secret values;
-  Core stores opaque reference ID, service ID, SDK purpose, label, lifecycle
-  state and server creation time only. Core must enforce the exact service and
-  purpose again when issuing the existing generation-bound SDK grant.
-- Added the Core domain metadata model and focused validation tests. The model
-  rejects paths as IDs, malformed opaque IDs, unsafe service/purpose values,
-  control characters in labels and unknown lifecycle states. Focused model
-  test passes. No storage/API/SDK grant enforcement is wired yet; the next
-  complete Core increment is SQLite migration + idempotent register/list/revoke
-  use case + grant authorization and Management API tests. No Core process or
-  database was opened/changed.
+- Core now stores only opaque reference ID, service ID, SDK purpose, label,
+  lifecycle state and server creation time. SQLite schema v17 adds the
+  service-scoped catalog and atomic audit writes; Management API exposes
+  list/create/revoke metadata operations. Secret values, storage paths and
+  grant handles are not accepted or returned by those operations.
+- SDK secret grant issuance and redemption recheck active generation, reference
+  owner, exact purpose and active state. Revocation between issue and redeem
+  blocks access before the staged secret resolver runs. The local resolver
+  accepts only direct regular files named by an opaque reference and rejects
+  symlinks, traversal, oversized values and unsupported legacy file references.
+- Focused Go packages and Management API tests pass. Contract publication,
+  router/OpenAPI parity and contract digest checks pass. On 2026-10-17 the full
+  Core owner gates passed: `make check`, `go vet ./...`,
+  `go tool staticcheck -checks=U1000 ./...`, and Docker architecture lint. CLI
+  vault staging and Studio host integration remain open in their owner
+  repositories.
 
 ## Nomenclature migration regression — 2026-10-16
 

@@ -9,6 +9,7 @@ Management API с CAS/ETag и audit.
 | --- | --- |
 | [Bootstrap и запуск](bootstrap) | SQLite state и источник настроек при старте. |
 | [Service configuration API](/core/api/config) | CAS, versioned JSON, REST Reload/config pull и operation lifecycle. |
+| [Секреты сервисов](/core/configuration/secrets) | Opaque references, service/purpose binding, однократные SDK grants и отзыв. |
 | [Config bundles](/core/api/config-bundles) | API-only доставка Git revision из standalone CLI. |
 | [Безопасность](security) | Раздельные REST и peer-network identities, grants и redaction. |
 | [Транспорты](transports) | Трафик, который обслуживает отдельный Server service. |

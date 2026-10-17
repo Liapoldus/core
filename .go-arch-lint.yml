@@ -26,6 +26,7 @@ vendors:
   serviceSDK: { in: [github.com/Liapoldus/service-sdk/v2, github.com/Liapoldus/service-sdk/v2/application, github.com/Liapoldus/service-sdk/v2/domain/interfaces, github.com/Liapoldus/service-sdk/v2/domain/models, github.com/Liapoldus/service-sdk/v2/infrastructure, github.com/Liapoldus/service-sdk/v2/presentation] }
   sqliteDriver: { in: [modernc.org/sqlite] }
   textNormalization: { in: [golang.org/x/text/cases, golang.org/x/text/unicode/norm] }
+  unixFileSecurity: { in: [golang.org/x/sys/unix] }
   googleUUID: { in: [github.com/google/uuid] }
 commonComponents: [domainModels]
 commonVendors: []
@@ -46,7 +47,7 @@ deps:
     mayDependOn: [domainModels]
   infrastructureSecurity:
     mayDependOn: [domainModels, domainInterfaces]
-    canUse: [bcrypt]
+    canUse: [bcrypt, unixFileSecurity]
   infrastructureStorage:
     mayDependOn: [domainModels, domainInterfaces, contractAdapter, infrastructureSettings]
     canUse: [sqliteDriver, yaml]

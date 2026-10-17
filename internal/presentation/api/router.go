@@ -48,18 +48,19 @@ func (server *Server) serviceHandlerDependencies() handlers.ServiceDependencies 
 	server.mu.RUnlock()
 
 	dependencies := handlers.ServiceDependencies{
-		Management:          server.Management,
-		AuditWords:          server.AuditWords,
-		ServiceIDField:      server.ServiceIDField,
-		Services:            serviceInventory,
-		Operations:          server.Operations,
-		ServiceLinks:        server.ServiceLinks,
-		TrafficRollouts:     server.TrafficRollouts,
-		TrafficRolloutAPI:   server.TrafficRolloutAPI,
-		WriteJSON:           server.writeJSON,
-		WriteProblem:        server.writeProblem,
-		WriteCatalogProblem: server.writeCatalogProblem,
-		WritePage:           server.writePage,
+		Management:              server.Management,
+		AuditWords:              server.AuditWords,
+		ServiceIDField:          server.ServiceIDField,
+		Services:                serviceInventory,
+		Operations:              server.Operations,
+		ServiceLinks:            server.ServiceLinks,
+		ServiceSecretReferences: server.ServiceSecretReferences,
+		TrafficRollouts:         server.TrafficRollouts,
+		TrafficRolloutAPI:       server.TrafficRolloutAPI,
+		WriteJSON:               server.writeJSON,
+		WriteProblem:            server.writeProblem,
+		WriteCatalogProblem:     server.writeCatalogProblem,
+		WritePage:               server.writePage,
 	}
 	if adminControl != nil {
 		limits := adminControl.AdminLimits()
@@ -342,6 +343,22 @@ func (server *Server) dispatchServiceLinks(response http.ResponseWriter, request
 
 func (server *Server) dispatchServiceActions(response http.ResponseWriter, request *http.Request, path, requestID, actor string) bool {
 	serviceDependencies := server.serviceHandlerDependencies()
+	if handlers.IsServiceSecretReferencePath(serviceDependencies, path) {
+		switch request.Method {
+		case server.Management.Methods.Get:
+			handlers.ServiceSecretReferenceList(serviceDependencies, response, request, path, requestID)
+			return true
+		case server.Management.Methods.Post:
+			handlers.ServiceSecretReferenceCreate(serviceDependencies, response, request, path, requestID, actor)
+			return true
+		}
+		server.writeProblem(response, http.StatusMethodNotAllowed, "method_not_allowed", "unsupported service secret method", requestID)
+		return true
+	}
+	if handlers.IsServiceSecretReferenceDetailPath(serviceDependencies, path) && request.Method == server.Management.Methods.Delete {
+		handlers.ServiceSecretReferenceRevoke(serviceDependencies, response, request, path, requestID, actor)
+		return true
+	}
 	if handlers.IsServiceRollbackPath(serviceDependencies, path) && request.Method == server.Management.Methods.Post {
 		handlers.ServiceSettingsRollback(serviceDependencies, response, request, serviceConfigurationServiceFromContext(request.Context()), path, requestID, actor)
 		return true

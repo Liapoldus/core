@@ -29,6 +29,7 @@ import (
 	"github.com/Liapoldus/core/v3/internal/domain/interfaces"
 	"github.com/Liapoldus/core/v3/internal/domain/models"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
+	"github.com/Liapoldus/core/v3/internal/infrastructure/security"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/storage"
 	"github.com/Liapoldus/core/v3/internal/presentation/api"
 	sdkmodels "github.com/Liapoldus/service-sdk/v2/domain/models"
@@ -46,10 +47,12 @@ func main() {
 	defer database.Close()
 
 	secret := []byte("fixture-database-password-never-log")
-	secretPath := filepath.Join(directory, "database-password")
+	secretReference := "ssr:v1:0123456789abcdef0123456789abcdef"
+	secretDirectory := filepath.Join(directory, "reference-base")
+	check(os.MkdirAll(secretDirectory, 0o700))
+	secretPath := filepath.Join(secretDirectory, secretReference)
 	check(os.WriteFile(secretPath, secret, 0o600))
 	defer clear(secret)
-	secretReference := "file:" + secretPath
 	activeJSON, err := json.Marshal(map[string]string{"credential": secretReference})
 	check(err)
 	previousJSON, err := json.Marshal(map[string]string{"credential": secretReference})
@@ -59,6 +62,13 @@ func main() {
 	insertGeneration(ctx, database, "forms", 1, "active", activeJSON)
 	insertGeneration(ctx, database, "forms", 2, "previous", previousJSON)
 	store, err := storage.NewSQLiteServiceConfigurationStore(database)
+	check(err)
+	referenceStore, err := storage.NewSQLiteServiceSecretReferenceStore(database)
+	check(err)
+	_, err = referenceStore.Create(ctx, models.ServiceSecretReference{
+		ID: secretReference, ServiceID: "forms", Purpose: "forms.storage", Label: "Forms storage",
+		State: models.ServiceSecretReferenceActive,
+	}, models.AuditRecord{Actor: "fixture", Action: "service_secret.create", Resource: "forms", Result: "succeeded", RequestID: "req_fixture"})
 	check(err)
 	snapshot, err := storage.NewServiceConfigurationSnapshot(ctx, store, []string{"forms"})
 	check(err)
@@ -71,8 +81,9 @@ func main() {
 	check(err)
 	service := &application.ServiceSecretGrantService{
 		Configurations: snapshot,
+		References:     referenceStore,
 		ResolveSecret: func(_ context.Context, reference string, maximumBytes int64) ([]byte, error) {
-			return config.ReadSecretReference(filepath.Join(directory, "reference-base"), reference, maximumBytes)
+			return security.ReadStagedServiceSecret(secretDirectory, reference, maximumBytes)
 		},
 		GrantTTL:            time.Duration(contract.Deadlines.CoreSecretGrantSeconds) * time.Second,
 		MaximumValueBytes:   int64(contract.Core.SecretGrant.Redemption.MaximumResponseBytes),
@@ -82,7 +93,7 @@ func main() {
 		Now:                 time.Now,
 		Random:              rand.Reader,
 	}
-	capacity := verifyGrantCapacity(ctx, snapshot, service, secretReference, certificates.replica)
+	capacity := verifyGrantCapacity(ctx, snapshot, service, secretReference, "forms.storage", certificates.replica)
 	pullHandler, err := api.NewServiceConfigurationPullHandler(snapshot, resolveReplica)
 	check(err)
 	grantHandler, err := api.NewServiceSecretGrantHandler(contract, service, resolveReplica, pullHandler)
@@ -106,10 +117,10 @@ func main() {
 		return grant, issueErr
 	}
 
-	validRequest := sdkmodels.SecretGrantRequest{Reference: secretReference, Purpose: "forms-storage", Generation: "1"}
+	validRequest := sdkmodels.SecretGrantRequest{Reference: secretReference, Purpose: "forms.storage", Generation: "1"}
 	activeGrant, activeIssueErr := issue(validRequest, client)
-	_, previousErr := issue(sdkmodels.SecretGrantRequest{Reference: secretReference, Purpose: "forms-storage", Generation: "2"}, client)
-	_, unreferencedErr := issue(sdkmodels.SecretGrantRequest{Reference: "file:unconfigured", Purpose: "forms-storage", Generation: "1"}, client)
+	_, previousErr := issue(sdkmodels.SecretGrantRequest{Reference: secretReference, Purpose: "forms.storage", Generation: "2"}, client)
+	_, unreferencedErr := issue(sdkmodels.SecretGrantRequest{Reference: "ssr:v1:fedcba9876543210fedcba9876543210", Purpose: "forms.storage", Generation: "1"}, client)
 	wrongReplicaGrant, wrongReplicaIssueErr := issue(validRequest, client)
 	wrongReplicaDenied := false
 	if wrongReplicaIssueErr == nil {
@@ -165,7 +176,7 @@ func main() {
 	}
 	output, err := json.Marshal(map[string]any{
 		"grantLimitEnforced":            capacity,
-		"issuedForActiveGeneration":     activeIssueErr == nil && activeGrant.Generation == "1" && activeGrant.Reference == secretReference && activeGrant.Purpose == "forms-storage",
+		"issuedForActiveGeneration":     activeIssueErr == nil && activeGrant.Generation == "1" && activeGrant.Reference == secretReference && activeGrant.Purpose == "forms.storage",
 		"previousGenerationDenied":      previousErr != nil,
 		"unreferencedSecretDenied":      unreferencedErr != nil,
 		"wrongReplicaDenied":            wrongReplicaDenied,
@@ -185,10 +196,12 @@ func verifyGrantCapacity(
 	snapshot interfaces.ServiceRetainedConfigurationReader,
 	service *application.ServiceSecretGrantService,
 	reference string,
+	purpose string,
 	certificate tls.Certificate,
 ) bool {
 	capacityService := &application.ServiceSecretGrantService{
 		Configurations:      snapshot,
+		References:          service.References,
 		ResolveSecret:       service.ResolveSecret,
 		GrantTTL:            service.GrantTTL,
 		MaximumValueBytes:   service.MaximumValueBytes,
@@ -201,7 +214,7 @@ func verifyGrantCapacity(
 	identity := models.ServiceReplicaIdentity{InstanceID: "forms", Fingerprint: certificateFingerprint(certificate.Leaf)}
 	accepted := 0
 	for range capacityService.MaximumOutstanding + 1 {
-		_, err := capacityService.Issue(ctx, identity, reference, "capacity-check", "1")
+		_, err := capacityService.Issue(ctx, identity, reference, purpose, "1")
 		if err != nil {
 			return accepted == capacityService.MaximumOutstanding
 		}
