@@ -1,9 +1,12 @@
 package models
 
-// ServiceReplicaIdentity is the authenticated identity of one certificate on
-// the private Service SDK listener. Fingerprint binds ephemeral credentials to
-// the exact verified certificate, not merely its issuer or subject label.
+// ServiceReplicaIdentity is the logical identity resolved from an active
+// replica lease. Fingerprint, when present, binds ephemeral credentials to the
+// exact verified certificate rather than only its issuer or subject label.
 type ServiceReplicaIdentity struct {
-	InstanceID  string
-	Fingerprint string
+	InstanceID    string
+	ReplicaID     string
+	IncarnationID string
+	PlacementID   string
+	Fingerprint   string
 }

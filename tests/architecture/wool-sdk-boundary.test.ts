@@ -76,6 +76,7 @@ describe("Core peer protocol boundary", () => {
       "peer_directory_broadcaster.go",
       "registered_reconciliation.go",
       "replica_directory.go",
+      "replica_directory_test.go",
       "replica_observation.go",
       "sdk_admin_control.go",
       "sdk_contract.go",

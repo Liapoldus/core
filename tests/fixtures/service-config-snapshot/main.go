@@ -59,7 +59,9 @@ func main() {
 	contract, err := sdk.LoadHTTPContract()
 	check(err)
 	endpoint := contract.Core.ConfigPull
-	handler, err := api.NewServiceConfigurationPullHandler(snapshot, func(*x509.Certificate) (string, bool) { return "fixture", true })
+	handler, err := api.NewServiceConfigurationPullHandler(snapshot, func(*x509.Certificate) (models.ServiceReplicaIdentity, bool) {
+		return models.ServiceReplicaIdentity{InstanceID: "fixture"}, true
+	})
 	check(err)
 	pull := func(number string) map[string]any {
 		path := strings.Replace(endpoint.PathTemplate, "{generation}", number, 1)

@@ -209,18 +209,11 @@ func (directory *ServiceReplicaDirectory) Deregister(request sdkmodels.ReplicaDe
 // Resolve returns the registered logical instance for a verified certificate
 // only while that exact replica lease remains active.
 func (directory *ServiceReplicaDirectory) Resolve(certificate *x509.Certificate) (string, bool) {
-	if directory == nil || certificate == nil {
+	identity, found := directory.ResolveIdentity(certificate)
+	if !found {
 		return "", false
 	}
-	now := directory.now().UTC()
-	directory.mu.RLock()
-	defer directory.mu.RUnlock()
-	for _, entry := range directory.entries {
-		if entry.LeaseExpires.After(now) && directory.certificateMatches(certificate, entry.Registration.Identity) {
-			return entry.Registration.Identity.InstanceID, true
-		}
-	}
-	return "", false
+	return identity.InstanceID, true
 }
 
 // ResolveIdentity returns the full authenticated replica identity of the exact
@@ -234,12 +227,19 @@ func (directory *ServiceReplicaDirectory) ResolveIdentity(certificate *x509.Cert
 	now := directory.now().UTC()
 	directory.mu.RLock()
 	defer directory.mu.RUnlock()
+	var resolved sdkmodels.PeerReplicaID
+	found := false
 	for _, entry := range directory.entries {
-		if entry.LeaseExpires.After(now) && directory.certificateMatches(certificate, entry.Registration.Identity) {
-			return entry.Registration.Identity, true
+		if !entry.LeaseExpires.After(now) || !directory.certificateMatches(certificate, entry.Registration.Identity) {
+			continue
 		}
+		if found {
+			return sdkmodels.PeerReplicaID{}, false
+		}
+		resolved = entry.Registration.Identity
+		found = true
 	}
-	return sdkmodels.PeerReplicaID{}, false
+	return resolved, found
 }
 
 // MarkRegisteredInstances restores only the durable source-of-truth markers.

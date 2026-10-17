@@ -32,9 +32,8 @@ type ServiceSecretGrantService struct {
 
 type serviceSecretGrantEntry struct {
 	models.ServiceSecretGrantReceipt
-	InstanceID  string
-	Fingerprint string
-	Spent       bool
+	Identity models.ServiceReplicaIdentity
+	Spent    bool
 }
 
 func (service *ServiceSecretGrantService) Issue(
@@ -44,7 +43,8 @@ func (service *ServiceSecretGrantService) Issue(
 ) (models.ServiceSecretGrantReceipt, error) {
 	if service == nil || service.Configurations == nil || service.References == nil || service.ResolveSecret == nil ||
 		service.GrantTTL <= 0 || service.MaximumValueBytes <= 0 || service.MaximumOutstanding <= 0 ||
-		service.Now == nil || service.Random == nil || identity.InstanceID == "" || identity.Fingerprint == "" ||
+		service.Now == nil || service.Random == nil || identity.InstanceID == "" || identity.ReplicaID == "" ||
+		identity.IncarnationID == "" || identity.PlacementID == "" || identity.Fingerprint == "" ||
 		reference == "" || len(reference) > service.MaximumReferenceLen || purpose == "" || len(purpose) > service.MaximumPurposeLen {
 		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantUnavailable)
 	}
@@ -89,7 +89,7 @@ func (service *ServiceSecretGrantService) Issue(
 		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantUnavailable)
 	}
 	service.grants[handle] = serviceSecretGrantEntry{
-		ServiceSecretGrantReceipt: receipt, InstanceID: identity.InstanceID, Fingerprint: identity.Fingerprint,
+		ServiceSecretGrantReceipt: receipt, Identity: identity,
 	}
 	return receipt, nil
 }
@@ -100,7 +100,8 @@ func (service *ServiceSecretGrantService) Redeem(
 	handle string,
 ) ([]byte, error) {
 	if service == nil || service.Configurations == nil || service.References == nil || service.ResolveSecret == nil ||
-		service.MaximumValueBytes <= 0 || service.Now == nil || identity.InstanceID == "" || identity.Fingerprint == "" || handle == "" {
+		service.MaximumValueBytes <= 0 || service.Now == nil || identity.InstanceID == "" || identity.ReplicaID == "" ||
+		identity.IncarnationID == "" || identity.PlacementID == "" || identity.Fingerprint == "" || handle == "" {
 		return nil, grantFailure(models.ServiceSecretGrantUnavailable)
 	}
 	service.mu.Lock()
@@ -109,7 +110,7 @@ func (service *ServiceSecretGrantService) Redeem(
 		service.mu.Unlock()
 		return nil, grantFailure(models.ServiceSecretGrantUnknown)
 	}
-	if entry.InstanceID != identity.InstanceID || entry.Fingerprint != identity.Fingerprint {
+	if entry.Identity != identity {
 		service.mu.Unlock()
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
@@ -131,13 +132,13 @@ func (service *ServiceSecretGrantService) Redeem(
 	if err != nil {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
-	active, isActive, err := service.Configurations.Retained(ctx, entry.InstanceID, generation)
+	active, isActive, err := service.Configurations.Retained(ctx, entry.Identity.InstanceID, generation)
 	if err != nil || !isActive || active.Revision != generation || !documentContainsString(active.SettingsJSON, entry.Reference) {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
-	metadata, err := service.References.Get(ctx, entry.InstanceID, entry.Reference)
+	metadata, err := service.References.Get(ctx, entry.Identity.InstanceID, entry.Reference)
 	if err != nil || metadata.Validate() != nil || metadata.State != models.ServiceSecretReferenceActive ||
-		metadata.ServiceID != entry.InstanceID || metadata.ID != entry.Reference || metadata.Purpose != entry.Purpose {
+		metadata.ServiceID != entry.Identity.InstanceID || metadata.ID != entry.Reference || metadata.Purpose != entry.Purpose {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
 	value, err := service.ResolveSecret(ctx, entry.Reference, service.MaximumValueBytes)

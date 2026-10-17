@@ -48,12 +48,12 @@ func NewServiceConfigurationPullHandler(store interfaces.ServiceRetainedConfigur
 			writeConfigurationPullFailure(response, contentTypeHeader, failureMediaType, contract.Errors["configurationUnavailable"].Status, contract.Errors["configurationUnavailable"].Code)
 			return
 		}
-		instanceID, authorized := resolve(request.TLS.PeerCertificates[0])
-		if !authorized || instanceID == "" {
+		identity, authorized := resolve(request.TLS.PeerCertificates[0])
+		if !authorized || identity.InstanceID == "" {
 			writeConfigurationPullFailure(response, contentTypeHeader, failureMediaType, contract.Errors["configurationUnavailable"].Status, contract.Errors["configurationUnavailable"].Code)
 			return
 		}
-		exact, active, err := store.Retained(request.Context(), instanceID, generation)
+		exact, active, err := store.Retained(request.Context(), identity.InstanceID, generation)
 		if err != nil || int64(len(exact.SettingsJSON)) > contract.Core.ConfigPull.MaximumBytes {
 			writeConfigurationPullFailure(response, contentTypeHeader, failureMediaType, contract.Errors["configurationUnavailable"].Status, contract.Errors["configurationUnavailable"].Code)
 			return

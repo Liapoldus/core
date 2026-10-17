@@ -75,14 +75,14 @@ func main() {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	check(err)
 	serverTLS := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{contract.server}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: contract.roots}
-	handler, err := api.NewServiceConfigurationPullHandler(snapshot, func(certificate *x509.Certificate) (string, bool) {
+	handler, err := api.NewServiceConfigurationPullHandler(snapshot, func(certificate *x509.Certificate) (models.ServiceReplicaIdentity, bool) {
 		if certificate.Subject.CommonName == "fixture-replica" {
-			return "fixture", true
+			return models.ServiceReplicaIdentity{InstanceID: "fixture"}, true
 		}
 		if certificate.Subject.CommonName == "other-replica" {
-			return "other", true
+			return models.ServiceReplicaIdentity{InstanceID: "other"}, true
 		}
-		return "", false
+		return models.ServiceReplicaIdentity{}, false
 	})
 	check(err)
 	done := make(chan error, 1)

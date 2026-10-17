@@ -1,9 +1,13 @@
 package interfaces
 
-import "crypto/x509"
+import (
+	"crypto/x509"
+
+	"github.com/Liapoldus/core/v3/internal/domain/models"
+)
 
 // ServiceReplicaIdentityResolver maps a verified service replica client
-// certificate to the service instance whose configuration generation it may pull.
-// It lives in the domain interfaces layer because both the configuration pull
-// endpoint and the CLI composition root that serves it must name this port.
-type ServiceReplicaIdentityResolver func(*x509.Certificate) (string, bool)
+// certificate to the logical identity of its active replica lease. The HTTP
+// adapter adds the certificate fingerprint before using the identity for a
+// scoped secret grant.
+type ServiceReplicaIdentityResolver func(*x509.Certificate) (models.ServiceReplicaIdentity, bool)

@@ -12,12 +12,14 @@ import (
 
 func TestServiceSecretGrantRequiresActiveServiceAndPurposeBoundReference(t *testing.T) {
 	service, references, resolved := newSecretGrantFixture()
-	identity := models.ServiceReplicaIdentity{InstanceID: "server", Fingerprint: "replica-cert"}
+	identity := testSecretGrantIdentity()
 	for name, mutate := range map[string]func(*models.ServiceSecretReference){
-		"unknown reference": func(reference *models.ServiceSecretReference) { reference.ID = "ssr:v1:fedcba9876543210fedcba9876543210" },
-		"wrong service":    func(reference *models.ServiceSecretReference) { reference.ServiceID = "other" },
-		"wrong purpose":    func(reference *models.ServiceSecretReference) { reference.Purpose = "server.tls.certificate" },
-		"revoked":          func(reference *models.ServiceSecretReference) { reference.State = models.ServiceSecretReferenceRevoked },
+		"unknown reference": func(reference *models.ServiceSecretReference) {
+			reference.ID = "ssr:v1:fedcba9876543210fedcba9876543210"
+		},
+		"wrong service": func(reference *models.ServiceSecretReference) { reference.ServiceID = "other" },
+		"wrong purpose": func(reference *models.ServiceSecretReference) { reference.Purpose = "server.tls.certificate" },
+		"revoked":       func(reference *models.ServiceSecretReference) { reference.State = models.ServiceSecretReferenceRevoked },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := validGrantReference()
@@ -36,7 +38,7 @@ func TestServiceSecretGrantRequiresActiveServiceAndPurposeBoundReference(t *test
 
 func TestServiceSecretGrantRechecksRevocationBeforeRedemption(t *testing.T) {
 	service, references, resolved := newSecretGrantFixture()
-	identity := models.ServiceReplicaIdentity{InstanceID: "server", Fingerprint: "replica-cert"}
+	identity := testSecretGrantIdentity()
 	receipt, err := service.Issue(context.Background(), identity, validGrantReference().ID, validGrantReference().Purpose, "1")
 	if err != nil {
 		t.Fatalf("issue valid scoped grant: %v", err)
@@ -52,7 +54,7 @@ func TestServiceSecretGrantRechecksRevocationBeforeRedemption(t *testing.T) {
 
 func TestServiceSecretGrantAllowsOnlyActiveReferenceAfterGenerationCheck(t *testing.T) {
 	service, _, resolved := newSecretGrantFixture()
-	identity := models.ServiceReplicaIdentity{InstanceID: "server", Fingerprint: "replica-cert"}
+	identity := testSecretGrantIdentity()
 	receipt, err := service.Issue(context.Background(), identity, validGrantReference().ID, validGrantReference().Purpose, "1")
 	if err != nil {
 		t.Fatalf("issue valid scoped grant: %v", err)
@@ -62,6 +64,36 @@ func TestServiceSecretGrantAllowsOnlyActiveReferenceAfterGenerationCheck(t *test
 		t.Fatalf("active exact-purpose reference did not redeem: %q %v resolved=%v", value, err, *resolved)
 	}
 	clear(value)
+}
+
+func TestServiceSecretGrantCannotBeRedeemedByAnotherReplicaIdentityOrCertificate(t *testing.T) {
+	issuer := testSecretGrantIdentity()
+	for name, other := range map[string]models.ServiceReplicaIdentity{
+		"replica":     {InstanceID: issuer.InstanceID, ReplicaID: "replica-b", IncarnationID: issuer.IncarnationID, PlacementID: issuer.PlacementID, Fingerprint: issuer.Fingerprint},
+		"incarnation": {InstanceID: issuer.InstanceID, ReplicaID: issuer.ReplicaID, IncarnationID: "incarnation-b", PlacementID: issuer.PlacementID, Fingerprint: issuer.Fingerprint},
+		"placement":   {InstanceID: issuer.InstanceID, ReplicaID: issuer.ReplicaID, IncarnationID: issuer.IncarnationID, PlacementID: "remote", Fingerprint: issuer.Fingerprint},
+		"certificate": {InstanceID: issuer.InstanceID, ReplicaID: issuer.ReplicaID, IncarnationID: issuer.IncarnationID, PlacementID: issuer.PlacementID, Fingerprint: "other-certificate"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service, _, resolved := newSecretGrantFixture()
+			receipt, err := service.Issue(context.Background(), issuer, validGrantReference().ID, validGrantReference().Purpose, "1")
+			if err != nil {
+				t.Fatalf("issue valid scoped grant: %v", err)
+			}
+			if _, err := service.Redeem(context.Background(), other, receipt.Handle); !errors.Is(err, models.ServiceSecretGrantFailure{Kind: models.ServiceSecretGrantDenied}) {
+				t.Fatalf("grant redeemed by a different replica identity: %v", err)
+			}
+			if *resolved {
+				t.Fatal("grant for another replica reached the secret resolver")
+			}
+		})
+	}
+}
+
+func testSecretGrantIdentity() models.ServiceReplicaIdentity {
+	return models.ServiceReplicaIdentity{
+		InstanceID: "server", ReplicaID: "replica-a", IncarnationID: "incarnation-a", PlacementID: "local", Fingerprint: "replica-cert",
+	}
 }
 
 type retainedSecretGrantConfiguration struct{}

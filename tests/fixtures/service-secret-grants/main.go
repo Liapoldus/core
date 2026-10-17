@@ -211,7 +211,10 @@ func verifyGrantCapacity(
 		Now:                 service.Now,
 		Random:              service.Random,
 	}
-	identity := models.ServiceReplicaIdentity{InstanceID: "forms", Fingerprint: certificateFingerprint(certificate.Leaf)}
+	identity := models.ServiceReplicaIdentity{
+		InstanceID: "forms", ReplicaID: "replica-a", IncarnationID: "incarnation-a", PlacementID: "local",
+		Fingerprint: certificateFingerprint(certificate.Leaf),
+	}
 	accepted := 0
 	for range capacityService.MaximumOutstanding + 1 {
 		_, err := capacityService.Issue(ctx, identity, reference, purpose, "1")
@@ -359,17 +362,17 @@ func controlClient(baseURL string, certificate tls.Certificate, roots *x509.Cert
 	return &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, ServerName: parsed.Hostname(), Certificates: []tls.Certificate{certificate}}}}
 }
 
-func resolveReplica(certificate *x509.Certificate) (string, bool) {
+func resolveReplica(certificate *x509.Certificate) (models.ServiceReplicaIdentity, bool) {
 	if certificate == nil {
-		return "", false
+		return models.ServiceReplicaIdentity{}, false
 	}
 	switch certificate.Subject.CommonName {
 	case "forms-replica-a":
-		return "forms", true
+		return models.ServiceReplicaIdentity{InstanceID: "forms", ReplicaID: "replica-a", IncarnationID: "incarnation-a", PlacementID: "local"}, true
 	case "forms-replica-b":
-		return "forms", true
+		return models.ServiceReplicaIdentity{InstanceID: "forms", ReplicaID: "replica-b", IncarnationID: "incarnation-b", PlacementID: "local"}, true
 	default:
-		return "", false
+		return models.ServiceReplicaIdentity{}, false
 	}
 }
 

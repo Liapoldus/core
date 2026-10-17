@@ -292,3 +292,18 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
 - Core validates every service in a config bundle against its live SDK schema and service-owned `ValidateConfiguration` endpoint before creating any bundle operation. Single-service apply validates again before activation and during recovery. A service refusal removes the Core staging candidate; the canonical Project file remains available for correction/retry and active configuration/readiness is preserved.
 - Real Core → SDK → Domain/Runtime integration passed, including invalid Runtime module route and Domain grant candidates, retained generation/readiness/data, valid recovery, and subsequent restarts. Full `make check` passed (96 Vitest files, 159 tests; one skipped), architecture lint and `go vet ./...` passed. SDK-pull fixture now explicitly stubs the added validation contract.
 - Linux/arm64 Core candidate SHA-256 `8869c6f051324e1dac71211eca56daa540f290e0ceee4051eaace071bd4bfe9d` is built but not installed. Local smoke, commit/push and documentation pin update remain pending exact artifact confirmation and repository publication.
+
+## Replica-scoped secret grants — 2026-10-18
+
+- Core resolves mTLS certificates to the active SDK lease's full logical
+  identity (`instanceId`, `replicaId`, `incarnationId`, `placementId`). A grant
+  is bound to that identity and the exact verified certificate fingerprint;
+  another replica or incarnation cannot redeem it. Certificates matching more
+  than one active replica lease fail closed.
+- Focused Go packages and real mTLS secret-grant/config-pull fixtures passed.
+  `make check` passed: Go build/tests, 96 Vitest files passed, 1 skipped,
+  159 tests passed, TypeScript typecheck, ESLint, and Docker `arch-lint`.
+  `GOWORK=off GOFLAGS=-p=1 go vet ./...` and
+  `GOWORK=off GOFLAGS=-p=1 make staticcheck-u1000` also passed.
+- This hardening changes no public Service SDK contract and exposes no secret
+  values or replica metadata through the Management API.

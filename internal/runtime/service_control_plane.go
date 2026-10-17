@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Liapoldus/core/v3/internal/domain/models"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/config"
 	"github.com/Liapoldus/core/v3/internal/infrastructure/services"
 )
@@ -165,8 +166,15 @@ func buildServiceRESTControl(bootstrapConfig config.BootstrapConfig) (*ServiceRE
 		log.Printf("Core service metadata read failed: instance=%q phase=%q reason=%q", instanceID, phase, reason)
 	}
 	registeredReloads.ValidateSchema = config.ValidateJSONSchemaDocument
-	resolveReplica := func(certificate *x509.Certificate) (string, bool) {
-		return replicaDirectory.Resolve(certificate)
+	resolveReplica := func(certificate *x509.Certificate) (models.ServiceReplicaIdentity, bool) {
+		identity, ok := replicaDirectory.ResolveIdentity(certificate)
+		if !ok {
+			return models.ServiceReplicaIdentity{}, false
+		}
+		return models.ServiceReplicaIdentity{
+			InstanceID: identity.InstanceID, ReplicaID: identity.ReplicaID,
+			IncarnationID: identity.IncarnationID, PlacementID: identity.PlacementID,
+		}, true
 	}
 	return &ServiceRESTControl{
 		ConfigPullListener: listener,

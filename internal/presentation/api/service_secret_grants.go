@@ -176,12 +176,13 @@ func verifiedReplicaIdentity(request *http.Request, resolve interfaces.ServiceRe
 		return models.ServiceReplicaIdentity{}, false
 	}
 	certificate := request.TLS.PeerCertificates[0]
-	instanceID, authorized := resolve(certificate)
-	if !authorized || instanceID == "" {
+	identity, authorized := resolve(certificate)
+	if !authorized || identity.InstanceID == "" || identity.ReplicaID == "" || identity.IncarnationID == "" || identity.PlacementID == "" {
 		return models.ServiceReplicaIdentity{}, false
 	}
 	fingerprint := sha256.Sum256(certificate.Raw)
-	return models.ServiceReplicaIdentity{InstanceID: instanceID, Fingerprint: hex.EncodeToString(fingerprint[:])}, true
+	identity.Fingerprint = hex.EncodeToString(fingerprint[:])
+	return identity, true
 }
 
 func writeSecretGrantFailure(response http.ResponseWriter, contract servicesdk.HTTPContract, err error, mediaType string) {
