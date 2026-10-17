@@ -69,7 +69,7 @@ func TestServiceRegistrationReportsArtifactIdentityConflict(t *testing.T) {
 }
 
 func TestServiceManifestRelaysSDKConfigurationUIWithoutInterpretation(t *testing.T) {
-	manifest := []byte(`{"id":"server","configurationUI":{"version":"service-configuration-ui/v1","groups":[{"id":"listener","title":{"ru":"Слушатель","en":"Listener"},"fields":[{"path":"/port","label":{"ru":"Порт","en":"Port"},"widget":"slider"}]}]}}`)
+	manifest := []byte(`{"id":"server","configurationUI":{"version":"service-configuration-ui/v1","groups":[{"id":"listener","title":{"ru":"Слушатель","en":"Listener"},"fields":[{"path":"/port","label":{"ru":"Порт","en":"Port"},"widget":"slider"}]}]},"editorButtons":{"version":"service-editor-buttons/v1","buttons":[{"id":"server.endpoints","key":"endpoints","label":{"ru":"Эндпоинты","en":"Endpoints"},"description":{"ru":"Открыть редактор","en":"Open editor"}}]}}`)
 	request := httptest.NewRequest(http.MethodGet, "/api/services/server/manifest", nil)
 	response := httptest.NewRecorder()
 	ServiceMetadata(response, request, func(context.Context, string) (models.ServiceMetadata, error) {
@@ -80,6 +80,7 @@ func TestServiceManifestRelaysSDKConfigurationUIWithoutInterpretation(t *testing
 	}
 	var received struct {
 		ConfigurationUI json.RawMessage `json:"configurationUI"`
+		EditorButtons json.RawMessage `json:"editorButtons"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &received); err != nil {
 		t.Fatal(err)
@@ -87,6 +88,7 @@ func TestServiceManifestRelaysSDKConfigurationUIWithoutInterpretation(t *testing
 	if string(received.ConfigurationUI) != `{"version":"service-configuration-ui/v1","groups":[{"id":"listener","title":{"ru":"Слушатель","en":"Listener"},"fields":[{"path":"/port","label":{"ru":"Порт","en":"Port"},"widget":"slider"}]}]}` {
 		t.Fatalf("Core did not relay the SDK descriptor: %s", received.ConfigurationUI)
 	}
+	if string(received.EditorButtons) != `{"version":"service-editor-buttons/v1","buttons":[{"id":"server.endpoints","key":"endpoints","label":{"ru":"Эндпоинты","en":"Endpoints"},"description":{"ru":"Открыть редактор","en":"Open editor"}}]}` { t.Fatalf("Core altered or dropped the SDK editor button descriptor: %s", received.EditorButtons) }
 }
 
 func TestServiceStatusBindsLiveMetadataToRegisteredArtifact(t *testing.T) {
