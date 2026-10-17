@@ -23,8 +23,8 @@
 - Core catalog and scoped grants, CLI OS-vault staging/rotation, and Studio's
   secure input, reference picker, Project-reference check, and exact
   replica digest/generation retirement guard are now implemented and pushed by
-  their owners. Current source checkpoints: Core `3d584c1`, CLI `a2ff95e`,
-  Studio `22d03b5`, Service SDK `110ac5e`, Server `2bc9f56`.
+  their owners. Current source checkpoints: Core `b87dd1c`, CLI `f60ce65`,
+  Studio `d6369bc`, Service SDK `110ac5e`, Server `2bc9f56`.
 - This supersedes the earlier TODO above that said CLI vault staging and Studio
   host integration remained open. The remaining gap is live acceptance of
   multi-replica rotation acknowledgement, timeout/restart recovery, and the
@@ -38,14 +38,14 @@
   typed CLI service secret list receives HTTP 404 from the catalog route.
   Core source tests and OpenAPI include the route, so this is a deployed binary
   mismatch, not a source-contract pass for the running target.
-- A Linux/arm64 binary built from current source (5f57110) is at
-  /tmp/liapoldus-core-linux-arm64-approved-candidate, SHA-256
-  0ad10d7141adaad6a91775cd6dd915e69a2b5f2971d7346e64cc0f60bfc464d0.
-  It differs from the previously approved Core digest and has not been
-  installed. Do not claim local secret catalog or rotation runtime acceptance
-  until this current candidate is separately authorized, installed through the
-  typed Core binary update, and the list/create/rotate/apply/retire path is
-  exercised.
+- A Linux/arm64 binary rebuilt from current source checkpoint `b87dd1c` is at
+  `/tmp/liapoldus-core-linux-arm64-2026-10-18-b87dd1c`, SHA-256
+  `9aa6bce94f24239ca277af5008b1a094cb4909903d8d82ccb38b2ff1c66c127f`.
+  The source change since the previous build was documentation-only, but this
+  binary digest differs and has not been installed. Do not claim local secret
+  catalog or rotation runtime acceptance until this exact candidate is
+  authorized, installed through the typed Core binary update, and the
+  list/create/rotate/apply/retire path is exercised.
 
 ## Operator service-secret reference catalog — 2026-10-17
 
