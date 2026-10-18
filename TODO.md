@@ -607,7 +607,9 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   `service_config_invalid` rejection code; the old active generation remained
   available after candidate refusal.
 - Latest source commit: `69be5c0fe4f0a0523db707fef8e7b2d9a3fb1186`.
-  A clean Linux/arm64 Core candidate is being prepared from this commit; the
-  resulting digest will be recorded before any local installation request.
-  The candidate is not installed. Local apply/secret smoke remains pending
-  approval of its exact digest.
+  Clean Linux/arm64 Core candidate built from tree revision
+  `6782cd99967a328ec92e8d2b9b80091478738870` (implementation commit above):
+  `/tmp/liapoldus-core-69be5c0-linux-arm64`, SHA-256
+  `5d2521167e5d127084d2f6d3281b686c87f9019796b93134a4c8d529141099bd`.
+  Build metadata reports `vcs.modified=false`. This digest is not installed;
+  local apply/secret smoke remains pending exact approval for this build.
