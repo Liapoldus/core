@@ -27,6 +27,11 @@
   been applied, and this source revision has not been installed in local Core.
 - The exact local Core/Server binary action gate remains open for newly built
   digests. Production is out of scope; no secret value is read or logged.
+- Core commit `aecc186ce09e090fe733b61e9562983aec49bf82` is pushed and its
+  Linux/arm64 binary was built with `CGO_ENABLED=0`; SHA-256
+  `5b8ae79f3ef1098861424ee9d6587d2194b4deeceba6a6ae1d993741fff56391`.
+  Build metadata confirms the exact commit and `vcs.modified=false`. It is not
+  installed in the local target; exact-digest approval is still required.
 
 ## Local apply admission and runtime recovery — superseded checkpoint — 2026-10-19
 
