@@ -1,5 +1,22 @@
 # Core v3 — production readiness
 
+## Current local secret-catalog candidate — 2026-10-18
+
+- Core source HEAD is `e35e66e`; the Core service-secret catalog and scoped
+  replica grants are present in this source. The current Linux/arm64 candidate
+  was built from this exact HEAD at
+  `/tmp/liapoldus-core-linux-arm64-2026-10-18-e35e66e`, SHA-256
+  `637e881a050e340dba5f16b07b01a0b1f1d6c27d7f9a824f6e89b428570102d4`.
+  `file` confirms a static ELF aarch64 executable. It has not been selected or
+  installed; exact-digest Studio trust/update confirmation is pending.
+- The running local Core is still the older binary recorded below and does not
+  serve the secret catalog route. No Core container, database, Project or
+  secret state was changed while preparing this candidate.
+- Current-source Core owner gates already pass as recorded in the configuration
+  submission/recovery checkpoint. Live secret catalog, rotation ACK, timeout
+  and restart recovery remain unverified until this exact candidate is installed
+  through Studio and exercised end to end.
+
 ## Configuration submission/recovery barrier — 2026-10-18
 
 - `Submit` now serializes idempotency reservation and candidate-generation
