@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -174,6 +175,9 @@ func main() {
 			secondRejected = true
 		}
 	}
+	check(database.Close())
+	secretAbsentFromSQLite, err := coreDatabaseExcludesSecret(directory, secret)
+	check(err)
 	output, err := json.Marshal(map[string]any{
 		"grantLimitEnforced":            capacity,
 		"issuedForActiveGeneration":     activeIssueErr == nil && activeGrant.Generation == "1" && activeGrant.Reference == secretReference && activeGrant.Purpose == "forms.storage",
@@ -183,12 +187,32 @@ func main() {
 		"activeGenerationChangeDenied":  changedGenerationDenied,
 		"redemptionReturnsExactSecret":  redeemErr == nil && string(redeemed) == string(secret),
 		"secondRedemptionRejected":      secondRejected,
+		"secretAbsentFromSQLite":        secretAbsentFromSQLite,
 		"secretAbsentFromLogsAndErrors": !strings.Contains(strings.Join(observedErrors, "\n"), string(secret)),
 		"handleAbsentFromLogsAndErrors": !strings.Contains(strings.Join(observedErrors, "\n"), activeGrant.Handle) && !strings.Contains(strings.Join(observedErrors, "\n"), finalGrant.Handle),
 	})
 	check(err)
 	_, err = os.Stdout.Write(append(output, '\n'))
 	check(err)
+}
+
+func coreDatabaseExcludesSecret(directory string, secret []byte) (bool, error) {
+	for _, name := range []string{"core.db", "core.db-wal", "core.db-shm"} {
+		contents, err := os.ReadFile(filepath.Join(directory, name))
+		if name == "core.db" && os.IsNotExist(err) {
+			return false, err
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+		if name == "core.db" && len(contents) == 0 {
+			return false, errors.New("Core SQLite database is empty")
+		}
+		if bytes.Contains(contents, secret) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func verifyGrantCapacity(

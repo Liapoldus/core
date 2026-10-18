@@ -1,5 +1,19 @@
 # Core v3 — production readiness
 
+## SQLite plaintext exclusion in secret-grant integration — 2026-10-18
+
+- The real Core → Service SDK mTLS grant fixture now closes SQLite and scans
+  `core.db`, `core.db-wal` and `core.db-shm` for the redeemed secret marker.
+  It proves that the value remains outside Core's durable catalog/config store;
+  only the reference and scoped metadata are persisted.
+- Focused integration: `vitest run --maxWorkers=2
+  tests/integration/service-secret-grants.test.ts` passes (1/1). Full `make
+  check` passes (96 files passed, 1 skipped, 159 tests), including Go build/tests,
+  TS typecheck/lint and Docker `arch-lint`; `go vet ./...` and
+  `make staticcheck-u1000` pass.
+- This changes only the acceptance fixture and expected output. No running Core,
+  Project, catalog, credential or service runtime state was touched.
+
 ## Exact-source local candidate for current secret catalog — 2026-10-18
 
 - Built Linux/arm64 Core from published source HEAD `eda44c95016c719e49968d3b76374908ff391f52` to `/tmp/liapoldus-core-current` with `GOTOOLCHAIN=go1.26.0 GOWORK=off GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o /tmp/liapoldus-core-current ./cmd/core`.

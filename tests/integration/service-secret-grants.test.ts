@@ -25,6 +25,7 @@ describe("Core Service SDK scoped secret grants", () => {
 				activeGenerationChangeDenied: true,
 				redemptionReturnsExactSecret: true,
 				secondRedemptionRejected: true,
+				secretAbsentFromSQLite: true,
 				secretAbsentFromLogsAndErrors: true,
 				handleAbsentFromLogsAndErrors: true,
 			});
