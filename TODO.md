@@ -600,16 +600,16 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   reports `bundle_invalid`/422, ordinary asynchronous config apply reports
   `service_config_invalid`, and schema transport failure reports
   `service_unavailable`; actual revision conflicts retain their conflict code.
-  Private SDK validation details are not returned by the bundle endpoint.
+  The traffic-rollout API uses the same safe validation/unavailable mapping.
+  Private SDK validation details are not returned by these endpoints.
 - `make check` passed (96 Vitest files, 159 tests; 1 skipped),
   `GOWORK=off GOFLAGS=-p=1 go vet ./...`, and `make staticcheck-u1000` passed.
   The real Core→SDK→Domain→Runtime integration test passed with the corrected
   `service_config_invalid` rejection code; the old active generation remained
   available after candidate refusal.
-- Latest source commit: `69be5c0fe4f0a0523db707fef8e7b2d9a3fb1186`.
-  Clean Linux/arm64 Core candidate built from tree revision
-  `6782cd99967a328ec92e8d2b9b80091478738870` (implementation commit above):
-  `/tmp/liapoldus-core-69be5c0-linux-arm64`, SHA-256
-  `5d2521167e5d127084d2f6d3281b686c87f9019796b93134a4c8d529141099bd`.
+- Latest source commit: `43b7acc35bd2c640b08b769a335b127581190cdd`.
+  Clean Linux/arm64 Core candidate:
+  `/tmp/liapoldus-core-43b7acc-linux-arm64`, SHA-256
+  `5ccf6e176dd9784b4deccb5c033653646b253f66a716ebf0032b27c9c2ee7af8`.
   Build metadata reports `vcs.modified=false`. This digest is not installed;
   local apply/secret smoke remains pending exact approval for this build.
