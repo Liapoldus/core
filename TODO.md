@@ -1,37 +1,35 @@
 # Core v3 — production readiness
 
-## Admission diagnosis for local Project apply — 2026-10-18
+## Local apply admission and runtime recovery — 2026-10-19
 
-- Latest typed `runtime status --target local` reports Core running and Echo/
-  Server exited. `service status` requests return Core HTTP 503
-  `service_unavailable`; do not infer a live service ACK from the bundle plan.
-- The latest read-only `liapoldus dev plan` for the Project working tree is
-  valid at digest
-  `sha256:c0ed4230629e8d35d3c725e6db1a8d44cfaa64c733351c4d3d62ddea8f2a2bac`
-  and reports active revisions 95 for Echo and Server. The Project contains
-  only `/echo`; its temporary auth route was removed. The three local synthetic
-  secret references are all revoked, with no pending registrations or
-  rotations. No new configuration was applied and no Core database was read or
-  changed in this checkpoint.
-- The previous apply returned HTTP 409 with a generic configuration revision
-  conflict. Core source now reports safe `blockedBy` codes in bundle plans for
-  pending configuration, open service-settings rollouts, and unfinished
-  traffic rollouts; the atomic write path still enforces these conditions.
-  CLI source stops before secret staging and recovery journaling when a plan
-  reports a blocker. Core `make check` passed: Go build/tests, 96 Vitest files
-  (159 tests, one skip), TypeScript typecheck, ESLint and Docker architecture
-  lint. `make test-race`, `go vet ./...` and `make staticcheck-u1000` also pass.
-  This Core candidate has not been installed on `local`, so the live conflict's
-  specific cause and a successful runtime apply remain unverified.
-- The macOS Studio build `61de3ba3…` was launched under its exact-digest
-  approval. The Inspector no longer offers retry for an HTTP request rejected
-  without a failed Core operation. No apply button was pressed during this
-  verification.
-- Exact-source Linux/arm64 Core candidate from pushed commit `0ae119b` is built
-  at `/tmp/liapoldus-core-admission-0ae119b`, SHA-256
-  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`;
-  `go version -m` confirms that revision and `vcs.modified=false`. It has not
-  been installed or run in `local` while exact-digest approval is pending.
+- Installed and ran the exact approved Linux/arm64 Core build from commit
+  `0ae119b`, SHA-256
+  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`, after
+  backing up the local target registry, previous Core binary and SQLite state.
+  The local Core container is running that digest.
+- The approved CLI commit `d0191b8` is installed at
+  `/Users/docup/go/bin/liapoldus`, SHA-256
+  `1381dd4239795af2b64f9a1878d623eaa0de5c162d2d9895d32f018e010f00dd`. Its
+  `dev apply` path always fetches Core's typed plan before secret staging and
+  recovery persistence, including when the caller supplies an idempotency key.
+  Unit tests cover stopping on `blockedBy` before staging, journal writes or
+  Apply; full CLI checks and race tests pass.
+- Typed `dev plan` for working-tree digest
+  `c0ed4230629e8d35d3c725e6db1a8d44cfaa64c733351c4d3d62ddea8f2a2bac` is valid
+  and reports Echo/Server at current revision 96, with no `blockedBy` items.
+  The earlier HTTP 409 conflict has not been reproduced after the Core update
+  and service registration; this does not identify which prior admission race
+  caused it.
+- `runtime start --revision WORKING_TREE --target local` reconciled stale Echo
+  and Server containers, re-registered both replicas, and both reported ready
+  with desired/applied generation 96. Server 1.1.11 and Echo 1.2.2 acknowledged
+  their exact Project settings digests. `GET /echo?text=local-smoke` returned
+  HTTP 200; omission of the required query returned HTTP 400 as specified.
+- The Project has one existing `/echo` route and no secret references. Three
+  prior synthetic Server references remain revoked. A new local auth secret is
+  awaiting manual entry in Studio's secure field; no value has been entered by
+  the agent. Successful live auth, scoped grant, rotation, replica ACK and
+  retirement checks remain open. Production is out of scope.
 
 ## Local secret rotation smoke — superseded status — 2026-10-18
 
