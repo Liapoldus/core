@@ -327,8 +327,9 @@ func writeTrafficRolloutFailure(deps ServiceDependencies, response http.Response
 	var rolloutConflict models.TrafficRolloutConflict
 	var idempotency models.IdempotencyConflict
 	var unavailable models.ServiceConfigurationUnavailable
+	var validationFailed models.ServiceConfigurationCandidateValidationFailed
 	switch {
-	case errors.Is(err, application.ErrInvalidTrafficRolloutPlan), errors.As(err, &invalid):
+	case errors.Is(err, application.ErrInvalidTrafficRolloutPlan), errors.As(err, &invalid), errors.As(err, &validationFailed):
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceConfigInvalid, requestID)
 	case errors.As(err, &notFound), errors.As(err, &rolloutNotFound):
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceNotFound, requestID)
@@ -337,7 +338,7 @@ func writeTrafficRolloutFailure(deps ServiceDependencies, response http.Response
 	case errors.As(err, &idempotency):
 		deps.WriteCatalogProblem(response, deps.Management.Codes.IdempotencyConflict, requestID)
 	case errors.As(err, &unavailable):
-		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
+		deps.WriteCatalogProblem(response, deps.Management.Codes.ServiceUnavailable, requestID)
 	default:
 		deps.WriteCatalogProblem(response, deps.Management.Codes.ManagementUnavailable, requestID)
 	}
