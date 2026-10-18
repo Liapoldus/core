@@ -1,5 +1,30 @@
 # Core v3 — production readiness
 
+## Staged local secret rotation and stopped service containers — 2026-10-18
+
+- The authorized local synthetic rotation is staged in the Core reference
+  catalog: two active opaque references, one revoked record, and one pending
+  rotation in `staged` state. This supersedes the no-pending-rotation snapshot
+  below. Core stores the bounded reference/rotation metadata; the CLI OS vault
+  holds the secret values.
+- Runtime status reports the local Core container running and Echo/Server
+  containers exited. The latest typed `service status server` call returned
+  HTTP 503 `service_unavailable` because live service metadata is unavailable.
+  The last successful readiness read reported Server 1.1.11, generation 94,
+  ready and acknowledged.
+- Project `services/server/settings.json` still contains only `/echo` and no
+  secret reference. No reference has been delivered to Server; the active
+  settings digest/configuration was not changed by staging the rotation.
+- Studio Editor secret listing works, but reference selection on the approved
+  host failed because its secret setter corrupted a protected route-array patch.
+  Studio fixed this by writing the reference through the validated array
+  operation stream. The new host build has not been launched yet; its exact
+  digest requires the Studio action-time approval. No production target was
+  accessed.
+- Local rotation ACK, replacement authentication, restart recovery and old
+  reference retirement remain unverified. Previously passing Core mTLS grant
+  tests are fixture evidence only, not live delivery/ACK acceptance.
+
 ## Current local secret route and runtime verification — 2026-10-18
 
 - The Studio-selected CLI at `/Users/docup/go/bin/liapoldus` (SHA-256
