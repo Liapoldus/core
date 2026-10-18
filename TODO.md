@@ -1,5 +1,11 @@
 # Core v3 — production readiness
 
+## Exact-source local candidate for current secret catalog — 2026-10-18
+
+- Built Linux/arm64 Core from published source HEAD `eda44c95016c719e49968d3b76374908ff391f52` to `/tmp/liapoldus-core-current` with `GOTOOLCHAIN=go1.26.0 GOWORK=off GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' -o /tmp/liapoldus-core-current ./cmd/core`.
+- SHA-256: `aa49ff325f9374264edcb4927d199556ca3525a70926c92f08c90b1b7c93f626`. `file` reports a static ELF aarch64 executable; `go version -m` records the exact revision and `vcs.modified=false`.
+- Current-source owner checks are recorded under the configuration submission/recovery checkpoint. The running local containers are older than this candidate; the candidate has not been installed. Secret-catalog, grant, rotation-timeout and restart acceptance against the running Core therefore remain open pending the normal exact-digest Studio flow.
+
 ## Current local secret-catalog candidate — 2026-10-18
 
 - The Core service-secret catalog and scoped replica grants are present in
