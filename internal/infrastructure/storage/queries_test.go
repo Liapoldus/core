@@ -15,8 +15,8 @@ func TestCompiledQueriesPreserveSQL(t *testing.T) {
 		count   int
 		digest  string
 	}{
-		{"historicalConfiguration", historicalConfigurationQueries(), 51, "4f86695cec22eb62633540807e99232031ee0e6a04031dbd260a853a74908df2"},
-		{"configuration", configurationQueries(), 51, "3766c063a67928cd8355a72e583fee5edb318f47409252a34cf7e1dc782a3c24"},
+		{"historicalConfiguration", historicalConfigurationQueries(), 52, "127698d09eb719561f224d2807fc8b3e9ad8baf606c078a43fc2e37ad556e35d"},
+		{"configuration", configurationQueries(), 52, "bce18c4e4d0691bd1329b7ab46842483234f7e9bc67089c08a1b22891b022269"},
 		{"operation", operationQueries(), 10, "eba1b7d3b71c5e4d150d64e11ab9a072090ac56a60e6399bd604347d71cc005f"},
 		{"trafficRollout", trafficRolloutQueries(), 31, "943263731b6b34eff7d72d716bc52e5f5e668c0f13ea4d7cefc212bb21e0adc4"},
 	}

@@ -1,6 +1,34 @@
 # Core v3 — production readiness
 
-## Local secret rotation smoke — current state — 2026-10-18
+## Admission diagnosis for local Project apply — 2026-10-18
+
+- Latest typed `runtime status --target local` reports Core running and Echo/
+  Server exited. `service status` requests return Core HTTP 503
+  `service_unavailable`; do not infer a live service ACK from the bundle plan.
+- The latest read-only `liapoldus dev plan` for the Project working tree is
+  valid at digest
+  `sha256:c0ed4230629e8d35d3c725e6db1a8d44cfaa64c733351c4d3d62ddea8f2a2bac`
+  and reports active revisions 95 for Echo and Server. The Project contains
+  only `/echo`; its temporary auth route was removed. The three local synthetic
+  secret references are all revoked, with no pending registrations or
+  rotations. No new configuration was applied and no Core database was read or
+  changed in this checkpoint.
+- The previous apply returned HTTP 409 with a generic configuration revision
+  conflict. Core source now reports safe `blockedBy` codes in bundle plans for
+  pending configuration, open service-settings rollouts, and unfinished
+  traffic rollouts; the atomic write path still enforces these conditions.
+  CLI source stops before secret staging and recovery journaling when a plan
+  reports a blocker. Core `make check` passed: Go build/tests, 96 Vitest files
+  (159 tests, one skip), TypeScript typecheck, ESLint and Docker architecture
+  lint. `make test-race`, `go vet ./...` and `make staticcheck-u1000` also pass.
+  This Core candidate has not been installed on `local`, so the live conflict's
+  specific cause and a successful runtime apply remain unverified.
+- The macOS Studio build `61de3ba3…` was launched under its exact-digest
+  approval. The Inspector no longer offers retry for an HTTP request rejected
+  without a failed Core operation. No apply button was pressed during this
+  verification.
+
+## Local secret rotation smoke — superseded status — 2026-10-18
 
 - The earlier missing-bootstrap-trust blocker below has been resolved after
   explicit local-only approval: the old local trust assets were backed up, a

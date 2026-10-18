@@ -5,7 +5,7 @@
     "errors.json": "sha256:5948e4b0f0165cfb4a757d64cef149b6ddeaeffcd19f8761e61393bfe6815cbb",
     "management-fields.yaml": "sha256:bec56bb0a5426144b5595191ed729c9e2a8969330df94cb37518d491ec6be97f",
     "golden-vectors.json": "sha256:fa46dde1bb29d50fe0fd20d02dceec8114b692493484097e307750decb0adbcc",
-    "management.openapi.yaml": "sha256:aef961c1e1b3a7eb1ad197e73ea4c98de85e5e95a15603e1438f0591bbf85a9a",
+    "management.openapi.yaml": "sha256:46237b6e4a00d6c76732e4720e8e40f309ec6197b49b9b5e3994ec607f87e3b4",
     "security-runtime.json": "sha256:fd099346ca9b04df61d6ec07aae914ff3a330c2a8b23dc043ffd164d18fadaf8"
   }
 }

@@ -39,9 +39,13 @@ func (service *ConfigBundleService) Plan(ctx context.Context, request models.Con
 		if err != nil {
 			return models.ConfigBundlePlan{}, fmt.Errorf("service %s: %w", item.ID, err)
 		}
+		blockers, err := service.Configurations.SubmissionBlockers(ctx, item.ID)
+		if err != nil {
+			return models.ConfigBundlePlan{}, fmt.Errorf("service %s submission state: %w", item.ID, err)
+		}
 		plan.Services = append(plan.Services, models.ConfigBundlePlanItem{
 			ID: item.ID, CurrentRevision: current.Revision, CurrentDigest: current.Digest,
-			SchemaVersion: current.SchemaVersion,
+			SchemaVersion: current.SchemaVersion, BlockedBy: blockers,
 		})
 	}
 	return plan, nil
@@ -51,6 +55,11 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 	plan, err := service.Plan(ctx, request)
 	if err != nil {
 		return models.ConfigBundleApply{}, err
+	}
+	for _, item := range plan.Services {
+		if len(item.BlockedBy) > 0 {
+			return models.ConfigBundleApply{}, models.ServiceConfigurationConflict{Reason: string(item.BlockedBy[0])}
+		}
 	}
 	// Validate the whole candidate set before reserving or scheduling any item.
 	// A refusal by a later service must not start an earlier service's rollout.

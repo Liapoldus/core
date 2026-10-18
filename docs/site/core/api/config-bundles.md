@@ -29,7 +29,12 @@ Management API. Core не читает Git checkout, не принимает п�
 
 Plan проверяет envelope, JSON settings и наличие service instances. Он не
 создаёт desired state и не запускает rollout. В ответе для каждого service
-возвращаются `currentRevision`, `currentDigest` и `schemaVersion`.
+возвращаются `currentRevision`, `currentDigest` и `schemaVersion`. Поле
+`blockedBy` содержит безопасные коды текущих препятствий отправке кандидата:
+`pending_configuration`, `configuration_rollout_open` или
+`traffic_rollout_incomplete`. Поле отсутствует, если известные Core причины
+блокировки не обнаружены. Состояние может измениться после плана; атомарная
+проверка при создании кандидата остаётся обязательной.
 
 ## Apply
 

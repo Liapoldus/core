@@ -183,7 +183,7 @@ func (service *ServiceConfigurationService) Submit(ctx context.Context, command 
 			return models.Operation{}, models.ServiceConfigurationRevision{}, false, err
 		}
 		if current.Revision != command.ExpectedRevision {
-			return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationConflict{}
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerRevisionChanged)}
 		}
 		reservation.Operation.State = service.OperationStates.Pending
 		operation, created, err := service.Operations.Reserve(ctx, reservation)
@@ -222,6 +222,31 @@ func (service *ServiceConfigurationService) Current(ctx context.Context, instanc
 	}
 	revision, _, err := service.Store.Current(ctx, instanceID)
 	return revision, err
+}
+
+// SubmissionBlockers returns safe, stable reasons why a new candidate cannot
+// be submitted at the current revision. It is advisory; the store enforces the
+// same conditions atomically when creating a candidate.
+func (service *ServiceConfigurationService) SubmissionBlockers(ctx context.Context, instanceID string) ([]models.ConfigurationBlocker, error) {
+	if service == nil || service.Store == nil || instanceID == "" {
+		return nil, models.ServiceConfigurationUnavailable{}
+	}
+	_, pointers, err := service.Store.Current(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	blockers := make([]models.ConfigurationBlocker, 0, 3)
+	if pointers.PendingRevision > 0 {
+		blockers = append(blockers, models.ConfigurationBlockerPending)
+	}
+	if reader, ok := service.Store.(interfaces.ServiceConfigurationRolloutBlockerReader); ok {
+		rolloutBlockers, err := reader.RolloutBlockers(ctx, instanceID)
+		if err != nil {
+			return nil, err
+		}
+		blockers = append(blockers, rolloutBlockers...)
+	}
+	return blockers, nil
 }
 
 func (service *ServiceConfigurationService) IsInstanceFenced(instanceID string) bool {

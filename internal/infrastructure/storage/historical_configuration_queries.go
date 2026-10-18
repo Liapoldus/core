@@ -12,9 +12,9 @@ func historicalConfigurationQueries() map[string]string {
        COALESCE((SELECT generation FROM plugin_config_generations WHERE instance_id = active.instance_id AND slot = ?), 0)
 FROM plugin_config_generations AS active
 WHERE active.instance_id = ? AND active.slot = ?;`,
-		"instance-exists": `SELECT EXISTS(SELECT 1 FROM plugin_instances WHERE id = ?);`,
-		"open-rollout-exists": `SELECT EXISTS(SELECT 1 FROM plugin_rollouts WHERE instance_id = ? AND open = 1)
-    OR EXISTS (
+		"instance-exists":              `SELECT EXISTS(SELECT 1 FROM plugin_instances WHERE id = ?);`,
+		"configuration-rollout-exists": `SELECT EXISTS(SELECT 1 FROM plugin_rollouts WHERE instance_id = ? AND open = 1);`,
+		"traffic-rollout-exists": `SELECT EXISTS (
         SELECT 1 FROM traffic_rollouts AS current
         WHERE current.instance_id = ?
           AND current.id = (

@@ -50,6 +50,7 @@ type SQLiteServiceConfigurationStore struct {
 
 var _ interfaces.ServiceConfigurationStore = (*SQLiteServiceConfigurationStore)(nil)
 var _ interfaces.ServiceConfigurationInstanceLister = (*SQLiteServiceConfigurationStore)(nil)
+var _ interfaces.ServiceConfigurationRolloutBlockerReader = (*SQLiteServiceConfigurationStore)(nil)
 
 func NewSQLiteServiceConfigurationStore(database *sql.DB) (*SQLiteServiceConfigurationStore, error) {
 	return newConfigurationStore(database, configurationQueries(), false)
@@ -122,6 +123,25 @@ func (store *SQLiteServiceConfigurationStore) Current(ctx context.Context, insta
 	return revision, pointers, err
 }
 
+func (store *SQLiteServiceConfigurationStore) RolloutBlockers(ctx context.Context, instanceID string) ([]models.ConfigurationBlocker, error) {
+	if store == nil || store.database == nil || instanceID == "" {
+		return nil, sql.ErrConnDone
+	}
+	tx, err := store.database.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	blockers, err := serviceConfigurationRolloutBlockers(ctx, tx, store.queries, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return blockers, nil
+}
+
 // ListActiveInstances is the durable source for configuration snapshots. It
 // deliberately does not infer runtime membership; only active settings rows
 // are listed here, while live service instances remain lease-owned.
@@ -179,15 +199,18 @@ func (store *SQLiteServiceConfigurationStore) CreateCandidate(ctx context.Contex
 	if err != nil {
 		return models.ServiceConfigurationRevision{}, err
 	}
-	if pointers.CurrentRevision != expectedCurrent || pointers.PendingRevision != 0 {
-		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+	if pointers.CurrentRevision != expectedCurrent {
+		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerRevisionChanged)}
 	}
-	var openRollout bool
-	if err := tx.QueryRowContext(ctx, store.queries.queries["open-rollout-exists"], instanceID, instanceID).Scan(&openRollout); err != nil {
+	if pointers.PendingRevision != 0 {
+		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerPending)}
+	}
+	blockers, err := serviceConfigurationRolloutBlockers(ctx, tx, store.queries, instanceID)
+	if err != nil {
 		return models.ServiceConfigurationRevision{}, err
 	}
-	if openRollout {
-		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+	if len(blockers) > 0 {
+		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{Reason: string(blockers[0])}
 	}
 	var generation int64
 	if err := tx.QueryRowContext(ctx, store.queries.queries["next-generation"], instanceID).Scan(&generation); err != nil {
@@ -198,7 +221,7 @@ func (store *SQLiteServiceConfigurationStore) CreateCandidate(ctx context.Contex
 	if _, err := tx.ExecContext(ctx, store.queries.queries["insert-generation"], instanceID, generation, store.contract.Slots.Staging,
 		rawJSON, digest, schemaVersion, now.Format(store.contract.TimestampLayout)); err != nil {
 		if isUniqueConstraint(err) {
-			return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+			return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerPending)}
 		}
 		return models.ServiceConfigurationRevision{}, err
 	}
@@ -411,15 +434,21 @@ func (store *SQLiteServiceConfigurationStore) restorePrevious(
 	if err != nil {
 		return models.ServiceConfigurationPointers{}, err
 	}
-	if pointers.CurrentRevision != expectedCurrent || pointers.PreviousRevision == 0 || pointers.PendingRevision != 0 {
+	if pointers.CurrentRevision != expectedCurrent {
+		return models.ServiceConfigurationPointers{}, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerRevisionChanged)}
+	}
+	if pointers.PreviousRevision == 0 {
 		return models.ServiceConfigurationPointers{}, models.ServiceConfigurationConflict{}
 	}
-	var openRollout bool
-	if err := tx.QueryRowContext(ctx, store.queries.queries["open-rollout-exists"], instanceID, instanceID).Scan(&openRollout); err != nil {
+	if pointers.PendingRevision != 0 {
+		return models.ServiceConfigurationPointers{}, models.ServiceConfigurationConflict{Reason: string(models.ConfigurationBlockerPending)}
+	}
+	blockers, err := serviceConfigurationRolloutBlockers(ctx, tx, store.queries, instanceID)
+	if err != nil {
 		return models.ServiceConfigurationPointers{}, err
 	}
-	if openRollout {
-		return models.ServiceConfigurationPointers{}, models.ServiceConfigurationConflict{}
+	if len(blockers) > 0 {
+		return models.ServiceConfigurationPointers{}, models.ServiceConfigurationConflict{Reason: string(blockers[0])}
 	}
 	now := time.Now().UTC()
 	if operationID != "" {

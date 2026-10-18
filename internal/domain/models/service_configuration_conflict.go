@@ -1,7 +1,12 @@
 package models
 
-type ServiceConfigurationConflict struct{}
+type ServiceConfigurationConflict struct{ Reason string }
 
-func (ServiceConfigurationConflict) Error() string {
-	return "service configuration revision conflict"
+func (conflict ServiceConfigurationConflict) Error() string {
+	switch ConfigurationBlocker(conflict.Reason) {
+	case ConfigurationBlockerPending, ConfigurationBlockerServiceRollout, ConfigurationBlockerTrafficRollout, ConfigurationBlockerRevisionChanged:
+		return "service configuration conflict: " + conflict.Reason
+	default:
+		return "service configuration revision conflict"
+	}
 }
