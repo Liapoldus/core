@@ -27,6 +27,11 @@
   approval. The Inspector no longer offers retry for an HTTP request rejected
   without a failed Core operation. No apply button was pressed during this
   verification.
+- Exact-source Linux/arm64 Core candidate from pushed commit `0ae119b` is built
+  at `/tmp/liapoldus-core-admission-0ae119b`, SHA-256
+  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`;
+  `go version -m` confirms that revision and `vcs.modified=false`. It has not
+  been installed or run in `local` while exact-digest approval is pending.
 
 ## Local secret rotation smoke — superseded status — 2026-10-18
 
