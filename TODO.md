@@ -1,5 +1,21 @@
 # Core v3 — production readiness
 
+## Current local secret route preflight — 2026-10-18
+
+- The Studio-selected CLI at `/Users/docup/go/bin/liapoldus` (SHA-256
+  `c33d2114808708be062fb23877da3d48a8c803203ccd3d6be06d2be1227082ae`)
+  successfully reads the Server secret catalog from target `local`. The result
+  is a valid empty `service-secret-references/v1` catalog with no pending
+  registrations or rotations. This supersedes older live notes below reporting
+  that the running Core returned 404 for this route.
+- The same typed CLI reports Server 1.1.11 at generation 92, ready and
+  acknowledged. The status contract does not expose the running Core binary
+  digest, so this proves route availability but does not identify the deployed
+  Core artifact.
+- This was read-only. No Core database, Project, secret, service grant or
+  runtime configuration changed. Create/revoke writes, grant scope, rotation
+  ACK/timeout and restart recovery remain unverified against the live target.
+
 ## Current local secret catalog read-path evidence — 2026-10-18
 
 - The exact Darwin/arm64 CLI candidate
