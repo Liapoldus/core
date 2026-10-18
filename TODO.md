@@ -1,23 +1,36 @@
 # Core v3 — production readiness
 
-## Current local secret route preflight — 2026-10-18
+## Current local secret route and runtime verification — 2026-10-18
 
 - The Studio-selected CLI at `/Users/docup/go/bin/liapoldus` (SHA-256
   `c33d2114808708be062fb23877da3d48a8c803203ccd3d6be06d2be1227082ae`)
   successfully reads the Server secret catalog from target `local`. The result
-  is a valid `service-secret-references/v1` catalog containing one revoked
-  metadata record and no active references or pending registrations/rotations.
+  is a valid `service-secret-references/v1` catalog containing one active,
+  temporary test reference and one revoked record, with no pending
+  registrations or rotations. The active reference remains unselected and is
+  absent from Project settings and runtime configuration.
   This supersedes older live notes below reporting an empty catalog or HTTP 404.
-- The same typed CLI reports Server 1.1.11 at generation 93, ready and
-  acknowledged. The status contract does not expose the running Core binary
-  digest, so this proves route availability but does not identify the deployed
-  Core artifact.
+- The same typed CLI reports Server 1.1.11 at generation 94, ready and
+  acknowledged. Docker reports the Core process path as `/liapoldus/core`,
+  bound read-only to the local candidate; hashing that mounted host binary
+  confirms the authorized Linux/arm64 Core digest
+  `e336a935e6e81ca44b5dbfb77d3f31ae6fd86e365ba203371e2e34f389b0588f`.
 - Rechecked with `liapoldus service secret list --target local --service server`,
   `liapoldus service status server --target local`, and `liapoldus runtime status
-  --target local` on 2026-10-18. These reads changed no Core database, Project,
-  secret, service grant or runtime configuration. New secret creation, grant
-  delivery, rotation ACK/timeout and restart recovery remain unverified against
-  the live target.
+  --target local` on 2026-10-18. These status/catalog reads changed no Core
+  database, Project, service grant or runtime configuration. A separately
+  authorized synthetic secret create/list succeeded through the local CLI, but
+  the reference has not been delivered to Server. HTTP auth, rotation,
+  replica-ACK gating, revoke, timeout and restart recovery remain unverified
+  against the live target.
+- The Studio source fix for `bridge.secret_path_not_declared` is committed and
+  pushed; the rebuilt host has not yet been launched. Until that WebView gate is
+  cleared, the active temporary reference remains unselected. Production is
+  explicitly out of scope.
+- The candidate section immediately below records its pre-install state. The
+  read-only Docker mount inspection above now verifies that exact `e336…` binary
+  is running; the historical 404 and pending-install text below no longer
+  describe current local state.
 - Focused source checks re-run on 2026-10-18:
   `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 go test -p 1
   ./internal/application ./internal/presentation/api
@@ -58,11 +71,8 @@
 - On this HEAD, `make check`, `go vet ./...` and `make staticcheck-u1000` pass.
   The focused mTLS secret-grant integration passes and scans SQLite database,
   WAL and SHM for the secret marker.
-- This candidate has not been installed. The live Core container still reports
-  binary SHA-256 `9189b7731207bd4434fcfbffa7d6a2083df1c1ceb79c1e9ae724c6199631b9b5`
-  and returns 404 for the secret catalog route. Exact-digest update and live
-  create/list/rotate/apply/revoke acceptance remain open; no runtime or secret
-  state changed while preparing the candidate.
+- At the time of this candidate checkpoint it had not been installed; that
+  pre-install state is superseded by the current local verification above.
 
 ## SQLite plaintext exclusion in secret-grant integration — 2026-10-18
 
