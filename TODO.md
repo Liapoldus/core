@@ -1,12 +1,38 @@
 # Core v3 — production readiness
 
+## Local secret rotation smoke — current state — 2026-10-18
+
+- The earlier missing-bootstrap-trust blocker below has been resolved after
+  explicit local-only approval: the old local trust assets were backed up, a
+  new local CA and target/service certificates were issued, and Core was
+  restarted. The approved Darwin/arm64 CLI `68db41f10d7b566d…` is installed.
+- Fresh typed reads report Core, Echo and Server containers running. Server
+  1.1.11 is ready and acknowledged at generation 95; its active settings
+  envelope still reports schemaVersion 1. The existing `/echo` request returns
+  HTTP 200.
+- The Core catalog contains two active synthetic Server references, one
+  revoked record and a staged rotation. The Project file still has only
+  `/echo`; neither active reference has been delivered to Server, and no auth
+  route/configuration was applied. Do not infer grant delivery from the catalog
+  or source-level mTLS tests.
+- Studio fixed secret-reference validation in commit `b92c2d9` and pushed it.
+  The newly built host digest `88a4d2b0939f2427…` has not yet been launched;
+  its exact-digest action-time approval is pending. After that gate, complete
+  the WebView selection, saved candidate, Server grant, authenticated HTTP,
+  replica ACK and old-reference retirement checks. Remove the temporary route
+  and revoke only the smoke references after runtime no longer uses them.
+  Production is out of scope.
+
 ## Full owner gates re-run — 2026-10-18
 
 - `PATH=/Users/docup/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 make check` passed: Go build/tests, 96 Vitest files passed / 1 skipped, 159 tests passed, TypeScript typecheck, ESLint, and Docker architecture lint.
 - `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 go vet ./...` and `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 make staticcheck-u1000` both passed.
-- These source gates do not unblock the separate local runtime attempt recorded below: the selected local target is missing its existing Core TLS bootstrap assets. No certificate or CA was generated or replaced.
+- These source gates did not resolve the initial local runtime failure recorded
+  below; the trust assets were later replaced under explicit local-only
+  approval. See the current smoke checkpoint above for the present runtime
+  state.
 
-## Local Core bootstrap retry — 2026-10-18
+## Initial local Core bootstrap retry (historical) — 2026-10-18
 
 - Studio's approved local Run retry reached CLI Core bootstrap after OrbStack
   exposed Docker Engine 29.8.2, then stopped before Core container creation:
@@ -21,7 +47,7 @@
   CA replacement; restore the existing local trust bundle before further
   runtime acceptance.
 
-## Staged local secret rotation and stopped service containers — 2026-10-18
+## Staged local secret rotation before trust recovery (historical) — 2026-10-18
 
 - The authorized local synthetic rotation is staged in the Core reference
   catalog: two active opaque references, one revoked record, and one pending
