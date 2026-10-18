@@ -25,6 +25,12 @@
   route using one active opaque Server reference; the Core catalog has two
   active synthetic references and no pending rotations. The candidate has not
   been applied, and this source revision has not been installed in local Core.
+- A fresh `dev apply --confirm` attempt returned Core HTTP 409
+  `bundle_apply_failed: service configuration revision conflict`. Typed Server
+  status remains ready at generation 96 with no pending generation; the public
+  response does not identify the conflicting state or prove whether candidate
+  validation reached Server. The temporary route still returns 404 and `/echo`
+  returns 200. No Core database or secret value was inspected.
 - The exact local Core/Server binary action gate remains open for newly built
   digests. Production is out of scope; no secret value is read or logged.
 - Core commit `aecc186ce09e090fe733b61e9562983aec49bf82` is pushed and its
