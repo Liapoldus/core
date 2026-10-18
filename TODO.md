@@ -18,6 +18,15 @@
   secret, service grant or runtime configuration. New secret creation, grant
   delivery, rotation ACK/timeout and restart recovery remain unverified against
   the live target.
+- Focused source checks re-run on 2026-10-18:
+  `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 go test -p 1
+  ./internal/application ./internal/presentation/api
+  ./internal/infrastructure/storage ./internal/infrastructure/security -run
+  'ServiceSecret|SecretReference' -count=1` passes all four packages;
+  `PATH=/Users/docup/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH
+  npm --prefix tests test -- integration/service-secret-grants.test.ts` passes
+  1/1 real mTLS fixture. These do not exercise live creation or retirement in
+  the selected target.
 
 ## Initial local secret catalog read-path evidence — 2026-10-18
 
