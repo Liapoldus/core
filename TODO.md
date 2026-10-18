@@ -1,5 +1,19 @@
 # Core v3 — production readiness
 
+## Current local secret catalog read-path evidence — 2026-10-18
+
+- The exact Darwin/arm64 CLI candidate
+  `5e30a42a1bcf5af1d3c6ac4131fa71a109ca3c234650e31443eaf28ef9ce8829` now
+  reads `GET /api/services/{id}/secrets` through the local Core Management API
+  for both Server and Echo. Both responses are valid empty catalogs with no
+  pending registrations or rotations. This supersedes older TODO checkpoints
+  reporting HTTP 404 for the route.
+- The typed CLI status output does not expose the running Core binary digest,
+  so this read-path check does not prove which Core artifact is active. It also
+  does not prove create/revoke writes, mTLS grant scope, rotation ACK/timeout,
+  or restart recovery. No Core database, Project, runtime or secret state was
+  changed by this check.
+
 ## Exact-source current Core candidate — 2026-10-18
 
 - Built Linux/arm64 Core from published source HEAD
