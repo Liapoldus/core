@@ -430,10 +430,14 @@ func (service *ServiceConfigurationService) scheduleApply(command ApplyServiceCo
 	go worker()
 }
 
-func (service *ServiceConfigurationService) candidateValidationFailureCode(err error) string {
+func (service *ServiceConfigurationService) validationFailureCode(err error) string {
 	var validationFailed models.ServiceConfigurationCandidateValidationFailed
 	if errors.As(err, &validationFailed) {
 		return service.OperationFailureCodes.Rejected
+	}
+	var unavailable models.ServiceConfigurationUnavailable
+	if errors.As(err, &unavailable) {
+		return service.OperationFailureCodes.Unavailable
 	}
 	return service.OperationFailureCodes.ApplyFailed
 }
@@ -443,7 +447,7 @@ func (service *ServiceConfigurationService) operationFailureCode(err error) stri
 	if errors.As(err, &conflict) {
 		return service.OperationFailureCodes.Conflict
 	}
-	return service.candidateValidationFailureCode(err)
+	return service.validationFailureCode(err)
 }
 
 func (service *ServiceConfigurationService) Recover(ctx context.Context) error {
@@ -610,7 +614,7 @@ func (service *ServiceConfigurationService) recoverOperation(ctx context.Context
 			withConfigurationAudit(command.FailedAudit, operation.Resource)); failErr != nil {
 			return errors.Join(err, failErr)
 		}
-		return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.candidateValidationFailureCode(err))
+		return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.validationFailureCode(err))
 	}
 	if _, err := service.activateCandidate(ctx, command, candidate); err != nil {
 		var conflict models.ServiceConfigurationConflict

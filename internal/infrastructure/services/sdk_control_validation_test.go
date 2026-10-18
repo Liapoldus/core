@@ -23,6 +23,7 @@ type validationReloadClient struct {
 	generations []string
 	schemaErr   error
 	validateErr error
+	outcome     sdkmodels.Outcome
 }
 
 func (client *validationReloadClient) ValidateConfiguration(_ context.Context, generation string, _ []byte) error {
@@ -33,6 +34,8 @@ func (client *validationReloadClient) ValidateConfiguration(_ context.Context, g
 func (*validationReloadClient) Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
 	return sdkmodels.ReloadAcknowledgement{}, nil
 }
+
+func (client *validationReloadClient) ClassifyOutcome(error) sdkmodels.Outcome { return client.outcome }
 
 type mismatchedReadinessClient struct{ reloadCalled bool }
 
@@ -109,18 +112,24 @@ func TestRegisteredRolloutRequiresInjectedSchemaValidator(t *testing.T) {
 		t.Fatalf("private schema detail escaped candidate validation failure: %v", err)
 	}
 	validationClient.validateErr = errors.New("private secret grant detail")
+	validationClient.outcome = sdkmodels.OutcomeApplyRejected
 	resolver.ValidateSchema = func([]byte, []byte) error { return nil }
 	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &validationFailure) ||
 		strings.Contains(err.Error(), "private secret grant detail") {
 		t.Fatalf("private validator detail escaped candidate validation failure: %v", err)
 	}
+	validationClient.outcome = ""
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, new(models.ServiceConfigurationUnavailable)) ||
+		strings.Contains(err.Error(), "private secret grant detail") {
+		t.Fatalf("unclassified validator failure was not safely treated as unavailable: %v", err)
+	}
 	validationClient.validateErr = nil
 	validationClient.schemaErr = errors.New("private schema transport detail")
-	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.Is(err, ErrServiceUnavailable) ||
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, new(models.ServiceConfigurationUnavailable)) ||
 		strings.Contains(err.Error(), "private schema transport detail") {
 		t.Fatalf("schema transport error was not safely classified: %v", err)
 	}
-	if releases != 5 {
+	if releases != 6 {
 		t.Fatal("rejected configuration must release the client")
 	}
 }

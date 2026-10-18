@@ -69,6 +69,10 @@ type serviceConfigurationValidationClient interface {
 	ValidateConfiguration(context.Context, string, []byte) error
 }
 
+type serviceOutcomeClassifier interface {
+	ClassifyOutcome(error) sdkmodels.Outcome
+}
+
 type sdkMetadataClient interface {
 	Manifest(context.Context) ([]byte, error)
 	ConfigurationSchema(context.Context) ([]byte, error)
@@ -381,7 +385,7 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 		}
 		schema, err := schemaClient.ConfigurationSchema(ctx)
 		if err != nil {
-			return ErrServiceUnavailable
+			return models.ServiceConfigurationUnavailable{Message: "service configuration unavailable"}
 		}
 		if resolver.ValidateSchema(document, schema) != nil {
 			return models.ServiceConfigurationCandidateValidationFailed{}
@@ -391,7 +395,10 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 			return ErrServiceUnavailable
 		}
 		if err := validator.ValidateConfiguration(ctx, generation, document); err != nil {
-			return models.ServiceConfigurationCandidateValidationFailed{}
+			if classifier, ok := client.(serviceOutcomeClassifier); ok && classifier.ClassifyOutcome(err) == sdkmodels.OutcomeApplyRejected {
+				return models.ServiceConfigurationCandidateValidationFailed{}
+			}
+			return models.ServiceConfigurationUnavailable{Message: "service configuration unavailable"}
 		}
 		validated++
 	}

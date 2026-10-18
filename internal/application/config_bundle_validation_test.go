@@ -178,17 +178,32 @@ func TestServiceRefusalFailsStagedCandidateWithoutActivation(t *testing.T) {
 }
 
 func TestCandidateValidationFailureUsesConfigurationInvalidOperationCode(t *testing.T) {
+	operation, failed, activated := runConfigurationFailureOperation(t, models.ServiceConfigurationCandidateValidationFailed{})
+	if operation.State != "failed" || operation.ErrorCode != "service_config_invalid" || !failed || activated {
+		t.Fatalf("candidate rejection was not reported safely: operation=%+v failed=%v activated=%v", operation, failed, activated)
+	}
+}
+
+func TestUnavailableCandidateValidationUsesServiceUnavailableOperationCode(t *testing.T) {
+	operation, failed, activated := runConfigurationFailureOperation(t, models.ServiceConfigurationUnavailable{Message: "service configuration unavailable"})
+	if operation.State != "failed" || operation.ErrorCode != "service_unavailable" || !failed || activated {
+		t.Fatalf("unavailable service was not reported safely: operation=%+v failed=%v activated=%v", operation, failed, activated)
+	}
+}
+
+func runConfigurationFailureOperation(t *testing.T, rejection error) (models.Operation, bool, bool) {
+	t.Helper()
 	store := &bundleValidationStore{candidates: map[string]models.ServiceConfigurationRevision{
 		"second": {InstanceID: "second", Revision: 8, SchemaVersion: 1, SettingsJSON: []byte(`{"auth":true}`), State: "staging"},
 	}}
 	operationStore := &bundleOperationStore{operations: map[string]models.Operation{
 		"operation": {ID: "operation", State: "pending"},
 	}}
-	applier := &bundleValidationApplier{rejected: models.ServiceConfigurationCandidateValidationFailed{}}
+	applier := &bundleValidationApplier{rejected: rejection}
 	service := &ServiceConfigurationService{
 		Store: store, Applier: applier, Operations: OperationService{Store: operationStore},
 		OperationStates:       ServiceConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed", Succeeded: "succeeded"},
-		OperationFailureCodes: ServiceConfigurationFailureCodes{Rejected: "service_config_invalid", Conflict: "service_revision_conflict", ApplyFailed: "activation_failed"},
+		OperationFailureCodes: ServiceConfigurationFailureCodes{Rejected: "service_config_invalid", Conflict: "service_revision_conflict", Unavailable: "service_unavailable", ApplyFailed: "activation_failed"},
 		RevisionStates:        ServiceConfigurationRevisionStates{Active: "active", Candidate: "staging", Failed: "failed"},
 		ScheduleWorker:        func(run func()) { run() },
 	}
@@ -197,9 +212,7 @@ func TestCandidateValidationFailureUsesConfigurationInvalidOperationCode(t *test
 		SchemaVersion: 1, SettingsJSON: []byte(`{"auth":true}`),
 	}, models.Operation{ID: "operation", State: "pending"})
 	operation := operationStore.operations["operation"]
-	if operation.State != "failed" || operation.ErrorCode != "service_config_invalid" || !store.failed || store.activated {
-		t.Fatalf("candidate rejection was not reported safely: operation=%+v failed=%v activated=%v", operation, store.failed, store.activated)
-	}
+	return operation, store.failed, store.activated
 }
 
 func TestSubmissionBlockersIncludesPendingConfiguration(t *testing.T) {
