@@ -1,5 +1,20 @@
 # Core v3 — production readiness
 
+## Local Core bootstrap retry — 2026-10-18
+
+- Studio's approved local Run retry reached CLI Core bootstrap after OrbStack
+  exposed Docker Engine 29.8.2, then stopped before Core container creation:
+  `Core Management TLS certificate is unavailable`. Typed
+  `liapoldus runtime status --target local` reports Core exited.
+- The local target profile references missing management/control certificate
+  and key files plus missing management-client and replica CAs. No Core API,
+  configuration validation, secret grant, or replica ACK occurred in this
+  attempt; the staged catalog state was not changed by the failed bootstrap.
+- Core TLS/CA material was not regenerated. The architecture decision keeps
+  PKI renewal separate from application-secret rotation and forbids automatic
+  CA replacement; restore the existing local trust bundle before further
+  runtime acceptance.
+
 ## Staged local secret rotation and stopped service containers — 2026-10-18
 
 - The authorized local synthetic rotation is staged in the Core reference
