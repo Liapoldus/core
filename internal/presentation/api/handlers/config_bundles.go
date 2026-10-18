@@ -48,7 +48,17 @@ func ConfigBundleApply(deps ConfigBundleDependencies, response http.ResponseWrit
 	}
 	result, err := deps.Apply(request.Context(), input, actor, requestID, key)
 	if err != nil {
-		deps.WriteProblem(response, http.StatusConflict, "bundle_apply_failed", err.Error(), requestID)
+		var validationFailed models.ServiceConfigurationCandidateValidationFailed
+		if errors.As(err, &validationFailed) {
+			deps.WriteProblem(response, http.StatusUnprocessableEntity, "bundle_invalid", validationFailed.Error(), requestID)
+			return
+		}
+		var conflict models.ServiceConfigurationConflict
+		if errors.As(err, &conflict) {
+			deps.WriteProblem(response, http.StatusConflict, "bundle_apply_failed", conflict.Error(), requestID)
+			return
+		}
+		deps.WriteProblem(response, http.StatusServiceUnavailable, "bundle_apply_failed", "configuration bundle could not be applied", requestID)
 		return
 	}
 	deps.WriteJSON(response, http.StatusAccepted, map[string]any{"operations": result.OperationIDs, "requestId": requestID})

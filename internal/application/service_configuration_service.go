@@ -416,11 +416,7 @@ func (service *ServiceConfigurationService) scheduleApply(command ApplyServiceCo
 			if errors.As(err, &convergencePending) {
 				return
 			}
-			code := service.OperationFailureCodes.ApplyFailed
-			var conflict models.ServiceConfigurationConflict
-			if errors.As(err, &conflict) {
-				code = service.OperationFailureCodes.Conflict
-			}
+			code := service.operationFailureCode(err)
 			_ = service.Operations.Transition(workerContext, operation.ID,
 				service.OperationStates.Running, service.OperationStates.Failed, code)
 			return
@@ -432,6 +428,22 @@ func (service *ServiceConfigurationService) scheduleApply(command ApplyServiceCo
 		return
 	}
 	go worker()
+}
+
+func (service *ServiceConfigurationService) candidateValidationFailureCode(err error) string {
+	var validationFailed models.ServiceConfigurationCandidateValidationFailed
+	if errors.As(err, &validationFailed) {
+		return service.OperationFailureCodes.Rejected
+	}
+	return service.OperationFailureCodes.ApplyFailed
+}
+
+func (service *ServiceConfigurationService) operationFailureCode(err error) string {
+	var conflict models.ServiceConfigurationConflict
+	if errors.As(err, &conflict) {
+		return service.OperationFailureCodes.Conflict
+	}
+	return service.candidateValidationFailureCode(err)
 }
 
 func (service *ServiceConfigurationService) Recover(ctx context.Context) error {
@@ -598,7 +610,7 @@ func (service *ServiceConfigurationService) recoverOperation(ctx context.Context
 			withConfigurationAudit(command.FailedAudit, operation.Resource)); failErr != nil {
 			return errors.Join(err, failErr)
 		}
-		return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.OperationFailureCodes.ApplyFailed)
+		return service.Operations.Transition(ctx, operation.ID, operation.State, service.OperationStates.Failed, service.candidateValidationFailureCode(err))
 	}
 	if _, err := service.activateCandidate(ctx, command, candidate); err != nil {
 		var conflict models.ServiceConfigurationConflict

@@ -19,11 +19,15 @@ func (source validationReplicaSource) Snapshot() []LiveServiceReplica {
 
 func (validationReplicaSource) HasRegisteredInstance(string) bool { return true }
 
-type validationReloadClient struct{ generations []string }
+type validationReloadClient struct {
+	generations []string
+	schemaErr   error
+	validateErr error
+}
 
 func (client *validationReloadClient) ValidateConfiguration(_ context.Context, generation string, _ []byte) error {
 	client.generations = append(client.generations, generation)
-	return nil
+	return client.validateErr
 }
 
 func (*validationReloadClient) Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
@@ -55,7 +59,10 @@ func TestReloadObservedRetainsIncarnationWhenLiveIdentityMismatches(t *testing.T
 	}
 }
 
-func (*validationReloadClient) ConfigurationSchema(context.Context) ([]byte, error) {
+func (client *validationReloadClient) ConfigurationSchema(context.Context) ([]byte, error) {
+	if client.schemaErr != nil {
+		return nil, client.schemaErr
+	}
 	return []byte(`{"type":"object"}`), nil
 }
 
@@ -93,11 +100,27 @@ func TestRegisteredRolloutRequiresInjectedSchemaValidator(t *testing.T) {
 		t.Fatalf("calls/releases/generations = %d/%d/%v", calls, releases, validationClient.generations)
 	}
 	resolver.ValidateSchema = func([]byte, []byte) error { return errors.New("invalid configuration") }
-	var conflict models.ServiceConfigurationConflict
-	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &conflict) {
-		t.Fatalf("invalid document must reject rollout: %v", err)
+	var validationFailure models.ServiceConfigurationCandidateValidationFailed
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &validationFailure) {
+		t.Fatalf("invalid document must fail candidate validation: %v", err)
 	}
-	if releases != 2 {
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &validationFailure) ||
+		strings.Contains(err.Error(), "invalid configuration") {
+		t.Fatalf("private schema detail escaped candidate validation failure: %v", err)
+	}
+	validationClient.validateErr = errors.New("private secret grant detail")
+	resolver.ValidateSchema = func([]byte, []byte) error { return nil }
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &validationFailure) ||
+		strings.Contains(err.Error(), "private secret grant detail") {
+		t.Fatalf("private validator detail escaped candidate validation failure: %v", err)
+	}
+	validationClient.validateErr = nil
+	validationClient.schemaErr = errors.New("private schema transport detail")
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.Is(err, ErrServiceUnavailable) ||
+		strings.Contains(err.Error(), "private schema transport detail") {
+		t.Fatalf("schema transport error was not safely classified: %v", err)
+	}
+	if releases != 5 {
 		t.Fatal("rejected configuration must release the client")
 	}
 }

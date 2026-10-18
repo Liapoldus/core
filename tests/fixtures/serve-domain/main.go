@@ -379,7 +379,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, runtimeOperationID, "service_revision_conflict"); err != nil {
+	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, runtimeOperationID, "service_config_invalid"); err != nil {
 		return err
 	}
 	if err := assertReplicaGenerationRefused(ctx, readinessClient, runtimeReadinessURL, "1", "", runtimeProcess, 500*time.Millisecond); err != nil {
@@ -466,7 +466,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, operationID, "service_revision_conflict"); err != nil {
+	if err := waitForOperationFailure(ctx, readinessClient, management, managementBase, bootstrapToken, operationID, "service_config_invalid"); err != nil {
 		return err
 	}
 	if err := assertReplicaGenerationRefused(ctx, readinessClient, readinessURL, "1", "", domainProcess, 500*time.Millisecond); err != nil {

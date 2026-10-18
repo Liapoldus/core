@@ -177,6 +177,31 @@ func TestServiceRefusalFailsStagedCandidateWithoutActivation(t *testing.T) {
 	}
 }
 
+func TestCandidateValidationFailureUsesConfigurationInvalidOperationCode(t *testing.T) {
+	store := &bundleValidationStore{candidates: map[string]models.ServiceConfigurationRevision{
+		"second": {InstanceID: "second", Revision: 8, SchemaVersion: 1, SettingsJSON: []byte(`{"auth":true}`), State: "staging"},
+	}}
+	operationStore := &bundleOperationStore{operations: map[string]models.Operation{
+		"operation": {ID: "operation", State: "pending"},
+	}}
+	applier := &bundleValidationApplier{rejected: models.ServiceConfigurationCandidateValidationFailed{}}
+	service := &ServiceConfigurationService{
+		Store: store, Applier: applier, Operations: OperationService{Store: operationStore},
+		OperationStates:       ServiceConfigurationOperationStates{Pending: "pending", Running: "running", Failed: "failed", Succeeded: "succeeded"},
+		OperationFailureCodes: ServiceConfigurationFailureCodes{Rejected: "service_config_invalid", Conflict: "service_revision_conflict", ApplyFailed: "activation_failed"},
+		RevisionStates:        ServiceConfigurationRevisionStates{Active: "active", Candidate: "staging", Failed: "failed"},
+		ScheduleWorker:        func(run func()) { run() },
+	}
+	service.scheduleApply(ApplyServiceConfigurationCommand{
+		OperationID: "operation", InstanceID: "second", ExpectedRevision: 7, CandidateRevision: 8,
+		SchemaVersion: 1, SettingsJSON: []byte(`{"auth":true}`),
+	}, models.Operation{ID: "operation", State: "pending"})
+	operation := operationStore.operations["operation"]
+	if operation.State != "failed" || operation.ErrorCode != "service_config_invalid" || !store.failed || store.activated {
+		t.Fatalf("candidate rejection was not reported safely: operation=%+v failed=%v activated=%v", operation, store.failed, store.activated)
+	}
+}
+
 func TestSubmissionBlockersIncludesPendingConfiguration(t *testing.T) {
 	service := ServiceConfigurationService{Store: &bundleValidationStore{pendingRevision: 8}}
 	blockers, err := service.SubmissionBlockers(context.Background(), "server")

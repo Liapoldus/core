@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -49,5 +50,30 @@ func TestConfigBundleApplyRequiresIdempotencyKey(t *testing.T) {
 	ConfigBundleApply(deps, response, request, "req-1", "actor")
 	if response.Code != http.StatusBadRequest || called {
 		t.Fatalf("status=%d called=%v", response.Code, called)
+	}
+}
+
+func TestConfigBundleApplyReportsCandidateValidationWithoutConflictOrDetails(t *testing.T) {
+	var gotCode, gotMessage string
+	deps := ConfigBundleDependencies{
+		WriteJSON: func(response http.ResponseWriter, status int, _ any) { response.WriteHeader(status) },
+		WriteProblem: func(response http.ResponseWriter, status int, code, message, _ string) {
+			gotCode, gotMessage = code, message
+			response.WriteHeader(status)
+		},
+		WriteCatalogProblem: func(response http.ResponseWriter, _, _ string) { response.WriteHeader(http.StatusBadRequest) },
+		Apply: func(context.Context, models.ConfigBundleRequest, string, string, string) (models.ConfigBundleApply, error) {
+			return models.ConfigBundleApply{}, errors.Join(models.ServiceConfigurationCandidateValidationFailed{}, errors.New("private secret grant detail"))
+		},
+	}
+	body := `{"project":{"id":"demo","revision":"abc"},"bundle":{"schemaVersion":"core-config/v2","digest":"sha256:x","services":[{"id":"server","settings":{"auth":true}}]},"target":{"environment":"local"}}`
+	request := httptest.NewRequest(http.MethodPost, "/api/config-bundles/apply", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "apply-1")
+	response := httptest.NewRecorder()
+	ConfigBundleApply(deps, response, request, "req-1", "actor")
+	if response.Code != http.StatusUnprocessableEntity || gotCode != "bundle_invalid" ||
+		gotMessage != "service configuration candidate validation failed" || strings.Contains(gotMessage, "private") {
+		t.Fatalf("status=%d code=%q message=%q", response.Code, gotCode, gotMessage)
 	}
 }

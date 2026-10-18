@@ -380,15 +380,18 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 			return ErrServiceUnavailable
 		}
 		schema, err := schemaClient.ConfigurationSchema(ctx)
-		if err != nil || resolver.ValidateSchema(document, schema) != nil {
-			return models.ServiceConfigurationConflict{}
+		if err != nil {
+			return ErrServiceUnavailable
+		}
+		if resolver.ValidateSchema(document, schema) != nil {
+			return models.ServiceConfigurationCandidateValidationFailed{}
 		}
 		validator, ok := client.(serviceConfigurationValidationClient)
 		if !ok {
 			return ErrServiceUnavailable
 		}
 		if err := validator.ValidateConfiguration(ctx, generation, document); err != nil {
-			return models.ServiceConfigurationConflict{}
+			return models.ServiceConfigurationCandidateValidationFailed{}
 		}
 		validated++
 	}
