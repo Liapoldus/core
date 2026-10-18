@@ -2,13 +2,15 @@
 
 ## Current local secret-catalog candidate — 2026-10-18
 
-- Core source HEAD is `e35e66e`; the Core service-secret catalog and scoped
-  replica grants are present in this source. The current Linux/arm64 candidate
+- The Core service-secret catalog and scoped replica grants are present in
+  source commit `e35e66e`. The Linux/arm64 candidate
   was built from this exact HEAD at
   `/tmp/liapoldus-core-linux-arm64-2026-10-18-e35e66e`, SHA-256
   `637e881a050e340dba5f16b07b01a0b1f1d6c27d7f9a824f6e89b428570102d4`.
   `file` confirms a static ELF aarch64 executable. It has not been selected or
   installed; exact-digest Studio trust/update confirmation is pending.
+- Current HEAD `c6c7e92` adds only this TODO checkpoint; the candidate contains
+  the same Core source code and records its build revision in Go metadata.
 - The running local Core is still the older binary recorded below and does not
   serve the secret catalog route. No Core container, database, Project or
   secret state was changed while preparing this candidate.
