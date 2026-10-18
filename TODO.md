@@ -1,5 +1,11 @@
 # Core v3 — production readiness
 
+## Full owner gates re-run — 2026-10-18
+
+- `PATH=/Users/docup/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 make check` passed: Go build/tests, 96 Vitest files passed / 1 skipped, 159 tests passed, TypeScript typecheck, ESLint, and Docker architecture lint.
+- `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 go vet ./...` and `GOTOOLCHAIN=go1.26.0 GOWORK=off GOFLAGS=-p=1 make staticcheck-u1000` both passed.
+- These source gates do not unblock the separate local runtime attempt recorded below: the selected local target is missing its existing Core TLS bootstrap assets. No certificate or CA was generated or replaced.
+
 ## Local Core bootstrap retry — 2026-10-18
 
 - Studio's approved local Run retry reached CLI Core bootstrap after OrbStack
