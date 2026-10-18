@@ -5,18 +5,21 @@
 - The Studio-selected CLI at `/Users/docup/go/bin/liapoldus` (SHA-256
   `c33d2114808708be062fb23877da3d48a8c803203ccd3d6be06d2be1227082ae`)
   successfully reads the Server secret catalog from target `local`. The result
-  is a valid empty `service-secret-references/v1` catalog with no pending
-  registrations or rotations. This supersedes older live notes below reporting
-  that the running Core returned 404 for this route.
-- The same typed CLI reports Server 1.1.11 at generation 92, ready and
+  is a valid `service-secret-references/v1` catalog containing one revoked
+  metadata record and no active references or pending registrations/rotations.
+  This supersedes older live notes below reporting an empty catalog or HTTP 404.
+- The same typed CLI reports Server 1.1.11 at generation 93, ready and
   acknowledged. The status contract does not expose the running Core binary
   digest, so this proves route availability but does not identify the deployed
   Core artifact.
-- This was read-only. No Core database, Project, secret, service grant or
-  runtime configuration changed. Create/revoke writes, grant scope, rotation
-  ACK/timeout and restart recovery remain unverified against the live target.
+- Rechecked with `liapoldus service secret list --target local --service server`,
+  `liapoldus service status server --target local`, and `liapoldus runtime status
+  --target local` on 2026-10-18. These reads changed no Core database, Project,
+  secret, service grant or runtime configuration. New secret creation, grant
+  delivery, rotation ACK/timeout and restart recovery remain unverified against
+  the live target.
 
-## Current local secret catalog read-path evidence — 2026-10-18
+## Initial local secret catalog read-path evidence — 2026-10-18
 
 - The exact Darwin/arm64 CLI candidate
   `5e30a42a1bcf5af1d3c6ac4131fa71a109ca3c234650e31443eaf28ef9ce8829` now
