@@ -588,3 +588,26 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   The previous `b87dd1c` candidate predates replica-scoped grant checks and is
   superseded. The new candidate has not been installed or run in the local
   target; the running Core container remains unchanged.
+
+## Candidate rejection reporting — 2026-10-19
+
+- A local config-bundle apply reached Server candidate validation, where the
+  scoped secret grant was denied. Core kept generation 96 active and the
+  Project candidate file remained available, but the CLI received a misleading
+  revision-conflict response. The filtered Server log recorded only the safe
+  `grantDenied` event; no credential or grant handle was read or copied.
+- Core now uses a typed, detail-free candidate-validation failure. Bundle apply
+  reports `bundle_invalid`/422, ordinary asynchronous config apply reports
+  `service_config_invalid`, and schema transport failure reports
+  `service_unavailable`; actual revision conflicts retain their conflict code.
+  Private SDK validation details are not returned by the bundle endpoint.
+- `make check` passed (96 Vitest files, 159 tests; 1 skipped),
+  `GOWORK=off GOFLAGS=-p=1 go vet ./...`, and `make staticcheck-u1000` passed.
+  The real Core→SDK→Domain→Runtime integration test passed with the corrected
+  `service_config_invalid` rejection code; the old active generation remained
+  available after candidate refusal.
+- Latest source commit: `69be5c0fe4f0a0523db707fef8e7b2d9a3fb1186`.
+  A clean Linux/arm64 Core candidate is being prepared from this commit; the
+  resulting digest will be recorded before any local installation request.
+  The candidate is not installed. Local apply/secret smoke remains pending
+  approval of its exact digest.
