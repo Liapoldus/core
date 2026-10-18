@@ -28,9 +28,12 @@
 - A fresh `dev apply --confirm` attempt returned Core HTTP 409
   `bundle_apply_failed: service configuration revision conflict`. Typed Server
   status remains ready at generation 96 with no pending generation; the public
-  response does not identify the conflicting state or prove whether candidate
-  validation reached Server. The temporary route still returns 404 and `/echo`
-  returns 200. No Core database or secret value was inspected.
+  response does not identify the conflict. A local filter that emitted only
+  safe outcome tokens found the latest Server-log `grantDenied` event at
+  `2026-10-18T23:17:52.423698534Z`, consistent with this apply attempt. This
+  confirms that candidate validation reached the secret-grant path and the
+  scoped grant was refused. The temporary route still returns 404 and `/echo`
+  returns 200. No raw log line, Core database or secret value was inspected.
 - The exact local Core/Server binary action gate remains open for newly built
   digests. Production is out of scope; no secret value is read or logged.
 - Core commit `aecc186ce09e090fe733b61e9562983aec49bf82` is pushed and its
