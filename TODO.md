@@ -1,5 +1,22 @@
 # Core v3 — production readiness
 
+## Exact-source current Core candidate — 2026-10-18
+
+- Built Linux/arm64 Core from published source HEAD
+  `2e65f683026f91cb2c3cb0a93299d6f883432247` to
+  `/tmp/liapoldus-core-20261018-2e65f68`, SHA-256
+  `e336a935e6e81ca44b5dbfb77d3f31ae6fd86e365ba203371e2e34f389b0588f`.
+  `file` confirms static ELF aarch64; `go version -m` records the exact
+  revision and `vcs.modified=false`.
+- On this HEAD, `make check`, `go vet ./...` and `make staticcheck-u1000` pass.
+  The focused mTLS secret-grant integration passes and scans SQLite database,
+  WAL and SHM for the secret marker.
+- This candidate has not been installed. The live Core container still reports
+  binary SHA-256 `9189b7731207bd4434fcfbffa7d6a2083df1c1ceb79c1e9ae724c6199631b9b5`
+  and returns 404 for the secret catalog route. Exact-digest update and live
+  create/list/rotate/apply/revoke acceptance remain open; no runtime or secret
+  state changed while preparing the candidate.
+
 ## SQLite plaintext exclusion in secret-grant integration — 2026-10-18
 
 - The real Core → Service SDK mTLS grant fixture now closes SQLite and scans
