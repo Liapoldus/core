@@ -13,6 +13,11 @@
   does not prove create/revoke writes, mTLS grant scope, rotation ACK/timeout,
   or restart recovery. No Core database, Project, runtime or secret state was
   changed by this check.
+- Re-ran `PATH=/Users/docup/.cache/codex-runtimes/codex-primary-runtime/
+  dependencies/node/bin:$PATH npm --prefix tests test --
+  integration/service-secret-grants.test.ts`: 1/1 real mTLS grant integration
+  test passes, including the SQLite plaintext-marker scan. This is a fixture
+  integration, not a deployment of the local Core candidate.
 
 ## Exact-source current Core candidate — 2026-10-18
 
