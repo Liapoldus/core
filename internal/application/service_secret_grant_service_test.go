@@ -66,6 +66,51 @@ func TestServiceSecretGrantAllowsOnlyActiveReferenceAfterGenerationCheck(t *test
 	clear(value)
 }
 
+func TestServiceSecretGrantAllowsExactPersistedCandidateDuringPreflight(t *testing.T) {
+	service, references, resolved := newSecretGrantFixture()
+	candidateReference := validGrantReference()
+	candidateReference.ID = "ssr:v1:fedcba9876543210fedcba9876543210"
+	references.reference = candidateReference
+	staged := &stagedSecretGrantConfiguration{revision: models.ServiceConfigurationRevision{
+		InstanceID: "server", Revision: 2, State: "staging",
+		SettingsJSON: []byte(`{"auth":"ssr:v1:fedcba9876543210fedcba9876543210"}`),
+	}, available: true}
+	service.StagingConfigurations = staged
+	identity := testSecretGrantIdentity()
+	receipt, err := service.Issue(context.Background(), identity, candidateReference.ID, candidateReference.Purpose, "2")
+	if err != nil {
+		t.Fatalf("issue candidate-scoped grant: %v", err)
+	}
+	value, err := service.Redeem(context.Background(), identity, receipt.Handle)
+	if err != nil || !bytes.Equal(value, []byte("test-secret")) || !*resolved {
+		t.Fatalf("candidate-scoped reference did not redeem: %q %v resolved=%v", value, err, *resolved)
+	}
+	clear(value)
+}
+
+func TestServiceSecretGrantRejectsCandidateOutsideCurrentStagingSlot(t *testing.T) {
+	service, references, resolved := newSecretGrantFixture()
+	candidateReference := validGrantReference()
+	candidateReference.ID = "ssr:v1:fedcba9876543210fedcba9876543210"
+	references.reference = candidateReference
+	service.StagingConfigurations = &stagedSecretGrantConfiguration{revision: models.ServiceConfigurationRevision{
+		InstanceID: "server", Revision: 2, State: "staging",
+		SettingsJSON: []byte(`{"auth":"ssr:v1:fedcba9876543210fedcba9876543210"}`),
+	}, available: true}
+	identity := testSecretGrantIdentity()
+	receipt, err := service.Issue(context.Background(), identity, candidateReference.ID, candidateReference.Purpose, "2")
+	if err != nil {
+		t.Fatalf("issue candidate-scoped grant: %v", err)
+	}
+	service.StagingConfigurations.(*stagedSecretGrantConfiguration).available = false
+	if _, err := service.Redeem(context.Background(), identity, receipt.Handle); !errors.Is(err, models.ServiceSecretGrantFailure{Kind: models.ServiceSecretGrantDenied}) {
+		t.Fatalf("grant redeemed after candidate left staging: %v", err)
+	}
+	if *resolved {
+		t.Fatal("grant for a no-longer-staged candidate reached the secret resolver")
+	}
+}
+
 func TestServiceSecretGrantCannotBeRedeemedByAnotherReplicaIdentityOrCertificate(t *testing.T) {
 	issuer := testSecretGrantIdentity()
 	for name, other := range map[string]models.ServiceReplicaIdentity{
@@ -103,6 +148,18 @@ func (retainedSecretGrantConfiguration) Retained(_ context.Context, instanceID s
 		return models.ServiceConfigurationRevision{}, false, nil
 	}
 	return models.ServiceConfigurationRevision{InstanceID: instanceID, Revision: 1, SettingsJSON: []byte(`{"secret":"ssr:v1:0123456789abcdef0123456789abcdef"}`)}, true, nil
+}
+
+type stagedSecretGrantConfiguration struct {
+	revision  models.ServiceConfigurationRevision
+	available bool
+}
+
+func (reader *stagedSecretGrantConfiguration) Staged(_ context.Context, instanceID string, generation int64) (models.ServiceConfigurationRevision, bool, error) {
+	if !reader.available || reader.revision.InstanceID != instanceID || reader.revision.Revision != generation {
+		return models.ServiceConfigurationRevision{}, false, nil
+	}
+	return reader.revision, true, nil
 }
 
 type serviceSecretReferenceStub struct{ reference models.ServiceSecretReference }

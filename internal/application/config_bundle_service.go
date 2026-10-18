@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Liapoldus/core/v3/internal/domain/models"
@@ -61,17 +62,10 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 			return models.ConfigBundleApply{}, models.ServiceConfigurationConflict{Reason: string(item.BlockedBy[0])}
 		}
 	}
-	// Validate the whole candidate set before reserving or scheduling any item.
-	// A refusal by a later service must not start an earlier service's rollout.
-	for _, item := range request.Bundle.Services {
-		if err := service.Configurations.ValidateCandidate(ctx, item.ID, item.Settings); err != nil {
-			return models.ConfigBundleApply{}, err
-		}
-	}
 	if service.OperationKind == "" || service.Pending == "" || service.Operations.Store == nil {
 		return models.ConfigBundleApply{}, errors.New("operation service unavailable")
 	}
-	ids := make([]string, 0, len(request.Bundle.Services))
+	prepared := make([]preparedBundleCandidate, 0, len(request.Bundle.Services))
 	for index, item := range request.Bundle.Services {
 		operationID, err := configBundleOperationID()
 		if err != nil {
@@ -93,16 +87,57 @@ func (service *ConfigBundleService) Apply(ctx context.Context, request models.Co
 			FailedAudit:    models.AuditRecord{Actor: actor, Action: service.FailedAction, Result: service.FailedResult, RequestID: requestID},
 		}
 		payload.Digest = payload.ComputeDigest(item.Settings)
-		reserved, err := service.Configurations.Submit(ctx, command, models.OperationReservation{
+		reserved, candidate, created, err := service.Configurations.Prepare(ctx, command, models.OperationReservation{
 			Operation: operation, Scope: "config-bundle/" + request.Project.Revision,
 			Key: reservationKey, RequestDigest: payload.Digest, Payload: payload,
 		})
 		if err != nil {
-			return models.ConfigBundleApply{}, err
+			return models.ConfigBundleApply{}, errors.Join(err, service.failPreparedBundle(ctx, prepared))
 		}
-		ids = append(ids, reserved.ID)
+		if created {
+			command.OperationID = reserved.ID
+			command.CandidateRevision = candidate.Revision
+		}
+		prepared = append(prepared, preparedBundleCandidate{command: command, operation: reserved, created: created})
+	}
+	// Candidates for every changed service are now persisted in Core's private
+	// staging slots. Validate the entire bundle before any candidate can promote.
+	for _, candidate := range prepared {
+		if !candidate.created {
+			continue
+		}
+		if err := service.Configurations.ValidateStagedCandidate(ctx, candidate.command.InstanceID,
+			strconv.FormatInt(candidate.command.CandidateRevision, 10), candidate.command.SettingsJSON); err != nil {
+			return models.ConfigBundleApply{}, errors.Join(err, service.failPreparedBundle(ctx, prepared))
+		}
+	}
+	ids := make([]string, 0, len(prepared))
+	for _, candidate := range prepared {
+		ids = append(ids, candidate.operation.ID)
+		if candidate.created {
+			service.Configurations.StartPrepared(candidate.command, candidate.operation)
+		}
 	}
 	return models.ConfigBundleApply{OperationIDs: ids}, nil
+}
+
+type preparedBundleCandidate struct {
+	command   ApplyServiceConfigurationCommand
+	operation models.Operation
+	created   bool
+}
+
+func (service *ConfigBundleService) failPreparedBundle(ctx context.Context, prepared []preparedBundleCandidate) error {
+	var failure error
+	for _, candidate := range prepared {
+		if !candidate.created {
+			continue
+		}
+		if err := service.Configurations.FailPrepared(ctx, candidate.command, candidate.operation); err != nil {
+			failure = errors.Join(failure, err)
+		}
+	}
+	return failure
 }
 
 func configBundleOperationID() (string, error) {

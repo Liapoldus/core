@@ -19,7 +19,7 @@ type partialApplier struct {
 }
 
 // This fixture isolates activation; candidate validation succeeds independently.
-func (*partialApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+func (*partialApplier) ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }
 

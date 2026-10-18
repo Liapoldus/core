@@ -14,7 +14,7 @@ func TestRESTResolutionRequiresRegisteredReplica(t *testing.T) {
 	if _, err := applier.TrafficRolloutReplicas(context.Background(), "neutral-instance"); !errors.Is(err, ErrServiceUnavailable) {
 		t.Fatalf("unregistered cohort: %v", err)
 	}
-	if err := applier.ValidateTrafficRolloutConfiguration(context.Background(), "neutral-instance", []byte(`{}`)); !errors.Is(err, ErrServiceUnavailable) {
+	if err := applier.ValidateTrafficRolloutConfiguration(context.Background(), "neutral-instance", "", []byte(`{}`)); !errors.Is(err, ErrServiceUnavailable) {
 		t.Fatalf("unregistered validation: %v", err)
 	}
 }

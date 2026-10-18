@@ -347,7 +347,7 @@ func serveBootstrap(ctx context.Context, options runContext, bootstrap config.Bo
 	if err := convergenceSnapshot.Refresh(context.Background()); err != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}
-	stopRESTControl, controlErr := startServiceRESTControl(controlPlane, configurationSnapshot, stores.serviceSecretStore, bootstrap.SecretRoot)
+	stopRESTControl, controlErr := startServiceRESTControl(controlPlane, configurationSnapshot, stores.serviceConfigStore, stores.serviceSecretStore, bootstrap.SecretRoot)
 	if controlErr != nil {
 		return failBootstrap(options, options.words.Exits.Unavailable, options.words.Diagnostics.ConfigInvalid)
 	}

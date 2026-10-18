@@ -21,7 +21,7 @@ type applier struct {
 }
 
 // This fixture isolates activation; candidate validation succeeds independently.
-func (*applier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+func (*applier) ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }
 

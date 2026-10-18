@@ -1,6 +1,7 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -65,6 +66,20 @@ var SnapshotActivationLock sync.Mutex
 
 // ValidateCandidate checks an opaque document without publishing a generation.
 func (service *ServiceConfigurationService) ValidateCandidate(ctx context.Context, instanceID string, document []byte) error {
+	return service.validateCandidate(ctx, instanceID, "", document)
+}
+
+// ValidateStagedCandidate validates the exact generation already persisted in
+// the private staging slot. Services may use that generation to request
+// candidate-scoped grants; staging remains unavailable to ordinary config pull.
+func (service *ServiceConfigurationService) ValidateStagedCandidate(ctx context.Context, instanceID, generation string, document []byte) error {
+	if generation == "" {
+		return models.ServiceConfigurationUnavailable{}
+	}
+	return service.validateCandidate(ctx, instanceID, generation, document)
+}
+
+func (service *ServiceConfigurationService) validateCandidate(ctx context.Context, instanceID, generation string, document []byte) error {
 	if service == nil || service.Applier == nil {
 		return models.ServiceConfigurationUnavailable{}
 	}
@@ -72,7 +87,7 @@ func (service *ServiceConfigurationService) ValidateCandidate(ctx context.Contex
 	if !ok {
 		return models.ServiceConfigurationUnavailable{}
 	}
-	return validator.ValidateTrafficRolloutConfiguration(ctx, instanceID, document)
+	return validator.ValidateTrafficRolloutConfiguration(ctx, instanceID, generation, document)
 }
 
 // RestorePreviousConfiguration swaps active and previous. Registered v2
@@ -147,23 +162,38 @@ type ApplyServiceConfigurationCommand struct {
 }
 
 func (service *ServiceConfigurationService) Submit(ctx context.Context, command ApplyServiceConfigurationCommand, reservation models.OperationReservation) (models.Operation, error) {
-	if service == nil {
-		return models.Operation{}, models.ServiceConfigurationUnavailable{}
+	operation, candidate, created, err := service.Prepare(ctx, command, reservation)
+	if err != nil {
+		return models.Operation{}, err
 	}
-	if service.Store == nil || service.Applier == nil || service.Operations.Store == nil {
-		return models.Operation{}, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
+	if created {
+		command.CandidateRevision = candidate.Revision
+		service.StartPrepared(command, operation)
+	}
+	return operation, nil
+}
+
+// Prepare persists an operation and its private staging candidate without
+// scheduling activation. Bundled updates use it to validate every candidate
+// before any service begins activation.
+func (service *ServiceConfigurationService) Prepare(ctx context.Context, command ApplyServiceConfigurationCommand, reservation models.OperationReservation) (models.Operation, models.ServiceConfigurationRevision, bool, error) {
+	if service == nil {
+		return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationUnavailable{}
+	}
+	if service.Store == nil || service.Applier == nil || service.Operations.Store == nil || service.OperationKind == "" || service.OperationStates.Pending == "" {
+		return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
 	}
 	if reservation.Operation.ID == "" || reservation.Operation.Kind == "" || reservation.Operation.Actor == "" || reservation.Operation.RequestID == "" || reservation.Scope == "" || reservation.Key == "" || reservation.RequestDigest == "" {
-		return models.Operation{}, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
+		return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
 	}
 	if reservation.Payload == nil || !reservation.Payload.Valid() || reservation.Payload.Version != service.PayloadVersion ||
 		reservation.Payload.Resource != command.InstanceID || reservation.Payload.ExpectedRevision != command.ExpectedRevision ||
 		reservation.Payload.SchemaVersion != command.SchemaVersion || len(command.SettingsJSON) > service.MaximumPayloadBytes ||
 		reservation.Payload.Digest != reservation.Payload.ComputeDigest(command.SettingsJSON) {
 		if len(command.SettingsJSON) > service.MaximumPayloadBytes {
-			return models.Operation{}, models.ServiceConfigurationPayloadTooLarge{}
+			return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationPayloadTooLarge{}
 		}
-		return models.Operation{}, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
+		return models.Operation{}, models.ServiceConfigurationRevision{}, false, models.ServiceConfigurationUnavailable{Message: service.Unavailable}
 	}
 	// Recovery must not observe the brief gap between reserving the operation
 	// and linking its candidate generation. It would otherwise classify a valid
@@ -204,13 +234,39 @@ func (service *ServiceConfigurationService) Submit(ctx context.Context, command 
 	}()
 	SnapshotActivationLock.Unlock()
 	if submitErr != nil {
-		return models.Operation{}, submitErr
+		return models.Operation{}, models.ServiceConfigurationRevision{}, false, submitErr
 	}
 	if created {
-		command.CandidateRevision = candidate.Revision
-		service.scheduleApply(command, operation)
+		operation.CandidateRevision = candidate.Revision
 	}
-	return operation, nil
+	return operation, candidate, created, nil
+}
+
+// StartPrepared schedules activation for a candidate that has passed service
+// validation. It is intentionally separate from Prepare for atomic bundle
+// preflight.
+func (service *ServiceConfigurationService) StartPrepared(command ApplyServiceConfigurationCommand, operation models.Operation) {
+	if service == nil || operation.ID == "" || command.CandidateRevision < 1 {
+		return
+	}
+	command.OperationID = operation.ID
+	service.scheduleApply(command, operation)
+}
+
+// FailPrepared retires a staged candidate and its reserved operation after a
+// bundle preflight refuses. It never changes the active generation.
+func (service *ServiceConfigurationService) FailPrepared(ctx context.Context, command ApplyServiceConfigurationCommand, operation models.Operation) error {
+	if service == nil || service.Store == nil || service.Operations.Store == nil || command.CandidateRevision < 1 || operation.ID == "" {
+		return models.ServiceConfigurationUnavailable{}
+	}
+	SnapshotActivationLock.Lock()
+	defer SnapshotActivationLock.Unlock()
+	if _, err := service.Store.FailCandidate(context.WithoutCancel(ctx), command.InstanceID, command.CandidateRevision,
+		command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); err != nil {
+		return err
+	}
+	return service.Operations.Transition(context.WithoutCancel(ctx), operation.ID, service.OperationStates.Pending,
+		service.OperationStates.Failed, service.OperationFailureCodes.Rejected)
 }
 
 func (service *ServiceConfigurationService) Current(ctx context.Context, instanceID string) (models.ServiceConfigurationRevision, error) {
@@ -273,15 +329,6 @@ func (service *ServiceConfigurationService) Apply(ctx context.Context, command A
 	if current.Revision != command.ExpectedRevision {
 		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
 	}
-	if err := service.ValidateCandidate(ctx, command.InstanceID, command.SettingsJSON); err != nil {
-		if command.CandidateRevision > 0 {
-			if _, failErr := service.Store.FailCandidate(context.WithoutCancel(ctx), command.InstanceID, command.CandidateRevision,
-				command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
-				return models.ServiceConfigurationRevision{}, errors.Join(err, failErr)
-			}
-		}
-		return models.ServiceConfigurationRevision{}, err
-	}
 	command.CandidateAudit.DigestBefore = current.Digest
 	var candidate models.ServiceConfigurationRevision
 	if command.CandidateRevision > 0 {
@@ -294,8 +341,23 @@ func (service *ServiceConfigurationService) Apply(ctx context.Context, command A
 	if err != nil {
 		return models.ServiceConfigurationRevision{}, err
 	}
-	if candidate.State != service.RevisionStates.Candidate || candidate.SchemaVersion != command.SchemaVersion {
+	if candidate.State != service.RevisionStates.Candidate || candidate.SchemaVersion != command.SchemaVersion ||
+		!bytes.Equal(candidate.SettingsJSON, command.SettingsJSON) {
 		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+	}
+	_, pointers, err := service.Store.Current(ctx, command.InstanceID)
+	if err != nil {
+		return models.ServiceConfigurationRevision{}, err
+	}
+	if pointers.PendingRevision != candidate.Revision {
+		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationConflict{}
+	}
+	if err := service.ValidateStagedCandidate(ctx, command.InstanceID, strconv.FormatInt(candidate.Revision, 10), candidate.SettingsJSON); err != nil {
+		if _, failErr := service.Store.FailCandidate(context.WithoutCancel(ctx), command.InstanceID, candidate.Revision,
+			command.ExpectedRevision, withConfigurationAudit(command.FailedAudit, command.InstanceID)); failErr != nil {
+			return models.ServiceConfigurationRevision{}, errors.Join(err, failErr)
+		}
+		return models.ServiceConfigurationRevision{}, err
 	}
 	transitionContext := context.WithoutCancel(ctx)
 	command.AppliedAudit.DigestBefore = current.Digest
@@ -531,7 +593,7 @@ func (service *ServiceConfigurationService) recoverOperation(ctx context.Context
 		SettingsJSON: candidate.SettingsJSON, AppliedAudit: withConfigurationAudit(appliedAudit, operation.Resource),
 		FailedAudit: models.AuditRecord{Actor: operation.Actor, Action: service.RecoveryAudit.FailedAction,
 			Result: service.RecoveryAudit.Failed, RequestID: operation.RequestID}}
-	if err := service.ValidateCandidate(ctx, operation.Resource, candidate.SettingsJSON); err != nil {
+	if err := service.ValidateStagedCandidate(ctx, operation.Resource, strconv.FormatInt(candidate.Revision, 10), candidate.SettingsJSON); err != nil {
 		if _, failErr := service.Store.FailCandidate(ctx, operation.Resource, candidate.Revision, current.Revision,
 			withConfigurationAudit(command.FailedAudit, operation.Resource)); failErr != nil {
 			return errors.Join(err, failErr)

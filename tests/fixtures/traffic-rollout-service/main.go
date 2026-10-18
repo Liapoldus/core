@@ -24,7 +24,7 @@ func (source replicaSource) TrafficRolloutReplicas(context.Context, string) ([]m
 
 type configurationValidator struct{}
 
-func (configurationValidator) ValidateTrafficRolloutConfiguration(_ context.Context, _ string, document []byte) error {
+func (configurationValidator) ValidateTrafficRolloutConfiguration(_ context.Context, _ string, _ string, document []byte) error {
 	var value map[string]any
 	if json.Unmarshal(document, &value) != nil || value == nil {
 		return models.TrafficRolloutInvalid{}

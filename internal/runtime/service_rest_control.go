@@ -44,7 +44,7 @@ var errInvalidServiceRESTControl = errors.New("invalid service REST control conf
 // startServiceRESTControl serves the Service SDK private control endpoints for
 // exact-generation config pulls and scoped secret grants. It never starts,
 // supervises, or relaunches a service process.
-func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces.ServiceRetainedConfigurationReader, references interfaces.ServiceSecretReferenceStore, secretRoot string) (func(), error) {
+func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces.ServiceRetainedConfigurationReader, staging interfaces.ServiceStagingConfigurationReader, references interfaces.ServiceSecretReferenceStore, secretRoot string) (func(), error) {
 	if configuration == nil {
 		return nil, errInvalidServiceRESTControl
 	}
@@ -70,8 +70,9 @@ func startServiceRESTControl(configuration *ServiceRESTControl, store interfaces
 		return nil, errInvalidServiceRESTControl
 	}
 	grantService := &application.ServiceSecretGrantService{
-		Configurations: store,
-		References:     references,
+		Configurations:        store,
+		StagingConfigurations: staging,
+		References:            references,
 		ResolveSecret: func(ctx context.Context, reference string, maximumBytes int64) ([]byte, error) {
 			return security.ReadStagedServiceSecret(secretRoot, reference, maximumBytes)
 		},

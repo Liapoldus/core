@@ -66,7 +66,7 @@ type serviceConfigurationSchemaClient interface {
 }
 
 type serviceConfigurationValidationClient interface {
-	ValidateConfiguration(context.Context, []byte) error
+	ValidateConfiguration(context.Context, string, []byte) error
 }
 
 type sdkMetadataClient interface {
@@ -355,7 +355,7 @@ func (applier *SDKConfigurationApplier) TrafficRolloutReplicas(ctx context.Conte
 
 // ValidateTrafficRolloutConfiguration validates an opaque candidate against
 // every live replica's service-owned schema and validator before Core promotes it.
-func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID string, document []byte) error {
+func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID, generation string, document []byte) error {
 	if resolver == nil || resolver.Source == nil || resolver.Build == nil || resolver.ValidateSchema == nil || instanceID == "" {
 		return ErrServiceUnavailable
 	}
@@ -387,7 +387,7 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 		if !ok {
 			return ErrServiceUnavailable
 		}
-		if err := validator.ValidateConfiguration(ctx, document); err != nil {
+		if err := validator.ValidateConfiguration(ctx, generation, document); err != nil {
 			return models.ServiceConfigurationConflict{}
 		}
 		validated++
@@ -398,14 +398,14 @@ func (resolver *RegisteredReplicaReloadResolver) ValidateTrafficRolloutConfigura
 	return nil
 }
 
-func (applier *SDKConfigurationApplier) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID string, document []byte) error {
+func (applier *SDKConfigurationApplier) ValidateTrafficRolloutConfiguration(ctx context.Context, instanceID, generation string, document []byte) error {
 	if applier == nil || instanceID == "" {
 		return ErrServiceUnavailable
 	}
 	if applier.Registered == nil {
 		return ErrServiceUnavailable
 	}
-	return applier.Registered.ValidateTrafficRolloutConfiguration(ctx, instanceID, document)
+	return applier.Registered.ValidateTrafficRolloutConfiguration(ctx, instanceID, generation, document)
 }
 
 func NewRegisteredReplicaReloadResolver(source RegisteredReplicaSource, build RegisteredReplicaClientFactory, now func() time.Time) *RegisteredReplicaReloadResolver {
@@ -423,7 +423,7 @@ type applicationTrafficRolloutReplicaSource interface {
 }
 
 type applicationTrafficRolloutConfigurationValidator interface {
-	ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error
+	ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error
 }
 
 // CaptureConfigurationTargets freezes each currently leased authenticated

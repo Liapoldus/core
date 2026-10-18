@@ -15,16 +15,17 @@ import (
 )
 
 type ServiceSecretGrantService struct {
-	Configurations      interfaces.ServiceRetainedConfigurationReader
-	References          interfaces.ServiceSecretReferenceStore
-	ResolveSecret       interfaces.ServiceSecretReferenceResolver
-	GrantTTL            time.Duration
-	MaximumValueBytes   int64
-	MaximumOutstanding  int
-	MaximumReferenceLen int
-	MaximumPurposeLen   int
-	Now                 func() time.Time
-	Random              io.Reader
+	Configurations        interfaces.ServiceRetainedConfigurationReader
+	StagingConfigurations interfaces.ServiceStagingConfigurationReader
+	References            interfaces.ServiceSecretReferenceStore
+	ResolveSecret         interfaces.ServiceSecretReferenceResolver
+	GrantTTL              time.Duration
+	MaximumValueBytes     int64
+	MaximumOutstanding    int
+	MaximumReferenceLen   int
+	MaximumPurposeLen     int
+	Now                   func() time.Time
+	Random                io.Reader
 
 	mu     sync.Mutex
 	grants map[string]serviceSecretGrantEntry
@@ -52,8 +53,8 @@ func (service *ServiceSecretGrantService) Issue(
 	if err != nil || generationNumber < 1 || strconv.FormatInt(generationNumber, 10) != generation {
 		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantDenied)
 	}
-	active, isActive, err := service.Configurations.Retained(ctx, identity.InstanceID, generationNumber)
-	if err != nil || !isActive || active.Revision != generationNumber || !documentContainsString(active.SettingsJSON, reference) {
+	configuration, available, err := service.generationConfiguration(ctx, identity.InstanceID, generationNumber)
+	if err != nil || !available || configuration.Revision != generationNumber || !documentContainsString(configuration.SettingsJSON, reference) {
 		return models.ServiceSecretGrantReceipt{}, grantFailure(models.ServiceSecretGrantDenied)
 	}
 	metadata, err := service.References.Get(ctx, identity.InstanceID, reference)
@@ -132,8 +133,8 @@ func (service *ServiceSecretGrantService) Redeem(
 	if err != nil {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
-	active, isActive, err := service.Configurations.Retained(ctx, entry.Identity.InstanceID, generation)
-	if err != nil || !isActive || active.Revision != generation || !documentContainsString(active.SettingsJSON, entry.Reference) {
+	configuration, available, err := service.generationConfiguration(ctx, entry.Identity.InstanceID, generation)
+	if err != nil || !available || configuration.Revision != generation || !documentContainsString(configuration.SettingsJSON, entry.Reference) {
 		return nil, grantFailure(models.ServiceSecretGrantDenied)
 	}
 	metadata, err := service.References.Get(ctx, entry.Identity.InstanceID, entry.Reference)
@@ -147,6 +148,24 @@ func (service *ServiceSecretGrantService) Redeem(
 		return nil, grantFailure(models.ServiceSecretGrantUnavailable)
 	}
 	return value, nil
+}
+
+func (service *ServiceSecretGrantService) generationConfiguration(ctx context.Context, instanceID string, generation int64) (models.ServiceConfigurationRevision, bool, error) {
+	active, isActive, err := service.Configurations.Retained(ctx, instanceID, generation)
+	if err == nil && isActive && active.Revision == generation {
+		return active, true, nil
+	}
+	if service.StagingConfigurations == nil {
+		return models.ServiceConfigurationRevision{}, false, err
+	}
+	candidate, staged, stagedErr := service.StagingConfigurations.Staged(ctx, instanceID, generation)
+	if stagedErr != nil {
+		return models.ServiceConfigurationRevision{}, false, stagedErr
+	}
+	if !staged || candidate.Revision != generation {
+		return models.ServiceConfigurationRevision{}, false, nil
+	}
+	return candidate, true, nil
 }
 
 func (service *ServiceSecretGrantService) expireLocked(now time.Time) {

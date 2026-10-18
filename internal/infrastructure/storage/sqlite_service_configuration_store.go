@@ -117,8 +117,11 @@ func (store *SQLiteServiceConfigurationStore) Current(ctx context.Context, insta
 		if !exists {
 			return models.ServiceConfigurationRevision{}, models.ServiceConfigurationPointers{}, models.ServiceConfigurationNotFound{}
 		}
-		return models.ServiceConfigurationRevision{InstanceID: instanceID, SchemaVersion: store.contract.SchemaVersion},
-			models.ServiceConfigurationPointers{InstanceID: instanceID}, nil
+		pointers, pointerErr := readConfigurationPointers(ctx, store.database, store.queries, store.contract, instanceID)
+		if pointerErr != nil {
+			return models.ServiceConfigurationRevision{}, models.ServiceConfigurationPointers{}, pointerErr
+		}
+		return models.ServiceConfigurationRevision{InstanceID: instanceID, SchemaVersion: store.contract.SchemaVersion}, pointers, nil
 	}
 	return revision, pointers, err
 }
@@ -181,6 +184,33 @@ func (store *SQLiteServiceConfigurationStore) GetRevision(ctx context.Context, i
 		return models.ServiceConfigurationRevision{}, models.ServiceConfigurationNotFound{}
 	}
 	return revision, err
+}
+
+// Staged returns a candidate only while its exact generation remains linked to
+// the instance's staging pointer. This reader is reserved for scoped preflight
+// authorization; ordinary replica pulls use ServiceConfigurationSnapshot.
+func (store *SQLiteServiceConfigurationStore) Staged(ctx context.Context, instanceID string, generation int64) (models.ServiceConfigurationRevision, bool, error) {
+	if store == nil || store.database == nil || instanceID == "" || generation < 1 {
+		return models.ServiceConfigurationRevision{}, false, sql.ErrConnDone
+	}
+	revision, err := store.GetRevision(ctx, instanceID, generation)
+	if errors.Is(err, models.ServiceConfigurationNotFound{}) {
+		return models.ServiceConfigurationRevision{}, false, nil
+	}
+	if err != nil {
+		return models.ServiceConfigurationRevision{}, false, err
+	}
+	if revision.State != store.contract.Slots.Staging {
+		return models.ServiceConfigurationRevision{}, false, nil
+	}
+	pointers, err := readConfigurationPointers(ctx, store.database, store.queries, store.contract, instanceID)
+	if err != nil {
+		return models.ServiceConfigurationRevision{}, false, err
+	}
+	if pointers.PendingRevision != generation {
+		return models.ServiceConfigurationRevision{}, false, nil
+	}
+	return revision, true, nil
 }
 
 func (store *SQLiteServiceConfigurationStore) CreateCandidate(ctx context.Context, operationID, operationKind, operationState, instanceID string, expectedCurrent, schemaVersion int64, rawJSON []byte, audit models.AuditRecord) (models.ServiceConfigurationRevision, error) {

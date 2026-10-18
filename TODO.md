@@ -1,6 +1,34 @@
 # Core v3 — production readiness
 
-## Local apply admission and runtime recovery — 2026-10-19
+## Candidate-scoped secret validation — current checkpoint — 2026-10-19
+
+- Core persists changed configuration candidates in the private staging slot
+  before asking the registered service to validate them. Secret grants may
+  inspect only the exact staged generation, only when the reference appears in
+  its bytes, and only while that generation is still the pending slot. Ordinary
+  service configuration pulls remain limited to active/previous generations.
+- Config-bundle apply prepares every candidate first, validates the complete
+  bundle before scheduling any promotion, and fails staged candidates if any
+  service rejects preflight. A rejected candidate therefore does not replace
+  the active configuration; Project files remain CLI-owned and unchanged by
+  Core.
+- The no-active-generation store path now preserves the pending pointer so
+  first-generation candidates can be validated. Focused SQLite tests cover
+  pending-reader isolation and mismatched staging-pointer denial. The full
+  Core `make check` passes: 96 Vitest files / 159 tests, Go build/tests,
+  TypeScript typecheck/lint and Docker architecture lint. `make staticcheck-u1000`
+  also passes; `go vet ./...` passes for this source increment.
+- Read-only local evidence: typed `dev plan` is valid for working-tree digest
+  `9c1d1ade4026d0ee87827c518d863f37e0ea829fd4638a7eb0ff964d565bffa8` and
+  reports Echo/Server at revision 96. Server 1.1.12 is ready at generation 96.
+  The Project retains `/echo` and the temporary `/__codex_auth_smoke_20261019`
+  route using one active opaque Server reference; the Core catalog has two
+  active synthetic references and no pending rotations. The candidate has not
+  been applied, and this source revision has not been installed in local Core.
+- The exact local Core/Server binary action gate remains open for newly built
+  digests. Production is out of scope; no secret value is read or logged.
+
+## Local apply admission and runtime recovery — superseded checkpoint — 2026-10-19
 
 - Installed and ran the exact approved Linux/arm64 Core build from commit
   `0ae119b`, SHA-256

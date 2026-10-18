@@ -33,7 +33,7 @@ type slowApplier struct {
 }
 
 // This fixture isolates activation; candidate validation succeeds independently.
-func (*slowApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+func (*slowApplier) ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }
 

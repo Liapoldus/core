@@ -21,7 +21,7 @@ type cohortApplier struct {
 }
 
 // This fixture isolates activation; candidate validation succeeds independently.
-func (*cohortApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+func (*cohortApplier) ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }
 

@@ -22,7 +22,7 @@ type targetLossApplier struct {
 }
 
 // This fixture isolates activation; candidate validation succeeds independently.
-func (*targetLossApplier) ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error {
+func (*targetLossApplier) ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error {
 	return nil
 }
 

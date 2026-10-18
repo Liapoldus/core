@@ -17,7 +17,7 @@ type TrafficRolloutReplicaSource interface {
 }
 
 type TrafficRolloutConfigurationValidator interface {
-	ValidateTrafficRolloutConfiguration(context.Context, string, []byte) error
+	ValidateTrafficRolloutConfiguration(context.Context, string, string, []byte) error
 }
 
 type TrafficRolloutStates struct {
@@ -109,7 +109,7 @@ func (service *TrafficRolloutService) Create(ctx context.Context, command Create
 	if err != nil {
 		return models.Operation{}, false, err
 	}
-	if err := service.Validator.ValidateTrafficRolloutConfiguration(ctx, reservation.Operation.Resource, command.Configuration); err != nil {
+	if err := service.Validator.ValidateTrafficRolloutConfiguration(ctx, reservation.Operation.Resource, "", command.Configuration); err != nil {
 		return models.Operation{}, false, err
 	}
 	now := nowProvider().UTC()

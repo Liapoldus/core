@@ -19,11 +19,14 @@ func (source validationReplicaSource) Snapshot() []LiveServiceReplica {
 
 func (validationReplicaSource) HasRegisteredInstance(string) bool { return true }
 
-type validationReloadClient struct{}
+type validationReloadClient struct{ generations []string }
 
-func (validationReloadClient) ValidateConfiguration(context.Context, []byte) error { return nil }
+func (client *validationReloadClient) ValidateConfiguration(_ context.Context, generation string, _ []byte) error {
+	client.generations = append(client.generations, generation)
+	return nil
+}
 
-func (validationReloadClient) Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
+func (*validationReloadClient) Reload(context.Context, sdkmodels.Reload) (sdkmodels.ReloadAcknowledgement, error) {
 	return sdkmodels.ReloadAcknowledgement{}, nil
 }
 
@@ -52,7 +55,7 @@ func TestReloadObservedRetainsIncarnationWhenLiveIdentityMismatches(t *testing.T
 	}
 }
 
-func (validationReloadClient) ConfigurationSchema(context.Context) ([]byte, error) {
+func (*validationReloadClient) ConfigurationSchema(context.Context) ([]byte, error) {
 	return []byte(`{"type":"object"}`), nil
 }
 
@@ -62,13 +65,14 @@ func TestRegisteredRolloutRequiresInjectedSchemaValidator(t *testing.T) {
 	live.Registration.Identity.InstanceID = "instance"
 	live.Registration.Ready = true
 	releases := 0
+	validationClient := &validationReloadClient{}
 	resolver := NewRegisteredReplicaReloadResolver(validationReplicaSource{live: live},
 		func(context.Context, LiveServiceReplica) (SDKReloadClient, func(), error) {
-			return validationReloadClient{}, func() { releases++ }, nil
+			return validationClient, func() { releases++ }, nil
 		}, func() time.Time { return now })
 	ctx := context.Background()
 	document := []byte(`{"value":1}`)
-	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", document); !errors.Is(err, ErrServiceUnavailable) {
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "", document); !errors.Is(err, ErrServiceUnavailable) {
 		t.Fatalf("missing validator must fail closed: %v", err)
 	}
 	if releases != 0 {
@@ -82,15 +86,15 @@ func TestRegisteredRolloutRequiresInjectedSchemaValidator(t *testing.T) {
 		}
 		return nil
 	}
-	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", document); err != nil {
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || releases != 1 {
-		t.Fatalf("calls/releases = %d/%d", calls, releases)
+	if calls != 1 || releases != 1 || len(validationClient.generations) != 1 || validationClient.generations[0] != "17" {
+		t.Fatalf("calls/releases/generations = %d/%d/%v", calls, releases, validationClient.generations)
 	}
 	resolver.ValidateSchema = func([]byte, []byte) error { return errors.New("invalid configuration") }
 	var conflict models.ServiceConfigurationConflict
-	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", document); !errors.As(err, &conflict) {
+	if err := resolver.ValidateTrafficRolloutConfiguration(ctx, "instance", "17", document); !errors.As(err, &conflict) {
 		t.Fatalf("invalid document must reject rollout: %v", err)
 	}
 	if releases != 2 {

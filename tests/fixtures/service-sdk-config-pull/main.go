@@ -201,7 +201,7 @@ func (countingReloadClient) ConfigurationSchema(context.Context) ([]byte, error)
 	return []byte(`{"type":"object"}`), nil
 }
 
-func (countingReloadClient) ValidateConfiguration(context.Context, []byte) error { return nil }
+func (countingReloadClient) ValidateConfiguration(context.Context, string, []byte) error { return nil }
 
 type certificateSet struct {
 	roots   *x509.CertPool
