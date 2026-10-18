@@ -30,6 +30,18 @@
   awaiting manual entry in Studio's secure field; no value has been entered by
   the agent. Successful live auth, scoped grant, rotation, replica ACK and
   retirement checks remain open. Production is out of scope.
+- The user subsequently reported that the value was saved. A fresh Studio
+  accessibility/screenshot read still shows an empty secure field and disabled
+  Save button; typed `service secret list` still returns only the same three
+  revoked references, with no active item or pending registration/rotation.
+  Creation is therefore unconfirmed; no new reference is in the Core catalog.
+- Re-ran `PATH=/Users/docup/.cache/codex-runtimes/codex-primary-runtime/
+  dependencies/node/bin:$PATH GOWORK=off GOFLAGS=-p=1 make check`: 96 Vitest
+  files passed, 1 skipped / 159 tests passed; Go build/tests, TypeScript
+  typecheck/lint and Docker architecture lint passed. The real mTLS fixture
+  `npm --prefix tests test -- integration/service-secret-grants.test.ts`
+  passed 1/1. These are source/process-fixture checks, not live Server grant
+  delivery.
 
 ## Local secret rotation smoke — superseded status — 2026-10-18
 
