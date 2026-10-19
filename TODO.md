@@ -26,11 +26,14 @@
   `87b525b36aa9abf77a4b81623ec614dabbe6a97b472b38dee8d1f1b5ecdcdc02`.
   Server 1.1.12's Project pin matches the pre-diagnostic backup; the temporary
   1.1.13 registry entry was removed after the smoke.
-- Current Server source candidate 1.1.14, commit
-  `80ffb234263aba13fe69722b5d8423650d78b026`, SHA-256
-  `be991dab5b250461963ef46ad713fdbb3b1f2322915376c0ec0519623998a74e`, is
-  also uninstalled. Exact local action approval for the new Core and Server
-  digests remains pending; the 1.1.13 diagnostic is not acceptance of 1.1.14.
+- Current Server 1.1.14 candidate was rebuilt from clean published commit
+  `2102cf99811ce89d7334f0c54e4a8106a0b52140` (which contains the candidate
+  validation fix from `80ffb23`). Its Linux/arm64 binary is
+  `/tmp/liapoldus-server-1.1.14-2102cf9`, SHA-256
+  `c94d2104b766228b683313b533fdc52ffa9bec1b3b8c3edca0e1bd7ae48e5ba4`;
+  build metadata reports `vcs.modified=false`. It remains uninstalled. Exact
+  local action approval for the new Core and Server digests remains pending;
+  the 1.1.13 diagnostic is not acceptance of 1.1.14.
   Production is out of scope.
 
 ## Local apply admission and runtime recovery — superseded checkpoint — 2026-10-19
