@@ -605,3 +605,22 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   `5ccf6e176dd9784b4deccb5c033653646b253f66a716ebf0032b27c9c2ee7af8`.
   Build metadata reports `vcs.modified=false`. This digest is not installed;
   local apply/secret smoke remains pending exact approval for this build.
+
+## Local Bearer rotation smoke — 2026-10-19
+
+- Через текущий ранее одобренный Core в `Server Echo Studio` / `local` прошёл
+  реальный поток Studio → CLI → Core → Service SDK → Server: тестовая Bearer
+  ссылка создана и ротирована, кандидат с отдельным auth-route получил
+  подтверждение в Studio, Core применил generation 98, а Server подтвердил
+  точный digest. Запрос с новым токеном вернул 200; без токена и с неверным
+  значением — 401.
+- После удаления тестового route Core применил очищенный Project generation 99;
+  Server подтвердил его. Все временные ссылки отозваны только после ACK и
+  удаления ссылки из Project. Typed `service secret list` показывает 0 active,
+  7 revoked, 0 pending registrations и 0 pending rotations. Значение секрета
+  не записывалось в Project, Core SQLite, логи или события.
+- Это smoke на уже запущенном Core `df625da7…` и временно разрешённом Server
+  1.1.13, а не приёмка нового Core candidate `5ccf6e17…`: candidate остаётся
+  неустановленным до точного digest approval. Локальная проверка завершена с
+  Project pin и работающим Server 1.1.12; временная запись Server 1.1.13
+  удалена из локального каталога.
