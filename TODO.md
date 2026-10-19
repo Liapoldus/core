@@ -629,3 +629,19 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
 - Повторный targeted gate проходит: `GOWORK=off GOFLAGS=-p=1 go test
   ./internal/application/... ./internal/infrastructure/storage/...
   ./internal/infrastructure/security/...`.
+
+## Hosted TypeScript and cross-repository CI follow-up — 2026-10-19
+
+- Reproduced the hosted Verify and Integration failures after clean `npm ci`:
+  Vitest, ESLint and typescript-eslint imported packages that were present in
+  published package metadata but missing from the lockfile's installed
+  dependency graph. Added explicit test dev dependencies for
+  `@rolldown/pluginutils`, `@eslint/plugin-kit` and
+  `@typescript-eslint/eslint-plugin` so clean installs include those imports.
+- Bounded Core Management test requests and health probes so a stuck child
+  process fails with a useful timeout instead of hanging the suite.
+- After a fresh `npm ci`, the full Vitest suite passed (96 files, 159 tests;
+  one skipped), TypeScript typecheck and ESLint passed. `make check`,
+  `go vet ./...` and `make staticcheck-u1000` passed. The selected
+  cross-repository command used by CI passed (5 files, 7 tests; one skipped).
+- GitHub Actions rerun is pending publication of these changes.

@@ -12,7 +12,10 @@
     "lint": "eslint \"**/*.ts\" --max-warnings 0"
   },
   "devDependencies": {
+    "@eslint/plugin-kit": "^0.7.3",
+    "@rolldown/pluginutils": "^1.0.1",
     "@types/node": "22.20.5",
+    "@typescript-eslint/eslint-plugin": "^8.71.1",
     "eslint": "10.12.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3",

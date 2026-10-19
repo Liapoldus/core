@@ -18,7 +18,7 @@ interface ResponseValue {
   readonly body: string;
 }
 
-function request(address: string, method: string, path: string, token?: string, body?: unknown): Promise<ResponseValue> {
+function request(address: string, method: string, path: string, token?: string, body?: unknown, timeoutMs = 15_000): Promise<ResponseValue> {
   const port = Number(address.slice(address.lastIndexOf(":") + 1));
   return new Promise((resolve, reject) => {
     const requestValue = httpsRequest({
@@ -35,6 +35,9 @@ function request(address: string, method: string, path: string, token?: string, 
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
       response.once("end", () => resolve({ status: response.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    requestValue.setTimeout(timeoutMs, () => {
+      requestValue.destroy(new Error(`Core Management request timed out (${method} ${path}).`));
     });
     requestValue.once("error", reject);
     requestValue.end(body === undefined ? undefined : JSON.stringify(body));
@@ -53,7 +56,7 @@ async function waitForManagement(address: string, child: Awaited<ReturnType<type
   for (let attempt = 0; attempt < 120; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`Core exited before Management API became ready (${child.exitCode}).`);
     try {
-      if ((await request(address, "GET", "/healthz")).status === 200) return;
+      if ((await request(address, "GET", "/healthz", undefined, undefined, 1_000)).status === 200) return;
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
