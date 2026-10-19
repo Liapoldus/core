@@ -624,3 +624,6 @@ remain opaque; no Studio renderer or product behavior belongs in Core.
   неустановленным до точного digest approval. Локальная проверка завершена с
   Project pin и работающим Server 1.1.12; временная запись Server 1.1.13
   удалена из локального каталога.
+- Повторный targeted gate проходит: `GOWORK=off GOFLAGS=-p=1 go test
+  ./internal/application/... ./internal/infrastructure/storage/...
+  ./internal/infrastructure/security/...`.
