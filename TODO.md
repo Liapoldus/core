@@ -2,37 +2,36 @@
 
 ## Candidate-scoped secret validation — current checkpoint — 2026-10-19
 
-- Core now persists changed candidates in the private staging slot before
-  issuing generation-scoped secret grants. Bundle apply validates every
-  candidate before scheduling promotion; a rejected candidate leaves the
-  active generation unchanged. The source also maps candidate-validation
-  failures to safe typed outcomes instead of reporting them as revision
-  conflicts. Project files remain CLI-owned.
-- The latest Core source commit is `43b7acc35bd2c640b08b769a335b127581190cdd`.
-  Its clean Linux/arm64 candidate is
-  `/tmp/liapoldus-core-43b7acc-linux-arm64`, SHA-256
-  `5ccf6e176dd9784b4deccb5c033653646b253f66a716ebf0032b27c9c2ee7af8`;
-  metadata reports `vcs.modified=false`. `make check`, `go vet ./...`,
-  `make staticcheck-u1000` and the real Domain integration test passed. This
-  candidate is not installed in the local target.
-- Live local reads on 2026-10-19 show Core digest
-  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`, a
-  valid working-tree plan at digest
-  `9c1d1ade4026d0ee87827c518d863f37e0ea829fd4638a7eb0ff964d565bffa8`, and
-  Server 1.1.12 ready at generation 96. Project settings retain `/echo` and a
-  temporary auth route referencing one active local secret; the catalog has
-  two active and three revoked references, with no pending registration or
-  rotation. `/echo` returns HTTP 200 and the candidate route returns HTTP 404.
-  Secret values and opaque references were not printed.
-- The previous live apply returned HTTP 409 and the safe log filter found a
-  `grantDenied` event; the route is still unapplied. The Core response therefore
-  needs rechecking with the new typed-error build after it is installed.
-- The current Server candidate is 1.1.14 from commit `80ffb234263aba13fe69722b5d8423650d78b026`,
-  SHA-256 `be991dab5b250461963ef46ad713fdbb3b1f2322915376c0ec0519623998a74e`.
-  The user approved the earlier 1.1.13 digest, but that artifact is superseded
-  and will not be used for acceptance. Exact action-time approval is pending
-  for the current Core and Server digests, scoped only to `Server Echo Studio`
-  / `local`; production is out of scope.
+- Core source now persists changed candidates in its private staging slot before
+  issuing generation-scoped secret grants. Bundle apply validates each candidate
+  before scheduling promotion; refusal leaves the active generation unchanged.
+  Candidate-validation failures use safe typed outcomes. The latest source
+  commit is `43b7acc35bd2c640b08b769a335b127581190cdd`; its clean Linux/arm64
+  candidate is `/tmp/liapoldus-core-43b7acc-linux-arm64`, SHA-256
+  `5ccf6e176dd9784b4deccb5c033653646b253f66a716ebf0032b27c9c2ee7af8`.
+  `make check`, `go vet ./...`, `make staticcheck-u1000` and the real Domain
+  integration test passed. This candidate remains uninstalled pending its
+  exact local action gate.
+- Current `Server Echo Studio` / `local` state is Core digest
+  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`,
+  Project pin Server 1.1.12, Server ready at generation 99, and only the
+  existing `/echo` route. A diagnostic run of the explicitly approved Server
+  1.1.13 applied the temporary auth configuration at generation 98; valid
+  Bearer returned 200 and missing/invalid credentials returned 401. The route
+  was removed, generation 99 was acknowledged, and all synthetic references
+  were revoked. Typed catalog now reports 0 active, 7 revoked, and no pending
+  registrations or rotations; no secret value was printed or persisted in
+  Project, Core SQLite, logs, events or ACKs.
+- The read-only `dev plan` is valid at working-tree digest
+  `87b525b36aa9abf77a4b81623ec614dabbe6a97b472b38dee8d1f1b5ecdcdc02`.
+  Server 1.1.12's Project pin matches the pre-diagnostic backup; the temporary
+  1.1.13 registry entry was removed after the smoke.
+- Current Server source candidate 1.1.14, commit
+  `80ffb234263aba13fe69722b5d8423650d78b026`, SHA-256
+  `be991dab5b250461963ef46ad713fdbb3b1f2322915376c0ec0519623998a74e`, is
+  also uninstalled. Exact local action approval for the new Core and Server
+  digests remains pending; the 1.1.13 diagnostic is not acceptance of 1.1.14.
+  Production is out of scope.
 
 ## Local apply admission and runtime recovery — superseded checkpoint — 2026-10-19
 
