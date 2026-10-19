@@ -21,5 +21,8 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.71.2",
     "vitest": "4.1.11"
+  },
+  "overrides": {
+    "rolldown": "1.2.8"
   }
 }
