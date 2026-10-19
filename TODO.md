@@ -2,45 +2,37 @@
 
 ## Candidate-scoped secret validation — current checkpoint — 2026-10-19
 
-- Core persists changed configuration candidates in the private staging slot
-  before asking the registered service to validate them. Secret grants may
-  inspect only the exact staged generation, only when the reference appears in
-  its bytes, and only while that generation is still the pending slot. Ordinary
-  service configuration pulls remain limited to active/previous generations.
-- Config-bundle apply prepares every candidate first, validates the complete
-  bundle before scheduling any promotion, and fails staged candidates if any
-  service rejects preflight. A rejected candidate therefore does not replace
-  the active configuration; Project files remain CLI-owned and unchanged by
-  Core.
-- The no-active-generation store path now preserves the pending pointer so
-  first-generation candidates can be validated. Focused SQLite tests cover
-  pending-reader isolation and mismatched staging-pointer denial. The full
-  Core `make check` passes: 96 Vitest files / 159 tests, Go build/tests,
-  TypeScript typecheck/lint and Docker architecture lint. `make staticcheck-u1000`
-  also passes; `go vet ./...` passes for this source increment.
-- Read-only local evidence: typed `dev plan` is valid for working-tree digest
-  `9c1d1ade4026d0ee87827c518d863f37e0ea829fd4638a7eb0ff964d565bffa8` and
-  reports Echo/Server at revision 96. Server 1.1.12 is ready at generation 96.
-  The Project retains `/echo` and the temporary `/__codex_auth_smoke_20261019`
-  route using one active opaque Server reference; the Core catalog has two
-  active synthetic references and no pending rotations. The candidate has not
-  been applied, and this source revision has not been installed in local Core.
-- A fresh `dev apply --confirm` attempt returned Core HTTP 409
-  `bundle_apply_failed: service configuration revision conflict`. Typed Server
-  status remains ready at generation 96 with no pending generation; the public
-  response does not identify the conflict. A local filter that emitted only
-  safe outcome tokens found the latest Server-log `grantDenied` event at
-  `2026-10-18T23:17:52.423698534Z`, consistent with this apply attempt. This
-  confirms that candidate validation reached the secret-grant path and the
-  scoped grant was refused. The temporary route still returns 404 and `/echo`
-  returns 200. No raw log line, Core database or secret value was inspected.
-- The exact local Core/Server binary action gate remains open for newly built
-  digests. Production is out of scope; no secret value is read or logged.
-- Core commit `aecc186ce09e090fe733b61e9562983aec49bf82` is pushed and its
-  Linux/arm64 binary was built with `CGO_ENABLED=0`; SHA-256
-  `5b8ae79f3ef1098861424ee9d6587d2194b4deeceba6a6ae1d993741fff56391`.
-  Build metadata confirms the exact commit and `vcs.modified=false`. It is not
-  installed in the local target; exact-digest approval is still required.
+- Core now persists changed candidates in the private staging slot before
+  issuing generation-scoped secret grants. Bundle apply validates every
+  candidate before scheduling promotion; a rejected candidate leaves the
+  active generation unchanged. The source also maps candidate-validation
+  failures to safe typed outcomes instead of reporting them as revision
+  conflicts. Project files remain CLI-owned.
+- The latest Core source commit is `43b7acc35bd2c640b08b769a335b127581190cdd`.
+  Its clean Linux/arm64 candidate is
+  `/tmp/liapoldus-core-43b7acc-linux-arm64`, SHA-256
+  `5ccf6e176dd9784b4deccb5c033653646b253f66a716ebf0032b27c9c2ee7af8`;
+  metadata reports `vcs.modified=false`. `make check`, `go vet ./...`,
+  `make staticcheck-u1000` and the real Domain integration test passed. This
+  candidate is not installed in the local target.
+- Live local reads on 2026-10-19 show Core digest
+  `df625da7910770c082db1364c0f9f0d149a15d487383af4a43e8aa8fb7607420`, a
+  valid working-tree plan at digest
+  `9c1d1ade4026d0ee87827c518d863f37e0ea829fd4638a7eb0ff964d565bffa8`, and
+  Server 1.1.12 ready at generation 96. Project settings retain `/echo` and a
+  temporary auth route referencing one active local secret; the catalog has
+  two active and three revoked references, with no pending registration or
+  rotation. `/echo` returns HTTP 200 and the candidate route returns HTTP 404.
+  Secret values and opaque references were not printed.
+- The previous live apply returned HTTP 409 and the safe log filter found a
+  `grantDenied` event; the route is still unapplied. The Core response therefore
+  needs rechecking with the new typed-error build after it is installed.
+- The current Server candidate is 1.1.14 from commit `80ffb234263aba13fe69722b5d8423650d78b026`,
+  SHA-256 `be991dab5b250461963ef46ad713fdbb3b1f2322915376c0ec0519623998a74e`.
+  The user approved the earlier 1.1.13 digest, but that artifact is superseded
+  and will not be used for acceptance. Exact action-time approval is pending
+  for the current Core and Server digests, scoped only to `Server Echo Studio`
+  / `local`; production is out of scope.
 
 ## Local apply admission and runtime recovery — superseded checkpoint — 2026-10-19
 
